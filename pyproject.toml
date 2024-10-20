@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = 'DeepEcoHab'
+version ='0.1'
+requires-python = ">= 3.11"
+dependencies = [
+    'numpy',
+    'plotly',
+    'matplotlib',
+    'scipy',
+    'pandas',
+    'tables',
+    'toml',
+]
