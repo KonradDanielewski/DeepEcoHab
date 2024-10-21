@@ -12,6 +12,27 @@ import toml
 
 from plotly.subplots import make_subplots
 
+def _plot_chasings_matrix(chasings: pd.DataFrame, project_location: Path, save_plot: bool):
+    """Auxfun for plotting the chasings matrix
+    """            
+    fig = px.imshow(chasings, text_auto=True, width=700, height=700)
+    fig.update_xaxes(side="top")
+    fig.show()
+    if save_plot:
+        save_path = project_location / "plots"
+        fig.write_html(save_path / "chasings_matrix.html")
+        fig.write_image(save_path / "chasings_matrix.svg")
+
+def _plot_weighted_ranking(data_prep: pd.DataFrame, project_location: Path, save_plot: bool):
+    """Auxfun to plot a barplot with weighted ranking
+    """            
+    fig = px.bar(data_prep["final_ranking"], width=800, height=500)
+    fig.update_yaxes(title="Weighted rank")
+    if save_plot:
+        plot_location = project_location / "plots"
+        fig.write_html(plot_location / r"weighted_ranking.html")
+    fig.show()
+
 def social_dominance_evaluation(
     cfp: str,
     chasings: pd.DataFrame,

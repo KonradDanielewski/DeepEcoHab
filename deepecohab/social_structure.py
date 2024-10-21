@@ -5,6 +5,8 @@ import pandas as pd
 import plotly.express as px
 import toml
 
+from deepecohab.plotting import _plot_weighted_ranking
+
 
 def graph_distances(graph):
     """Auxfun to get distance from the center fro the network graph
@@ -34,7 +36,7 @@ def weigh_ranking(cfp: str, graph: dict, ranking_ordinal: pd.Series, chasings: p
         _description_
     """    
     cfg = toml.load(cfp)
-    plot_location = Path(cfg["project_location"]) / "plots"
+    project_location = Path(cfg["project_location"])
     
     distances = graph_distances(graph)
 
@@ -51,10 +53,6 @@ def weigh_ranking(cfp: str, graph: dict, ranking_ordinal: pd.Series, chasings: p
 
     # NOTE: Move this part to the summary plot. In workflow summary plot should be the last one, after ranking in time and network
     if plot:
-        fig = px.bar(data_prep["final_ranking"], width=800, height=500, showlegend=False)
-        fig.update_yaxes(title="Weighted rank")
-        if save_plot:
-            fig.write_html(plot_location / r"weighted_ranking.html")
-        fig.show()
+        _plot_weighted_ranking(data_prep, project_location, save_plot)
 
     return data_prep.final_ranking

@@ -1,3 +1,4 @@
+import pickle
 import os
 from itertools import combinations
 from pathlib import Path
@@ -8,6 +9,8 @@ import plotly.express as px
 import toml
 
 from openskill.models import PlackettLuce
+
+from deepecohab.plotting import _plot_chasings_matrix
 
 def get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to get each chasing event as a match
@@ -144,16 +147,20 @@ def calculate_chasings(cfp: str, df: pd.DataFrame, plot: bool = True, save_plot:
     # Reorder animals according to the ranking
     chasings = chasings.reindex(animal_order).reindex(animal_order, axis=1)
     
-    data_save_path = project_location / "data" / (experiment_name + "_chasings.h5")
-    chasings.to_hdf(data_save_path, key="df")
+    data_save_path = project_location / "data" / (experiment_name + "_chase_rank.pickle")
+    
+    pickle_file = {
+        "chasing_matrix": chasings,
+        "ranking_raw": ranking,
+        "ranking_ordinal": ranking_ordinal,
+        "ranking_in_time": ranking_in_time,
+        "datetimes": datetimes
+    }
+    
+    with open(str(data_save_path), "wb") as outfile: 
+        pickle.dump(pickle_file, outfile)
 
     if plot:
-        fig = px.imshow(chasings, text_auto=True, width=700, height=700)
-        fig.update_xaxes(side="top")
-        fig.show()
-        if save_plot:
-            save_path = project_location / "plots"
-            fig.write_html(save_path / "chasings_matrix.html")
-            fig.write_image(save_path / "chasings_matrix.svg")
+        _plot_chasings_matrix(chasings, project_location, save_plot)
 
     return chasings, ranking, ranking_ordinal, ranking_in_time, datetimes
