@@ -2,6 +2,8 @@ import os
 from itertools import product
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+from matplotlib import colormaps
 import networkx as nx
 import pandas as pd
 import plotly.express as px
@@ -13,9 +15,9 @@ from plotly.subplots import make_subplots
 def social_dominance_evaluation(
     cfp: str,
     chasings: pd.DataFrame,
-    ranking: pd.Series,
+    ranking_ordinal: pd.Series,
     save_plot: bool = True,
-    ) -> None:
+    ) -> go.Figure:
     """NOTE: Add the weighted ranking here?
 
     Args:
@@ -32,13 +34,12 @@ def social_dominance_evaluation(
         subplot_titles=["Ranking", "Number of chasings", "Win/Loss-Rate", "Number of times being chased"],
     )
 
-    ranking
     chases = chasings.sum()
     chased = chasings.sum(axis=1)
     proportion = ((chases - chased) / chases) * 100
 
 
-    fig.add_trace(go.Bar(x=ranking.index.to_list(), y=ranking.values, name="Ranking"),
+    fig.add_trace(go.Bar(x=ranking_ordinal.index.to_list(), y=ranking_ordinal.values, name="Ranking"),
                 row=1, col=1,
                 )
     fig.add_trace(go.Bar(x=chases.index.to_list(), y=chases.values, name="Number of chasings"),
@@ -57,12 +58,14 @@ def social_dominance_evaluation(
         fig.write_html(save_path / "social_dominance_evaluation.html")
         fig.write_image(save_path / "social_dominance_evaluation.svg")
     fig.show()
+    
+    return fig
 
 def plot_ranking_in_time(
     cfp: str,
     ranking_in_time: pd.DataFrame,
     save_plot: bool = True,
-    ) -> None:
+    ) -> go.Figure:
     """_summary_
 
     Args:
@@ -78,11 +81,13 @@ def plot_ranking_in_time(
         fig.write_html(save_path / "Ranking_change_in_time.html")
         fig.write_image(save_path / "Ranking_change_in_time.svg")
     fig.show()
+    
+    return fig
 
 def plot_network_graph(
     cfp: str,
     data: pd.DataFrame,
-    ranking: pd.DataFrame,
+    ranking_ordinal: pd.Series,
     title: str = "Title",
     node_size_multiplier: int = 5,
     edge_width_multiplier: int = 5,
@@ -109,7 +114,7 @@ def plot_network_graph(
     
     # Create graph
     G = nx.DiGraph()
-    mice = ranking.index  # Assuming first two columns are non-node identifiers
+    mice = ranking_ordinal.index  # Assuming first two columns are non-node identifiers
     G.add_nodes_from(mice)
     # Make edges
     mice_product = [(i, j) for i, j in list(product(mice, mice)) if i != j]
@@ -124,8 +129,8 @@ def plot_network_graph(
 
     # Node specification
     pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
-    node_sizes = list(ranking * node_size_multiplier) 
-    node_colors = matplotlib.colormaps[cmap].resampled(len(mice)).colors
+    node_sizes = list(ranking_ordinal * node_size_multiplier) 
+    node_colors = colormaps[cmap].resampled(len(mice)).colors
    
     # Draw network
     fig, ax = plt.subplots(figsize=(10, 10))

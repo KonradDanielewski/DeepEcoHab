@@ -63,10 +63,6 @@ def rank_mice_openskill(matches: list[pd.DataFrame], animal_ids: list[str], rank
         temp = {key: round(ranking[key].ordinal(), 3) for key in ranking.keys()}
         ranking_update.append(temp)
 
-    output_ranking = {key: round(ranking[key].ordinal(), 3) for key in ranking.keys()}
-    output_ranking = pd.Series(data=output_ranking)
-    output_ranking = output_ranking.sort_values(ascending=False)
-
     ranking_in_time = pd.concat([pd.Series(match) for match in ranking_update], axis=1)
     ranking_in_time = ranking_in_time.T
 

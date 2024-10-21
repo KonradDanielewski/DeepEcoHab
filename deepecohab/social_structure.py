@@ -19,7 +19,7 @@ def graph_distances(graph):
 
     return distances
 
-def weigh_ranking(cfp: str, graph: dict, ranking: pd.Series, chasings: pd.DataFrame, plot: bool = True, save_plot: bool = False) -> pd.Series:
+def weigh_ranking(cfp: str, graph: dict, ranking_ordinal: pd.Series, chasings: pd.DataFrame, plot: bool = True, save_plot: bool = False) -> pd.Series:
     """_summary_
 
     Args:
@@ -38,8 +38,8 @@ def weigh_ranking(cfp: str, graph: dict, ranking: pd.Series, chasings: pd.DataFr
     
     distances = graph_distances(graph)
 
-    normalized_ranking = ranking.copy()
-    normalized_ranking.loc[:] = (ranking.values - ranking.min()) / (ranking.max() - ranking.min())
+    normalized_ranking = ranking_ordinal.copy()
+    normalized_ranking.loc[:] = (ranking_ordinal.values - ranking_ordinal.min()) / (ranking_ordinal.max() - ranking_ordinal.min())
 
     normalized_chasings = chasings.sum()
     normalized_chasings.loc[:] = (normalized_chasings - normalized_chasings.min()) / (normalized_chasings.max() - normalized_chasings.min())
@@ -51,7 +51,7 @@ def weigh_ranking(cfp: str, graph: dict, ranking: pd.Series, chasings: pd.DataFr
 
     # NOTE: Move this part to the summary plot. In workflow summary plot should be the last one, after ranking in time and network
     if plot:
-        fig = px.bar(data_prep["final_ranking"], width=800, height=500)
+        fig = px.bar(data_prep["final_ranking"], width=800, height=500, showlegend=False)
         fig.update_yaxes(title="Weighted rank")
         if save_plot:
             fig.write_html(plot_location / r"weighted_ranking.html")
