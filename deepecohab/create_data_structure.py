@@ -1,5 +1,6 @@
 import os
 from glob import glob
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -192,11 +193,11 @@ def get_ecohab_data_structure(
     """
     cfg = toml.load(cfp)
 
-    project_location = cfg["project_location"]
+    project_location = Path(cfg["project_location"])
     experiment_name = cfg["experiment_name"]
 
-    data_path = os.path.join(project_location, "data", f"{experiment_name}_data.h5")
-    if os.path.exists(data_path) and not overwrite:
+    data_path = project_location / "data" / f"{experiment_name}_data.h5"
+    if data_path.exists() and not overwrite:
         print("Data structure already created! Loading existing data. If you wish to overwrite existing data set overwrite=True !")
         df = pd.read_hdf(data_path)
         return df
@@ -239,7 +240,7 @@ def get_ecohab_data_structure(
     
     df.to_hdf(data_path, key="df", format="table")
     if save_as_csv:
-        data_path = data_path.replace("h5", "csv")
-        df.to_csv(data_path, sep=",")
+        data_path = str(data_path).replace("h5", "csv")
+        df.to_csv(Path(data_path), sep=",")
 
     return df

@@ -1,5 +1,6 @@
 import os
 from itertools import combinations
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -86,7 +87,7 @@ def calculate_chasings(cfp: str, df: pd.DataFrame, plot: bool = True, save_plot:
         Matrix of pairwise chasings as a pd.DataFrame and a DataFrame with a ranking calculated using TrueSkill with each chasing event being a separate match
     """
     cfg = toml.load(cfp)
-    project_location = cfg["project_location"]
+    project_location = Path(cfg["project_location"])
     experiment_name = cfg["experiment_name"]
     antenna_combinations = list(cfg["antenna_combinations"])
     tunnel_combinations = [comb for comb in antenna_combinations if "cage" not in comb]
@@ -147,7 +148,7 @@ def calculate_chasings(cfp: str, df: pd.DataFrame, plot: bool = True, save_plot:
     # Reorder animals according to the ranking
     chasings = chasings.reindex(animal_order).reindex(animal_order, axis=1)
     
-    data_save_path = os.path.join(project_location, "data", experiment_name + "_chasings.h5")
+    data_save_path = project_location / "data" / (experiment_name + "_chasings.h5")
     chasings.to_hdf(data_save_path, key="df")
 
     if plot:
@@ -155,7 +156,8 @@ def calculate_chasings(cfp: str, df: pd.DataFrame, plot: bool = True, save_plot:
         fig.update_xaxes(side="top")
         fig.show()
         if save_plot:
-            fig.write_html(os.path.join(project_location, "plots", "chasings_matrix.html"))
-            fig.write_image(os.path.join(project_location, "plots", "chasings_matrix.svg"))
+            save_path = project_location / "plots"
+            fig.write_html(save_path / "chasings_matrix.html")
+            fig.write_image(save_path / "chasings_matrix.svg")
 
     return chasings, ranking, ranking_ordinal, ranking_in_time, datetimes

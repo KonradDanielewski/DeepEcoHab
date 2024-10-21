@@ -4,7 +4,7 @@ with open("README.md", 'r') as f:
     long_description = f.read()
 
 setuptools.setup(
-    name='DeepEcoHab',
+    name='deepecohab',
     version='0.1',
     author='Konrad Danielewski',
     author_email='kdanielewski@gmail.com',
@@ -24,6 +24,10 @@ setuptools.setup(
         'pandas',
         'tables',
         'toml',
+        'openskill',
+        'networkx',
+        'nbformat',
+        'kaleido',
     ], 
     url='https://github.com/KonradDanielewski/DeepEcoHab'
 )

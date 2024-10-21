@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import toml
 
-from deepecohab.config_templates import *
+from deepecohab import config_templates
 from deepecohab.utils.auxfun import get_data_paths
 
 def get_animal_ids(data_path: str) -> list:
@@ -14,7 +14,7 @@ def get_animal_ids(data_path: str) -> list:
     """    
     data_files = get_data_paths(data_path)
     
-    dfs = [pd.read_csv(file, delimiter="\t", names=["ind", "date", "time", "antenna", "time_under", "animal_id"]) for file in data_files[10]]
+    dfs = [pd.read_csv(file, delimiter="\t", names=["ind", "date", "time", "antenna", "time_under", "animal_id"]) for file in data_files[:10]]
     animal_ids = pd.concat(dfs).animal_id.unique()
     return animal_ids
 
@@ -24,7 +24,7 @@ def make_project_path(project_location: str, project_name: str):
     project_name = project_name + "_" + dt.datetime.today().strftime('%Y-%m-%d')
     project_location = Path(project_location) / project_name
 
-    return project_location
+    return str(project_location)
 
 def create_ecohab_project(
     project_location: str = None,
