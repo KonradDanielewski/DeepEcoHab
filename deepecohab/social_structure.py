@@ -12,10 +12,8 @@ def graph_distances(graph):
     """Auxfun to get distance from the center fro the network graph
     """    
     distances = [np.linalg.norm(graph[animal] - [0,0]) for animal in graph.keys()]
-    d_min = np.min(distances)
-    d_max = np.max(distances)
-    normalized_distances = (distances - d_min) / (d_max - d_min)
-    inverted_distances = 1 - normalized_distances
+    inverted_distances = 1 - ((distances - np.min(distances)) / (np.max(distances) - np.min(distances)))
+    
     scaled_distances = inverted_distances * (1 / np.max(inverted_distances))
     distances = pd.Series({key: val for key, val in zip(graph.keys(), scaled_distances)})
 
