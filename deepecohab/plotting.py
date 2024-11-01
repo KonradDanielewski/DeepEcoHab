@@ -21,7 +21,7 @@ def _plot_chasings_matrix(chasings: pd.DataFrame, project_location: Path, save_p
     if save_plot:
         save_path = project_location / "plots"
         fig.write_html(save_path / "chasings_matrix.html")
-        fig.write_image(save_path / "chasings_matrix.svg")
+        # fig.write_image(save_path / "chasings_matrix.svg")
 
 def _plot_weighted_ranking(data_prep: pd.DataFrame, project_location: Path, save_plot: bool):
     """Auxfun to plot a barplot with weighted ranking
@@ -77,7 +77,7 @@ def social_dominance_evaluation(
     if save_plot:
         save_path = Path(cfg["project_location"]) / "plots"
         fig.write_html(save_path / "social_dominance_evaluation.html")
-        fig.write_image(save_path / "social_dominance_evaluation.svg")
+        # fig.write_image(save_path / "social_dominance_evaluation.svg")
     fig.show()
     
     return fig
@@ -100,7 +100,7 @@ def plot_ranking_in_time(
     if save_plot:
         save_path = Path(cfg["project_location"]) / "plots"
         fig.write_html(save_path / "Ranking_change_in_time.html")
-        fig.write_image(save_path / "Ranking_change_in_time.svg")
+        # fig.write_image(save_path / "Ranking_change_in_time.svg")
     fig.show()
     
     return fig
