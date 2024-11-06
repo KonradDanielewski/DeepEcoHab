@@ -83,7 +83,7 @@ def get_phase_count(df: pd.DataFrame) -> pd.DataFrame: #NOTE: This doesn't work 
     df["phase_id"] = df.phase.map({"dark_phase": 0, "light_phase": 1}).astype(int)
     # Get phase count
     m = df['phase_id'].eq(1)
-    df['phase_count'] = m.ne(m.shift() & m).cumsum() + 1
+    df['phase_count'] = m.ne(m.shift() & m).cumsum()
     df = df.drop("phase_id", axis=1)
     return df
 
