@@ -35,8 +35,12 @@ def combine_matches(matches: list[pd.DataFrame]) -> tuple[list, pd.Series]:
     matches = list(matches_df.drop("datetime", axis=1).itertuples(index=False, name=None))
     return matches, datetimes
 
-def rank_mice_openskill(matches: list[pd.DataFrame], animal_ids: list[str], ranking: dict | None = None) -> tuple[dict, pd.DataFrame, pd.Series]:
-    """_summary_
+def rank_mice_openskill(
+    matches: list[pd.DataFrame], 
+    animal_ids: list[str], 
+    ranking: dict | None = None,
+) -> tuple[dict, pd.DataFrame, pd.Series]:
+    """Rank mice using PlackettLuce algorithm from openskill. More info: https://arxiv.org/pdf/2401.05451
 
     Args:
         matches: list of all matches structured
@@ -71,7 +75,14 @@ def rank_mice_openskill(matches: list[pd.DataFrame], animal_ids: list[str], rank
 
     return ranking, ranking_in_time, datetimes
 
-def calculate_chasings(cfp: str, df: pd.DataFrame, plot: bool = True, save_plot: bool = True, ranking: dict | None = None) -> tuple[pd.DataFrame, dict, pd.Series, pd.DataFrame, pd.Series]:
+def calculate_chasings(
+    cfp: str, 
+    df: pd.DataFrame, 
+    plot: bool = True, 
+    save_plot: bool = True,
+    show_plot: bool = True,
+    ranking: dict | None = None,
+) -> tuple[pd.DataFrame, dict, pd.Series, pd.DataFrame, pd.Series]:
     """Calculates chasing events per pair of mice
 
     Args:
@@ -161,6 +172,6 @@ def calculate_chasings(cfp: str, df: pd.DataFrame, plot: bool = True, save_plot:
         pickle.dump(pickle_file, outfile)
 
     if plot:
-        _plot_chasings_matrix(chasings, project_location, save_plot)
+        _plot_chasings_matrix(chasings, project_location, save_plot, show_plot)
 
     return chasings, ranking, ranking_ordinal, ranking_in_time, datetimes
