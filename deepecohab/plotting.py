@@ -12,40 +12,49 @@ import toml
 
 from plotly.subplots import make_subplots
 
-def _plot_chasings_matrix(chasings: pd.DataFrame, project_location: Path, save_plot: bool):
+# NOTE: Modify the internally created plots so that they all return the Figure object when run on their own (no longer internal use only) - perhaps a toogle switch?
+
+def _plot_chasings_matrix(chasings: pd.DataFrame, project_location: Path, save_plot: bool, show_plot: bool):
     """Auxfun for plotting the chasings matrix
     """            
     fig = px.imshow(chasings, text_auto=True, width=700, height=700)
     fig.update_xaxes(side="top")
-    fig.show()
+    
     if save_plot:
         save_path = project_location / "plots"
         fig.write_html(save_path / "chasings_matrix.html")
         # fig.write_image(save_path / "chasings_matrix.svg")
+    if show_plot:
+        fig.show()
 
-def _plot_weighted_ranking(data_prep: pd.DataFrame, project_location: Path, save_plot: bool):
+def _plot_weighted_ranking(data_prep: pd.DataFrame, project_location: Path, save_plot: bool, show_plot: bool):
     """Auxfun to plot a barplot with weighted ranking
     """            
     fig = px.bar(data_prep["final_ranking"], width=800, height=500)
     fig.update_yaxes(title="Weighted rank")
+    
     if save_plot:
         plot_location = project_location / "plots"
         fig.write_html(plot_location / r"weighted_ranking.html")
-    fig.show()
+         # fig.write_image(save_path / "weighted_ranking.svg")
+    if show_plot:
+        fig.show()
 
 def social_dominance_evaluation(
     cfp: str,
     chasings: pd.DataFrame,
     ranking_ordinal: pd.Series,
     save_plot: bool = True,
+    show_plot: bool = True,
     ) -> go.Figure:
     """NOTE: Add the weighted ranking here?
 
     Args:
-        cfp: _description_
-        chasings: _description_
-        ranking: _description_
-        save_plot: _description_. Defaults to True.
+        cfp: path to project config file
+        chasings: chasings matrix created with calculate_chasings
+        ranking_ordinal: ranking created during chasings calculation
+        save_plot: toggle whether to save the plot. Defaults to True.
+        show_plot: toggle whether to show the plot. Defaults to True.
     """    
     cfg = toml.load(cfp)
     fig = make_subplots(
@@ -73,12 +82,18 @@ def social_dominance_evaluation(
                 row=2, col=1,
                 )
 
-    fig.update_layout(width=1000, height=600, title_text="Social dominance evaluation", showlegend=False)
+    fig.update_layout(
+        width=1000, 
+        height=600, 
+        title_text="Social dominance evaluation", 
+        showlegend=False,
+    )
     if save_plot:
         save_path = Path(cfg["project_location"]) / "plots"
         fig.write_html(save_path / "social_dominance_evaluation.html")
         # fig.write_image(save_path / "social_dominance_evaluation.svg")
-    fig.show()
+    if show_plot:
+        fig.show()
     
     return fig
 
@@ -86,22 +101,37 @@ def plot_ranking_in_time(
     cfp: str,
     ranking_in_time: pd.DataFrame,
     save_plot: bool = True,
+    show_plot: bool = True,
     ) -> go.Figure:
     """_summary_
 
     Args:
-        cfp: _description_
-        ranking_in_time: _description_
-        save_plot: _description_. Defaults to True.
+        cfp: path to project config file
+        ranking_in_time: DataFrame of ranking changes througout the experiment
+        save_plot: toggle whether to save the plot. Defaults to True.
+        show_plot: toggle whether to show the plot. Defaults to True.
     """    
     cfg = toml.load(cfp)
-    fig = px.line(ranking_in_time, width=1000, height=600, color_discrete_sequence=px.colors.qualitative.Dark24, title="Social dominance ranking in time").update_layout(yaxis_title="Ordinal", xaxis_title="Chasing events")
+    
+    fig = px.line(
+        ranking_in_time,
+        width=1000,
+        height=600,
+        color_discrete_sequence=px.colors.qualitative.Dark24, 
+        title="Social dominance ranking in time",
+    )
+    
+    fig.update_layout(
+        yaxis_title="Ordinal",
+        xaxis_title="Chasing events",
+    )
     
     if save_plot:
         save_path = Path(cfg["project_location"]) / "plots"
         fig.write_html(save_path / "Ranking_change_in_time.html")
         # fig.write_image(save_path / "Ranking_change_in_time.svg")
-    fig.show()
+    if show_plot:
+        fig.show()
     
     return fig
 
@@ -115,10 +145,10 @@ def plot_network_graph(
     cmap="inferno",
     save_plot=False,
     ) -> dict:
-    """NOTE: The only plot not in plotly... Should be changed but it seems harder to get similar quality and readability
+    """NOTE: The only plot not in plotly... Should be changed to lose matplotlib dependecy but it seems complicated to get similar quality and readability - for now a functional placeholder
 
     Args:
-        cfp: _description_
+        cfp: path to project config file
         data: _description_
         ranking: _description_
         title: _description_. Defaults to "Title".
