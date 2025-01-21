@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.express as px
 import toml
 
-from deepecohab.plotting import _plot_weighted_ranking
+from DeepEcoHab.deepecohab.plots.plotting import _plot_weighted_ranking
 
 
 def _graph_distances(graph) -> od.Series:

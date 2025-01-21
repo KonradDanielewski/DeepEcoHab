@@ -1,12 +1,11 @@
 import datetime as dt
 import os
-from glob import glob
 from pathlib import Path
 
 import pandas as pd
 import toml
 
-from deepecohab import config_templates
+from DeepEcoHab.deepecohab.src import config_templates
 from deepecohab.utils.auxfun import get_data_paths
 
 def get_animal_ids(data_path: str) -> list:
