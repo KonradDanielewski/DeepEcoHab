@@ -1,5 +1,4 @@
 import pickle
-import os
 from itertools import combinations
 from pathlib import Path
 
