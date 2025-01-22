@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import toml
 
-from DeepEcoHab.deepecohab.plots.plotting import _plot_weighted_ranking
+from deepecohab.plots.plotting import _plot_weighted_ranking
 
 
 def _graph_distances(graph) -> pd.Series:

@@ -8,7 +8,7 @@ import toml
 
 from openskill.models import PlackettLuce
 
-from DeepEcoHab.deepecohab.plots.plotting import _plot_chasings_matrix
+from deepecohab.plots.plotting import _plot_chasings_matrix
 
 def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to get each chasing event as a match

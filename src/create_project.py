@@ -5,8 +5,8 @@ from pathlib import Path
 import pandas as pd
 import toml
 
-from DeepEcoHab.deepecohab.src import config_templates
-from deepecohab.utils.auxfun import get_data_paths
+from src import config_templates
+from utils.auxfun import get_data_paths
 
 def get_animal_ids(data_path: str) -> list:
     """Auxfun to read animal IDs from the data if not provided
