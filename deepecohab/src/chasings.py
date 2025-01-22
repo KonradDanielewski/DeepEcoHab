@@ -10,7 +10,7 @@ from openskill.models import PlackettLuce
 
 from DeepEcoHab.deepecohab.plots.plotting import _plot_chasings_matrix
 
-def get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame) -> pd.DataFrame:
+def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to get each chasing event as a match
     """    
     matches = pd.DataFrame({
@@ -20,7 +20,7 @@ def get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame)
     })
     return matches
 
-def combine_matches(matches: list[pd.DataFrame]) -> tuple[list, pd.Series]:
+def _combine_matches(matches: list[pd.DataFrame]) -> tuple[list, pd.Series]:
     """Auxfun to combine all the chasing events into one data structure
     """    
     matches_df = (
@@ -33,7 +33,7 @@ def combine_matches(matches: list[pd.DataFrame]) -> tuple[list, pd.Series]:
     matches = list(matches_df.drop("datetime", axis=1).itertuples(index=False, name=None))
     return matches, datetimes
 
-def rank_mice_openskill(
+def _rank_mice_openskill(
     matches: list[pd.DataFrame], 
     animal_ids: list[str], 
     ranking: dict | None = None,
@@ -51,7 +51,7 @@ def rank_mice_openskill(
         datetimes: pd.Series of all matches datetimes for sorting or axis setting purposes
     """    
     model = PlackettLuce(limit_sigma=True, balance=True)
-    match_list, datetimes = combine_matches(matches)
+    match_list, datetimes = _combine_matches(matches)
     
     ranking = {}
     
@@ -136,7 +136,7 @@ def calculate_chasings(
         chased_mouse = chased.loc[chased.animal_id != chasing.animal_id]
         chasing_mouse = chasing.loc[chasing.animal_id != chased.animal_id]
 
-        matches.append(get_chasing_matches(chasing_mouse, chased_mouse))
+        matches.append(_get_chasing_matches(chasing_mouse, chased_mouse))
 
         chase_times1 = (chased_mouse.query("animal_id == @mouse1").datetime.reset_index(drop=True) - chasing_mouse.query("animal_id == @mouse2").datetime.reset_index(drop=True)).dt.total_seconds()
         chase_times2 = (chased_mouse.query("animal_id == @mouse2").datetime.reset_index(drop=True) - chasing_mouse.query("animal_id == @mouse1").datetime.reset_index(drop=True)).dt.total_seconds()
@@ -145,7 +145,7 @@ def calculate_chasings(
         chasings.loc[mouse2, mouse1] = len(chase_times2[(chase_times2 < 1) & (chase_times2 > 0.1)])
 
     # Get the ranking and calculate ranking ordinal
-    ranking, ranking_in_time, datetimes = rank_mice_openskill(matches, animals, ranking)
+    ranking, ranking_in_time, datetimes = _rank_mice_openskill(matches, animals, ranking)
     ranking_ordinal = (
         pd.Series(
             {animal: ranking[animal].ordinal() for animal in ranking.keys()}, name="ordinal")
