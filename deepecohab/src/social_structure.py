@@ -2,13 +2,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import toml
 
 from DeepEcoHab.deepecohab.plots.plotting import _plot_weighted_ranking
 
 
-def _graph_distances(graph) -> od.Series:
+def _graph_distances(graph) -> pd.Series:
     """Auxfun to get distance from the center fro the network graph
     """    
     distances = [np.linalg.norm(graph[animal] - [0,0]) for animal in graph.keys()]
