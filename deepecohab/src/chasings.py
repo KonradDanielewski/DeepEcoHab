@@ -101,6 +101,8 @@ def calculate_chasings(
     tunnel_combinations = [comb for comb in antenna_combinations if "cage" not in comb]
     cage_combinations = [comb for comb in antenna_combinations if "cage" in comb]
 
+    data_path = project_location / "data" / f"{experiment_name}_data.h5"
+
     chasings = pd.DataFrame(np.nan, columns=df.animal_id.unique(), index=df.animal_id.unique())
 
     animals = sorted(toml.load(cfp)["animal_ids"])
@@ -171,5 +173,8 @@ def calculate_chasings(
 
     if plot:
         _plot_chasings_matrix(chasings, project_location, save_plot, show_plot)
+
+    chasings.to_hdf(data_path, key="chasings", format="table")
+    ranking_ordinal.to_hdf(data_path, key="end_ranking", format="table")
 
     return chasings, ranking, ranking_ordinal, ranking_in_time, datetimes

@@ -174,7 +174,6 @@ def get_ecohab_data_structure(
     sanitize_animal_ids: bool = True,
     custom_layout: bool = False,
     overwrite: bool = False,
-    save_as_csv: bool = True,
     retain_comport: bool = False,
 ) -> pd.DataFrame:
     """Prepares EcoHab data for further analysis
@@ -184,7 +183,6 @@ def get_ecohab_data_structure(
         sanitize_animal_ids: toggle whether to remove animals. Removes animals that had less than 10 antenna crossings during the whole experiment.
         custom_layout: if multiple boards where added/antennas are in non-default location set to True
         overwrite: toggles whether to overwrite existing data file
-        save_as_csv: toggles whether the data will also be saved as a csv file
         retain_comport: toggles whether to retain the column that contains the comport index
 
     Returns:
@@ -237,9 +235,6 @@ def get_ecohab_data_structure(
     if not retain_comport:
         df = df.drop("COM", axis=1)
     
-    df.to_hdf(data_path, key="df", format="table")
-    if save_as_csv:
-        data_path = str(data_path).replace("h5", "csv")
-        df.to_csv(Path(data_path), sep=",")
+    df.to_hdf(data_path, key="main_df", format="table")
 
     return df

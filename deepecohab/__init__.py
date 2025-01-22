@@ -1,4 +1,4 @@
-from DeepEcoHab.deepecohab.src.version import __version__, VERSION
+from deepecohab.version import __version__, VERSION
 
 from deepecohab.src.chasings import calculate_chasings
 from deepecohab.src.create_project import create_ecohab_project
