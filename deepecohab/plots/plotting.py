@@ -142,7 +142,7 @@ def plot_network_graph(
     node_size_multiplier: int = 5,
     edge_width_multiplier: int = 5,
     cmap="inferno",
-    save_plot=False,
+    save_plot=True,
     ) -> dict:
     """NOTE: The only plot not in plotly... Should be changed to lose matplotlib dependecy but it seems complicated to get similar quality and readability - for now a functional placeholder
 

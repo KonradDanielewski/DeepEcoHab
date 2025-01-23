@@ -171,6 +171,7 @@ def calculate_chasings(
     with open(str(data_save_path), "wb") as outfile: 
         pickle.dump(pickle_file, outfile)
 
+    # Remove from here eventually - should be called separately - data available in the dataset file
     if plot:
         _plot_chasings_matrix(chasings, project_location, save_plot, show_plot)
 
