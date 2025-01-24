@@ -65,7 +65,7 @@ def create_ecohab_project(
         print("Project location not provided")
         return
     if not isinstance(data_path, (str, Path)):
-        print("Project location not provided")
+        print("Data location not provided")
         return
     if len(os.listdir(data_path)) == 0:
         print(f"{data_path} is empty, please check if you provided the correct directory")
