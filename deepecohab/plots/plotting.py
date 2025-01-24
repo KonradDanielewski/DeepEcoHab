@@ -11,6 +11,8 @@ import toml
 
 from plotly.subplots import make_subplots
 
+from deepecohab.utils.auxfun import read_config
+
 # NOTE: Modify the internally created plots so that they all return the Figure object when run on their own (no longer internal use only) - perhaps a toogle switch?
 
 def _plot_chasings_matrix(chasings: pd.DataFrame, project_location: Path, save_plot: bool, show_plot: bool):
@@ -55,7 +57,7 @@ def social_dominance_evaluation(
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
-    cfg = toml.load(cfp)
+    cfg = read_config(cfp)
     fig = make_subplots(
         rows=2, cols=2,
         specs=[[{"type": "bar"}, {"type": "bar"}],
@@ -110,7 +112,7 @@ def plot_ranking_in_time(
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
-    cfg = toml.load(cfp)
+    cfg = read_config(cfp)
     
     fig = px.line(
         ranking_in_time,
@@ -142,7 +144,7 @@ def plot_network_graph(
     node_size_multiplier: int = 5,
     edge_width_multiplier: int = 5,
     cmap="inferno",
-    save_plot=False,
+    save_plot=True,
     ) -> dict:
     """NOTE: The only plot not in plotly... Should be changed to lose matplotlib dependecy but it seems complicated to get similar quality and readability - for now a functional placeholder
 
@@ -159,7 +161,7 @@ def plot_network_graph(
     Returns:
         _description_
     """    
-    cfg = toml.load(cfp)
+    cfg = read_config(cfp)
     project_location = Path(cfg["project_location"])
     
     # Create graph

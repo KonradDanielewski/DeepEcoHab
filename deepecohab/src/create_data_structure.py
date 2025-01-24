@@ -5,12 +5,16 @@ import numpy as np
 import pandas as pd
 import toml
 
-from deepecohab.utils.auxfun import get_data_paths
+from deepecohab.utils.auxfun import (
+    get_data_paths,
+    read_config,
+)
+
 
 def load_data(cfp: str, custom_layout: bool = False) -> pd.DataFrame:
     """Auxfum to load and combine text files into a pandas dataframe
     """    
-    cfg = toml.load(cfp)
+    cfg = read_config(cfp)
     data_path = cfg["data_path"]
     
     data_files = get_data_paths(data_path)
@@ -68,7 +72,7 @@ def get_hour(df: pd.DataFrame) -> pd.DataFrame:
 def get_phase(cfp: str, df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun for getting the phase
     """
-    start_time, end_time = toml.load(cfp)["phase"].values()
+    start_time, end_time = read_config(cfp)["phase"].values()
 
     index = pd.DatetimeIndex(df['datetime'])
     df.loc[index.indexer_between_time(start_time, end_time), "phase"] = "light_phase"
@@ -188,7 +192,7 @@ def get_ecohab_data_structure(
     Returns:
         EcoHab data structure as a pd.DataFrame
     """
-    cfg = toml.load(cfp)
+    cfg = read_config(cfp)
 
     project_location = Path(cfg["project_location"])
     experiment_name = cfg["experiment_name"]
