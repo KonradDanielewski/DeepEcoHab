@@ -9,6 +9,7 @@ import toml
 from openskill.models import PlackettLuce
 
 from deepecohab.plots.plotting import _plot_chasings_matrix
+from deepecohab.utils.auxfun import read_config
 
 def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to get each chasing event as a match
@@ -94,7 +95,7 @@ def calculate_chasings(
     Returns:
         Matrix of pairwise chasings as a pd.DataFrame and a DataFrame with a ranking calculated using TrueSkill with each chasing event being a separate match
     """
-    cfg = toml.load(cfp)
+    cfg = read_config(cfp)
     project_location = Path(cfg["project_location"])
     experiment_name = cfg["experiment_name"]
     antenna_combinations = list(cfg["antenna_combinations"])
@@ -105,7 +106,7 @@ def calculate_chasings(
 
     chasings = pd.DataFrame(np.nan, columns=df.animal_id.unique(), index=df.animal_id.unique())
 
-    animals = sorted(toml.load(cfp)["animal_ids"])
+    animals = sorted(cfg["animal_ids"])
     mouse_pairs = list(combinations(animals, 2))
     matches = []
 

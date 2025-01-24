@@ -5,6 +5,7 @@ import pandas as pd
 import toml
 
 from deepecohab.plots.plotting import _plot_weighted_ranking
+from deepecohab.utils.auxfun import read_config
 
 
 def _graph_distances(graph) -> pd.Series:
@@ -41,7 +42,7 @@ def weigh_ranking(
     Returns:
         _description_
     """    
-    cfg = toml.load(cfp)
+    cfg = read_config(cfp)
     project_location = Path(cfg["project_location"])
     
     distances = _graph_distances(graph)

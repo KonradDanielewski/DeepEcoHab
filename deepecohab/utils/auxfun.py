@@ -27,7 +27,7 @@ def load_ecohab_data(cfp: str, structure_type: str) -> pd.DataFrame:
     Returns:
         returns desired data structure loaded from the file.
     """    
-    cfg = toml.load(cfp)
+    cfg = read_config(cfp)
     project_location = Path(cfg["project_location"])
     experiment_name = cfg["experiment_name"]
     
@@ -46,3 +46,13 @@ def load_ecohab_data(cfp: str, structure_type: str) -> pd.DataFrame:
         raise FileNotFoundError(f"{structure_type.capitalize()} data file not found in the specified location: {data_path}. Perhaps not analyzed yet!")
     
     return df
+
+def read_config(cfp: str | Path) -> dict:
+    """Auxfun reads the config and returns it as a dictionary
+    """
+    if isinstance(cfp, (str, Path)):
+        cfg = toml.load(cfp)
+    else:
+        raise ValueError(f"Config path should be a str or a Path object. Type {type(cfp)} provided!")
+    
+    return cfg
