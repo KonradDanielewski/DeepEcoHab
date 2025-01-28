@@ -259,8 +259,8 @@ def calculate_network_stats(graph):
         "mean node degree": round(sum(dict(graph.degree()).values()) / graph.number_of_nodes(), 2),
         "network density": round(nx.density(graph), 4),
     }
-    if nx.is_connected(graph.to_undirected()):  # Sprawdź, czy graf jest spójny
-        stats["Średnica sieci"] = nx.diameter(graph.to_undirected())
+    if nx.is_connected(graph.to_undirected()):  
+        stats["Diameter of network"] = nx.diameter(graph.to_undirected())
     else:
-        stats["Średnica sieci"] = "Graf nie jest spójny"
+        stats["Diameter of network"] = "Graph is not fully connected"
     return stats
