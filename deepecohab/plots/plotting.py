@@ -233,7 +233,8 @@ def plot_network_graph(
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             width=800,
-            height=600
+            height=600,
+            plot_bgcolor='white',
         )
     )
 
