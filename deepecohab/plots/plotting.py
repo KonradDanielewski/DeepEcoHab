@@ -239,7 +239,7 @@ def plot_network_graph(
 
     # Save plot if required
     if save_plot:
-        fig.write_image(project_location / "network_graph.png")
+        fig.write_html(project_location / "plots" / "network_graph.html")
 
     # Show plot
     fig.show()
