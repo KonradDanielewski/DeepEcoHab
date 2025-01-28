@@ -139,8 +139,8 @@ def plot_network_graph(
     data: pd.DataFrame,
     ranking_ordinal: pd.Series,
     title: str = "Title",
-    node_size_multiplier: int = 1,
-    edge_width_multiplier: int = 1,
+    node_size_multiplier: int | float = 0.05,
+    edge_width_multiplier: int | float = 0.05,
     cmap: str = "viridis_r",
     save_plot: bool = True,
 ) -> dict[str]:
@@ -160,7 +160,7 @@ def plot_network_graph(
     Returns:
         Dictionary containing the graph, figure, and traces.
     """
-    # Read config and set project location
+    # Read config file
     cfg = read_config(cfp)
     project_location = Path(cfg["project_location"])
 
@@ -168,8 +168,8 @@ def plot_network_graph(
     G = nx.DiGraph()
 
     # Add nodes
-    mice = ranking_ordinal.index
-    G.add_nodes_from(mice)
+    mice_ids = cfg["animal_ids"]
+    G.add_nodes_from(mice_ids)
 
     # Add edges
     for mouse_1, row in data.iterrows():
