@@ -10,6 +10,10 @@ from deepecohab.utils.auxfun import (
     read_config,
 )
 
+# TODO: 
+# 1. Unnecessary 3 times reading config
+# 2. Get animal position - is there a better solution - better mapping dict?
+
 
 def load_data(cfp: str, custom_layout: bool = False) -> pd.DataFrame:
     """Auxfum to load and combine text files into a pandas dataframe
@@ -200,7 +204,7 @@ def get_ecohab_data_structure(
     data_path = project_location / "data" / f"{experiment_name}_data.h5"
     if data_path.exists() and not overwrite:
         print("Data structure already created! Loading existing data. If you wish to overwrite existing data set overwrite=True !")
-        df = pd.read_hdf(data_path)
+        df = pd.read_hdf(data_path, key="main_df")
         return df
     
     antenna_combinations = cfg["antenna_combinations"]
