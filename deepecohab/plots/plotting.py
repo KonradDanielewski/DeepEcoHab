@@ -254,10 +254,10 @@ def plot_network_graph(
 # Get some network statistics
 def calculate_network_stats(graph):
     stats = {
-        "Liczba węzłów": graph.number_of_nodes(),
-        "Liczba krawędzi": graph.number_of_edges(),
-        "Średni stopień węzła": round(sum(dict(graph.degree()).values()) / graph.number_of_nodes(), 2),
-        "Gęstość sieci": round(nx.density(graph), 4),
+        "n of nodes": graph.number_of_nodes(),
+        "n of edges": graph.number_of_edges(),
+        "mean node degree": round(sum(dict(graph.degree()).values()) / graph.number_of_nodes(), 2),
+        "network density": round(nx.density(graph), 4),
     }
     if nx.is_connected(graph.to_undirected()):  # Sprawdź, czy graf jest spójny
         stats["Średnica sieci"] = nx.diameter(graph.to_undirected())
