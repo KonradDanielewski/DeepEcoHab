@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict, Any
 
 import networkx as nx
 import pandas as pd
@@ -144,7 +143,7 @@ def plot_network_graph(
     edge_width_multiplier: int = 1,
     cmap: str = "viridis_r",
     save_plot: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str]:
     """
     Plot network graph of social interactions with interactive node highlighting.
 
