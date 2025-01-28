@@ -143,7 +143,7 @@ def plot_network_graph(
     edge_width_multiplier: int | float = 0.05,
     cmap: str = "viridis_r",
     save_plot: bool = True,
-) -> dict[str]:
+) -> nx.DiGraph:
     """
     Plot network graph of social interactions with interactive node highlighting.
 
@@ -245,12 +245,7 @@ def plot_network_graph(
     # Show plot
     fig.show()
 
-    return {
-        "graph": G,
-        "figure": fig,
-        "node_trace": node_trace,
-        "edge_trace": edge_trace
-    }
+    return G
     
 # Get some network statistics
 def calculate_network_stats(graph):
