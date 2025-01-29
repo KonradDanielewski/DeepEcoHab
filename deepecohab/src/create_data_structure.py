@@ -84,14 +84,17 @@ def get_phase(cfp: str, df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-def get_phase_count(df: pd.DataFrame) -> pd.DataFrame: #NOTE: This doesn't work correctly at the moment (I think date overlap can happen that triggers multiple counts in a row)
+def get_phase_count(cfg: dict, df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun used to count phases
     """   
-    df["phase_id"] = df.phase.map({"dark_phase": 0, "light_phase": 1}).astype(int)
-    # Get phase count
-    m = df['phase_id'].eq(1)
-    df['phase_count'] = m.ne(m.shift() & m).cumsum()
-    df = df.drop("phase_id", axis=1)
+    df['phase_count'] = None
+    phases = list(cfg["phase"].keys())
+    
+    for phase in phases:
+        phase_bool = df['phase'].eq(phase)
+        shift = phase_bool.shift()
+        indices = df.phase.loc[df.phase == phase].index
+        df.loc[indices, 'phase_count'] = (phase_bool.ne(shift & phase_bool).cumsum()).loc[indices].values
     return df
 
 def get_antenna_pair_array(antenna_column: np.array) -> np.array:
