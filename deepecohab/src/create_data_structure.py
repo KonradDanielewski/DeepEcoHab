@@ -233,7 +233,7 @@ def get_ecohab_data_structure(
     df = get_day(df)
     df = get_animal_position(df, antenna_combinations, possible_first, animal_ids)
     df = get_phase(cfp, df)
-    df = get_phase_count(df)
+    df = get_phase_count(cfg, df)
     
     condition_map = {key: i+1 for i, key in enumerate(antenna_combinations.keys())}
     df["position_keys"] = df.position.map(condition_map).fillna(0).astype(int)
