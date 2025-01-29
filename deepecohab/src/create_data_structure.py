@@ -95,6 +95,7 @@ def get_phase_count(cfg: dict, df: pd.DataFrame) -> pd.DataFrame:
         shift = phase_bool.shift()
         indices = df.phase.loc[df.phase == phase].index
         df.loc[indices, 'phase_count'] = (phase_bool.ne(shift & phase_bool).cumsum()).loc[indices].values
+    df.phase_count = df.phase_count.astype(int)
     return df
 
 def get_antenna_pair_array(antenna_column: np.array) -> np.array:
