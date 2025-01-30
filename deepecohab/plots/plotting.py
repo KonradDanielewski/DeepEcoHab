@@ -173,7 +173,7 @@ def plot_network_graph(
     node_trace = create_node_trace(cmap)
 
     # Add positions and text to node_trace
-    for node in G.nodes():
+    for node in G.nodes(): # should we add this part to the create_node_trace function?
         x, y = pos[node]
         node_trace['x'] += (x,)
         node_trace['y'] += (y,)
