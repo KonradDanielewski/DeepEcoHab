@@ -1,29 +1,14 @@
-import datetime as dt
 import os
 from pathlib import Path
 
-import pandas as pd
 import toml
 
 from deepecohab.src import config_templates
-from deepecohab.utils.auxfun import get_data_paths
-
-def get_animal_ids(data_path: str) -> list:
-    """Auxfun to read animal IDs from the data if not provided
-    """    
-    data_files = get_data_paths(data_path)
-    
-    dfs = [pd.read_csv(file, delimiter="\t", names=["ind", "date", "time", "antenna", "time_under", "animal_id"]) for file in data_files[:10]]
-    animal_ids = pd.concat(dfs).animal_id.unique()
-    return animal_ids
-
-def make_project_path(project_location: str, project_name: str):
-    """Auxfun to make a name of the project directory using its name and time of creation
-    """    
-    project_name = project_name + "_" + dt.datetime.today().strftime('%Y-%m-%d')
-    project_location = Path(project_location) / project_name
-
-    return str(project_location)
+from deepecohab.utils.auxfun import (
+    get_animal_ids,
+    make_project_path,
+    make_results_path,
+)
 
 def create_ecohab_project(
     project_location: str | Path,
@@ -75,6 +60,7 @@ def create_ecohab_project(
         data_path = str(data_path)
 
     project_location = make_project_path(project_location, experiment_name)
+    results_path = make_results_path(project_location, experiment_name)
     
     if not isinstance(animal_ids, list):
         animal_ids = get_animal_ids(data_path)
@@ -83,6 +69,7 @@ def create_ecohab_project(
         config = config_templates.generate_field_config(
             project_location=project_location,
             experiment_name=experiment_name,
+            results_path=results_path,
             data_path=data_path,
             animal_ids=animal_ids,
             light_phase_start=light_phase_start,
@@ -96,6 +83,7 @@ def create_ecohab_project(
         config = config_templates.generate_custom_config(
             project_location=project_location,
             experiment_name=experiment_name,
+            results_path=results_path,
             data_path=data_path,
             animal_ids=animal_ids,
             light_phase_start=light_phase_start,
@@ -112,6 +100,7 @@ def create_ecohab_project(
         config = config_templates.generate_default_config(
             project_location=project_location,
             experiment_name=experiment_name,
+            results_path=results_path,
             data_path=data_path,
             animal_ids=animal_ids,
             light_phase_start=light_phase_start,
@@ -135,7 +124,7 @@ def create_ecohab_project(
     else:
         os.mkdir(project_location)
         os.mkdir(project_location / "plots")
-        os.mkdir(project_location / "data")
+        os.mkdir(project_location / "results")
     
     # Create the toml
     config_path = project_location / "config.toml"

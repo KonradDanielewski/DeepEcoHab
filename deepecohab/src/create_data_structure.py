@@ -8,17 +8,16 @@ import toml
 from deepecohab.utils.auxfun import (
     get_data_paths,
     read_config,
+    check_save_data
 )
 
 # TODO: 
-# 1. Unnecessary 3 times reading config
-# 2. Get animal position - is there a better solution - better mapping dict?
+# 2. Get animal position - imaybe has to be done step by step and tunnels from config used for repeated antenna activation tunnel->cage->tunnel->cage
 
 
-def load_data(cfp: str, custom_layout: bool = False) -> pd.DataFrame:
+def load_data(cfg: dict, custom_layout: bool = False) -> pd.DataFrame:
     """Auxfum to load and combine text files into a pandas dataframe
     """    
-    cfg = read_config(cfp)
     data_path = cfg["data_path"]
     
     data_files = get_data_paths(data_path)
@@ -73,10 +72,10 @@ def get_hour(df: pd.DataFrame) -> pd.DataFrame:
     df["hour"] = np.ceil(hour).astype(int)
     return df
 
-def get_phase(cfp: str, df: pd.DataFrame) -> pd.DataFrame:
+def get_phase(cfg: dict, df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun for getting the phase
     """
-    start_time, end_time = read_config(cfp)["phase"].values()
+    start_time, end_time = cfg["phase"].values()
 
     index = pd.DatetimeIndex(df['datetime'])
     df.loc[index.indexer_between_time(start_time, end_time), "phase"] = "light_phase"
@@ -169,6 +168,7 @@ def _sanitize_animal_ids(cfp: str, cfg: dict, df: pd.DataFrame, animal_ids: list
     """    
     antenna_crossings = df.animal_id.value_counts()
     animals_to_drop = list(antenna_crossings[antenna_crossings < min_antenna_crossings].index)
+    
     if len(animals_to_drop) > 0:
         df = df.query("animal_id not in @animals_to_drop")
         print(f"IDs dropped from dataset {animals_to_drop}")
@@ -201,14 +201,12 @@ def get_ecohab_data_structure(
         EcoHab data structure as a pd.DataFrame
     """
     cfg = read_config(cfp)
-
-    project_location = Path(cfg["project_location"])
-    experiment_name = cfg["experiment_name"]
-
-    data_path = project_location / "data" / f"{experiment_name}_data.h5"
-    if data_path.exists() and not overwrite:
-        print("Data structure already created! Loading existing data. If you wish to overwrite existing data set overwrite=True !")
-        df = pd.read_hdf(data_path, key="main_df")
+    data_path = cfg["results_path"]
+    key = "main_df"
+    
+    df = None if overwrite else check_save_data(data_path, key)
+    
+    if isinstance(df, pd.DataFrame):
         return df
     
     antenna_combinations = cfg["antenna_combinations"]
@@ -217,7 +215,7 @@ def get_ecohab_data_structure(
     start_date = cfg["experiment_timeline"]["start_date"]
     finish_date = cfg["experiment_timeline"]["finish_date"]
     
-    df = load_data(cfp, custom_layout)
+    df = load_data(cfg, custom_layout)
     df = _prepare_columns(df, list(antenna_combinations.keys()))
 
     # Slice to start and end date
@@ -233,7 +231,7 @@ def get_ecohab_data_structure(
     # Get additional columns
     df = get_day(df)
     df = get_animal_position(df, antenna_combinations, possible_first, animal_ids)
-    df = get_phase(cfp, df)
+    df = get_phase(cfg, df)
     df = get_phase_count(cfg, df)
     
     condition_map = {key: i+1 for i, key in enumerate(antenna_combinations.keys())}
@@ -247,6 +245,6 @@ def get_ecohab_data_structure(
     if not retain_comport:
         df = df.drop("COM", axis=1)
     
-    df.to_hdf(data_path, key="main_df", format="table")
+    df.to_hdf(data_path, key=key, mode="a", format="table")
 
     return df

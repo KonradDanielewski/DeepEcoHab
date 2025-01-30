@@ -1,3 +1,4 @@
+import datetime as dt
 import os
 from glob import glob
 from pathlib import Path
@@ -13,37 +14,30 @@ def get_data_paths(data_path: str) -> list:
         data_files = glob(os.path.join(data_path, "20*.txt"))
     return data_files
 
-def load_ecohab_data(cfp: str, structure_type: str) -> pd.DataFrame:
-    """Loads already analyzed data structure
+def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
+    """Loads already analyzed main data structure
 
     Args:
         cfp: config file path
-        structure_type: accepts either 'chasings' to load the chasings matrix or 'ecohab' to load the general data structure
+        key: key under which dataframe is stored in HDF
 
     Raises:
-        ValueError: raised if unexpected value provided in structure_type
-        FileNotFoundError: raised if the data file not found.
+        KeyError: raised if the key not found in file.
 
     Returns:
-        returns desired data structure loaded from the file.
+        Desired data structure loaded from the file.
     """    
     cfg = read_config(cfp)
     project_location = Path(cfg["project_location"])
     experiment_name = cfg["experiment_name"]
     
-    if structure_type == "chasings":
-        suffix = "_chasings.h5"
-    elif structure_type == "ecohab":
-        suffix = "_data.h5"
-    else:
-        raise ValueError(f"'chasings' or 'ecohab' supported but {structure_type} provided! Please use one of the available structure types")
-    
-    data_path = project_location / "data" / (experiment_name + suffix)
+    data_path = make_results_path(project_location, experiment_name)
     
     if data_path.is_file():
-        df = pd.read_hdf(data_path)
-    else:
-        raise FileNotFoundError(f"{structure_type.capitalize()} data file not found in the specified location: {data_path}. Perhaps not analyzed yet!")
+        try:
+            df = pd.read_hdf(data_path, key=key)
+        except KeyError:
+            print(f"{key} not found in the specified location: {data_path}. Perhaps not analyzed yet!")
     
     return df
 
@@ -56,3 +50,37 @@ def read_config(cfp: str | Path) -> dict:
         raise ValueError(f"Config path should be a str or a Path object. Type {type(cfp)} provided!")
     
     return cfg
+
+def check_save_data(data_path: Path, key: str):
+    try:
+        df = pd.read_hdf(data_path, key=key)
+        print("Already calculated. Loading from {data_path}. If you wish to overwrite the data please set overwrite=True")
+        return df
+    except (KeyError, FileNotFoundError):
+        # print(f"Data not found at location {data_path}. Perhaps not analyzed.") # NOTE: Feels annoying. Need a better way
+        return None
+    
+def get_animal_ids(data_path: str) -> list:
+    """Auxfun to read animal IDs from the data if not provided
+    """    
+    data_files = get_data_paths(data_path)
+    
+    dfs = [pd.read_csv(file, delimiter="\t", names=["ind", "date", "time", "antenna", "time_under", "animal_id"]) for file in data_files[:10]]
+    animal_ids = pd.concat(dfs).animal_id.unique()
+    return animal_ids
+
+def make_project_path(project_location: str, experiment_name: str):
+    """Auxfun to make a name of the project directory using its name and time of creation
+    """    
+    project_name = experiment_name + "_" + dt.datetime.today().strftime('%Y-%m-%d')
+    project_location = Path(project_location) / project_name
+
+    return str(project_location)
+
+def make_results_path(project_location: str, experiment_name: str):
+    """Auxfun to make a name of the project directory using its name and time of creation
+    """    
+    experiment_name = experiment_name
+    results_path = Path(project_location) / "results" / f"{experiment_name}_data.h5"
+
+    return str(results_path)

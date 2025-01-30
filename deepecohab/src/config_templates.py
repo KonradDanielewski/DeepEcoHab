@@ -1,6 +1,7 @@
 def generate_default_config(
     project_location: str,
     experiment_name: str,
+    results_path: str,
     data_path: str,
     animal_ids: list,
     dark_phase_start: str,
@@ -27,6 +28,7 @@ def generate_default_config(
     config = dict(
         project_location = project_location,
         experiment_name = experiment_name,
+        results_path = results_path,
         data_path = data_path,
         animal_ids = animal_ids,
         
@@ -79,6 +81,7 @@ def generate_default_config(
 def generate_custom_config(
     project_location: str,
     experiment_name: str,
+    results_path: str,
     data_path: str,
     animal_ids: list,
     dark_phase_start: str,
@@ -107,6 +110,7 @@ def generate_custom_config(
     config = dict(
         project_location = project_location,
         experiment_name = experiment_name,
+        results_path = results_path,
         data_path = data_path,
         animal_ids = animal_ids, 
                 
@@ -164,6 +168,7 @@ def generate_custom_config(
 def generate_field_config(
     project_location: str,
     experiment_name: str,
+    results_path: str,
     data_path: str,
     animal_ids: list,
     dark_phase_start: str,
@@ -192,6 +197,7 @@ def generate_field_config(
     config = dict(
         project_location = project_location,
         experiment_name = experiment_name,
+        results_path = results_path,
         data_path = data_path,
         animal_ids = animal_ids, 
                 

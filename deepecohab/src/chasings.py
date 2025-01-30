@@ -102,7 +102,7 @@ def calculate_chasings(
     tunnel_combinations = [comb for comb in antenna_combinations if "cage" not in comb]
     cage_combinations = [comb for comb in antenna_combinations if "cage" in comb]
 
-    data_path = project_location / "data" / f"{experiment_name}_data.h5"
+    data_path = Path(cfg["results_path"])
 
     chasings = pd.DataFrame(np.nan, columns=df.animal_id.unique(), index=df.animal_id.unique())
 
@@ -159,7 +159,7 @@ def calculate_chasings(
     # Reorder animals according to the ranking
     chasings = chasings.reindex(animal_order).reindex(animal_order, axis=1)
     
-    data_save_path = project_location / "data" / (experiment_name + "_chase_rank.pickle")
+    ranking_path = Path(cfg["project_location"]) / "results" / (experiment_name + "_chase_rank.pickle")
     
     pickle_file = {
         "chasing_matrix": chasings,
@@ -169,14 +169,14 @@ def calculate_chasings(
         "datetimes": datetimes
     }
     
-    with open(str(data_save_path), "wb") as outfile: 
+    with open(str(ranking_path), "wb") as outfile: 
         pickle.dump(pickle_file, outfile)
 
     # Remove from here eventually - should be called separately - data available in the dataset file
     if plot:
         _plot_chasings_matrix(chasings, project_location, save_plot, show_plot)
 
-    chasings.to_hdf(data_path, key="chasings", format="table")
-    ranking_ordinal.to_hdf(data_path, key="end_ranking", format="table")
+    chasings.to_hdf(data_path, key="chasings", mode="a", format="table")
+    ranking_ordinal.to_hdf(data_path, key="end_ranking", mode="a", format="table")
 
     return chasings, ranking, ranking_ordinal, ranking_in_time, datetimes
