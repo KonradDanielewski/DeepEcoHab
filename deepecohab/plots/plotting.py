@@ -4,11 +4,10 @@ import networkx as nx
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import toml
 
 from plotly.subplots import make_subplots
 
-from deepecohab.utils.auxfun import read_config
+from deepecohab.utils.auxfun import read_config, create_edges_trace, create_node_trace
 
 
 
@@ -133,7 +132,6 @@ def plot_ranking_in_time(
     
     return fig
 
-
 def plot_network_graph(
     cfp: str,
     data: pd.DataFrame,
@@ -149,7 +147,7 @@ def plot_network_graph(
 
     Args:
         cfp: Path to project config file.
-        data: Pandas DataFrame with chasing data.
+        data: Pandas DataFrame with graph_data calculated by calculate_chasings function.
         ranking_ordinal: Pandas Series with ordinal ranking.
         title: Title of the graph. Defaults to "Title".
         node_size_multiplier: Node size multiplier. Defaults to 1.
@@ -164,59 +162,24 @@ def plot_network_graph(
     cfg = read_config(cfp)
     project_location = Path(cfg["project_location"])
 
-    # Create graph
-    G = nx.DiGraph()
-
-    # Add nodes
-    mice_ids = cfg["animal_ids"]
-    G.add_nodes_from(mice_ids)
-
-    # Add edges
-    for mouse_1, row in data.iterrows():
-        for mouse_2, weight in row.items():
-            if pd.notna(weight):
-                G.add_edge(mouse_2, mouse_1, weight=weight * edge_width_multiplier)
-
-    # Generate layout
+    # Create graph and layout
+    G = nx.from_pandas_edgelist(data, create_using=nx.DiGraph, edge_attr="weight")
     pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
 
     # Create edge traces
-    edge_trace = []
-    for edge in G.edges():
-        x0, y0 = pos[edge[0]]
-        x1, y1 = pos[edge[1]]
-        edge_width = G.edges[edge].get('weight', 1)
-        edge_trace.append(go.Scatter(
-            x=[x0, x1, None], y=[y0, y1, None],
-            line=dict(width=edge_width, color='#888'),
-            hoverinfo='none',
-            mode='lines',
-            opacity=0.5  # Default opacity for edges
-        ))
+    edge_trace = create_edges_trace(G, pos, edge_width_multiplier)
 
-    # Create node trace
-    node_trace = go.Scatter(
-        x=[], y=[], text=[], hovertext=[], hoverinfo='text',
-        mode='markers',
-        marker=dict(
-            showscale=True,
-            colorscale=cmap,
-            size=[], color=[],
-            colorbar=dict(
-                thickness=15,
-                title='Ranking',
-                xanchor='left',
-                titleside='right'
-            )
-        )
-    )
+    # Create node traces
+    node_trace = create_node_trace(cmap)
 
     # Add positions and text to node_trace
     for node in G.nodes():
         x, y = pos[node]
         node_trace['x'] += (x,)
         node_trace['y'] += (y,)
-        node_trace['hovertext'] += (f"Mouse ID: {node}<br>Ranking: {round(ranking_ordinal[node], 3)}",)
+        node_trace['hovertext'] += (
+            f"Mouse ID: {node}<br>Ranking: {round(ranking_ordinal[node], 3)}",
+            )
 
     # Scale node size and color
     node_trace['marker']['color'] = list(ranking_ordinal)
@@ -246,17 +209,3 @@ def plot_network_graph(
     fig.show()
 
     return G
-    
-# Get some network statistics
-def calculate_network_stats(graph):
-    stats = {
-        "n of nodes": graph.number_of_nodes(),
-        "n of edges": graph.number_of_edges(),
-        "mean node degree": round(sum(dict(graph.degree()).values()) / graph.number_of_nodes(), 2),
-        "network density": round(nx.density(graph), 4),
-    }
-    if nx.is_connected(graph.to_undirected()):  
-        stats["Diameter of network"] = nx.diameter(graph.to_undirected())
-    else:
-        stats["Diameter of network"] = "Graph is not fully connected"
-    return stats

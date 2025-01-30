@@ -4,6 +4,10 @@ from pathlib import Path
 
 import pandas as pd
 import toml
+import networkx as nx
+import plotly.graph_objects as go
+import numpy as np
+
 
 def get_data_paths(data_path: str) -> list:
     """Auxfun to load all raw data paths
@@ -56,3 +60,50 @@ def read_config(cfp: str | Path) -> dict:
         raise ValueError(f"Config path should be a str or a Path object. Type {type(cfp)} provided!")
     
     return cfg
+
+def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float) -> go.Scatter:
+    """Auxfun to create edges trace 
+    """
+    # Note need to add curved lines and arrowheads
+    edge_trace = []
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_width = G.edges[edge]['weight'] * width_multiplier
+        edge_trace.append(go.Scatter(
+            x=[x0, x1, None],
+            y=[y0, y1, None],
+            line=dict(
+                width=edge_width,
+                color='#888',
+            ),
+            hoverinfo='none',
+            mode="lines+markers",
+            marker= dict(size=edge_width * 2, symbol= "arrow", angleref="previous"),
+            opacity=0.5 
+        ))
+    return edge_trace
+
+def create_node_trace(cmap: str) -> go.Scatter:
+    """Auxfun to create node trace
+    """
+    node_trace = go.Scatter(
+        x=[],
+        y=[],
+        text=[],
+        hovertext=[],
+        hoverinfo='text',
+        mode='markers',
+        marker=dict(
+            showscale=True,
+            colorscale=cmap,
+            size=[], color=[],
+            colorbar=dict(
+                thickness=15,
+                title='Ranking',
+                xanchor='left',
+                titleside='right'
+            )
+        )
+    )
+    return node_trace
