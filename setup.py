@@ -28,6 +28,7 @@ setuptools.setup(
         'networkx',
         'nbformat',
         'kaleido',
+        'joblib',
     ], 
     url='https://github.com/KonradDanielewski/DeepEcoHab'
 )
