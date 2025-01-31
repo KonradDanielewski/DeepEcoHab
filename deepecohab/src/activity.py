@@ -210,12 +210,12 @@ def calculate_visits_per_position(
     padded_df = create_padded_df(cfg, df)
     
     # Calculate visits to each position
-    visits_per_position = (padded_df
-            .loc[:, ["animal_id", "position", "phase", "phase_count", "timedelta"]]
-            .groupby(["animal_id", "phase", "phase_count", "position"], observed=False)
-            .sum()
+    visits_per_position = (df
+            .loc[:, ["animal_id", "position", "phase", "phase_count"]]
+            .groupby(["phase", "phase_count", "position"], observed=False)
+            .value_counts()
+            .unstack()
             )
-    visits_per_position = visits_per_position.unstack(level=0).droplevel(0, axis=1).fillna(0)
     
     if save_data:
         visits_per_position.to_hdf(data_path, key=key, mode="a", format="table")
