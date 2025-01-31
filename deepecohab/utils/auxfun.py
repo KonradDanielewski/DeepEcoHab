@@ -14,6 +14,17 @@ def get_data_paths(data_path: str) -> list:
         data_files = glob(os.path.join(data_path, "20*.txt"))
     return data_files
 
+def check_cfp_validity(cfp: str | Path | dict):
+    """Auxfun to check validity of the passed cfp variable (config path or dict)
+    """    
+    if isinstance(cfp, (str, Path)):
+        cfg = read_config(cfp)
+    elif isinstance(cfp, dict):
+        cfg=cfp
+    else:
+        return print(f"cfp should be either a dict, Path or str, but {type(cfp)} provided.")
+    return cfg
+
 def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
     """Loads already analyzed main data structure
 
@@ -26,12 +37,12 @@ def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
 
     Returns:
         Desired data structure loaded from the file.
-    """    
-    cfg = read_config(cfp)
+    """
+    cfg = check_cfp_validity(cfp)
     project_location = Path(cfg["project_location"])
     experiment_name = cfg["experiment_name"]
     
-    data_path = make_results_path(project_location, experiment_name)
+    data_path = Path(make_results_path(project_location, experiment_name))
     
     if data_path.is_file():
         try:
@@ -57,7 +68,6 @@ def check_save_data(data_path: Path, key: str):
         print(f"Already calculated for {key}. Loading from {data_path}. If you wish to overwrite the data please set overwrite=True")
         return df
     except (KeyError, FileNotFoundError):
-        # print(f"Data not found at location {data_path}. Perhaps not analyzed.") # NOTE: Feels annoying. Need a better way
         return None
     
 def get_animal_ids(data_path: str) -> list:
