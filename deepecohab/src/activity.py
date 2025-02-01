@@ -167,16 +167,26 @@ def calculate_time_spent_per_position(
     if isinstance(time_per_position, pd.DataFrame):
         return time_per_position
     
+    tunnels = cfg["tunnels"]
+    
     df = load_ecohab_data(cfg, key="main_df")
     padded_df = create_padded_df(cfg, df)
+    
+    # Map directional tunnel position to non-directional
+    mapper = padded_df.position.isin(tunnels.keys())
+    padded_df.loc[mapper, "position"] = padded_df.loc[mapper, "position"].map(tunnels).values
     
     # Calculate time spent per position per phase
     time_per_position = (padded_df
             .loc[:, ["animal_id", "position", "phase", "phase_count", "timedelta"]]
             .groupby(["animal_id", "phase", "phase_count", "position"], observed=False)
             .sum()
+            .unstack(level=0)
+            .droplevel(0, axis=1)
+            .drop(index=tunnels.keys(), level=2)
+            .fillna(0)
+            .round(3)
             )
-    time_per_position = time_per_position.unstack(level=0).droplevel(0, axis=1).fillna(0).round(3)
     
     if save_data:
         time_per_position.to_hdf(data_path, key=key, mode="a", format="table")
@@ -207,10 +217,10 @@ def calculate_visits_per_position(
     if isinstance(visits_per_position, pd.DataFrame):
         return visits_per_position
     df = load_ecohab_data(cfg, key="main_df")
-    padded_df = create_padded_df(cfg, df)
+    padded_df = create_padded_df(cfg, df) # This or original df?
     
     # Calculate visits to each position
-    visits_per_position = (df
+    visits_per_position = (padded_df
             .loc[:, ["animal_id", "position", "phase", "phase_count"]]
             .groupby(["phase", "phase_count", "position"], observed=False)
             .value_counts()
