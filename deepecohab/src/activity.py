@@ -176,7 +176,7 @@ def calculate_time_spent_per_position(
             .groupby(["animal_id", "phase", "phase_count", "position"], observed=False)
             .sum()
             )
-    time_per_position = time_per_position.unstack(level=0).droplevel(0, axis=1).fillna(0)
+    time_per_position = time_per_position.unstack(level=0).droplevel(0, axis=1).fillna(0).round(3)
     
     if save_data:
         time_per_position.to_hdf(data_path, key=key, mode="a", format="table")
