@@ -59,15 +59,16 @@ def generate_default_config(
         ),
         
         antenna_tunnel = {
-            1: "tunnel_1",
-            2: "tunnel_1",
-            3: "tunnel_2",
-            4: "tunnel_2",
-            5: "tunnel_3",
-            6: "tunnel_3",
-            7: "tunnel_4",
-            8: "tunnel_4",
-        },
+            str(key): tunnel 
+            for key, tunnel 
+            in zip(range(1,9), sorted(
+                ["tunnel_1",
+                 "tunnel_2", 
+                 "tunnel_3", 
+                 "tunnel_4", 
+                 ]*2)
+                )
+            },
         
         possible_first = dict(
             cage_1 = [1, 8],
@@ -154,15 +155,16 @@ def generate_custom_config(
         ),
         
         antenna_tunnel = {
-            1: "tunnel_1",
-            2: "tunnel_1",
-            3: "tunnel_2",
-            4: "tunnel_2",
-            5: "tunnel_3",
-            6: "tunnel_3",
-            7: "tunnel_4",
-            8: "tunnel_4",
-        },
+            str(key): tunnel 
+            for key, tunnel 
+            in zip(range(1,9), sorted(
+                ["tunnel_1",
+                 "tunnel_2", 
+                 "tunnel_3", 
+                 "tunnel_4",
+                 ]*2)
+                )
+            },
         
         possible_first = dict(
             cage_1 = [1, 8],
@@ -272,23 +274,20 @@ def generate_field_config(
         ),
         
         antenna_tunnel = {
-            1: "tunnel_1",
-            2: "tunnel_1",
-            3: "tunnel_2",
-            4: "tunnel_2",
-            5: "tunnel_3",
-            6: "tunnel_3",
-            7: "tunnel_4",
-            8: "tunnel_4",
-            9: "tunnel_5",
-            10: "tunnel_5",
-            11: "tunnel_6",
-            12: "tunnel_6",
-            13: "tunnel_7",
-            14: "tunnel_7",
-            15: "tunnel_8",
-            16: "tunnel_8",
-        },
+            str(key): tunnel 
+            for key, tunnel 
+            in zip(range(1,17), sorted(
+                ["tunnel_1",
+                 "tunnel_2", 
+                 "tunnel_3", 
+                 "tunnel_4", 
+                 "tunnel_5", 
+                 "tunnel_6", 
+                 "tunnel_7", 
+                 "tunnel_8",
+                 ]*2)
+                )
+            },
         
         possible_first = dict(
             cage_A = [ 1, 16,],
