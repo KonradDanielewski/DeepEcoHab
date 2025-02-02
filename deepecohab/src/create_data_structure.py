@@ -51,9 +51,9 @@ def calculate_timedelta(df: pd.DataFrame):
         .loc[:, ["datetime", "animal_id"]]
         .groupby("animal_id", observed=False)
         .diff()
-        .fillna(pd.Timedelta(seconds=0))
         .iloc[:, 0]
         .dt.total_seconds()
+        .fillna(0)
         .round(2)
     )
     return timedelta
