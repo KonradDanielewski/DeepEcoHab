@@ -66,7 +66,8 @@ def read_config(cfp: str | Path) -> dict:
 def check_save_data(data_path: Path, key: str):
     try:
         df = pd.read_hdf(data_path, key=key)
-        print(f"Already calculated for {key}. Loading from {data_path}. If you wish to overwrite the data please set overwrite=True")
+        # NOTE: should this be printed? Feels annoying
+        #print(f"Already calculated for {key}. Loading from {data_path}. If you wish to overwrite the data please set overwrite=True")
         return df
     except (KeyError, FileNotFoundError):
         return None
