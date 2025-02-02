@@ -1,4 +1,5 @@
 import os
+from itertools import product
 from pathlib import Path
 
 import numpy as np
@@ -10,10 +11,6 @@ from deepecohab.utils.auxfun import (
     read_config,
     check_save_data
 )
-
-# TODO: 
-# 2. Get animal position - imaybe has to be done step by step and tunnels from config used for repeated antenna activation tunnel->cage->tunnel->cage
-
 
 def load_data(cfg: dict, custom_layout: bool = False) -> pd.DataFrame:
     """Auxfum to load and combine text files into a pandas dataframe
@@ -118,8 +115,41 @@ def get_position_conditions(key: str, antenna_pairs: np.array, antenna_combinati
     
     return indices
 
-def get_animal_position(df: pd.DataFrame, antenna_combinations: dict, possible_first: dict, animal_ids: list) -> pd.DataFrame:
+def position_correction(cfg: dict, df: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to correct position at cage reentries (assign position to associated tunnel).
+    """    
+    animals = cfg["animal_ids"]
+    cages = [pos for pos in cfg["antenna_combinations"].keys() if "cage" in pos]
+
+    tunnel_map = cfg["antenna_tunnel"]
+
+    for animal, cage in product(animals, cages):
+        subset = df.query("animal_id == @animal").copy()
+        true_index = subset.index
+        subset = subset.reset_index(drop=True)
+
+        position = subset.position.eq(cage)
+
+        # Find indices where cage should be replaced with tunnel
+        tunnels = position[position].index[np.diff(position[position].index, prepend=position[position].index[0]) == 1]
+        # Check where in those consecutive indices there are more than 2 in a row
+        try:
+            # When an animal makes multiple reentries in a row every second entry is again actually a cage so we drop those
+            breaks = np.where((np.diff(tunnels, append=tunnels[-1]) != 1))[0]
+            to_drop = np.concatenate([i[1::2] for i in np.split(tunnels, breaks+1)])
+            tunnels = np.setdiff1d(tunnels, to_drop)
+        except IndexError: # When no reentries tunnels[-1] gives IndexError
+            print(f"No repetitive entries for animal: {animal} to cage: {cage}")
+            pass
+        # Map new position and correct in main df
+        subset.loc[tunnels, "position"] = subset.loc[tunnels, "antenna"].map({int(key): value for key, value in tunnel_map.items()})
+        df.loc[true_index, "position"] = subset.position.values
+        
+    return df 
+
+def get_animal_position(cfg: dict, df: pd.DataFrame, antenna_combinations: dict, possible_first: dict, animal_ids: list) -> pd.DataFrame:
     """Auxfun to get position of the animal
+       The pairwise antenna combinations mapping and post-hoc fixing are more efficient than a for loop approach
     """
     for animal in animal_ids:
         antenna_col = df.loc[df.loc[:, "animal_id"] == animal].antenna.values
@@ -136,6 +166,8 @@ def get_animal_position(df: pd.DataFrame, antenna_combinations: dict, possible_f
         df.loc[first_read, "position"] = get_first_read_cage(df.loc[first_read].antenna, possible_first)
 
     df.loc[:, "position"] = df["position"].fillna("undefined")
+    
+    df = position_correction(cfg, df)
 
     return df
 
@@ -146,12 +178,17 @@ def _rename_antennas(df: pd.DataFrame, com_name: str, rename_dicts: dict) -> pd.
     df.loc[df.COM == com_name, "antenna"] = df.query("COM == @com_name")["antenna"].map(mapping)
     return df
 
-def _prepare_columns(df: pd.DataFrame, antenna_combinations: list) -> pd.DataFrame:
+def _prepare_columns(cfg: dict, df: pd.DataFrame, antenna_combinations: list) -> pd.DataFrame:
     """Auxfun to prepare the df, adding new columns
     """    
+    # Establish all possible categories for position
+    tunnels = cfg["tunnels"]
+    [antenna_combinations.append(i) for i in list(set(tunnels.values()))]
+    antenna_combinations.append("undefined")
+    
     df["timedelta"] = np.nan
     df["day"] = np.nan
-    antenna_combinations.append("undefined")
+    
     df["position"] = pd.Series(dtype="category").cat.set_categories(antenna_combinations)
     df["phase"] = pd.Series(dtype="category").cat.set_categories(["light_phase", "dark_phase"])
 
@@ -161,6 +198,7 @@ def _prepare_columns(df: pd.DataFrame, antenna_combinations: list) -> pd.DataFra
     df["datetime"] = pd.to_datetime(df["datetime"])
     df = df.drop(["date", "time"], axis=1)
     df = df.drop_duplicates(["datetime", "animal_id"])
+    
     return df
 
 def _sanitize_animal_ids(cfp: str, cfg: dict, df: pd.DataFrame, animal_ids: list[str], min_antenna_crossings: int = 100) -> None:
@@ -216,7 +254,7 @@ def get_ecohab_data_structure(
     finish_date = cfg["experiment_timeline"]["finish_date"]
     
     df = load_data(cfg, custom_layout)
-    df = _prepare_columns(df, list(antenna_combinations.keys()))
+    df = _prepare_columns(cfg, df, list(antenna_combinations.keys()))
 
     # Slice to start and end date
     if isinstance(start_date, str) & isinstance(finish_date, str): 
@@ -230,7 +268,7 @@ def get_ecohab_data_structure(
     df["timedelta"] = calculate_timedelta(df)
     # Get additional columns
     df = get_day(df)
-    df = get_animal_position(df, antenna_combinations, possible_first, animal_ids)
+    df = get_animal_position(cfg, df, antenna_combinations, possible_first, animal_ids)
     df = get_phase(cfg, df)
     df = get_phase_count(cfg, df)
     

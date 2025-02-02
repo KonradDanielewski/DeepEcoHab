@@ -58,6 +58,18 @@ def generate_default_config(
             c1_c4 = "tunnel_4",
         ),
         
+        antenna_tunnel = {
+            str(key): tunnel 
+            for key, tunnel 
+            in zip(range(1,9), sorted(
+                ["tunnel_1",
+                 "tunnel_2", 
+                 "tunnel_3", 
+                 "tunnel_4", 
+                 ]*2)
+                )
+            },
+        
         possible_first = dict(
             cage_1 = [1, 8],
             cage_2 = [2, 3],
@@ -141,6 +153,18 @@ def generate_custom_config(
             c4_c1 = "tunnel_4",
             c1_c4 = "tunnel_4",
         ),
+        
+        antenna_tunnel = {
+            str(key): tunnel 
+            for key, tunnel 
+            in zip(range(1,9), sorted(
+                ["tunnel_1",
+                 "tunnel_2", 
+                 "tunnel_3", 
+                 "tunnel_4",
+                 ]*2)
+                )
+            },
         
         possible_first = dict(
             cage_1 = [1, 8],
@@ -248,6 +272,22 @@ def generate_field_config(
             cH_cA = "tunnel8",
             cA_cH = "tunnel8",
         ),
+        
+        antenna_tunnel = {
+            str(key): tunnel 
+            for key, tunnel 
+            in zip(range(1,17), sorted(
+                ["tunnel_1",
+                 "tunnel_2", 
+                 "tunnel_3", 
+                 "tunnel_4", 
+                 "tunnel_5", 
+                 "tunnel_6", 
+                 "tunnel_7", 
+                 "tunnel_8",
+                 ]*2)
+                )
+            },
         
         possible_first = dict(
             cage_A = [ 1, 16,],
