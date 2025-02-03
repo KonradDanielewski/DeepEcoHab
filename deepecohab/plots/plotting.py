@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from deepecohab.utils.auxfun import read_config
-from deepecohab.utils.auxfun_plots import create_edges_trace, create_node_trace
+from deepecohab.utils.auxfun_plots import create_edges_trace, create_node_trace, prep_network_df
 
 
 
@@ -135,12 +135,12 @@ def plot_ranking_in_time(
 
 def plot_network_graph(
     cfp: str,
-    data: pd.DataFrame,
+    chasing_data: pd.DataFrame,
     ranking_ordinal: pd.Series,
     title: str = "Title",
     node_size_multiplier: int | float = 0.05,
     edge_width_multiplier: int | float = 0.05,
-    cmap: str = "viridis_r",
+    cmap: str = "viridis",
     save_plot: bool = True,
 ) -> nx.DiGraph:
     """
@@ -148,7 +148,7 @@ def plot_network_graph(
 
     Args:
         cfp: Path to project config file.
-        data: Pandas DataFrame with graph_data calculated by calculate_chasings function.
+        chasing_data: Pandas DataFrame with graph_data calculated by calculate_chasings function.
         ranking_ordinal: Pandas Series with ordinal ranking.
         title: Title of the graph. Defaults to "Title".
         node_size_multiplier: Node size multiplier. Defaults to 1.
@@ -164,6 +164,7 @@ def plot_network_graph(
     project_location = Path(cfg["project_location"])
 
     # Create graph and layout
+    data = prep_network_df(chasing_data)
     G = nx.from_pandas_edgelist(data, create_using=nx.DiGraph, edge_attr="weight")
     pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
 
@@ -171,7 +172,7 @@ def plot_network_graph(
     edge_trace = create_edges_trace(G, pos, edge_width_multiplier)
 
     # Create node traces
-    node_trace = create_node_trace(cmap, G, pos, ranking_ordinal, node_size_multiplier)
+    node_trace = create_node_trace(G, pos, cmap, ranking_ordinal, node_size_multiplier)
 
     # Create figure
     fig = go.Figure(

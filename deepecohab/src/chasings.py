@@ -159,16 +159,10 @@ def calculate_chasings(
     # Reorder animals according to the ranking
     chasings = chasings.reindex(animal_order).reindex(animal_order, axis=1)
     
-    graph_data = chasings.reset_index()\
-        .melt(id_vars="index", value_name="weight")\
-        .dropna()\
-        .rename(columns={"index": "source", "variable": "target"})
-    
     data_save_path = project_location / "data" / (experiment_name + "_chase_rank.pickle")
     
     pickle_file = {
         "chasing_matrix": chasings,
-        "grph_data": graph_data,
         "ranking_raw": ranking,
         "ranking_ordinal": ranking_ordinal,
         "ranking_in_time": ranking_in_time,
@@ -184,8 +178,7 @@ def calculate_chasings(
 
     chasings.to_hdf(data_path, key="chasings", format="table")
     ranking_ordinal.to_hdf(data_path, key="end_ranking", format="table")
-    graph_data.to_hdf(data_path, key="graph_data", format="table")
     
     
 
-    return chasings, graph_data, ranking, ranking_ordinal, ranking_in_time, datetimes
+    return chasings, ranking, ranking_ordinal, ranking_in_time, datetimes
