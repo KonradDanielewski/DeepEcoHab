@@ -50,18 +50,21 @@ def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.
     )
     
     # Add positions and text to node_trace
-    for node in G.nodes(): # should we add this part to the create_node_trace function?
+    ranking_score_list = []
+    for node in G.nodes():
         x, y = pos[node]
         node_trace['x'] += (x,)
         node_trace['y'] += (y,)
         node_trace['text'] += (node,)
+        ranking_score = round(ranking_ordinal[node], 3)
+        ranking_score_list.append(ranking_score)
         node_trace['hovertext'] += (
-            f"Mouse ID: {node}<br>Ranking: {round(ranking_ordinal[node], 3)}",
+            f"Mouse ID: {node}<br>Ranking: {ranking_score}",
             )
         
     # Scale node size and color
-    node_trace['marker']['color'] = list(ranking_ordinal)
-    node_trace['marker']['size'] = list(ranking_ordinal * node_size_multiplier)
+    node_trace['marker']['color'] = ranking_score_list
+    node_trace['marker']['size'] = [rank * node_size_multiplier for rank in ranking_score_list]
     return node_trace
 
 def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
