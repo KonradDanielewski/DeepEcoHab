@@ -2,7 +2,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import toml
 
 from deepecohab.plots.plotting import _plot_weighted_ranking
 from deepecohab.utils.auxfun import read_config

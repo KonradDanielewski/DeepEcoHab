@@ -1,15 +1,9 @@
 from pathlib import Path
-from itertools import product
 
-import numpy as np
 import pandas as pd
 
-from deepecohab.utils.auxfun import (
-    check_save_data, 
-    load_ecohab_data,
-    check_cfp_validity
-)
-from deepecohab.src.create_data_structure import calculate_timedelta
+from deepecohab.utils import auxfun
+from deepecohab.src import create_data_structure
 
 def split_datetime(phase_start: str) -> tuple[str, ...]:
     """Auxfun to split datetime string.
@@ -41,28 +35,6 @@ def correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame:
     
     return animal_df
 
-def get_phase_durations(cfg: dict, df: pd.DataFrame) -> pd.Series:
-    """Auxfun to calculate approximate phase durations.
-       Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
-    """    
-    phase_Ns = list(df.phase_count.unique())
-    phases = list(cfg["phase"].keys())
-
-    hours = [60*60*i for i in range(1,13)]
-
-    phase_product = list(product(phases, phase_Ns))
-    idx = pd.MultiIndex.from_product([phases, phase_Ns], names=["phase", "phase_count"])
-    phase_durations = pd.Series(index=idx)
-
-    for phase, phase_N in phase_product:
-        temp = df.query("phase == @phase and phase_count == @phase_N")
-        total_time = (temp.datetime.iloc[-1] - temp.datetime.iloc[0]).total_seconds()
-        time_calculated = np.abs(total_time - np.array(hours))
-        closest_hour = np.where(np.min(time_calculated) == time_calculated)[0][0]
-        phase_durations.loc[(phase, phase_N)] = hours[closest_hour]
-    
-    return phase_durations
-
 def create_padded_df(
     cfg: dict,
     df: pd.DataFrame,
@@ -84,7 +56,7 @@ def create_padded_df(
     data_path = Path(cfg["results_path"])
     key="padded_df"
     
-    padded_df = None if overwrite else check_save_data(data_path, key)
+    padded_df = None if overwrite else auxfun.check_save_data(data_path, key)
     
     if isinstance(padded_df, pd.DataFrame):
         return padded_df
@@ -135,7 +107,7 @@ def create_padded_df(
                 )
 
     # Overwrite with new timedelta
-    padded_df["timedelta"] = calculate_timedelta(padded_df)
+    padded_df = create_data_structure.calculate_timedelta(padded_df)
     
     if save_data:
         padded_df.to_hdf(data_path, key=key, mode="a", format="table")
@@ -157,19 +129,19 @@ def calculate_time_spent_per_position(
     Returns:
         Multiindex DataFrame of time spent per position in seconds.
     """
-    cfg = check_cfp_validity(cfp)
+    cfg = auxfun.check_cfp_validity(cfp)
     
     data_path = Path(cfg["results_path"])
     key="time_per_position"
     
-    time_per_position = None if overwrite else check_save_data(data_path, key)
+    time_per_position = None if overwrite else auxfun.check_save_data(data_path, key)
     
     if isinstance(time_per_position, pd.DataFrame):
         return time_per_position
     
     tunnels = cfg["tunnels"]
     
-    df = load_ecohab_data(cfg, key="main_df")
+    df = auxfun.load_ecohab_data(cfg, key="main_df")
     padded_df = create_padded_df(cfg, df)
     
     # Map directional tunnel position to non-directional
@@ -189,6 +161,8 @@ def calculate_time_spent_per_position(
             .round(3)
             )
     time_per_position = time_per_position.unstack(level=0).droplevel(0, axis=1).fillna(0).round(3)
+    
+    time_per_position = time_per_position[(time_per_position != 0).any(axis=1)]
     
     if save_data:
         time_per_position.to_hdf(data_path, key=key, mode="a", format="table")
@@ -210,18 +184,18 @@ def calculate_visits_per_position(
     Returns:
         Multiindex DataFrame with number of visits per position.
     """
-    cfg = check_cfp_validity(cfp)
+    cfg = auxfun.check_cfp_validity(cfp)
     data_path = Path(cfg["results_path"])
     key="visits_per_position"
     
-    visits_per_position = None if overwrite else check_save_data(data_path, key)
+    visits_per_position = None if overwrite else auxfun.check_save_data(data_path, key)
     
     if isinstance(visits_per_position, pd.DataFrame):
         return visits_per_position
     
     tunnels = cfg["tunnels"]
     
-    df = load_ecohab_data(cfg, key="main_df")
+    df = auxfun.load_ecohab_data(cfg, key="main_df")
     padded_df = create_padded_df(cfg, df)
     
     # Map directional tunnel position to non-directional
@@ -236,6 +210,8 @@ def calculate_visits_per_position(
             .value_counts()
             .unstack()
             )
+    
+    visits_per_position = visits_per_position[(visits_per_position != 0).any(axis=1)]
     
     if save_data:
         visits_per_position.to_hdf(data_path, key=key, mode="a", format="table")

@@ -12,22 +12,17 @@ from joblib import (
     delayed,
 )
 
-from deepecohab.utils.auxfun import (
-    check_save_data,
-    check_cfp_validity
-)
+from deepecohab.utils import auxfun
 
-from deepecohab.src.activity import (
-    create_padded_df,
-    calculate_time_spent_per_position,
-    get_phase_durations,
-)
+from deepecohab.src import activity
 
 def generate_sociability_combinations(cfg: dict, df: pd.DataFrame) -> list:
     """Auxfun to generate a product of phases, phase_count, cages and mouse pairs for in-cohort sociability calculation.
     """    
     mouse_pairs = combinations(cfg["animal_ids"], 2)
-    cages = [position for position in list(cfg["antenna_combinations"].keys()) if "cage" in position]
+    positions = list(set(cfg["antenna_combinations"].values()))
+    
+    cages = [position for position in positions if "cage" in position]
     phases = list(cfg["phase"].keys())
     phase_N = df.phase_count.unique()
     
@@ -76,7 +71,7 @@ def calculate_time_together(
     minimum_time: int | float | None = None, 
     n_workers: int | None = None, 
     save_data: bool = True, 
-    overwrite: bool = True,
+    overwrite: bool = False,
     ) -> pd.DataFrame:
     """Calculates time spent together by animals on a per phase and per cage basis. Slow due to the nature of datetime overlap calculation.
 
@@ -91,21 +86,18 @@ def calculate_time_together(
     Returns:
         Multiindex DataFrame of time spent together per phase, per cage.
     """    
-    cfg = check_cfp_validity(cfp)
+    cfg = auxfun.check_cfp_validity(cfp)
     data_path = Path(cfg["results_path"])
     key="time_together"
     
-    time_together_df = None if overwrite else check_save_data(data_path, key)
+    time_together_df = None if overwrite else auxfun.check_save_data(data_path, key)
     
     if isinstance(time_together_df, pd.DataFrame):
         return time_together_df
     
     df = pd.read_hdf(data_path, key="main_df")
-    padded_df = create_padded_df(cfg, df)
+    padded_df = activity.create_padded_df(cfg, df)
     
-    cages = [position for position in list(cfg["antenna_combinations"].keys()) if "cage" in position]
-    phases = list(cfg["phase"].keys())
-    phase_N = padded_df.phase_count.unique()
     mouse_pairs = combinations(cfg["animal_ids"], 2)
     
     # By default use half of the available cpu threads
@@ -121,7 +113,7 @@ def calculate_time_together(
     )
     # Prep df
     cols = [f"{animal_1}_{animal_2}" for animal_1, animal_2 in mouse_pairs]
-    idx = pd.MultiIndex.from_product([phases, phase_N, cages], names=["phase", "phase_count", "position"])
+    idx = auxfun._create_phase_multiindex(cfg, cages=True)
     time_together_df = pd.DataFrame(columns=cols, index=idx).sort_index()
 
     # fill df with data
@@ -129,7 +121,13 @@ def calculate_time_together(
         animal_col = f"{animal_1}_{animal_2}"
         time_together_df.loc[(phase, n, cage), animal_col] = sum(time)
         
-    time_together_df = time_together_df.dropna(axis=1, how="all").astype(float).round(3)
+    time_together_df = (time_together_df
+                        .dropna(axis=1, how="all").
+                        astype(float)
+                        .round(3)
+                        )
+    
+    time_together_df = time_together_df[(time_together_df != 0).any(axis=1)]
 
     if save_data:
         time_together_df.to_hdf(data_path, key=key, mode="a", format="table")
@@ -155,47 +153,47 @@ def calculate_in_cohort_sociability(
     Returns:
         Multiindex DataFrame of in-cohort sociability per phase for each possible pair of mice.
     """    
-    cfg = check_cfp_validity(cfp)
+    cfg = auxfun.check_cfp_validity(cfp)
     data_path = Path(cfg["results_path"])
     key="in_cohort_sociability"
     
-    in_cohort_sociability = None if overwrite else check_save_data(data_path, key)
+    in_cohort_sociability = None if overwrite else auxfun.check_save_data(data_path, key)
     
     if isinstance(in_cohort_sociability, pd.DataFrame):
         return in_cohort_sociability
     
     df = pd.read_hdf(data_path, key="main_df")
-    padded_df = create_padded_df(cfg, df)
-    
-    mouse_pairs = combinations(cfg["animal_ids"], 2)
-    cages = [position for position in list(cfg["antenna_combinations"].keys()) if "cage" in position]
-    
-    phase_durations = get_phase_durations(cfg, padded_df)
-    
+    padded_df = activity.create_padded_df(cfg, df)
+
+    mouse_pairs = list(combinations(cfg["animal_ids"], 2))
+    positions = list(set(cfg["antenna_combinations"].values()))
+    cages = [position for position in positions if "cage" in position]
+    phase_durations = auxfun.get_phase_durations(cfg, padded_df)
+
     # Get time spent together in cages
-    time_together_df = calculate_time_together(cfg, minimum_time, n_workers)
-    
+    time_together_df = calculate_time_together(cfg, 2, 8)
+
     # Get time per position
-    time_per_position = calculate_time_spent_per_position(cfg, padded_df)
+    time_per_position = activity.calculate_time_spent_per_position(cfg, padded_df)
     time_per_cage = time_per_position.loc[slice(None), slice(None), cages].copy()
-    
+
     # Sum time together over all cages
     time_together_df = time_together_df.groupby(level=[0,1], observed=False).sum()
-    
+
     # Normalize times as proportion of the phase duration
     proportion_alone = time_per_cage.div(phase_durations, axis=0)
     proportion_together = time_together_df.div(phase_durations, axis=0)
+
+    cols = [f"{animal_1}_{animal_2}" for animal_1, animal_2 in mouse_pairs]
+    in_cohort_sociability = pd.DataFrame(columns=cols, index=proportion_together.index)
+
+    # Calculate pairwise in-cohort sociability
+    for animal_1, animal_2 in mouse_pairs:
+        col_name = f"{animal_1}_{animal_2}"
+        meet_chance = (proportion_alone.loc[:, [animal_1]] * proportion_alone.loc[:, [animal_2]].values).unstack(level=2).sum(axis=1)
+        in_cohort_sociability.loc[:, col_name] = proportion_together.loc[:, col_name].subtract(meet_chance).values
     
-    per_mouse_pair = []
-    
-    for mouse1, mouse2 in mouse_pairs:
-        per_cage_arr = (proportion_alone.loc[:, [mouse1]].values * proportion_alone.loc[:, [mouse2]].values).reshape(-1)
-        per_cage_arr = np.add.reduceat(per_cage_arr, np.arange(0, len(proportion_alone), len(cages)))
-        
-        pair_sociability = proportion_together.loc[:, f"{mouse1}_{mouse2}"] - per_cage_arr
-        per_mouse_pair.append(pair_sociability)
-        
-    in_cohort_sociability = pd.concat(per_mouse_pair, axis=1)
+    in_cohort_sociability = in_cohort_sociability.round(3).astype(float)
     
     if save_data:
         in_cohort_sociability.to_hdf(data_path, key=key, mode="a", format="table")

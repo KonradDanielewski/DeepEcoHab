@@ -1,8 +1,13 @@
 import datetime as dt
 import os
+from itertools import (
+    combinations,
+    product
+)
 from glob import glob
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import toml
 
@@ -96,3 +101,80 @@ def make_results_path(project_location: str, experiment_name: str):
     results_path = Path(project_location) / "results" / f"{experiment_name}_data.h5"
 
     return str(results_path)
+
+def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = False) -> pd.MultiIndex:
+    data_path = Path(cfg["results_path"])
+    
+    df = pd.read_hdf(data_path, key="main_df")
+    
+    phase_Ns = list(df.phase_count.unique())
+    phases = list(cfg["phase"].keys())
+    positions = list(set(cfg["antenna_combinations"].values()))
+
+    if not position and not cages:
+        idx = pd.MultiIndex.from_product([phases, phase_Ns], names=["phase", "phase_count"])
+        return idx
+    elif position and not cages:
+        positions.append("undefined")
+        idx = pd.MultiIndex.from_product([phases, phase_Ns, positions], names=["phase", "phase_count", "position"])
+        return idx
+    elif not position and cages:
+        cages = [position for position in positions if "cage" in position]
+        idx = pd.MultiIndex.from_product([phases, phase_Ns, cages], names=["phase", "phase_count", "position"])
+        return idx
+
+def get_phase_durations(cfg: dict, df: pd.DataFrame) -> pd.Series:
+    """Auxfun to calculate approximate phase durations.
+       Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
+    """    
+    phase_Ns = list(df.phase_count.unique())
+    phases = list(cfg["phase"].keys())
+
+    hours = [60*60*i for i in range(1,13)]
+    # Prep data and index
+    phase_product = product(phases, phase_Ns)
+    idx = _create_phase_multiindex(cfg)
+    phase_durations = pd.Series(index=idx).sort_index()
+    # Find closest full hour
+    for phase, phase_N in phase_product:
+        try:
+            temp = df.query("phase == @phase and phase_count == @phase_N")
+            total_time = (temp.datetime.iloc[-1] - temp.datetime.iloc[0]).total_seconds()
+            time_calculated = np.abs(total_time - np.array(hours))
+            closest_hour = np.where(np.min(time_calculated) == time_calculated)[0][0]
+            phase_durations.loc[(phase, phase_N)] = hours[closest_hour]
+        except IndexError: # happens when phase_N doesn't exist for a specific phase
+            continue
+    
+    phase_durations = phase_durations.dropna()
+    
+    return phase_durations
+    
+def _sanitize_animal_ids(cfp: str, df: pd.DataFrame, min_antenna_crossings: int = 100) -> None:
+    """Auxfun to remove ghost tags (random radio noise reads).
+    """    
+    cfg = check_cfp_validity(cfp)
+    
+    animal_ids = df.animal_id.unique()
+    
+    antenna_crossings = df.animal_id.value_counts()
+    animals_to_drop = list(antenna_crossings[antenna_crossings < min_antenna_crossings].index)
+    
+    if len(animals_to_drop) > 0:
+        df = df.query("animal_id not in @animals_to_drop")
+        print(f"IDs dropped from dataset {animals_to_drop}")
+        
+        f = open(cfp,'w')
+        new_ids = [animal_id for animal_id in animal_ids if animal_id not in animals_to_drop]
+        
+        cfg["dropped_ids"] = animals_to_drop
+        cfg["animal_ids"] = new_ids
+        toml.dump(cfg, f)
+        f.close()
+        
+        df = df.query("animal_id in @new_ids").reset_index(drop=True)
+        
+    else:
+        print("No ghost tags detected :)")
+    
+    return df
