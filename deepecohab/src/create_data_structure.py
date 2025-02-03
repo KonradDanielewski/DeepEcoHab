@@ -6,7 +6,7 @@ import pandas as pd
 
 from deepecohab.utils import auxfun
 
-def load_data(cfp: str | Path, animal_ids: list[str], custom_layout: bool = False, sanitize_animal_id: bool = True) -> pd.DataFrame:
+def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool) -> pd.DataFrame:
     """Auxfum to load and combine text files into a pandas dataframe
     """    
     cfg = auxfun.check_cfp_validity(cfp)   
@@ -23,7 +23,7 @@ def load_data(cfp: str | Path, animal_ids: list[str], custom_layout: bool = Fals
 
     df = pd.concat(dfs, ignore_index=True).drop(["ind", "time_under"], axis=1)
     
-    if sanitize_animal_id:
+    if sanitize_animal_ids:
         df = auxfun._sanitize_animal_ids(cfp, df)
     
     if custom_layout:
@@ -177,7 +177,10 @@ def get_ecohab_data_structure(
     start_date = cfg["experiment_timeline"]["start_date"]
     finish_date = cfg["experiment_timeline"]["finish_date"]
     
-    df = load_data(cfp, custom_layout)
+    df = load_data(
+        cfp=cfp,
+        custom_layout=custom_layout,
+        sanitize_animal_ids=sanitize_animal_ids)
     df = _prepare_columns(cfg, df, positions)
 
     # Slice to start and end date

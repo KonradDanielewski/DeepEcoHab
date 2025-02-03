@@ -1,9 +1,6 @@
 import datetime as dt
 import os
-from itertools import (
-    combinations,
-    product
-)
+from itertools import product
 from glob import glob
 from pathlib import Path
 
@@ -149,7 +146,7 @@ def get_phase_durations(cfg: dict, df: pd.DataFrame) -> pd.Series:
     
     return phase_durations
     
-def _sanitize_animal_ids(cfp: str, df: pd.DataFrame, min_antenna_crossings: int = 100) -> None:
+def _sanitize_animal_ids(cfp: str, df: pd.DataFrame, min_antenna_crossings: int = 100) -> pd.DataFrame:
     """Auxfun to remove ghost tags (random radio noise reads).
     """    
     cfg = check_cfp_validity(cfp)
