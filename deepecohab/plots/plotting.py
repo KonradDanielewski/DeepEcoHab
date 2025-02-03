@@ -170,7 +170,7 @@ def plot_network_graph(
     edge_trace = create_edges_trace(G, pos, edge_width_multiplier)
 
     # Create node traces
-    node_trace = create_node_trace(cmap)
+    node_trace = create_node_trace(cmap, G, pos, ranking_ordinal, node_size_multiplier)
 
     # Create figure
     fig = go.Figure(

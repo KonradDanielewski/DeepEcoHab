@@ -84,7 +84,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float) -> go.Sc
         ))
     return edge_trace
 
-def create_node_trace(cmap: str, graph, pos, ranking_ordinal, node_size_multiplier) -> go.Scatter:
+def create_node_trace(cmap: str, graph: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node_size_multiplier: float | int) -> go.Scatter:
     """Auxfun to create node trace
     """
     node_trace = go.Scatter(
