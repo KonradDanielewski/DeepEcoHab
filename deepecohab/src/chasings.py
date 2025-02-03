@@ -184,6 +184,7 @@ def calculate_chasings(
 
     chasings.to_hdf(data_path, key="chasings", format="table")
     ranking_ordinal.to_hdf(data_path, key="end_ranking", format="table")
+    graph_data.to_hdf(data_path, key="graph_data", format="table")
     
     
 
