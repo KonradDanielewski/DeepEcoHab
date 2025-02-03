@@ -7,7 +7,8 @@ import plotly.graph_objects as go
 
 from plotly.subplots import make_subplots
 
-from deepecohab.utils.auxfun import read_config, create_edges_trace, create_node_trace
+from deepecohab.utils.auxfun import read_config
+from deepecohab.utils.auxfun_plots import create_edges_trace, create_node_trace
 
 
 
