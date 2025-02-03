@@ -3,7 +3,7 @@ import networkx as nx
 import plotly.graph_objects as go
 
 
-def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float) -> go.Scatter:
+def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int) -> go.Scatter:
     """Auxfun to create edges trace 
     """
     # Note need to add curved lines and arrowheads
@@ -26,7 +26,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float) -> go.Sc
         ))
     return edge_trace
 
-def create_node_trace(cmap: str, graph: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node_size_multiplier: float | int) -> go.Scatter:
+def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.Series, node_size_multiplier: float | int) -> go.Scatter:
     """Auxfun to create node trace
     """
     node_trace = go.Scatter(
@@ -50,7 +50,7 @@ def create_node_trace(cmap: str, graph: nx.DiGraph, pos: dict, ranking_ordinal: 
     )
     
     # Add positions and text to node_trace
-    for node in graph.nodes(): # should we add this part to the create_node_trace function?
+    for node in G.nodes(): # should we add this part to the create_node_trace function?
         x, y = pos[node]
         node_trace['x'] += (x,)
         node_trace['y'] += (y,)
