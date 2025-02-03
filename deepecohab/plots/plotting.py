@@ -172,19 +172,6 @@ def plot_network_graph(
     # Create node traces
     node_trace = create_node_trace(cmap)
 
-    # Add positions and text to node_trace
-    for node in G.nodes(): # should we add this part to the create_node_trace function?
-        x, y = pos[node]
-        node_trace['x'] += (x,)
-        node_trace['y'] += (y,)
-        node_trace['hovertext'] += (
-            f"Mouse ID: {node}<br>Ranking: {round(ranking_ordinal[node], 3)}",
-            )
-
-    # Scale node size and color
-    node_trace['marker']['color'] = list(ranking_ordinal)
-    node_trace['marker']['size'] = list(ranking_ordinal * node_size_multiplier)
-
     # Create figure
     fig = go.Figure(
         data=edge_trace + [node_trace],

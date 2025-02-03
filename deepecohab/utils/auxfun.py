@@ -84,7 +84,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float) -> go.Sc
         ))
     return edge_trace
 
-def create_node_trace(cmap: str) -> go.Scatter:
+def create_node_trace(cmap: str, graph, pos, ranking_ordinal, node_size_multiplier) -> go.Scatter:
     """Auxfun to create node trace
     """
     node_trace = go.Scatter(
@@ -106,4 +106,17 @@ def create_node_trace(cmap: str) -> go.Scatter:
             )
         )
     )
+    
+    # Add positions and text to node_trace
+    for node in graph.nodes(): # should we add this part to the create_node_trace function?
+        x, y = pos[node]
+        node_trace['x'] += (x,)
+        node_trace['y'] += (y,)
+        node_trace['hovertext'] += (
+            f"Mouse ID: {node}<br>Ranking: {round(ranking_ordinal[node], 3)}",
+            )
+        
+    # Scale node size and color
+    node_trace['marker']['color'] = list(ranking_ordinal)
+    node_trace['marker']['size'] = list(ranking_ordinal * node_size_multiplier)
     return node_trace
