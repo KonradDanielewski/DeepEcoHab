@@ -3,12 +3,8 @@ from pathlib import Path
 
 import toml
 
-from deepecohab.src import config_templates
-from deepecohab.utils.auxfun import (
-    get_animal_ids,
-    make_project_path,
-    make_results_path,
-)
+from deepecohab.utils import config_templates
+from deepecohab.utils import auxfun
 
 def create_ecohab_project(
     project_location: str | Path,
@@ -59,11 +55,11 @@ def create_ecohab_project(
     if not isinstance(project_location, str): # Has to be a string for config purposes
         data_path = str(data_path)
 
-    project_location = make_project_path(project_location, experiment_name)
-    results_path = make_results_path(project_location, experiment_name)
+    project_location = auxfun.make_project_path(project_location, experiment_name)
+    results_path = auxfun.make_results_path(project_location, experiment_name)
     
     if not isinstance(animal_ids, list):
-        animal_ids = get_animal_ids(data_path)
+        animal_ids = auxfun.get_animal_ids(data_path)
 
     if field_ecohab and isinstance(antenna_rename_scheme, dict):
         config = config_templates.generate_field_config(

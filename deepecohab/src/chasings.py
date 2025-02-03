@@ -4,7 +4,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import toml
 
 from openskill.models import PlackettLuce
 
@@ -98,9 +97,9 @@ def calculate_chasings(
     cfg = read_config(cfp)
     project_location = Path(cfg["project_location"])
     experiment_name = cfg["experiment_name"]
-    antenna_combinations = list(cfg["antenna_combinations"])
-    tunnel_combinations = [comb for comb in antenna_combinations if "cage" not in comb]
-    cage_combinations = [comb for comb in antenna_combinations if "cage" in comb]
+    positions = list(set(cfg["antenna_combinations"].values()))
+    tunnel_combinations = [comb for comb in positions if "cage" not in comb]
+    cage_combinations = [comb for comb in positions if "cage" in comb]
 
     data_path = Path(cfg["results_path"])
 

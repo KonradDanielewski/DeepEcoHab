@@ -32,20 +32,32 @@ def generate_default_config(
         data_path = data_path,
         animal_ids = animal_ids,
         
-        antenna_combinations = dict(
-            c1_c2 = [[1,2]],
-            c2_c1 = [[2,1]],
-            c2_c3 = [[3,4]],
-            c3_c2 = [[4,3]],
-            c3_c4 = [[5,6]],
-            c4_c3 = [[6,5]],
-            c4_c1 = [[7,8]],
-            c1_c4 = [[8,7]],
-            cage_1 = [[1,8], [8,1], [1,1], [8,8]],
-            cage_2 = [[2,3], [3,2], [2,2], [3,3]],
-            cage_3 = [[4,5], [5,4], [4,4], [5,5]],
-            cage_4 = [[6,7], [7,6], [6,6], [7,7]],
-        ),
+        antenna_combinations = {
+            "12" : "c1_c2",
+            "21" : "c2_c1",
+            "34" : "c2_c3",
+            "43" : "c3_c2",
+            "56" : "c3_c4",
+            "65" : "c4_c3",
+            "78" : "c4_c1",
+            "87" : "c1_c4",
+            "18" : "cage_1",
+            "81" : "cage_1",
+            "11" : "cage_1",
+            "88" : "cage_1",
+            "23" : "cage_2",
+            "32" : "cage_2",
+            "22" : "cage_2",
+            "33" : "cage_2",
+            "45" : "cage_3",
+            "54" : "cage_3",
+            "44" : "cage_3",
+            "55" : "cage_3",
+            "67" : "cage_4",
+            "76" : "cage_4",
+            "66" : "cage_4",
+            "77" : "cage_4",
+        },
         
         tunnels = dict(
             c1_c2 = "tunnel_1",
@@ -56,25 +68,6 @@ def generate_default_config(
             c4_c3 = "tunnel_3",
             c4_c1 = "tunnel_4",
             c1_c4 = "tunnel_4",
-        ),
-        
-        antenna_tunnel = {
-            str(key): tunnel 
-            for key, tunnel 
-            in zip(range(1,9), sorted(
-                ["tunnel_1",
-                 "tunnel_2", 
-                 "tunnel_3", 
-                 "tunnel_4", 
-                 ]*2)
-                )
-            },
-        
-        possible_first = dict(
-            cage_1 = [1, 8],
-            cage_2 = [2, 3],
-            cage_3 = [4, 5],
-            cage_4 = [6, 7],
         ),
         
         phase = dict(
@@ -128,20 +121,32 @@ def generate_custom_config(
                 
         antenna_rename_scheme = antenna_rename_scheme,
         
-        antenna_combinations = dict(
-            c1_c2 = [[1,2]],
-            c2_c1 = [[2,1]],
-            c2_c3 = [[3,4]],
-            c3_c2 = [[4,3]],
-            c3_c4 = [[5,6]],
-            c4_c3 = [[6,5]],
-            c4_c1 = [[7,8]],
-            c1_c4 = [[8,7]],
-            cage_1 = [[1,8], [8,1], [1,1], [8,8]],
-            cage_2 = [[2,3], [3,2], [2,2], [3,3]],
-            cage_3 = [[4,5], [5,4], [4,4], [5,5]],
-            cage_4 = [[6,7], [7,6], [6,6], [7,7]],
-        ),
+        antenna_combinations = {
+            "12" : "c1_c2",
+            "21" : "c2_c1",
+            "34" : "c2_c3",
+            "43" : "c3_c2",
+            "56" : "c3_c4",
+            "65" : "c4_c3",
+            "78" : "c4_c1",
+            "87" : "c1_c4",
+            "18" : "cage_1",
+            "81" : "cage_1",
+            "11" : "cage_1",
+            "88" : "cage_1",
+            "23" : "cage_2",
+            "32" : "cage_2",
+            "22" : "cage_2",
+            "33" : "cage_2",
+            "45" : "cage_3",
+            "54" : "cage_3",
+            "44" : "cage_3",
+            "55" : "cage_3",
+            "67" : "cage_4",
+            "76" : "cage_4",
+            "66" : "cage_4",
+            "77" : "cage_4",
+        },
         
         tunnels = dict(
             c1_c2 = "tunnel_1",
@@ -152,25 +157,6 @@ def generate_custom_config(
             c4_c3 = "tunnel_3",
             c4_c1 = "tunnel_4",
             c1_c4 = "tunnel_4",
-        ),
-        
-        antenna_tunnel = {
-            str(key): tunnel 
-            for key, tunnel 
-            in zip(range(1,9), sorted(
-                ["tunnel_1",
-                 "tunnel_2", 
-                 "tunnel_3", 
-                 "tunnel_4",
-                 ]*2)
-                )
-            },
-        
-        possible_first = dict(
-            cage_1 = [1, 8],
-            cage_2 = [2, 3],
-            cage_3 = [4, 5],
-            cage_4 = [6, 7],
         ),
         
         phase = dict(
@@ -227,32 +213,56 @@ def generate_field_config(
                 
         antenna_rename_scheme = antenna_rename_scheme,
         
-        antenna_combinations = dict(
-            cA_cB = [ [ 1, 2,],],
-            cB_cA = [ [ 2, 1,],],
-            cB_cC = [ [ 3, 4,],],
-            cC_cB = [ [ 4, 3,],],
-            cC_cD = [ [ 5, 6,],],
-            cD_cC = [ [ 6, 5,],],
-            cD_cE = [ [ 7, 8,],],
-            cE_cD = [ [ 8, 7,],],
-            cE_cF = [ [ 9, 10,],],
-            cF_cE = [ [ 10, 9,],],
-            cF_cG = [ [ 11, 12,],],
-            cG_cF = [ [ 12, 11,],],
-            cG_cH = [ [ 13, 14,],],
-            cH_cG = [ [ 14, 13,],],
-            cH_cA = [ [ 15, 16,],],
-            cA_cH = [ [ 16, 15,],],
-            cage_A = [ [ 1, 16,], [ 16, 1,], [ 1, 1,], [ 16, 16,],],
-            cage_B = [ [ 2, 3,], [ 3, 2,], [ 2, 2,], [ 3, 3,],],
-            cage_C = [ [ 4, 5,], [ 5, 4,], [ 4, 4,], [ 5, 5,],],
-            cage_D = [ [ 6, 7,], [ 7, 6,], [ 6, 6,], [ 7, 7,],],
-            cage_E = [ [ 8, 9,], [ 9, 8,], [ 8, 8,], [ 9, 9,],],
-            cage_F = [ [ 10, 11,], [ 11, 10,], [ 10, 10,], [ 11, 11,],],
-            cage_G = [ [ 12, 13,], [ 13, 12,], [ 12, 12,], [ 13, 13,],],
-            cage_H = [ [ 14, 15,], [ 15, 14,], [ 14, 14,], [ 15, 15,],],
-        ),
+        antenna_combinations = {
+        "12" : "cA_cB",
+        "21" : "cB_cA",
+        "34" : "cB_cC",
+        "43" : "cC_cB",
+        "56" : "cC_cD",
+        "65" : "cD_cC",
+        "78" : "cD_cE",
+        "87" : "cE_cD",
+        "910" : "cE_cF",
+        "109" : "cF_cE",
+        "1112" : "cF_cG",
+        "1211" : "cG_cF",
+        "1314" : "cG_cH",
+        "1413" : "cH_cG",
+        "1516" : "cH_cA",
+        "1615" : "cA_cH",
+        "116" : "cage_A",
+        "161" : "cage_A",
+        "11" : "cage_A",
+        "1616" : "cage_A",
+        "23" : "cage_B",
+        "32" : "cage_B",
+        "22" : "cage_B",
+        "33" : "cage_B",
+        "45" : "cage_C",
+        "54" : "cage_C",
+        "44" : "cage_C",
+        "55" : "cage_C",
+        "67" : "cage_D",
+        "76" : "cage_D",
+        "66" : "cage_D",
+        "77" : "cage_D",
+        "89" : "cage_E",
+        "98" : "cage_E",
+        "88" : "cage_E",
+        "99" : "cage_E",
+        "1011" : "cage_F",
+        "1110" : "cage_F",
+        "1010" : "cage_F",
+        "1111" : "cage_F",
+        "1213" : "cage_G",
+        "1312" : "cage_G",
+        "1212" : "cage_G",
+        "1313" : "cage_G",
+        "1415" : "cage_H",
+        "1514" : "cage_H",
+        "1414" : "cage_H",
+        "1515" : "cage_H",
+        },
         
         tunnels = dict(
             cA_cB = "tunnel1",
@@ -271,33 +281,6 @@ def generate_field_config(
             cH_cG = "tunnel7",
             cH_cA = "tunnel8",
             cA_cH = "tunnel8",
-        ),
-        
-        antenna_tunnel = {
-            str(key): tunnel 
-            for key, tunnel 
-            in zip(range(1,17), sorted(
-                ["tunnel_1",
-                 "tunnel_2", 
-                 "tunnel_3", 
-                 "tunnel_4", 
-                 "tunnel_5", 
-                 "tunnel_6", 
-                 "tunnel_7", 
-                 "tunnel_8",
-                 ]*2)
-                )
-            },
-        
-        possible_first = dict(
-            cage_A = [ 1, 16,],
-            cage_B = [ 2, 3,],
-            cage_C = [ 4, 5,],
-            cage_D = [ 6, 7,],
-            cage_E = [ 8, 9,],
-            cage_F = [ 10, 11,],
-            cage_G = [ 12, 13,],
-            cage_H = [ 14, 15,],
         ),
         
         phase = dict(
