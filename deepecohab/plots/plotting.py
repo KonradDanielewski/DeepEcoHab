@@ -140,7 +140,7 @@ def plot_network_graph(
     title: str = "Title",
     node_size_multiplier: int | float = 0.05,
     edge_width_multiplier: int | float = 0.05,
-    cmap: str = "viridis",
+    cmap: str = "bluered",
     save_plot: bool = True,
 ) -> nx.DiGraph:
     """
@@ -169,7 +169,7 @@ def plot_network_graph(
     pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
 
     # Create edge traces
-    edge_trace = create_edges_trace(G, pos, edge_width_multiplier)
+    edge_trace = create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier)
 
     # Create node traces
     node_trace = create_node_trace(G, pos, cmap, ranking_ordinal, node_size_multiplier)
