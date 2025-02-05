@@ -70,6 +70,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.
         hovertext=[],
         hoverinfo='text',
         mode='markers+text',
+        textposition='top center',
         marker=dict(
             showscale=True,
             colorscale=cmap,
@@ -89,7 +90,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.
         x, y = pos[node]
         node_trace['x'] += (x,)
         node_trace['y'] += (y,)
-        node_trace['text'] += (node,)
+        node_trace['text'] += ('<b>' + node + '</b>',)
         ranking_score = round(ranking_ordinal[node], 3)
         ranking_score_list.append(ranking_score)
         node_trace['hovertext'] += (
