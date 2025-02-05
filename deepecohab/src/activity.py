@@ -100,11 +100,12 @@ def create_padded_df(
         
         animal_dfs.append(animal_df)
 
-    padded_df = (pd.concat(animal_dfs)
-                .sort_values("datetime")
-                .reset_index(drop=True)
-                .drop("phase_map", axis=1)
-                )
+    padded_df = (
+        pd.concat(animal_dfs)
+        .sort_values("datetime")
+        .reset_index(drop=True)
+        .drop("phase_map", axis=1)
+    )
 
     # Overwrite with new timedelta
     padded_df = create_data_structure.calculate_timedelta(padded_df)
@@ -150,15 +151,16 @@ def calculate_time_spent_per_position(
     padded_df.loc[mapper, "position"] = padded_df.loc[mapper, "position"].map(tunnels).values
     
     # Calculate time spent per position per phase
-    time_per_position = (padded_df
-            .loc[:, ["animal_id", "position", "phase", "phase_count", "timedelta"]]
-            .groupby(["animal_id", "phase", "phase_count", "position"], observed=False)
-            .sum()
-            .unstack(level=0)
-            .droplevel(0, axis=1)
-            .fillna(0)
-            .round(3)
-            )
+    time_per_position = (
+        padded_df
+        .loc[:, ["animal_id", "position", "phase", "phase_count", "timedelta"]]
+        .groupby(["animal_id", "phase", "phase_count", "position"], observed=False)
+        .sum()
+        .unstack(level=0)
+        .droplevel(0, axis=1)
+        .fillna(0)
+        .round(3)
+    )
     
     time_per_position = time_per_position[(time_per_position != 0).any(axis=1)]
     
@@ -202,12 +204,13 @@ def calculate_visits_per_position(
     padded_df.loc[mapper, "position"] = padded_df.loc[mapper, "position"].map(tunnels).values
     
     # Calculate visits to each position
-    visits_per_position = (padded_df
-            .loc[:, ["animal_id", "position", "phase", "phase_count"]]
-            .groupby(["phase", "phase_count", "position"], observed=False)
-            .value_counts()
-            .unstack()
-            )
+    visits_per_position = (
+        padded_df
+        .loc[:, ["animal_id", "position", "phase", "phase_count"]]
+        .groupby(["phase", "phase_count", "position"], observed=False)
+        .value_counts()
+        .unstack()
+    )
     
     visits_per_position = visits_per_position[(visits_per_position != 0).any(axis=1)]
     

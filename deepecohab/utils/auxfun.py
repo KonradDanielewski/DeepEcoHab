@@ -99,25 +99,42 @@ def make_results_path(project_location: str, experiment_name: str):
 
     return str(results_path)
 
-def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = False) -> pd.MultiIndex:
+def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = False, animals: bool = False) -> pd.MultiIndex:
+    """Auxfun to create multindices for various DataFrames
+    """
     data_path = Path(cfg["results_path"])
     
     df = pd.read_hdf(data_path, key="main_df")
     
+    animal_ids = list(cfg["animal_ids"])
+    positions = list(set(cfg["antenna_combinations"].values()))
+    cage_list = [position for position in positions if "cage" in position]
     phase_Ns = list(df.phase_count.unique())
     phases = list(cfg["phase"].keys())
-    positions = list(set(cfg["antenna_combinations"].values()))
 
-    if not position and not cages:
-        idx = pd.MultiIndex.from_product([phases, phase_Ns], names=["phase", "phase_count"])
+    if not any([position, cages, animals]):
+        idx = pd.MultiIndex.from_product(
+            [phases, phase_Ns], names=["phase", "phase_count"]
+        )
         return idx
-    elif position and not cages:
+    elif cages & animals:
+        idx = pd.MultiIndex.from_product(
+            [phases, phase_Ns, cage_list, animal_ids], names=["phase", "phase_count", "cages", "animal_ids"]
+        )
+        return idx
+    elif position:
         positions.append("undefined")
-        idx = pd.MultiIndex.from_product([phases, phase_Ns, positions], names=["phase", "phase_count", "position"])
+        idx = pd.MultiIndex.from_product([phases, phase_Ns, positions], names=["phase", "phase_count", "position"]
+        )
         return idx
-    elif not position and cages:
-        cages = [position for position in positions if "cage" in position]
-        idx = pd.MultiIndex.from_product([phases, phase_Ns, cages], names=["phase", "phase_count", "position"])
+    elif cages:
+        idx = pd.MultiIndex.from_product([phases, phase_Ns, cage_list], names=["phase", "phase_count", "position"]
+        )
+        return idx
+    elif animals:
+        idx = pd.MultiIndex.from_product(
+            [phases, phase_Ns, animal_ids], names=["phase", "phase_count", "animal_ids"]
+        )
         return idx
 
 def get_phase_durations(cfg: dict, df: pd.DataFrame) -> pd.Series:
@@ -162,7 +179,7 @@ def _sanitize_animal_ids(cfp: str, df: pd.DataFrame, min_antenna_crossings: int 
         print(f"IDs dropped from dataset {animals_to_drop}")
         
         f = open(cfp,'w')
-        new_ids = [animal_id for animal_id in animal_ids if animal_id not in animals_to_drop]
+        new_ids = sorted([animal_id for animal_id in animal_ids if animal_id not in animals_to_drop])
         
         cfg["dropped_ids"] = animals_to_drop
         cfg["animal_ids"] = new_ids

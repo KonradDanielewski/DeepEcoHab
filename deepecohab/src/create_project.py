@@ -59,7 +59,9 @@ def create_ecohab_project(
     results_path = auxfun.make_results_path(project_location, experiment_name)
     
     if not isinstance(animal_ids, list):
-        animal_ids = auxfun.get_animal_ids(data_path)
+        animal_ids = sorted(auxfun.get_animal_ids(data_path))
+    else:
+        animal_ids = sorted(animal_ids)
 
     if field_ecohab and isinstance(antenna_rename_scheme, dict):
         config = config_templates.generate_field_config(
