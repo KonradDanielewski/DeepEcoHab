@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import toml
 
+
 def get_data_paths(data_path: str) -> list:
     """Auxfun to load all raw data paths
     """    
