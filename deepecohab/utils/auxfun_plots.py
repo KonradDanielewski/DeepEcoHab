@@ -20,8 +20,8 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
     normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
     
     for i, edge in enumerate(G.edges()):
-        x0, y0 = pos[edge[0]]  # Start point (source node)
-        x1, y1 = pos[edge[1]]  # End point (target node)
+        x0, y0 = pos[edge[1]]  # Start point (source node)
+        x1, y1 = pos[edge[0]]  # End point (target node)
         edge_width = edge_widths[i]
         
         # Calculate the direction vector from (x0, y0) to (x1, y1)
