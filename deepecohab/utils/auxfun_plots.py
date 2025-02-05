@@ -105,8 +105,11 @@ def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.
 def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare network data for plotting
     """
-    graph_data = chasing_data.reset_index()\
-        .melt(id_vars="index", value_name="weight")\
-        .dropna()\
-        .rename(columns={"index": "source", "variable": "target"})
+    graph_data = (
+        chasing_data
+        .reset_index()
+        .melt(id_vars="index", value_name="weight")
+        .dropna()
+        .rename(columns={"index": "target", "variable": "source"},
+    )
     return graph_data
