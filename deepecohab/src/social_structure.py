@@ -2,7 +2,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import toml
 
 from deepecohab.plots.plotting import _plot_weighted_ranking
 from deepecohab.utils.auxfun import read_config
@@ -29,7 +28,7 @@ def weigh_ranking(
     show_plot: bool = True,
 ) -> pd.Series:
     """Creates a weighted ranking based on multiple features of the social structure.
-
+    TODO: Broken, node positions need to be extracted from the current graph objects
     Args:
         cfp: path to project config file
         graph: node location from the graph network

@@ -1,8 +1,10 @@
 import datetime as dt
 import os
+from itertools import product
 from glob import glob
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import toml
 
@@ -14,6 +16,17 @@ def get_data_paths(data_path: str) -> list:
     if len(data_files) == 0:
         data_files = glob(os.path.join(data_path, "20*.txt"))
     return data_files
+
+def check_cfp_validity(cfp: str | Path | dict):
+    """Auxfun to check validity of the passed cfp variable (config path or dict)
+    """    
+    if isinstance(cfp, (str, Path)):
+        cfg = read_config(cfp)
+    elif isinstance(cfp, dict):
+        cfg=cfp
+    else:
+        return print(f"cfp should be either a dict, Path or str, but {type(cfp)} provided.")
+    return cfg
 
 def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
     """Loads already analyzed main data structure
@@ -27,12 +40,12 @@ def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
 
     Returns:
         Desired data structure loaded from the file.
-    """    
-    cfg = read_config(cfp)
+    """
+    cfg = check_cfp_validity(cfp)
     project_location = Path(cfg["project_location"])
     experiment_name = cfg["experiment_name"]
     
-    data_path = make_results_path(project_location, experiment_name)
+    data_path = Path(make_results_path(project_location, experiment_name))
     
     if data_path.is_file():
         try:
@@ -55,10 +68,10 @@ def read_config(cfp: str | Path) -> dict:
 def check_save_data(data_path: Path, key: str):
     try:
         df = pd.read_hdf(data_path, key=key)
-        print(f"Already calculated for {key}. Loading from {data_path}. If you wish to overwrite the data please set overwrite=True")
+        # NOTE: should this be printed? Feels annoying
+        #print(f"Already calculated for {key}. Loading from {data_path}. If you wish to overwrite the data please set overwrite=True")
         return df
     except (KeyError, FileNotFoundError):
-        # print(f"Data not found at location {data_path}. Perhaps not analyzed.") # NOTE: Feels annoying. Need a better way
         return None
     
 def get_animal_ids(data_path: str) -> list:
@@ -85,3 +98,113 @@ def make_results_path(project_location: str, experiment_name: str):
     results_path = Path(project_location) / "results" / f"{experiment_name}_data.h5"
 
     return str(results_path)
+
+def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = False, animals: bool = False) -> pd.MultiIndex:
+    """Auxfun to create multindices for various DataFrames
+    """
+    data_path = Path(cfg["results_path"])
+    
+    df = pd.read_hdf(data_path, key="main_df")
+    
+    animal_ids = list(cfg["animal_ids"])
+    positions = list(set(cfg["antenna_combinations"].values()))
+    cage_list = [position for position in positions if "cage" in position]
+    phase_Ns = list(df.phase_count.unique())
+    phases = list(cfg["phase"].keys())
+
+    if not any([position, cages, animals]):
+        idx = pd.MultiIndex.from_product(
+            [phases, phase_Ns], names=["phase", "phase_count"]
+        )
+        return idx
+    elif cages & animals:
+        idx = pd.MultiIndex.from_product(
+            [phases, phase_Ns, cage_list, animal_ids], names=["phase", "phase_count", "cages", "animal_ids"]
+        )
+        return idx
+    elif position:
+        positions.append("undefined")
+        idx = pd.MultiIndex.from_product([phases, phase_Ns, positions], names=["phase", "phase_count", "position"]
+        )
+        return idx
+    elif cages:
+        idx = pd.MultiIndex.from_product([phases, phase_Ns, cage_list], names=["phase", "phase_count", "position"]
+        )
+        return idx
+    elif animals:
+        idx = pd.MultiIndex.from_product(
+            [phases, phase_Ns, animal_ids], names=["phase", "phase_count", "animal_ids"]
+        )
+        return idx
+
+def get_phase_durations(cfg: dict, df: pd.DataFrame) -> pd.Series:
+    """Auxfun to calculate approximate phase durations.
+       Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
+    """    
+    phase_Ns = list(df.phase_count.unique())
+    phases = list(cfg["phase"].keys())
+
+    hours = [60*60*i for i in range(1,13)]
+    # Prep data and index
+    phase_product = product(phases, phase_Ns)
+    idx = _create_phase_multiindex(cfg)
+    phase_durations = pd.Series(index=idx).sort_index()
+    # Find closest full hour
+    for phase, phase_N in phase_product:
+        try:
+            temp = df.query("phase == @phase and phase_count == @phase_N")
+            total_time = (temp.datetime.iloc[-1] - temp.datetime.iloc[0]).total_seconds()
+            time_calculated = np.abs(total_time - np.array(hours))
+            closest_hour = np.where(np.min(time_calculated) == time_calculated)[0][0]
+            phase_durations.loc[(phase, phase_N)] = hours[closest_hour]
+        except IndexError: # happens when phase_N doesn't exist for a specific phase
+            continue
+    
+    phase_durations = phase_durations.dropna()
+    
+    return phase_durations
+    
+def _sanitize_animal_ids(cfp: str, df: pd.DataFrame, min_antenna_crossings: int = 100) -> pd.DataFrame:
+    """Auxfun to remove ghost tags (random radio noise reads).
+    """    
+    cfg = check_cfp_validity(cfp)
+    
+    animal_ids = df.animal_id.unique()
+    
+    antenna_crossings = df.animal_id.value_counts()
+    animals_to_drop = list(antenna_crossings[antenna_crossings < min_antenna_crossings].index)
+    
+    if len(animals_to_drop) > 0:
+        df = df.query("animal_id not in @animals_to_drop")
+        print(f"IDs dropped from dataset {animals_to_drop}")
+        
+        f = open(cfp,'w')
+        new_ids = sorted([animal_id for animal_id in animal_ids if animal_id not in animals_to_drop])
+        
+        cfg["dropped_ids"] = animals_to_drop
+        cfg["animal_ids"] = new_ids
+        toml.dump(cfg, f)
+        f.close()
+        
+        df = df.query("animal_id in @new_ids").reset_index(drop=True)
+        
+    else:
+        print("No ghost tags detected :)")
+    
+    return df
+
+def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
+    """Auxfun to append start and end datetimes of the experiment if not user provided.
+    """    
+    cfg = check_cfp_validity(cfp)
+    start_time = str(df.datetime.iloc[0])
+    end_time = str(df.datetime.iloc[-1])
+    
+    f = open(cfp,'w')
+    cfg["experiment_timeline"] = {"start_date": start_time}
+    cfg["experiment_timeline"] = {"finish_date": end_time}
+    
+    toml.dump(cfg, f)
+    f.close()
+    
+    print(f"Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True")

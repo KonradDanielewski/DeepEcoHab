@@ -22,8 +22,20 @@ experiment_name_data.h5 contains all the data under different keys in a hierarch
 
 ### Keys:
 
-<h4><b>"main_df"</b></h4> is the ecohab data structure - each antenna read assigned to an animal, position of the animal, time spent in it etc.
+`main_df` is the ecohab data structure - each antenna read assigned to an animal, position of the animal, time spent in it etc.
 
-<h4><b>"chasings"</b></h4> is the chasings matrix. In the future probably will be chasing matrices per phase
+`chasings` is the chasings matrix. In the future probably will be chasing matrices per phase.
 
-<h4><b>"end_ranking"</b></h4> contains the end ranking as an ordinal calculated from the final ranking with Plackett-Luce 
+`end_ranking` contains the end ranking as an ordinal calculated from the final ranking with Plackett-Luce. 
+
+`padded_df` same as `main_df` but padded in such way that detections that happen across multiple phases are split to end with the end of the ongoing phase and start as a new detection in the new phase.
+
+`time_per_position` MultiIndex DataFrame with time spent per each positions. Directional tunnel detections are transformed into undirected, i.e. `c1_c2` and `c2_c1` becomes `tunnel_1`
+
+`visits_per_position` MultiIndex DataFrame with the number of visits to each position. Directional tunnel detections are transformed into undirected, i.e. `c1_c2` and `c2_c1` becomes `tunnel_1`
+
+`time_together` MultiIndex DataFrame with time spent together per cage for all possible mouse pair combinations. Measured in seconds.
+
+`in_cohort_sociability` MultiIndex DataFrame with in-cohort sociability measure. More info in the methods section: https://doi.org/10.7554/eLife.19532
+
+`phase_durations` MultiIndex Series per phase with estimated duration of each phase. Measured in seconds and rounded to the closest full hour. Used as total time for division in in-cohort sociability.

@@ -1,23 +1,18 @@
 import os
-from itertools import product
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import toml
 
-from deepecohab.utils.auxfun import (
-    get_data_paths,
-    read_config,
-    check_save_data
-)
+from deepecohab.utils import auxfun
 
-def load_data(cfg: dict, custom_layout: bool = False) -> pd.DataFrame:
+def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool) -> pd.DataFrame:
     """Auxfum to load and combine text files into a pandas dataframe
     """    
+    cfg = auxfun.check_cfp_validity(cfp)   
     data_path = cfg["data_path"]
     
-    data_files = get_data_paths(data_path)
+    data_files = auxfun.get_data_paths(data_path)
 
     dfs = []
     for file in data_files:
@@ -27,33 +22,30 @@ def load_data(cfg: dict, custom_layout: bool = False) -> pd.DataFrame:
         dfs.append(df)
 
     df = pd.concat(dfs, ignore_index=True).drop(["ind", "time_under"], axis=1)
+    
+    if sanitize_animal_ids:
+        df = auxfun._sanitize_animal_ids(cfp, df)
+    
     if custom_layout:
         rename_dicts = cfg["antenna_rename_scheme"]
         for com_name in rename_dicts.keys():
             df = _rename_antennas(df, com_name, rename_dicts)
     return df
 
-def get_first_read_cage(antenna: int, possible_first: dict):
-    """Auxfun to get first location of an animal
-    """    
-    for key in possible_first.keys():
-        if antenna in possible_first[key]:
-            return key
-
-def calculate_timedelta(df: pd.DataFrame):
+def calculate_timedelta(df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to calculate timedelta between positions i.e. time spent in each state, rounded to 10s of miliseconds
     """    
-    timedelta = (
+    df.loc[:, "timedelta"] = (
         df
         .loc[:, ["datetime", "animal_id"]]
         .groupby("animal_id", observed=False)
         .diff()
-        .fillna(pd.Timedelta(seconds=0))
         .iloc[:, 0]
         .dt.total_seconds()
+        .fillna(0)
         .round(2)
     )
-    return timedelta
+    return df
 
 def get_day(df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun for getting the day
@@ -94,80 +86,32 @@ def get_phase_count(cfg: dict, df: pd.DataFrame) -> pd.DataFrame:
     df.phase_count = df.phase_count.astype(int)
     return df
 
-def get_antenna_pair_array(antenna_column: np.array) -> np.array:
-    """Auxfun to get 2D array of antenna pairs. Done per animal to get position of each
+def map_antenna2position(antenna_column: pd.Series, positions: dict) -> pd.Series:
+    """Auxfun to map antenna pairs to animal position
     """    
-    arr1 = np.insert(antenna_column, 0, 0)
-    arr2 = np.insert(antenna_column, len(antenna_column), 0)
+    arr1 = np.insert(antenna_column, 0, 0).astype(str)
+    arr2 = np.insert(antenna_column, len(antenna_column), 0).astype(str)
 
-    antenna_pairs = np.array([arr1, arr2]).T[:-1]
-
-    return antenna_pairs
-
-def get_position_conditions(key: str, antenna_pairs: np.array, antenna_combinations: dict) -> np.array:
-    """Auxfun to get animal position for a specific antenna pair
-    """
-    conditions = []
-    for i in antenna_combinations[key]:
-        conditions.append(np.where(np.logical_and(antenna_pairs[:, 0] == i[0], antenna_pairs[:, 1] == i[1])))
-
-    indices = np.concatenate(conditions, axis=1)[0]
+    antenna_pairs = (pd.Series(arr1) + pd.Series(arr2))[:-1]
+    antenna_pairs.index = antenna_column.index
     
-    return indices
+    location = antenna_pairs.map(positions)
 
-def position_correction(cfg: dict, df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to correct position at cage reentries (assign position to associated tunnel).
+    return location
+
+def get_animal_position(df: pd.DataFrame, positions: dict) -> pd.DataFrame:
+    """Auxfun, groupby mapping of antenna pairs to position
     """    
-    animals = cfg["animal_ids"]
-    cages = [pos for pos in cfg["antenna_combinations"].keys() if "cage" in pos]
-
-    tunnel_map = cfg["antenna_tunnel"]
-
-    for animal, cage in product(animals, cages):
-        subset = df.query("animal_id == @animal").copy()
-        true_index = subset.index
-        subset = subset.reset_index(drop=True)
-
-        position = subset.position.eq(cage)
-
-        # Find indices where cage should be replaced with tunnel
-        tunnels = position[position].index[np.diff(position[position].index, prepend=position[position].index[0]) == 1]
-        # Check where in those consecutive indices there are more than 2 in a row
-        try:
-            # When an animal makes multiple reentries in a row every second entry is again actually a cage so we drop those
-            breaks = np.where((np.diff(tunnels, append=tunnels[-1]) != 1))[0]
-            to_drop = np.concatenate([i[1::2] for i in np.split(tunnels, breaks+1)])
-            tunnels = np.setdiff1d(tunnels, to_drop)
-        except IndexError: # When no reentries tunnels[-1] gives IndexError
-            print(f"No repetitive entries for animal: {animal} to cage: {cage}")
-            pass
-        # Map new position and correct in main df
-        subset.loc[tunnels, "position"] = subset.loc[tunnels, "antenna"].map({int(key): value for key, value in tunnel_map.items()})
-        df.loc[true_index, "position"] = subset.position.values
-        
-    return df 
-
-def get_animal_position(cfg: dict, df: pd.DataFrame, antenna_combinations: dict, possible_first: dict, animal_ids: list) -> pd.DataFrame:
-    """Auxfun to get position of the animal
-       The pairwise antenna combinations mapping and post-hoc fixing are more efficient than a for loop approach
-    """
-    for animal in animal_ids:
-        antenna_col = df.loc[df.loc[:, "animal_id"] == animal].antenna.values
-        
-        antenna_pairs = get_antenna_pair_array(antenna_col)
-
-        for key in antenna_combinations.keys():
-            indices = get_position_conditions(key, antenna_pairs, antenna_combinations)
-
-            position_update = df.query("animal_id == @animal").iloc[indices].index
-            df.loc[position_update, "position"] = key
-
-        first_read = df.query("animal_id == @animal").index[0]
-        df.loc[first_read, "position"] = get_first_read_cage(df.loc[first_read].antenna, possible_first)
-
-    df.loc[:, "position"] = df["position"].fillna("undefined")
-    
-    df = position_correction(cfg, df)
+    df.loc[:, "position"] = (
+        df
+        .loc[:, ["animal_id", "antenna"]]
+        .groupby("animal_id", observed=False)
+        .apply(map_antenna2position, positions=positions, include_groups=False)
+        .fillna("undefined")
+        .droplevel(level=0, axis=0)
+        .sort_index()
+        .values
+    )
 
     return df
 
@@ -178,46 +122,26 @@ def _rename_antennas(df: pd.DataFrame, com_name: str, rename_dicts: dict) -> pd.
     df.loc[df.COM == com_name, "antenna"] = df.query("COM == @com_name")["antenna"].map(mapping)
     return df
 
-def _prepare_columns(cfg: dict, df: pd.DataFrame, antenna_combinations: list) -> pd.DataFrame:
+def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list) -> pd.DataFrame:
     """Auxfun to prepare the df, adding new columns
     """    
     # Establish all possible categories for position
-    tunnels = cfg["tunnels"]
-    [antenna_combinations.append(i) for i in list(set(tunnels.values()))]
-    antenna_combinations.append("undefined")
+    positions.append("undefined")
     
     df["timedelta"] = np.nan
     df["day"] = np.nan
     
-    df["position"] = pd.Series(dtype="category").cat.set_categories(antenna_combinations)
-    df["phase"] = pd.Series(dtype="category").cat.set_categories(["light_phase", "dark_phase"])
+    df["position"] = pd.Series(dtype="category").cat.set_categories(positions)
+    df["phase"] = pd.Series(dtype="category").cat.set_categories(cfg["phase"].keys())
 
     df["antenna"] = df["antenna"]
-    df["animal_id"] = df["animal_id"].astype("category")
+    df["animal_id"] = df["animal_id"].astype("category").cat.set_categories(cfg["animal_ids"])
     df["datetime"] = df["date"] + " " + df["time"]
     df["datetime"] = pd.to_datetime(df["datetime"])
     df = df.drop(["date", "time"], axis=1)
     df = df.drop_duplicates(["datetime", "animal_id"])
     
     return df
-
-def _sanitize_animal_ids(cfp: str, cfg: dict, df: pd.DataFrame, animal_ids: list[str], min_antenna_crossings: int = 100) -> None:
-    """Auxfun to remove ghost tags (random radio noise reads).
-    """    
-    antenna_crossings = df.animal_id.value_counts()
-    animals_to_drop = list(antenna_crossings[antenna_crossings < min_antenna_crossings].index)
-    
-    if len(animals_to_drop) > 0:
-        df = df.query("animal_id not in @animals_to_drop")
-        print(f"IDs dropped from dataset {animals_to_drop}")
-        
-        f = open(cfp,'w')
-        new_ids = [animal_id for animal_id in animal_ids if animal_id not in animals_to_drop]
-        
-        cfg["dropped_ids"] = animals_to_drop
-        cfg["animal_ids"] = new_ids
-        toml.dump(cfg, f)
-        f.close()
 
 def get_ecohab_data_structure(
     cfp: str,
@@ -238,45 +162,46 @@ def get_ecohab_data_structure(
     Returns:
         EcoHab data structure as a pd.DataFrame
     """
-    cfg = read_config(cfp)
-    data_path = cfg["results_path"]
+    cfg = auxfun.read_config(cfp)
+    data_path = Path(cfg["results_path"])
     key = "main_df"
     
-    df = None if overwrite else check_save_data(data_path, key)
+    df = None if overwrite else auxfun.check_save_data(data_path, key)
     
     if isinstance(df, pd.DataFrame):
         return df
     
-    antenna_combinations = cfg["antenna_combinations"]
-    possible_first = cfg["possible_first"]
-    animal_ids = cfg["animal_ids"]
-    start_date = cfg["experiment_timeline"]["start_date"]
-    finish_date = cfg["experiment_timeline"]["finish_date"]
+    remapping_dict = cfg["antenna_combinations"]
+    positions = list(set(remapping_dict.values()))
     
-    df = load_data(cfg, custom_layout)
-    df = _prepare_columns(cfg, df, list(antenna_combinations.keys()))
+    df = load_data(
+        cfp=cfp,
+        custom_layout=custom_layout,
+        sanitize_animal_ids=sanitize_animal_ids)
+    df = _prepare_columns(cfg, df, positions)
 
     # Slice to start and end date
-    if isinstance(start_date, str) & isinstance(finish_date, str): 
-        start, finish = pd.to_datetime(start_date), pd.to_datetime(finish_date)
-        timeframe = (df.datetime >= start) & (df.datetime <= finish)
-        df = df.loc[timeframe, :].sort_values("datetime").reset_index(drop=True)
+    try:
+        start_date = cfg["experiment_timeline"]["start_date"]
+        finish_date = cfg["experiment_timeline"]["finish_date"]
+        if isinstance(start_date, str) & isinstance(finish_date, str): 
+            start, finish = pd.to_datetime(start_date), pd.to_datetime(finish_date)
+            timeframe = (df.datetime >= start) & (df.datetime <= finish)
+            df = df.loc[timeframe, :].sort_values("datetime").reset_index(drop=True)
+    except KeyError:
+        print("Start and end dates not provided. Extracting from data...")
+        auxfun._append_start_end_to_config(cfp, df)
     
     df = df.sort_values("datetime")
     
-    # Calculates time spent in each position (state)
-    df["timedelta"] = calculate_timedelta(df)
-    # Get additional columns
+    df = calculate_timedelta(df)
     df = get_day(df)
-    df = get_animal_position(cfg, df, antenna_combinations, possible_first, animal_ids)
+    df = get_animal_position(df, remapping_dict)
     df = get_phase(cfg, df)
     df = get_phase_count(cfg, df)
     
-    condition_map = {key: i+1 for i, key in enumerate(antenna_combinations.keys())}
-    df["position_keys"] = df.position.map(condition_map).fillna(0).astype(int)
-
-    if sanitize_animal_ids:
-        _sanitize_animal_ids(cfp, cfg, df, animal_ids)
+    condition_map = {key: i+1 for i, key in enumerate(positions)}
+    df["position_keys"] = df.position.map(condition_map).astype(int).fillna(0)
 
     df = df.sort_index(axis=1).reset_index(drop=True)
 
@@ -284,5 +209,8 @@ def get_ecohab_data_structure(
         df = df.drop("COM", axis=1)
     
     df.to_hdf(data_path, key=key, mode="a", format="table")
+    
+    phase_durations = auxfun.get_phase_durations(cfg, df)
+    phase_durations.to_hdf(data_path, key="phase_durations", mode="a", format="table")
 
     return df
