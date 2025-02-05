@@ -7,8 +7,8 @@ import plotly.graph_objects as go
 
 from plotly.subplots import make_subplots
 
-from deepecohab.utils.auxfun import read_config
-from deepecohab.utils.auxfun_plots import create_edges_trace, create_node_trace, prep_network_df
+from deepecohab.utils import auxfun
+from deepecohab.utils import auxfun_plots
 
 
 
@@ -54,7 +54,7 @@ def social_dominance_evaluation(
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
-    cfg = read_config(cfp)
+    cfg = auxfun.read_config(cfp)
     fig = make_subplots(
         rows=2, cols=2,
         specs=[[{"type": "bar"}, {"type": "bar"}],
@@ -109,7 +109,7 @@ def plot_ranking_in_time(
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
-    cfg = read_config(cfp)
+    cfg = auxfun.read_config(cfp)
     
     fig = px.line(
         ranking_in_time,
@@ -160,19 +160,19 @@ def plot_network_graph(
         Dictionary containing the graph, figure, and traces.
     """
     # Read config file
-    cfg = read_config(cfp)
+    cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
 
     # Create graph and layout
-    data = prep_network_df(chasing_data)
+    data = auxfun_plots.prep_network_df(chasing_data)
     G = nx.from_pandas_edgelist(data, create_using=nx.DiGraph, edge_attr="weight")
     pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
 
     # Create edge traces
-    edge_trace = create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier)
+    edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier)
 
     # Create node traces
-    node_trace = create_node_trace(G, pos, cmap, ranking_ordinal, node_size_multiplier)
+    node_trace = auxfun_plots.create_node_trace(G, pos, cmap, ranking_ordinal, node_size_multiplier)
 
     # Create figure
     fig = go.Figure(

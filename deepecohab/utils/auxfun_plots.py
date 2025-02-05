@@ -110,6 +110,6 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
         .melt(id_vars="index", value_name="weight")
         .dropna()
-        .rename(columns={"index": "target", "variable": "source"},
+        .rename(columns={"index": "target", "variable": "source"})
     )
     return graph_data
