@@ -174,9 +174,6 @@ def get_ecohab_data_structure(
     remapping_dict = cfg["antenna_combinations"]
     positions = list(set(remapping_dict.values()))
     
-    start_date = cfg["experiment_timeline"]["start_date"]
-    finish_date = cfg["experiment_timeline"]["finish_date"]
-    
     df = load_data(
         cfp=cfp,
         custom_layout=custom_layout,
@@ -184,10 +181,16 @@ def get_ecohab_data_structure(
     df = _prepare_columns(cfg, df, positions)
 
     # Slice to start and end date
-    if isinstance(start_date, str) & isinstance(finish_date, str): 
-        start, finish = pd.to_datetime(start_date), pd.to_datetime(finish_date)
-        timeframe = (df.datetime >= start) & (df.datetime <= finish)
-        df = df.loc[timeframe, :].sort_values("datetime").reset_index(drop=True)
+    try:
+        start_date = cfg["experiment_timeline"]["start_date"]
+        finish_date = cfg["experiment_timeline"]["finish_date"]
+        if isinstance(start_date, str) & isinstance(finish_date, str): 
+            start, finish = pd.to_datetime(start_date), pd.to_datetime(finish_date)
+            timeframe = (df.datetime >= start) & (df.datetime <= finish)
+            df = df.loc[timeframe, :].sort_values("datetime").reset_index(drop=True)
+    except KeyError:
+        print("Start and end dates not provided. Extracting from data...")
+        auxfun._append_start_end_to_config(cfp, df)
     
     df = df.sort_values("datetime")
     

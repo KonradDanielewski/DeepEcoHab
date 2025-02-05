@@ -174,3 +174,19 @@ def _sanitize_animal_ids(cfp: str, df: pd.DataFrame, min_antenna_crossings: int 
         print("No ghost tags detected :)")
     
     return df
+
+def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
+    """Auxfun to append start and end datetimes of the experiment if not user provided.
+    """    
+    cfg = check_cfp_validity(cfp)
+    start_time = str(df.datetime.iloc[0])
+    end_time = str(df.datetime.iloc[-1])
+    
+    f = open(cfp,'w')
+    cfg["experiment_timeline"] = {"start_date": start_time}
+    cfg["experiment_timeline"] = {"finish_date": end_time}
+    
+    toml.dump(cfg, f)
+    f.close()
+    
+    print(f"Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True")
