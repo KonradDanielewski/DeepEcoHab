@@ -9,8 +9,8 @@ from deepecohab.utils import auxfun
 def create_ecohab_project(
     project_location: str | Path,
     data_path: str | Path,
-    start_datetime: str,
-    finish_datetime: str,
+    start_datetime: str | None = None,
+    finish_datetime: str | None = None,
     experiment_name: str = "ecohab_project",
     dark_phase_start: str = "12:00:00",
     light_phase_start: str = "23:59:59.999",

@@ -6,8 +6,8 @@ def generate_default_config(
     animal_ids: list,
     dark_phase_start: str,
     light_phase_start: str,
-    start_datetime: str,
-    finish_datetime: str,
+    start_datetime: str | None = None,
+    finish_datetime: str | None = None,
 ) -> dict:
     """Generates a default config template
 
@@ -57,6 +57,22 @@ def generate_default_config(
             "76" : "cage_4",
             "66" : "cage_4",
             "77" : "cage_4",
+            "82" : "cage_1", # Assumes that position is cage when only one antenna is skipped
+            "28" : "cage_1",
+            "17" : "cage_1",
+            "71" : "cage_1",
+            "24" : "cage_2",
+            "42" : "cage_2",
+            "31" : "cage_2",
+            "13" : "cage_2",
+            "46" : "cage_3",
+            "64" : "cage_3",
+            "35" : "cage_3",
+            "53" : "cage_3",
+            "57" : "cage_4",
+            "75" : "cage_4",
+            "68" : "cage_4",
+            "86" : "cage_4",
         },
         
         tunnels = dict(
@@ -91,9 +107,9 @@ def generate_custom_config(
     animal_ids: list,
     dark_phase_start: str,
     light_phase_start: str,
-    start_datetime: str,
-    finish_datetime: str,
     antenna_rename_scheme: dict[dict],
+    start_datetime: str | None = None,
+    finish_datetime: str | None = None,
 ) -> dict:
     """Generates a custm config template
 
@@ -146,6 +162,22 @@ def generate_custom_config(
             "76" : "cage_4",
             "66" : "cage_4",
             "77" : "cage_4",
+            "82" : "cage_1", # Assumes that position is cage when only one antenna is skipped
+            "28" : "cage_1",
+            "17" : "cage_1",
+            "71" : "cage_1",
+            "24" : "cage_2",
+            "42" : "cage_2",
+            "31" : "cage_2",
+            "13" : "cage_2",
+            "46" : "cage_3",
+            "64" : "cage_3",
+            "35" : "cage_3",
+            "53" : "cage_3",
+            "57" : "cage_4",
+            "75" : "cage_4",
+            "68" : "cage_4",
+            "86" : "cage_4",
         },
         
         tunnels = dict(
@@ -183,9 +215,9 @@ def generate_field_config(
     animal_ids: list,
     dark_phase_start: str,
     light_phase_start: str,
-    start_datetime: str,
-    finish_datetime: str,
     antenna_rename_scheme: dict[dict],
+    start_datetime: str | None = None,
+    finish_datetime: str | None = None,
 ) -> dict:
     """Generates a custm config template
 
