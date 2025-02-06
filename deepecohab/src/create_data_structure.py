@@ -6,7 +6,7 @@ import pandas as pd
 
 from deepecohab.utils import auxfun
 
-def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool) -> pd.DataFrame:
+def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, min_antenna_crossings: int = 100) -> pd.DataFrame:
     """Auxfum to load and combine text files into a pandas dataframe
     """    
     cfg = auxfun.check_cfp_validity(cfp)   
@@ -24,7 +24,7 @@ def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool) -
     df = pd.concat(dfs, ignore_index=True).drop(["ind", "time_under"], axis=1)
     
     if sanitize_animal_ids:
-        df = auxfun._sanitize_animal_ids(cfp, df)
+        df = auxfun._sanitize_animal_ids(cfp, df, min_antenna_crossings)
     
     if custom_layout:
         rename_dicts = cfg["antenna_rename_scheme"]
@@ -92,7 +92,7 @@ def map_antenna2position(antenna_column: pd.Series, positions: dict) -> pd.Serie
     arr1 = np.insert(antenna_column, 0, 0).astype(str)
     arr2 = np.insert(antenna_column, len(antenna_column), 0).astype(str)
 
-    antenna_pairs = (pd.Series(arr1) + pd.Series(arr2))[:-1]
+    antenna_pairs = (pd.Series(arr1) + "_" + pd.Series(arr2))[:-1]
     antenna_pairs.index = antenna_column.index
     
     location = antenna_pairs.map(positions)
@@ -146,9 +146,9 @@ def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list) -> pd.DataFra
 def get_ecohab_data_structure(
     cfp: str,
     sanitize_animal_ids: bool = True,
+    min_antenna_crossings: int = 100,
     custom_layout: bool = False,
     overwrite: bool = False,
-    retain_comport: bool = False,
 ) -> pd.DataFrame:
     """Prepares EcoHab data for further analysis
 
@@ -157,7 +157,6 @@ def get_ecohab_data_structure(
         sanitize_animal_ids: toggle whether to remove animals. Removes animals that had less than 10 antenna crossings during the whole experiment.
         custom_layout: if multiple boards where added/antennas are in non-default location set to True
         overwrite: toggles whether to overwrite existing data file
-        retain_comport: toggles whether to retain the column that contains the comport index
 
     Returns:
         EcoHab data structure as a pd.DataFrame
@@ -177,7 +176,11 @@ def get_ecohab_data_structure(
     df = load_data(
         cfp=cfp,
         custom_layout=custom_layout,
-        sanitize_animal_ids=sanitize_animal_ids)
+        sanitize_animal_ids=sanitize_animal_ids,
+        min_antenna_crossings=min_antenna_crossings,
+    )
+    
+    cfg = auxfun.read_config(cfp) # reload config potential animal_id changes due to sanitation
     df = _prepare_columns(cfg, df, positions)
 
     # Slice to start and end date
@@ -205,8 +208,7 @@ def get_ecohab_data_structure(
 
     df = df.sort_index(axis=1).reset_index(drop=True)
 
-    if not retain_comport:
-        df = df.drop("COM", axis=1)
+    df = df.drop("COM", axis=1)
     
     df.to_hdf(data_path, key=key, mode="a", format="table")
     
