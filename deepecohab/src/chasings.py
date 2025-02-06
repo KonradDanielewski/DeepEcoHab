@@ -1,5 +1,8 @@
 import pickle
-from itertools import combinations
+from itertools import (
+    combinations,
+    product,
+)
 from pathlib import Path
 
 import numpy as np
@@ -7,8 +10,7 @@ import pandas as pd
 
 from openskill.models import PlackettLuce
 
-from deepecohab.plots.plotting import _plot_chasings_matrix
-from deepecohab.utils.auxfun import read_config
+from deepecohab.utils import auxfun
 
 def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to get each chasing event as a match
@@ -37,7 +39,7 @@ def _rank_mice_openskill(
     matches: list[pd.DataFrame], 
     animal_ids: list[str], 
     ranking: dict | None = None,
-) -> tuple[dict, pd.DataFrame, pd.Series]:
+    ) -> tuple[dict, pd.DataFrame, pd.Series]:
     """Rank mice using PlackettLuce algorithm from openskill. More info: https://arxiv.org/pdf/2401.05451
 
     Args:
@@ -74,50 +76,56 @@ def _rank_mice_openskill(
     return ranking, ranking_in_time, datetimes
 
 def calculate_chasings(
-    cfp: str, 
-    df: pd.DataFrame, 
-    plot: bool = True, 
-    save_plot: bool = True,
-    show_plot: bool = True,
-    ranking: dict | None = None,
-) -> tuple[pd.DataFrame, dict, pd.Series, pd.DataFrame, pd.Series]:
-    """Calculates chasing events per pair of mice
+    cfp: str | Path | dict, 
+    overwrite: bool = False,
+    save_data: bool = True,
+    ) -> pd.DataFrame:
+    """Calculates chasing events per pair of mice for each phase
 
     Args:
-        cfp: path to project config file
-        df: EcoHab data structure
-        plot: toogle whether to plot results as a heatmap
-        save_plot: toggle whether to save the plot in the project
-        ranking: users can provide the inintal ranking - can be useful for instance if second recording of same animals is being done, 
-                 or animals from different cohorts have been mixed. NOTE: needs a function to combine rankings between recordings.
-
+        cfp: path to project config file.
+        save_data: toogles whether to save data.
+        overwrite: toggles whether to overwrite the data.
+    
     Returns:
-        Matrix of pairwise chasings as a pd.DataFrame and a DataFrame with a ranking calculated using TrueSkill with each chasing event being a separate match
+        MultiIndex DataFrame of chasings per phase every animal vs every animal. Column chases the row
     """
-    cfg = read_config(cfp)
-    project_location = Path(cfg["project_location"])
+    cfg = auxfun.check_cfp_validity(cfp)
+    data_path = Path(cfg["results_path"])
+    key="chasings"
+    
+    chasings = None if overwrite else auxfun.check_save_data(data_path, key)
+    
+    if isinstance(chasings, pd.DataFrame):
+        return chasings
+    
+    df = pd.read_hdf(data_path, key="main_df")
+    
     experiment_name = cfg["experiment_name"]
     positions = list(set(cfg["antenna_combinations"].values()))
     tunnel_combinations = [comb for comb in positions if "cage" not in comb]
     cage_combinations = [comb for comb in positions if "cage" in comb]
-
     data_path = Path(cfg["results_path"])
+    phases = list(cfg["phase"].keys())
+    phase_N = df.phase_count.unique()
+    animals = cfg["animal_ids"]
 
-    chasings = pd.DataFrame(np.nan, columns=df.animal_id.unique(), index=df.animal_id.unique())
+    idx = auxfun._create_phase_multiindex(cfg, animals=True)
 
-    animals = sorted(cfg["animal_ids"])
+    chasings = pd.DataFrame(columns=animals, index=idx, dtype=float).sort_index()
+
     mouse_pairs = list(combinations(animals, 2))
     matches = []
-
-    for mouse1, mouse2 in mouse_pairs:
+    
+    for phase, N, (mouse1, mouse2) in product(phases, phase_N, mouse_pairs):
         # Calculates time spent in the tube together
-        temp = df.query("(animal_id == @mouse1 or animal_id == @mouse2)").sort_values("datetime").reset_index(drop=True)
+        temp = df.query("phase == @phase and phase_count == @N and (animal_id == @mouse1 or animal_id == @mouse2)").sort_values("datetime").reset_index(drop=True)
 
         condition1 = np.sort(np.concatenate([temp.loc[temp.position_keys.diff() == 0].index, 
-                                             temp.loc[temp.position_keys.diff() == 0].index - 1]))
+                                            temp.loc[temp.position_keys.diff() == 0].index - 1]))
         temp2 = temp.loc[condition1]
         condition2 = np.sort(np.concatenate([temp2.loc[temp2.position.isin(tunnel_combinations)].index, 
-                                             temp2.loc[temp2.position.isin(tunnel_combinations)].index[::2] - 1]))  
+                                            temp2.loc[temp2.position.isin(tunnel_combinations)].index[::2] - 1]))  
         temp2 = temp.loc[condition2].reset_index(drop=True)
 
         chasing = temp2[::3].reset_index(drop=True)
@@ -140,12 +148,64 @@ def calculate_chasings(
 
         matches.append(_get_chasing_matches(chasing_mouse, chased_mouse))
 
-        chase_times1 = (chased_mouse.query("animal_id == @mouse1").datetime.reset_index(drop=True) - chasing_mouse.query("animal_id == @mouse2").datetime.reset_index(drop=True)).dt.total_seconds()
-        chase_times2 = (chased_mouse.query("animal_id == @mouse2").datetime.reset_index(drop=True) - chasing_mouse.query("animal_id == @mouse1").datetime.reset_index(drop=True)).dt.total_seconds()
+        chase_times1 = (
+            chased_mouse.query("animal_id == @mouse1").datetime.reset_index(drop=True) - 
+            chasing_mouse.query("animal_id == @mouse2").datetime.reset_index(drop=True)).dt.total_seconds()
+        chase_times2 = (
+            chased_mouse.query("animal_id == @mouse2").datetime.reset_index(drop=True) - 
+            chasing_mouse.query("animal_id == @mouse1").datetime.reset_index(drop=True)).dt.total_seconds()
         
-        chasings.loc[mouse1, mouse2] = len(chase_times1[(chase_times1 < 1) & (chase_times1 > 0.1)])
-        chasings.loc[mouse2, mouse1] = len(chase_times2[(chase_times2 < 1) & (chase_times2 > 0.1)])
+        chasings.loc[(phase, N, mouse1), mouse2] = len(chase_times1[(chase_times1 < 1) & (chase_times1 > 0.1)])
+        chasings.loc[(phase, N, mouse2), mouse1] = len(chase_times2[(chase_times2 < 1) & (chase_times2 > 0.1)])
+    
+    # reindex most chasing to least
+    new_index = chasings.sum(axis=0).sort_values(ascending=False).index
+    chasings = chasings.reindex(new_index, axis=1).reindex(new_index, level=2, axis=0)
+    
+    if save_data:
+        chasings.to_hdf(data_path, key="chasings", mode="a", format="table")
+        
+        ranking_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_ranking_data.pickle")
+        with open(str(ranking_data), "wb") as outfile: 
+            pickle.dump(matches, outfile)
 
+    return chasings
+
+def calculate_ranking(
+    cfp: str | Path | dict, 
+    overwrite: bool = False, 
+    save_data: bool = True,
+    ranking: dict | None = None,
+    ) -> pd.Series:
+    """Calculate ranking using Plackett Luce algortihm. Each chasing event is a match
+        TODO: handling of previous rankings
+    Args:
+        cfp: path to project config file.
+        save_data: toogles whether to save data.
+        overwrite: toggles whether to overwrite the data.
+        ranking: optionally, user can pass a dictionary from a different recording of same animals
+                 to start ranking from a certain point instead of 0
+
+    Returns:
+        Series with ordinal of the rank calculated for each animal
+    """    
+    cfg = auxfun.check_cfp_validity(cfp)
+    data_path = Path(cfg["results_path"])
+    key="ranking_ordinal"
+    
+    ranking_ordinal = None if overwrite else auxfun.check_save_data(data_path, key)
+    
+    if isinstance(ranking_ordinal, pd.DataFrame):
+        return ranking_ordinal
+    
+    experiment_name = cfg["experiment_name"]
+    animals = cfg["animal_ids"]
+    
+    ranking_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_ranking_data.pickle")
+    
+    with open(str(ranking_data), "rb") as input_file: 
+            matches = pickle.load(input_file)
+            
     # Get the ranking and calculate ranking ordinal
     ranking, ranking_in_time, datetimes = _rank_mice_openskill(matches, animals, ranking)
     ranking_ordinal = (
@@ -154,28 +214,13 @@ def calculate_chasings(
             .sort_values(ascending=False)
     )
     
-    animal_order = ranking_ordinal.index
-    # Reorder animals according to the ranking
-    chasings = chasings.reindex(animal_order).reindex(animal_order, axis=1)
+    if save_data:
+        pickle_file = {"ranking": ranking}
+        with open(str(ranking_data), "wb") as outfile: 
+            pickle.dump(pickle_file, outfile)
+            
+        ranking_ordinal.to_hdf(data_path, key="ranking_ordinal", mode="a", format="table")
+        ranking_in_time.to_hdf(data_path, key="ranking_in_time", mode="a", format="table")
+        datetimes.to_hdf(data_path, key="matches_datetimes", mode="a", format="table")
     
-    ranking_path = Path(cfg["project_location"]) / "results" / (experiment_name + "_chase_rank.pickle")
-    
-    pickle_file = {
-        "chasing_matrix": chasings,
-        "ranking_raw": ranking,
-        "ranking_ordinal": ranking_ordinal,
-        "ranking_in_time": ranking_in_time,
-        "datetimes": datetimes
-    }
-    
-    with open(str(ranking_path), "wb") as outfile: 
-        pickle.dump(pickle_file, outfile)
-
-    # Remove from here eventually - should be called separately - data available in the dataset file
-    if plot:
-        _plot_chasings_matrix(chasings, project_location, save_plot, show_plot)
-
-    chasings.to_hdf(data_path, key="chasings", mode="a", format="table")
-    ranking_ordinal.to_hdf(data_path, key="end_ranking", mode="a", format="table")
-
-    return chasings, ranking, ranking_ordinal, ranking_in_time, datetimes
+    return ranking_ordinal

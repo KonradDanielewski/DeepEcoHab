@@ -17,7 +17,7 @@ def social_dominance_evaluation(
     save_plot: bool = True,
     show_plot: bool = True,
     ) -> go.Figure:
-    """NOTE: Add the weighted ranking here?
+    """TODO: data should be read from file
 
     Args:
         cfp: path to project config file
@@ -73,7 +73,7 @@ def plot_ranking_in_time(
     save_plot: bool = True,
     show_plot: bool = True,
     ) -> go.Figure:
-    """_summary_
+    """TODO: Make it better, x axis showing time, add loading from file
 
     Args:
         cfp: path to project config file
