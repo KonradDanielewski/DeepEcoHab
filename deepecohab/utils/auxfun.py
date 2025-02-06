@@ -17,7 +17,7 @@ def get_data_paths(data_path: str) -> list:
         data_files = glob(os.path.join(data_path, "20*.txt"))
     return data_files
 
-def check_cfp_validity(cfp: str | Path | dict):
+def check_cfp_validity(cfp: str | Path | dict) -> dict:
     """Auxfun to check validity of the passed cfp variable (config path or dict)
     """    
     if isinstance(cfp, (str, Path)):
@@ -65,7 +65,7 @@ def read_config(cfp: str | Path) -> dict:
     
     return cfg
 
-def check_save_data(data_path: Path, key: str):
+def check_save_data(data_path: Path, key: str) -> pd.DataFrame | None:
     try:
         df = pd.read_hdf(data_path, key=key)
         # NOTE: should this be printed? Feels annoying
@@ -83,7 +83,7 @@ def get_animal_ids(data_path: str) -> list:
     animal_ids = pd.concat(dfs).animal_id.unique()
     return animal_ids
 
-def make_project_path(project_location: str, experiment_name: str):
+def make_project_path(project_location: str, experiment_name: str) -> str:
     """Auxfun to make a name of the project directory using its name and time of creation
     """    
     project_name = experiment_name + "_" + dt.datetime.today().strftime('%Y-%m-%d')
@@ -91,7 +91,7 @@ def make_project_path(project_location: str, experiment_name: str):
 
     return str(project_location)
 
-def make_results_path(project_location: str, experiment_name: str):
+def make_results_path(project_location: str, experiment_name: str) -> str:
     """Auxfun to make a name of the project directory using its name and time of creation
     """    
     experiment_name = experiment_name

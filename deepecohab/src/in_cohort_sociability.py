@@ -66,13 +66,19 @@ def _pairwise_time_together(
         
     return [overlaps, animal_1, animal_2, cage, phase, phase_count]
 
+def _process_df_format_incohort(time_together_df: pd.DataFrame) -> pd.DataFrame:
+    """Process format of the df to easily match time proportion calculation
+    """    
+    time_together_df = time_together_df.unstack(level=3).dropna(axis=1, how="all")
+    time_together_df.columns = ['_'.join(col).strip() for col in time_together_df.columns.values]
+    return time_together_df
+
 def calculate_time_together(
     cfp: str | Path | dict, 
     minimum_time: int | float | None = None, 
     n_workers: int | None = None, 
     save_data: bool = True, 
     overwrite: bool = False,
-    output_incohort: bool = False,
     ) -> pd.DataFrame:
     """Calculates time spent together by animals on a per phase and per cage basis. Slow due to the nature of datetime overlap calculation.
 
@@ -94,11 +100,7 @@ def calculate_time_together(
     
     time_together_df = None if overwrite else auxfun.check_save_data(data_path, key)
     
-    if isinstance(time_together_df, pd.DataFrame) and not output_incohort:
-        return time_together_df
-    elif isinstance(time_together_df, pd.DataFrame) and output_incohort:
-        time_together_df = time_together_df.unstack(level=3).dropna(axis=1, how="all")
-        time_together_df.columns = ['_'.join(col).strip() for col in time_together_df.columns.values]
+    if isinstance(time_together_df, pd.DataFrame):
         return time_together_df
     
     df = pd.read_hdf(data_path, key="main_df")
@@ -176,6 +178,7 @@ def calculate_in_cohort_sociability(
 
     # Get time spent together in cages
     time_together_df = calculate_time_together(cfg, minimum_time, n_workers, output_incohort=True)
+    time_together_df = _process_df_format_incohort(time_together_df)
 
     # Get time per position
     time_per_position = activity.calculate_time_spent_per_position(cfg, padded_df)
