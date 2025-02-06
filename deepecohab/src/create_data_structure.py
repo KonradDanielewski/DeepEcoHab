@@ -16,7 +16,7 @@ def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, m
 
     dfs = []
     for file in data_files:
-        df = pd.read_csv(file, delimiter="\t", names=["ind", "date", "time", "antenna", "time_under", "animal_id"])
+        df = pd.read_csv(file, sep="\t", names=["ind", "date", "time", "antenna", "time_under", "animal_id"])
         comport = os.path.basename(file).split("_")[0]
         df["COM"] = comport
         dfs.append(df)
@@ -30,6 +30,7 @@ def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, m
         rename_dicts = cfg["antenna_rename_scheme"]
         for com_name in rename_dicts.keys():
             df = _rename_antennas(df, com_name, rename_dicts)
+    
     return df
 
 def calculate_timedelta(df: pd.DataFrame) -> pd.DataFrame:
@@ -134,10 +135,10 @@ def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list) -> pd.DataFra
     df["position"] = pd.Series(dtype="category").cat.set_categories(positions)
     df["phase"] = pd.Series(dtype="category").cat.set_categories(cfg["phase"].keys())
 
-    df["antenna"] = df["antenna"]
     df["animal_id"] = df["animal_id"].astype("category").cat.set_categories(cfg["animal_ids"])
     df["datetime"] = df["date"] + " " + df["time"]
     df["datetime"] = pd.to_datetime(df["datetime"])
+    df["antenna"] = df.antenna.astype(int)
     df = df.drop(["date", "time"], axis=1)
     df = df.drop_duplicates(["datetime", "animal_id"])
     
@@ -195,7 +196,7 @@ def get_ecohab_data_structure(
         print("Start and end dates not provided. Extracting from data...")
         auxfun._append_start_end_to_config(cfp, df)
     
-    df = df.sort_values("datetime")
+    df = df.sort_values("datetime").reset_index(drop=True)
     
     df = calculate_timedelta(df)
     df = get_day(df)
