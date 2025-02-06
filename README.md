@@ -39,3 +39,13 @@ experiment_name_data.h5 contains all the data under different keys in a hierarch
 `in_cohort_sociability` MultiIndex DataFrame with in-cohort sociability measure. More info in the methods section: https://doi.org/10.7554/eLife.19532
 
 `phase_durations` MultiIndex Series per phase with estimated duration of each phase. Measured in seconds and rounded to the closest full hour. Used as total time for division in in-cohort sociability.
+
+`ranking_ordinal` Series, ordinal of the ranking calculated with the Plackett Luce algorithm. Higher value == more dominant animal, based on chasing data
+
+`ranking_in_time` DataFrame, per row update of the ordinal ranking happening at each match, columns are animals
+
+`matches_datetimes` Series containig datetimes of each chasing event for all animals. Can be matched to animals based on ranking in time (or used a index for it)
+
+
+
+`_ranking_data` pickle file contains a dictionary with the raw ranking containing mu and sigma values. Can be used between projects when the same mice are used. Allows to start ranking from the last state instead of zero-state
