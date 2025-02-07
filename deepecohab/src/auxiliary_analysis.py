@@ -46,12 +46,10 @@ def calculate_approach_to_social_odor(
     
     stim_start = pd.to_datetime(stim_start)
     stim_end = pd.to_datetime(stim_end)
-    
-    binary_df = auxfun.load_ecohab_data(cfg, key="binary_df")
-    
     normalization_start = stim_start - pd.Timedelta(1, "d")
-    
     bin_len = (stim_end - stim_start) / time_bins
+    
+    binary_df = auxfun.load_ecohab_data(cfg, key="binary_df").loc[normalization_start:stim_end]
     
     idx = pd.MultiIndex.from_product([range(1, time_bins+1), animals])
     cols = ["stim_cage", "stim_cage_prev_day", "control_cage", "control_cage_prev_day"]
@@ -83,7 +81,7 @@ def calculate_approach_to_social_odor(
         bin_social_odor = pd.concat([pref_stim, prev_pref_stim, pref_control, prev_pref_control], axis=1)
         social_odor.loc[(i+1, animals), :] = bin_social_odor.values
     
-    if len((social_odor.index.levels[0])):
+    if len((social_odor.index.levels[0])) == 1:
         social_odor = social_odor.droplevel(0, axis=0)
             
     if save_data:
