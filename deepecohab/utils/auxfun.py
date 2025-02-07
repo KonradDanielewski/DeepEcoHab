@@ -42,18 +42,15 @@ def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
         Desired data structure loaded from the file.
     """
     cfg = check_cfp_validity(cfp)
-    project_location = Path(cfg["project_location"])
-    experiment_name = cfg["experiment_name"]
     
-    data_path = Path(make_results_path(project_location, experiment_name))
+    data_path = Path(cfg["results_path"])
     
     if data_path.is_file():
         try:
             df = pd.read_hdf(data_path, key=key)
+            return df
         except KeyError:
             print(f"{key} not found in the specified location: {data_path}. Perhaps not analyzed yet!")
-    
-    return df
 
 def read_config(cfp: str | Path) -> dict:
     """Auxfun reads the config and returns it as a dictionary
@@ -102,9 +99,7 @@ def make_results_path(project_location: str, experiment_name: str) -> str:
 def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = False, animals: bool = False) -> pd.MultiIndex:
     """Auxfun to create multindices for various DataFrames
     """
-    data_path = Path(cfg["results_path"])
-    
-    df = pd.read_hdf(data_path, key="main_df")
+    df = load_ecohab_data(cfg, key="main_df")
     
     animal_ids = list(cfg["animal_ids"])
     positions = list(set(cfg["antenna_combinations"].values()))

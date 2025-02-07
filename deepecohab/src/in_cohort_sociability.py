@@ -102,7 +102,7 @@ def calculate_time_together(
     if isinstance(time_together_df, pd.DataFrame):
         return time_together_df
     
-    df = pd.read_hdf(data_path, key="main_df")
+    df = auxfun.load_ecohab_data(cfg, key="main_df")
     padded_df = activity.create_padded_df(cfg, df)
     animals = cfg["animal_ids"]
     
@@ -166,7 +166,7 @@ def calculate_in_cohort_sociability(
     if isinstance(in_cohort_sociability, pd.DataFrame):
         return in_cohort_sociability
     
-    df = pd.read_hdf(data_path, key="main_df")
+    df = auxfun.load_ecohab_data(cfg, key="main_df")
     padded_df = activity.create_padded_df(cfg, df)
 
     animals = cfg["animal_ids"]

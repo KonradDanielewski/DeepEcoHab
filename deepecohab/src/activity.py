@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
+from tqdm import tqdm
 
 from deepecohab.utils import auxfun
 from deepecohab.src import create_data_structure
@@ -218,3 +220,58 @@ def calculate_visits_per_position(
         visits_per_position.to_hdf(data_path, key=key, mode="a", format="table")
     
     return visits_per_position
+
+def create_binary_df(
+    cfp: str | Path | dict, 
+    save_data: bool = True, 
+    overwrite: bool = False,
+    precision: int = 10,
+    ) -> pd.DataFrame:
+    """Creates a binary DataFrame of the position of the animals. Multiindexed on the columns, for each position, each animal. 
+       Indexed with datetime for easy time-based slicing.
+
+    Args:
+        cfp: path to project config file.
+        save_data: toogles whether to save data.
+        overwrite: toggles whether to overwrite the data.
+        precision: Multiplier of the time. Time is in seconds, multiplied by 10 gives index per 100ms, 5 per 200 ms etc. 
+
+    Returns:
+        _description_
+    """
+    cfg = auxfun.check_cfp_validity(cfp)
+    data_path = Path(cfg["results_path"])
+    key="binary_df"
+    
+    time_together_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    
+    if isinstance(time_together_df, pd.DataFrame):
+        return time_together_df
+    
+    if precision > 20:
+        print("Warning! High precision may result in a very large DataFrame and potential python kernel crash!")
+    
+    df = auxfun.load_ecohab_data(cfg, key="main_df")
+    animals = cfg["animal_ids"]
+    positions = list(set(cfg["antenna_combinations"].values()))
+
+    # Prepare empty DF
+    index_len = np.ceil((df.datetime.iloc[-1] - df.datetime.iloc[0]).total_seconds()*10).astype(int)
+    cols = pd.MultiIndex.from_product([positions, animals])
+    idx = pd.date_range(df.datetime.iloc[0], df.datetime.iloc[-1], index_len).round("ms")
+
+    bin_df = pd.DataFrame(False, index=idx, columns=cols, dtype=bool)
+
+    print("Filling the DataFrame for each animal...")
+    for animal in tqdm(animals):
+        starts = df.query("animal_id == @animal").datetime.iloc[:-1]
+        stops = df.query("animal_id == @animal").datetime.iloc[1:]
+        ending_pos = df.query("animal_id == @animal").position.iloc[1:]
+        
+        for i in range(len(starts)):
+            bin_df.loc[starts.iloc[i]:stops.iloc[i], (ending_pos.iloc[i], animal)] = True
+
+    if save_data:
+        bin_df.to_hdf(cfg["results_path"], key=key, format="table")
+    
+    return bin_df

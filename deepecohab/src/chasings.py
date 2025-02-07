@@ -99,7 +99,7 @@ def calculate_chasings(
     if isinstance(chasings, pd.DataFrame):
         return chasings
     
-    df = pd.read_hdf(data_path, key="main_df")
+    df = auxfun.load_ecohab_data(cfg, key="main_df")
     
     experiment_name = cfg["experiment_name"]
     positions = list(set(cfg["antenna_combinations"].values()))
