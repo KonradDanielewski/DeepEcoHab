@@ -125,7 +125,9 @@ def calculate_chasings(
                                             temp.loc[temp.position_keys.diff() == 0].index - 1]))
         temp2 = temp.loc[condition1]
         condition2 = np.sort(np.concatenate([temp2.loc[temp2.position.isin(tunnel_combinations)].index, 
-                                            temp2.loc[temp2.position.isin(tunnel_combinations)].index[::2] - 1]))  
+                                            temp2.loc[temp2.position.isin(tunnel_combinations)].index[::2] - 1]))
+        # Ensure no negative indices
+        condition2 = condition2[condition2 >= 0]  
         temp2 = temp.loc[condition2].reset_index(drop=True)
 
         chasing = temp2[::3].reset_index(drop=True)

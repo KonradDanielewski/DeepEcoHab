@@ -118,7 +118,7 @@ def create_padded_df(
 def calculate_time_spent_per_position(
     cfp: str | Path | dict, 
     save_data: bool = True, 
-    overwrite: bool = False
+    overwrite: bool = False,
     ) -> pd.DataFrame:
     """Calculates time spent in each possible position per phase for every mouse.
 

@@ -176,7 +176,7 @@ def calculate_in_cohort_sociability(
     phase_durations = auxfun.get_phase_durations(cfg, padded_df)
 
     # Get time spent together in cages
-    time_together_df = calculate_time_together(cfg, minimum_time, n_workers, output_incohort=True)
+    time_together_df = calculate_time_together(cfg, minimum_time, n_workers)
     time_together_df = _process_df_format_incohort(time_together_df)
 
     # Get time per position
