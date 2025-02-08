@@ -13,7 +13,7 @@ from joblib import (
 
 from deepecohab.utils import auxfun
 
-from deepecohab.src import activity
+from deepecohab.antenna_analysis import activity
 
 def generate_sociability_combinations(cfg: dict, df: pd.DataFrame) -> list:
     """Auxfun to generate a product of phases, phase_count, cages and mouse pairs for in-cohort sociability calculation.
