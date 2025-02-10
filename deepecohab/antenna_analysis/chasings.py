@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 from openskill.models import PlackettLuce
+from tqdm import tqdm
 
 from deepecohab.utils import auxfun
 
@@ -116,8 +116,9 @@ def calculate_chasings(
 
     mouse_pairs = list(combinations(animals, 2))
     matches = []
+    iterator = list(product(phases, phase_N, mouse_pairs))
     
-    for phase, N, (mouse1, mouse2) in product(phases, phase_N, mouse_pairs):
+    for phase, N, (mouse1, mouse2) in tqdm(iterator): # TODO: Think about parallelization - output a df then concat a list of dfs
         # Calculates time spent in the tube together
         temp = df.query("phase == @phase and phase_count == @N and (animal_id == @mouse1 or animal_id == @mouse2)").sort_values("datetime").reset_index(drop=True)
 
