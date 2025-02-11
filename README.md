@@ -46,6 +46,9 @@ experiment_name_data.h5 contains all the data under different keys in a hierarch
 
 `matches_datetimes` Series containig datetimes of each chasing event for all animals. Can be matched to animals based on ranking in time (or used a index for it)
 
+`binary_df` dataframe of position of each animal in a binary format, by default per every 100ms.
+
+`social_odor` optional analysis, DataFrame contains proportion of time spent in compartments with and without a social stimulus on the day of the experiment and same day before
 
 
 `_ranking_data` pickle file contains a dictionary with the raw ranking containing mu and sigma values. Can be used between projects when the same mice are used. Allows to start ranking from the last state instead of zero-state
