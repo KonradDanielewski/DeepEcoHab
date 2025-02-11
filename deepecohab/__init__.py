@@ -14,8 +14,8 @@ from deepecohab.antenna_analysis.chasings import (
     calculate_ranking,
 )
 from deepecohab.antenna_analysis import auxiliary_analysis
-from deepecohab.antenna_analysis.create_project import create_ecohab_project
-from deepecohab.antenna_analysis.create_data_structure import get_ecohab_data_structure
+from deepecohab.core.create_project import create_ecohab_project
+from deepecohab.core.create_data_structure import get_ecohab_data_structure
 from deepecohab.plots.plotting import (
     plot_network_graph,
     plot_ranking_in_time,

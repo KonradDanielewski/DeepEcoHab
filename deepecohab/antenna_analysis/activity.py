@@ -5,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 
 from deepecohab.utils import auxfun
-from deepecohab.antenna_analysis import create_data_structure
+from deepecohab.core import create_data_structure
 
 def split_datetime(phase_start: str) -> tuple[str, ...]:
     """Auxfun to split datetime string.

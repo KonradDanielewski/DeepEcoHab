@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import toml
+from datetime import datetime
 
 from deepecohab.utils import config_templates
 from deepecohab.utils import auxfun
@@ -51,6 +52,12 @@ def create_ecohab_project(
     if len(os.listdir(data_path)) == 0:
         print(f"{data_path} is empty, please check if you provided the correct directory")
         return
+    dt_format = "%Y-%m-%d %H:%M:%S"
+    check_date = (datetime.strptime(finish_datetime, dt_format) - 
+                  datetime.strptime(start_datetime, dt_format)).days < 0
+    
+    if check_date:
+        raise ValueError("Finish date before start date! Please check provided dates.")
     
     if not isinstance(project_location, str): # Has to be a string for config purposes
         data_path = str(data_path)
