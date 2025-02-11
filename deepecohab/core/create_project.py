@@ -71,7 +71,7 @@ def create_ecohab_project(
         animal_ids = sorted(animal_ids)
 
     if field_ecohab and isinstance(antenna_rename_scheme, dict):
-        config = config_templates.generate_field_config(
+        config = config_templates.FieldConfig(
             project_location=project_location,
             experiment_name=experiment_name,
             results_path=results_path,
@@ -82,10 +82,10 @@ def create_ecohab_project(
             start_datetime=start_datetime,
             finish_datetime=finish_datetime,
             antenna_rename_scheme=antenna_rename_scheme,
-            )
+            ).to_dict()
 
     elif custom_layout and isinstance(antenna_rename_scheme, dict):
-        config = config_templates.generate_custom_config(
+        config = config_templates.CustomConfig(
             project_location=project_location,
             experiment_name=experiment_name,
             results_path=results_path,
@@ -96,13 +96,13 @@ def create_ecohab_project(
             start_datetime=start_datetime,
             finish_datetime=finish_datetime,
             antenna_rename_scheme=antenna_rename_scheme,
-            )
+            ).to_dict()
     
     elif custom_layout or field_ecohab and not isinstance(antenna_rename_scheme, dict):
         raise TypeError("Chosen custom layout/field layout but antenna renaming graph not provided!")
     
     else:
-        config = config_templates.generate_default_config(
+        config = config_templates.DefaultConfig(
             project_location=project_location,
             experiment_name=experiment_name,
             results_path=results_path,
@@ -112,7 +112,7 @@ def create_ecohab_project(
             dark_phase_start=dark_phase_start,
             start_datetime=start_datetime,
             finish_datetime=finish_datetime,
-            )
+            ).to_dict()
     
     # Remake into Path here for safety
     project_location = Path(project_location) 
