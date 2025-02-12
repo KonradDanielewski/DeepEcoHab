@@ -137,36 +137,39 @@ def plot_network_graph(
 
     # Create graph and layout
     data = auxfun_plots.prep_network_df(chasing_data)
-    G = nx.from_pandas_edgelist(data, create_using=nx.DiGraph, edge_attr="weight")
-    pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
+    phases = data["phase_count"].unique()
+    for phase in phases:
+        data_phase = data[data["phase_count"] == phase]
+        G = nx.from_pandas_edgelist(data_phase, create_using=nx.DiGraph, edge_attr="weight")
+        pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
 
-    # Create edge traces
-    edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier)
+        # Create edge traces
+        edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier)
 
-    # Create node traces
-    node_trace = auxfun_plots.create_node_trace(G, pos, cmap, ranking_ordinal, node_size_multiplier)
+        # Create node traces
+        node_trace = auxfun_plots.create_node_trace(G, pos, cmap, ranking_ordinal, node_size_multiplier)
 
-    # Create figure
-    fig = go.Figure(
-        data=edge_trace + [node_trace],
-        layout=go.Layout(
-            title=title,
-            showlegend=False,
-            hovermode='closest',
-            margin=dict(b=0, l=0, r=0, t=40),
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            width=800,
-            height=600,
-            plot_bgcolor='white',
+        # Create figure
+        fig = go.Figure(
+            data=edge_trace + [node_trace],
+            layout=go.Layout(
+                title=f"{title}_phase_{phase}",
+                showlegend=False,
+                hovermode='closest',
+                margin=dict(b=0, l=0, r=0, t=40),
+                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                width=800,
+                height=600,
+                plot_bgcolor='white',
+            )
         )
-    )
 
-    # Save plot if required
-    if save_plot:
-        fig.write_html(project_location / "plots" / "network_graph.html")
+        # Save plot if required
+        if save_plot:
+            fig.write_html(project_location / "plots" / f"network_graph_phase_{phase}.html")
 
-    # Show plot
-    fig.show()
+        # Show plot
+        fig.show()
 
     return G

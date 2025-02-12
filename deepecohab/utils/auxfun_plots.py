@@ -33,7 +33,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
         length = (dx**2 + dy**2)**0.5
         
         # Calculate the offset to shorten the line (e.g., by 10% of the node size)
-        offset = 0.08 * node_size_multiplier  
+        offset = 0.02 * node_size_multiplier  
         
         # Calculate new end point (x1_new, y1_new) by moving back along the line
         if length > 0:  # Avoid division by zero
