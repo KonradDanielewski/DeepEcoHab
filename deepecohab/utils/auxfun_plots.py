@@ -2,6 +2,7 @@ import pandas as pd
 import networkx as nx
 import plotly.graph_objects as go
 import plotly.express as px
+import numpy as np
 
 
 def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int) -> list:
@@ -107,9 +108,11 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     """
     graph_data = (
         chasing_data
+        .droplevel([0,1])
         .reset_index()
-        .melt(id_vars="index", value_name="weight")
+        .melt(id_vars="animal_ids", value_name="weight")
+        .replace(0,np.nan)
         .dropna()
-        .rename(columns={"index": "target", "variable": "source"})
+        .rename(columns={"animal_ids": "target", "variable": "source"})
     )
     return graph_data
