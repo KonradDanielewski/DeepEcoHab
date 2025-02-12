@@ -1,4 +1,6 @@
-## List of available data keys:
+# List of available data keys:
+
+## Antenna data keys:
 
 `main_df` is the ecohab data structure - each antenna read assigned to an animal, position of the animal, time spent in it etc.
 
