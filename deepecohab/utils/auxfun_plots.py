@@ -107,12 +107,10 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare network data for plotting
     """
     graph_data = (
-        chasing_data
-        .droplevel([0,1])
-        .reset_index()
-        .melt(id_vars="animal_ids", value_name="weight")
-        .replace(0,np.nan)
-        .dropna()
+        chasing_data.reset_index()\
+        .melt(id_vars=["animal_ids", "phase_count", "phase"], value_name="weight")\
+        .replace(0,np.nan)\
+        .dropna()\
         .rename(columns={"animal_ids": "target", "variable": "source"})
-    )
+        )[["target", "source", "weight", "phase_count", "phase"]]
     return graph_data
