@@ -58,6 +58,8 @@ time_together = deepecohab.calculate_time_together(config_path, minimum_time=2)
 in_cohort_sociability = deepecohab.calculate_in_cohort_sociability(config_path)
 ```
 
+In calculating time together a user can also specify minimum time of the interaction. Interactions shorter than that will be discarded.
+
 ## Additional analysis
 
 Not part of the main analysis pipeline additional analysis are provided for experiments commonly conducted within the EcoHab system, e.g. approach to social odor:
@@ -70,7 +72,7 @@ deepecohab.auxiliary_analysis.calculate_approach_to_social_odor(
   stimulation_start = "2023-05-24 12:00:00", #datetime str of YYYY-MM-DD HH:MM:SS format
   stimulation_end = "2023-05-24 14:00:00",
   stimulation_cage = "cage_1",
-  control_cage = "cage_3,
+  control_cage = "cage_3",
   N_time_bins = 10, # Number of time bins into which the data should be divided
 )
 ```
