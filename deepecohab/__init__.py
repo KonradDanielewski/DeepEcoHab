@@ -20,4 +20,5 @@ from deepecohab.plots.plotting import (
     plot_network_graph,
     plot_ranking_in_time,
     social_dominance_evaluation,
+    plot_cage_position_time
 )

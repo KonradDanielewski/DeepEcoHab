@@ -108,9 +108,26 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     """
     graph_data = (
         chasing_data.reset_index()\
-        .melt(id_vars=["animal_ids", "phase_count", "phase"], value_name="weight")\
+        .melt(
+            id_vars=["animal_ids", "phase_count", "phase"],
+            value_name="weight"
+            )\
         .replace(0,np.nan)\
         .dropna()\
         .rename(columns={"animal_ids": "target", "variable": "source"})
         )[["target", "source", "weight", "phase_count", "phase"]]
     return graph_data
+
+def prep_time_per_position_df(time_per_position: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to prepare time_per_positiondata for plotting
+    """
+    time_per_position_df = (
+        time_per_position.reset_index()\
+        .melt(
+            id_vars=["phase", "phase_count", "position"],
+            value_name="time"
+            )
+        )[["animal_id","phase_count", "phase", "position", "time"]]
+    time_per_position_df = time_per_position_df[time_per_position_df['phase'] == 'dark_phase']
+    time_per_position_df = time_per_position_df[time_per_position_df['position'].isin(['cage_1', 'cage_2', 'cage_3', 'cage_4'])]
+    return time_per_position_df
