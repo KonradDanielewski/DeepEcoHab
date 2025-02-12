@@ -22,7 +22,7 @@ config_path = deepecohab.create_ecohab_project(
     )
 ```
 
-Datetime for both start and finish should be provided in a format: YYYY-MM-DD HH:MM:SS
+Datetime for both start and finish should be provided in a format: `YYYY-MM-DD HH:MM:SS`
 
 If not provided those will be set to the datetimes of first and last antenna reads respectively.
 
