@@ -11,6 +11,19 @@ The package provides three main modules:
 
 Analyze your data in steps, curating the analysis for your goals or take advantage of our 'one-step-approach' and just analyze all your data seamlessly with a click of button!
 
+## Installation
+
+DeepEcoHab supplies users with a conda environment file. To install it with conda follow the steps below:
+
+```
+cd location_to_clone_to
+git clone https://github.com/KonradDanielewski/DeepEcoHab.git
+cd DeepEcoHab
+conda env create -f conda_env/env.yaml
+conda activate deepecohab
+pip install .
+```
+
 ## Data structure of DeepEcoHab
 
 By defualt all the results of your analysis are stored in a Hierarchical Data Format in the form of MultiIndexed Pandas DataFrames. The goal here was simplicity - the multiple tables are similarily indexed allowing easy slicing and quick access to the parts of data that interest you! Results are always stored within your project directory under `results` in an `.h5` file.
