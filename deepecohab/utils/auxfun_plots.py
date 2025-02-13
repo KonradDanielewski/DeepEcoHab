@@ -131,3 +131,17 @@ def prep_time_per_position_df(time_per_position: pd.DataFrame) -> pd.DataFrame:
     time_per_position_df = time_per_position_df[time_per_position_df['phase'] == 'dark_phase']
     time_per_position_df = time_per_position_df[time_per_position_df['position'].isin(['cage_1', 'cage_2', 'cage_3', 'cage_4'])]
     return time_per_position_df
+
+def prep_visits_per_position_df(visits_per_position: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to prepare visits_per_positiondata for plotting
+    """
+    visits_per_position_df = (
+        visits_per_position.reset_index()\
+        .melt(
+            id_vars=["phase", "phase_count", "position"],
+            value_name="visits"
+            )
+        )[["animal_id","phase_count", "phase", "position", "visits"]]
+    visits_per_position_df = visits_per_position_df[visits_per_position_df['phase'] == 'dark_phase']
+    visits_per_position_df = visits_per_position_df[visits_per_position_df['position'].isin(['cage_1', 'cage_2', 'cage_3', 'cage_4'])]
+    return visits_per_position_df
