@@ -145,3 +145,19 @@ def prep_visits_per_position_df(visits_per_position: pd.DataFrame) -> pd.DataFra
     visits_per_position_df = visits_per_position_df[visits_per_position_df['phase'] == 'dark_phase']
     visits_per_position_df = visits_per_position_df[visits_per_position_df['position'].isin(['cage_1', 'cage_2', 'cage_3', 'cage_4'])]
     return visits_per_position_df
+
+def prep_time_together_df(time_together: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to prepare time_together data for plotting
+    """
+    time_together_df = (
+        time_together.reset_index()\
+        .melt(
+            id_vars=["phase", "phase_count", "cages", "animal_ids"],
+            value_name="time_together",
+            var_name='animal_2_ids'
+        )\
+        .replace(np.nan, 0)
+        )[["animal_ids", "animal_2_ids", "phase", "phase_count", "cages", "time_together"]]
+    time_together_df = time_together_df[time_together_df['phase'] == 'dark_phase']
+    time_together_df = time_together_df.groupby(["animal_ids", "animal_2_ids", "phase_count"]).sum().reset_index().drop("cages", axis=1)
+    return time_together_df
