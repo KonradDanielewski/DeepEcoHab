@@ -22,5 +22,6 @@ from deepecohab.plots.plotting import (
     social_dominance_evaluation,
     plot_cage_position_time,
     plot_cage_position_visits,
-    plot_time_together
+    plot_time_together,
+    plot_incohort_soc
 )
