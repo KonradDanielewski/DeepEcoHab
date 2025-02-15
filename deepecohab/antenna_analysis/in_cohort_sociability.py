@@ -1,3 +1,4 @@
+import pickle
 import os
 from pathlib import Path
 from itertools import (
@@ -52,18 +53,22 @@ def _pairwise_time_together(
     animal1_visit_end = animal1.datetime
     animal2_visit_end = animal2.datetime
 
-    overlaps = []
+    time_encounters = []
+    n_encounters = []
 
     for visit_start, visit_end in zip(animal2_visit_start, animal2_visit_end):
         res = animal1.loc[(visit_start <= animal1_visit_end) & (visit_end >= animal1_visit_start)]
         if len(res) > 0:
+            counter = 0
             for i in res.index:
                 time = (min(visit_end, animal1_visit_end.loc[i]) - max(visit_start, animal1_visit_start.loc[i])).total_seconds()
                 if isinstance(minimum_time, (int, float)) and time <= minimum_time:
                     continue
-                overlaps.append(time)
+                time_encounters.append(time)
+                counter += 1
+            n_encounters.append(counter)
         
-    return [overlaps, animal_1, animal_2, cage, phase, phase_count]
+    return [n_encounters, time_encounters, animal_1, animal_2, cage, phase, phase_count]
 
 def _process_df_format_incohort(time_together_df: pd.DataFrame) -> pd.DataFrame:
     """Process format of the df to easily match time proportion calculation
@@ -88,8 +93,7 @@ def calculate_time_together(
         n_workers: number of CPU threads used to paralelize the calculation, by defualt half of the threads are allocated.
         save_data: toogles whether to save data.
         overwrite: toggles whether to overwrite the data.
-        **kwargs: internal use only
-
+        
     Returns:
         Multiindex DataFrame of time spent together per phase, per cage.
     """    
@@ -117,26 +121,81 @@ def calculate_time_together(
         delayed(_pairwise_time_together)(padded_df=padded_df, animal_1=animal_1, animal_2=animal_2, cage=cage, phase_count=phase_N, phase=phase, minimum_time=minimum_time) 
         for animal_1, animal_2, cage, phase_N, phase in sociability_combinations
     )
+    pickle_path = data_path.parent / "time_together.pickle"
+    with open(pickle_path, "wb") as output_file:
+        pickle.dump(results, output_file)
     
     # Prep df
     idx = auxfun._create_phase_multiindex(cfg, cages=True, animals=True)
     time_together_df = pd.DataFrame(columns=animals, index=idx).sort_index()
 
-    # fill df with data
-    for time, animal_1, animal_2, cage, phase, n in results:
-        time_together_df.loc[(phase, n, cage, animal_2), animal_1] = sum(time)
+    # fill df with data / n_encounters not used here. Ugly but avoids recalculation
+    for n_encounters, time_encounters, animal_1, animal_2, cage, phase, n in results:
+        time_together_df.loc[(phase, n, cage, animal_2), animal_1] = sum(time_encounters)
         
     time_together_df = (time_together_df
                         .dropna(axis=1, how="all")
                         .astype(float)
                         .round(3)
-                        )
+                       )
     
     time_together_df = time_together_df[(time_together_df != 0).any(axis=1)]
     if save_data:
         time_together_df.to_hdf(data_path, key=key, mode="a", format="table")
     
     return time_together_df
+
+def calculate_pairwise_encounters(
+    cfp: str | Path | dict, 
+    save_data: bool = True, 
+    overwrite: bool = False,
+    ) -> pd.DataFrame:
+    """Calculates number of encounters pairwise by animals on a per phase and per cage basis. 
+       Slow due to the nature of datetime overlap calculation. Same minimum time is applied as for time
+       spent together.
+
+    Args:
+        cfg: dictionary with the project config.
+        save_data: toogles whether to save data.
+        overwrite: toggles whether to overwrite the data.
+
+    Returns:
+        Multiindex DataFrame of time spent together per phase, per cage.
+    """   
+    cfg = auxfun.check_cfp_validity(cfp)
+    data_path = Path(cfg["results_path"])
+    key="pairwise_encounters"
+    
+    pairwise_encounters_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    
+    if isinstance(pairwise_encounters_df, pd.DataFrame):
+        return pairwise_encounters_df
+    
+    animals = cfg["animal_ids"]
+    
+    pickle_path = data_path.parent / "time_together.pickle"
+    with open(pickle_path, "rb") as input_file:
+        results = pickle.load(input_file)
+        
+    # Prep df
+    idx = auxfun._create_phase_multiindex(cfg, cages=True, animals=True)
+    pairwise_encounters_df = pd.DataFrame(columns=animals, index=idx).sort_index()
+
+    # fill df with data / time_encounters not used here
+    for n_encounters, time_encounters, animal_1, animal_2, cage, phase, n in results:
+        pairwise_encounters_df.loc[(phase, n, cage, animal_2), animal_1] = sum(n_encounters)
+        
+    pairwise_encounters_df = (pairwise_encounters_df
+                              .dropna(axis=1, how="all")
+                              .astype(float)
+                              .round(3)
+                             )
+    
+    pairwise_encounters_df = pairwise_encounters_df[(pairwise_encounters_df != 0).any(axis=1)]
+    if save_data:
+        pairwise_encounters_df.to_hdf(data_path, key=key, mode="a", format="table")
+    
+    return pairwise_encounters_df
 
 def calculate_in_cohort_sociability(
     cfp: dict, 
