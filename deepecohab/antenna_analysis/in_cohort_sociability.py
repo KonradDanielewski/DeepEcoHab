@@ -163,7 +163,7 @@ def calculate_pairwise_encounters(
     Returns:
         Multiindex DataFrame of time spent together per phase, per cage.
     """   
-    cfg = auxfun.read_config(cfp)
+    cfg = auxfun.check_cfp_validity(cfp)
     data_path = Path(cfg["results_path"])
     key="pairwise_encounters"
     
