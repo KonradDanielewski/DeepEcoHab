@@ -72,8 +72,9 @@ def _rank_mice_openskill(
 
     ranking_in_time = pd.concat([pd.Series(match) for match in ranking_update], axis=1)
     ranking_in_time = ranking_in_time.T
+    ranking_in_time.index = datetimes
 
-    return ranking, ranking_in_time, datetimes
+    return ranking, ranking_in_time
 
 def calculate_chasings(
     cfp: str | Path | dict, 
@@ -168,7 +169,7 @@ def calculate_chasings(
     if save_data:
         chasings.to_hdf(data_path, key="chasings", mode="a", format="table")
         
-        ranking_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_ranking_data.pickle")
+        ranking_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_match_data.pickle")
         with open(str(ranking_data), "wb") as outfile: 
             pickle.dump(matches, outfile)
 
@@ -203,27 +204,41 @@ def calculate_ranking(
     
     experiment_name = cfg["experiment_name"]
     animals = cfg["animal_ids"]
+    df = auxfun.load_ecohab_data(cfp, "main_df")
+    phases = cfg["phase"].keys()
+    phase_count = df.phase_count.unique()
     
-    ranking_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_ranking_data.pickle")
-    
-    with open(str(ranking_data), "rb") as input_file: 
-            matches = pickle.load(input_file)
+    match_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_match_data.pickle")
+    matches = pd.read_pickle(match_data)
             
     # Get the ranking and calculate ranking ordinal
-    ranking, ranking_in_time, datetimes = _rank_mice_openskill(matches, animals, ranking)
-    ranking_ordinal = (
-        pd.Series(
-            {animal: ranking[animal].ordinal() for animal in ranking.keys()}, name="ordinal")
-            .sort_values(ascending=False)
-    )
+    ranking, ranking_in_time = _rank_mice_openskill(matches, animals, ranking)
+    
+    # Calculate ranking at the end of each phase
+    phase_end_marks = df[df.datetime.isin(ranking_in_time.index)].sort_values("datetime")
+    phase_end_marks = (
+        phase_end_marks
+        .loc[:, ["datetime", "phase", "phase_count"]]
+        .groupby(["phase", "phase_count"], observed=False)
+        .max()
+    ).dropna()
+
+    ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns)
+
+    for phase, count in product(phases, phase_count):
+        try:
+            datetime = phase_end_marks.loc[(phase,  count)].iloc[0]
+            ranking_ordinal.loc[(phase, count), :] = ranking_in_time.loc[datetime, :]
+        except KeyError: # Account for one phase happening less times
+            pass
     
     if save_data:
+        ranking_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_ranking_data.pickle")
         pickle_file = {"ranking": ranking}
         with open(str(ranking_data), "wb") as outfile: 
             pickle.dump(pickle_file, outfile)
             
         ranking_ordinal.to_hdf(data_path, key="ranking_ordinal", mode="a", format="table")
         ranking_in_time.to_hdf(data_path, key="ranking_in_time", mode="a", format="table")
-        datetimes.to_hdf(data_path, key="matches_datetimes", mode="a", format="table")
     
     return ranking_ordinal
