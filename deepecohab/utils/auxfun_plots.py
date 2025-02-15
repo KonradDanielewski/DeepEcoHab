@@ -121,15 +121,9 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
 def prep_time_per_position_df(time_per_position: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare time_per_positiondata for plotting
     """
-    time_per_position_df = (
-        time_per_position.reset_index()\
-        .melt(
-            id_vars=["phase", "phase_count", "position"],
-            value_name="time"
-            )
-        )[["animal_id","phase_count", "phase", "position", "time"]]
-    time_per_position_df = time_per_position_df[time_per_position_df['phase'] == 'dark_phase']
+    time_per_position_df = time_per_position.melt(ignore_index=False, value_name="Time[s]", var_name="animal_id").reset_index()
     time_per_position_df = time_per_position_df[time_per_position_df['position'].isin(['cage_1', 'cage_2', 'cage_3', 'cage_4'])]
+    time_per_position_df = time_per_position_df.replace({'cage_1': 'Cage 1', 'cage_2': 'Cage 2', 'cage_3': 'Cage 3', 'cage_4': 'Cage 4'})
     return time_per_position_df
 
 def prep_visits_per_position_df(visits_per_position: pd.DataFrame) -> pd.DataFrame:

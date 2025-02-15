@@ -182,23 +182,34 @@ def plot_cage_position_time(cfp: str, time_per_position: pd.DataFrame, save_plot
     project_location = Path(cfg["project_location"])
     
     plot_data = auxfun_plots.prep_time_per_position_df(time_per_position)
-    phases = plot_data['phase_count'].unique()
-    
-    for phase in phases:
-        plot_df = plot_data[plot_data['phase_count']==phase]
-        fig = px.bar(
-            plot_df[plot_df['phase_count']==phase],
-            x="animal_id",
-            color="position",
-            y="time",
-            title=f"Time spent per position in dark phase {phase}",
-            )
-        if save_plot:
-            fig.write_html(project_location / "plots" / f"time_spent_per_position_dark_{phase}.html")
-
-        # Show plot
-        fig.show()
+    for phase in plot_data['phase'].unique():
+        _phase = "dark" if "dark" in phase else "light"
+        data = plot_data[plot_data['phase']==phase].drop("phase", axis=1).sort_values(["phase_count", "animal_id"])
+        max_y = data["Time[s]"].max() + 1000
         
+        fig = px.bar(
+            data,
+            x="animal_id",
+            y="Time[s]",
+            color="position",
+            animation_frame='phase_count',
+            barmode='group',
+            title=f"<b>Time[s] spent in each position during {_phase} phase</b>",
+            range_y=[0, max_y],
+            width=800,
+            height=500,
+        )
+        fig["layout"].pop("updatemenus")
+    
+        fig.update_layout(sliders=[{"currentvalue": {"prefix": "Phase="}}])
+        
+        fig.update_xaxes(title_text="<b>Animal ID</b>")
+        fig.update_yaxes(title_text="<b>Time spent [s]</b>")
+        
+        if save_plot:
+                fig.write_html(project_location / "plots" / f"time_per_position_dark.html")
+        fig.show()
+            
 def plot_cage_position_visits(cfp: str, visits_per_position: pd.DataFrame, save_plot: bool = True):
     """Plot simplebar plot of visits spent in each cage.
 
