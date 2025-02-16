@@ -223,7 +223,7 @@ def calculate_ranking(
         .max()
     ).dropna()
 
-    ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns)
+    ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns, dtype=float)
 
     for phase, count in product(phases, phase_count):
         try:
