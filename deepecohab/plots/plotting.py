@@ -207,7 +207,7 @@ def plot_cage_position_time(cfp: str, time_per_position: pd.DataFrame, save_plot
         fig.update_yaxes(title_text="<b>Time spent [s]</b>")
         
         if save_plot:
-                fig.write_html(project_location / "plots" / f"time_per_position_dark.html")
+            fig.write_html(project_location / "plots" / f"time_per_position_{phase}.html")
         fig.show()
             
 def plot_cage_position_visits(cfp: str, visits_per_position: pd.DataFrame, save_plot: bool = True):
@@ -223,21 +223,32 @@ def plot_cage_position_visits(cfp: str, visits_per_position: pd.DataFrame, save_
     project_location = Path(cfg["project_location"])
     
     plot_data = auxfun_plots.prep_visits_per_position_df(visits_per_position)
-    phases = plot_data['phase_count'].unique()
-    
-    for phase in phases:
-        plot_df = plot_data[plot_data['phase_count']==phase]
+    for phase in plot_data['phase'].unique():
+        _phase = "dark" if "dark" in phase else "light"
+        data = plot_data[plot_data['phase']==phase].drop("phase", axis=1).sort_values(["phase_count", "animal_id"])
+        max_y = data["Visits[n]"].max() + 100
+        
         fig = px.bar(
-            plot_df[plot_df['phase_count']==phase],
+            data,
             x="animal_id",
+            y="Visits[n]",
             color="position",
-            y="visits",
-            title=f"Visits per position in dark phase {phase}",
-            )
+            animation_frame='phase_count',
+            barmode='group',
+            title=f"<b>Visits[n] spent in each position during {_phase} phase</b>",
+            range_y=[0, max_y],
+            width=800,
+            height=500,
+        )
+        fig["layout"].pop("updatemenus")
+    
+        fig.update_layout(sliders=[{"currentvalue": {"prefix": "Phase="}}])
+        
+        fig.update_xaxes(title_text="<b>Animal ID</b>")
+        fig.update_yaxes(title_text="<b>Visits to compartmens [n]</b>")
+        
         if save_plot:
-            fig.write_html(project_location / "plots" / f"visits_per_position_dark_{phase}.html")
-
-        # Show plot
+            fig.write_html(project_location / "plots" / f"visits_per_position_{phase}.html")
         fig.show()
 
 def plot_time_together(cfp: str, time_together: pd.DataFrame, save_plot: bool = True):
@@ -254,23 +265,46 @@ def plot_time_together(cfp: str, time_together: pd.DataFrame, save_plot: bool = 
     
     plot_data = auxfun_plots.prep_time_together_df(time_together)
     
-    phases = plot_data['phase_count'].unique()
-    
-    for phase in phases:
-        plot_df = plot_data[plot_data['phase_count']==phase]
-        data = plot_df.pivot_table(values='time_together', index='animal_ids', columns='animal_2_ids', aggfunc='first')
+    for phase_type in plot_data['phase'].unique():
+        _type = "dark" if "dark" in phase_type else "light"
+        _data = plot_data[plot_data['phase']==phase_type].drop(columns=["phase"])
+        _min_val = _data.iloc[:,2:].min().min()
+        min_val = 0 if _min_val - 100 < 0 else int(_min_val - 100)
+        max = int(_data.iloc[:,2:].max().max() * 1.1)
 
-        fig = px.imshow(data.values,
-                        labels=dict(x="animal_1", y="animal_2", color="time spent together"),
-                    y=data.index,
-                    x=data.columns
+        frames = []
+        for phase in _data["phase_count"].unique():
+            heatmap_data = _data[_data["phase_count"] == phase].drop(columns=["phase_count"]).set_index("animal_ids")
+            heatmap = go.Heatmap(
+                    z=heatmap_data.values,
+                    x=heatmap_data.columns,
+                    y=heatmap_data.index,
+                    text=heatmap_data.round(2).fillna("").values,
+                    texttemplate="%{text}",
+                    hoverinfo="skip",
+                    zmin=min_val,
+                    zmax=max,            
+                )
+            frame = go.Frame(
+                data=heatmap,
+                    name=f"Phase {phase}",
                     )
-        fig.update_xaxes(side="top")
+            frames.append(frame)
 
+        fig = go.Figure(data=frames[0].data, frames=frames).update_layout(
+            sliders=[{"steps": [{"args": [[f.name],{"frame": {"duration": 0, "redraw": True},
+                                                    "mode": "immediate",},],
+                                "label": f.name, "method": "animate",}
+                                for f in frames],}],
+            height=800,
+            width=800,
+            yaxis={"title": 'Animal ID', "tickangle": 0, 'side': 'left'},
+            xaxis={"title": 'Animal ID', "tickangle": 20, 'side': 'top'},
+            title_x=0.5,
+        )
+        fig.update_layout(title=dict(text=f"Time spent together [s] during {_type} phase", x=0.01, y=0.99))
         if save_plot:
-            fig.write_html(project_location / "plots" / f"time_together_dark_{phase}.html")
-
-        # Show plot
+            fig.write_html(project_location / "plots" / f"time_together_{_type}.html")
         fig.show()
         
 def plot_incohort_soc(cfp: str, time_together: pd.DataFrame, save_plot: bool = True):
@@ -287,21 +321,43 @@ def plot_incohort_soc(cfp: str, time_together: pd.DataFrame, save_plot: bool = T
     
     plot_data = auxfun_plots.prep_incohort_soc_df(time_together)
     
-    phases = plot_data['phase_count'].unique()
-    
-    for phase in phases:
-        plot_df = plot_data[plot_data['phase_count']==phase]
-        data = plot_df.pivot_table(values='incohort_soc', index='animal_ids', columns='animal_2_ids', aggfunc='first')
+    for phase_type in plot_data['phase'].unique():
+        _type = "dark" if "dark" in phase_type else "light"
+        _data = plot_data[plot_data['phase']==phase_type].drop(columns=["phase"])
+        min_val = _data.iloc[:,2:].min().min() - 0.01
+        max = _data.iloc[:,2:].max().max() + 0.01
 
-        fig = px.imshow(data.values,
-                        labels=dict(x="animal_1", y="animal_2", color="time spent together"),
-                    y=data.index,
-                    x=data.columns
+        frames = []
+        for phase in _data["phase_count"].unique():
+            heatmap_data = _data[_data["phase_count"] == phase].drop(columns=["phase_count"]).set_index("animal_ids")
+            heatmap = go.Heatmap(
+                    z=heatmap_data.values,
+                    x=heatmap_data.columns,
+                    y=heatmap_data.index,
+                    text=heatmap_data.round(2).fillna("").values,
+                    texttemplate="%{text}",
+                    hoverinfo="skip",
+                    zmin=min_val,
+                    zmax=max,            
+                )
+            frame = go.Frame(
+                data=heatmap,
+                    name=f"Phase {phase}",
                     )
-        fig.update_xaxes(side="top")
+            frames.append(frame)
 
+        fig = go.Figure(data=frames[0].data, frames=frames).update_layout(
+            sliders=[{"steps": [{"args": [[f.name],{"frame": {"duration": 0, "redraw": True},
+                                                    "mode": "immediate",},],
+                                "label": f.name, "method": "animate",}
+                                for f in frames],}],
+            height=800,
+            width=800,
+            yaxis={"title": 'Animal ID', "tickangle": 0, 'side': 'left'},
+            xaxis={"title": 'Animal ID', "tickangle": 20, 'side': 'top'},
+            title_x=0.5,
+        )
+        fig.update_layout(title=dict(text=f"In-cohort sociability {_type} phase", x=0.01, y=0.99))
         if save_plot:
-            fig.write_html(project_location / "plots" / f"time_together_dark_{phase}.html")
-
-        # Show plot
+            fig.write_html(project_location / "plots" / f"in_cohort_sociability_{_type}.html")
         fig.show()

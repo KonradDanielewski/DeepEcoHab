@@ -129,15 +129,9 @@ def prep_time_per_position_df(time_per_position: pd.DataFrame) -> pd.DataFrame:
 def prep_visits_per_position_df(visits_per_position: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare visits_per_positiondata for plotting
     """
-    visits_per_position_df = (
-        visits_per_position.reset_index()\
-        .melt(
-            id_vars=["phase", "phase_count", "position"],
-            value_name="visits"
-            )
-        )[["animal_id","phase_count", "phase", "position", "visits"]]
-    visits_per_position_df = visits_per_position_df[visits_per_position_df['phase'] == 'dark_phase']
+    visits_per_position_df = visits_per_position.melt(ignore_index=False, value_name="Visits[n]", var_name="animal_id").reset_index()
     visits_per_position_df = visits_per_position_df[visits_per_position_df['position'].isin(['cage_1', 'cage_2', 'cage_3', 'cage_4'])]
+    visits_per_position_df = visits_per_position_df.replace({'cage_1': 'Cage 1', 'cage_2': 'Cage 2', 'cage_3': 'Cage 3', 'cage_4': 'Cage 4'})
     return visits_per_position_df
 
 def prep_time_together_df(time_together: pd.DataFrame) -> pd.DataFrame:
@@ -145,29 +139,15 @@ def prep_time_together_df(time_together: pd.DataFrame) -> pd.DataFrame:
     """
     time_together_df = (
         time_together.reset_index()\
-        .melt(
-            id_vars=["phase", "phase_count", "cages", "animal_ids"],
-            value_name="time_together",
-            var_name='animal_2_ids'
-        )\
-        .replace(np.nan, 0)
-        )[["animal_ids", "animal_2_ids", "phase", "phase_count", "cages", "time_together"]]
-    time_together_df = time_together_df[time_together_df['phase'] == 'dark_phase']
-    time_together_df = time_together_df.groupby(["animal_ids", "animal_2_ids", "phase_count"]).sum().reset_index().drop("cages", axis=1)
+        .groupby(['phase_count', 'phase','animal_ids'])\
+        .sum()\
+        .reset_index()\
+        .drop(columns=["cages"])\
+        .replace(0, np.nan)
+    )
     return time_together_df
 
 def prep_incohort_soc_df(in_cohort_soc: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare in_cohort_soc data for plotting
     """
-    incohort_soc_df = (
-        in_cohort_soc.reset_index()\
-        .melt(
-            id_vars=["phase", "phase_count",  "animal_ids"],
-            value_name="incohort_soc",
-            var_name='animal_2_ids'
-        )\
-        .replace(np.nan, 0)
-        )[["animal_ids", "animal_2_ids", "phase", "phase_count",  "incohort_soc"]]
-    incohort_soc_df = incohort_soc_df[incohort_soc_df['phase'] == 'dark_phase']
-    incohort_soc_df = incohort_soc_df.groupby(["animal_ids", "animal_2_ids", "phase_count"]).sum().reset_index()
-    return incohort_soc_df
+    return in_cohort_soc.reset_index()
