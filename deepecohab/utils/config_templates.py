@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
+from abc import ABC
 
 @dataclass
-class ExperimentConfig:
+class ExperimentConfig(ABC):
     project_location: str
     experiment_name: str
     results_path: str
