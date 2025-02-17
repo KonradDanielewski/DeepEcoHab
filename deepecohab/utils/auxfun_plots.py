@@ -10,7 +10,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
     edge_trace = []
     
     # Get all edge widths to create a color scale
-    edge_widths = [G.edges[edge]['weight'] * width_multiplier for edge in G.edges()]
+    edge_widths = [G.edges[edge]['chasings'] * width_multiplier for edge in G.edges()]
     
     # Create a color scale based on edge widths
     color_scale = px.colors.sequential.Bluered
@@ -18,7 +18,10 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
     # Normalize edge widths to the range [0, 1] for color mapping
     max_width = max(edge_widths)
     min_width = min(edge_widths)
-    normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
+    if max_width == 0 and min_width == 0:
+        normalized_widths = [0 for _ in edge_widths]
+    else:
+        normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
     
     for i, edge in enumerate(G.edges()):
         x0, y0 = pos[edge[1]]  # Start point (source node)
@@ -56,7 +59,8 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
             hoverinfo='none',
             mode="lines+markers",
             marker=dict(size=edge_width * 4, symbol="arrow", angleref="previous"),
-            opacity=0.5
+            opacity=0.5,
+            showlegend=False
         ))
     
     return edge_trace
@@ -72,6 +76,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.
         hoverinfo='text',
         mode='markers+text',
         textposition='top center',
+        showlegend=False,
         marker=dict(
             showscale=True,
             colorscale=cmap,
@@ -92,7 +97,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.
         node_trace['x'] += (x,)
         node_trace['y'] += (y,)
         node_trace['text'] += ('<b>' + node + '</b>',)
-        ranking_score = round(ranking_ordinal[node], 3)
+        ranking_score = round(ranking_ordinal[node], 3) if ranking_ordinal[node] > 0 else 0.1
         ranking_score_list.append(ranking_score)
         node_trace['hovertext'] += (
             f"Mouse ID: {node}<br>Ranking: {ranking_score}",
@@ -107,15 +112,11 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare network data for plotting
     """
     graph_data = (
-        chasing_data.reset_index()\
-        .melt(
-            id_vars=["animal_ids", "phase_count", "phase"],
-            value_name="weight"
-            )\
-        .replace(0,np.nan)\
+        chasing_data.melt(ignore_index=False, value_name="chasings", var_name="target")\
         .dropna()\
-        .rename(columns={"animal_ids": "target", "variable": "source"})
-        )[["target", "source", "weight", "phase_count", "phase"]]
+        .reset_index()\
+        .rename(columns={"animal_ids": "source"})
+    )
     return graph_data
 
 def prep_time_per_position_df(time_per_position: pd.DataFrame) -> pd.DataFrame:
@@ -151,3 +152,12 @@ def prep_incohort_soc_df(in_cohort_soc: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare in_cohort_soc data for plotting
     """
     return in_cohort_soc.reset_index()
+
+def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
+    """Auxfun to prepare ranking data for plotting
+    """
+    ranking = (
+        ranking_df.melt(ignore_index=False, var_name="mouse_id", value_name="ranking")
+        .reset_index()
+        )
+    return ranking

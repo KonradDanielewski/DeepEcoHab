@@ -109,7 +109,6 @@ def plot_network_graph(
     cfp: str,
     chasing_data: pd.DataFrame,
     ranking_ordinal: pd.Series,
-    title: str = "Title",
     node_size_multiplier: int | float = 0.05,
     edge_width_multiplier: int | float = 0.05,
     cmap: str = "bluered",
@@ -122,7 +121,6 @@ def plot_network_graph(
         cfp: Path to project config file.
         chasing_data: Pandas DataFrame with graph_data calculated by calculate_chasings function.
         ranking_ordinal: Pandas Series with ordinal ranking.
-        title: Title of the graph. Defaults to "Title".
         node_size_multiplier: Node size multiplier. Defaults to 1.
         edge_width_multiplier: Edge width multiplier. Defaults to 1.
         cmap: Color map for nodes. Defaults to "inferno".
@@ -132,41 +130,55 @@ def plot_network_graph(
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
 
-    # Create graph and layout
+    # Prepare data
     data = auxfun_plots.prep_network_df(chasing_data)
-    phases = data["phase_count"].unique()
-    for phase in phases:
-        data_phase = data[data["phase_count"] == phase]
-        G = nx.from_pandas_edgelist(data_phase, create_using=nx.DiGraph, edge_attr="weight")
-        pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
-
-        # Create edge traces
-        edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier)
-
-        # Create node traces
-        node_trace = auxfun_plots.create_node_trace(G, pos, cmap, ranking_ordinal, node_size_multiplier)
-
-        # Create figure
-        fig = go.Figure(
-            data=edge_trace + [node_trace],
-            layout=go.Layout(
-                title=f"{title}_phase_{phase}",
-                showlegend=False,
-                hovermode='closest',
-                margin=dict(b=0, l=0, r=0, t=40),
-                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                width=800,
-                height=600,
-                plot_bgcolor='white',
-            )
-        )
-
-        # Save plot if required
+    ranking_data = auxfun_plots.prep_ranking(ranking_ordinal)
+    
+    # Create phase aware network graph
+    for phase_type in data['phase'].unique():
+        _type = "dark" if "dark" in phase_type else "light"
+        _data = data[data['phase'] == phase_type]
+        _ranking = ranking_data[ranking_data['phase'] == phase_type]
+        frames = []
+        for phase in _data['phase_count'].unique():        
+            __data = _data[_data['phase_count'] == phase].drop(columns=['phase', 'phase_count'])
+            G = nx.from_pandas_edgelist(__data, create_using=nx.DiGraph, edge_attr="chasings")
+            pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
+            edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier)
+            __ranking = _ranking[_ranking['phase_count'] == phase].drop(columns=['phase', 'phase_count']).set_index('mouse_id')['ranking']
+            if len(__ranking) == 0:
+                continue
+            node_trace = auxfun_plots.create_node_trace(G, pos, cmap, __ranking, node_size_multiplier)
+            plot = go.Figure(
+                    data=edge_trace + [node_trace],
+                    layout=go.Layout(
+                        showlegend=False,
+                        hovermode='closest',
+                        margin=dict(b=0, l=0, r=0, t=40),
+                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    )
+                )
+            frame = go.Frame(
+                    data=plot.data,
+                        name=f"Phase {phase}",
+                        )
+            frames.append(frame)
+            
+        fig = go.Figure(data=frames[0].data, frames=frames).update_layout(
+                    sliders=[{"steps": [{"args": [[f.name],{"frame": {"duration": 0, "redraw": True},
+                                                            "mode": "immediate",},],
+                                        "label": f.name, "method": "animate",}
+                                        for f in frames],}],
+                    height=800,
+                    width=800,
+                    plot_bgcolor='white',
+                    title=dict(text=f"<b>Time spent together [s] during {_type} phase</b>", x=0.01, y=0.95)
+                )
+        fig.update_xaxes(showticklabels=False)
+        fig.update_yaxes(showticklabels=False)
         if save_plot:
-            fig.write_html(project_location / "plots" / f"network_graph_phase_{phase}.html")
-
-        # Show plot
+            fig.write_html(project_location / "plots" / f"time_per_position_{_type}.html")
         fig.show()
 
 def plot_cage_position_time(cfp: str, time_per_position: pd.DataFrame, save_plot: bool = True):
