@@ -280,8 +280,7 @@ def plot_time_together(cfp: str, time_together: pd.DataFrame, save_plot: bool = 
     for phase_type in plot_data['phase'].unique():
         _type = "dark" if "dark" in phase_type else "light"
         _data = plot_data[plot_data['phase']==phase_type].drop(columns=["phase"])
-        _min_val = _data.iloc[:,2:].min().min()
-        min_val = 0 if _min_val - 100 < 0 else int(_min_val - 100)
+        min_val = 0
         max = int(_data.iloc[:,2:].max().max() * 1.1)
 
         frames = []
