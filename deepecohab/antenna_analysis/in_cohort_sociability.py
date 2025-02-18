@@ -139,7 +139,6 @@ def calculate_time_together(
                         .round(3)
                        )
     
-    time_together_df = time_together_df[(time_together_df != 0).any(axis=1)]
     if save_data:
         time_together_df.to_hdf(data_path, key=key, mode="a", format="table")
     
