@@ -146,11 +146,6 @@ def prep_time_together_df(time_together: pd.DataFrame) -> pd.DataFrame:
     )
     return time_together_df
 
-def prep_incohort_soc_df(in_cohort_soc: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prepare in_cohort_soc data for plotting
-    """
-    return in_cohort_soc.reset_index()
-
 def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
     """Auxfun to prepare ranking data for plotting
     """

@@ -247,7 +247,7 @@ def plot_cage_position_visits(cfp: str, visits_per_position: pd.DataFrame, save_
             color="position",
             animation_frame='phase_count',
             barmode='group',
-            title=f"<b>Visits[n] spent in each position during {phase_type_name} phase</b>",
+            title=f"<b>Visits[#] spent in each position during {phase_type_name} phase</b>",
             range_y=[0, max_y],
             width=800,
             height=500,
@@ -330,7 +330,7 @@ def plot_incohort_soc(cfp: str, time_together: pd.DataFrame, save_plot: bool = T
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
     
-    plot_data = auxfun_plots.prep_incohort_soc_df(time_together)
+    plot_data = time_together.reset_index()
     
     for phase_type in plot_data['phase'].unique():
         phase_type_name = "dark" if "dark" in phase_type else "light"
