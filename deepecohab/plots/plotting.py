@@ -144,11 +144,11 @@ def plot_network_graph(
             __data = _data[_data['phase_count'] == phase].drop(columns=['phase', 'phase_count'])
             G = nx.from_pandas_edgelist(__data, create_using=nx.DiGraph, edge_attr="chasings")
             pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
-            edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier)
+            edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier, cmap)
             __ranking = _ranking[_ranking['phase_count'] == phase].drop(columns=['phase', 'phase_count']).set_index('mouse_id')['ranking']
             if len(__ranking) == 0:
                 continue
-            node_trace = auxfun_plots.create_node_trace(G, pos, cmap, __ranking, node_size_multiplier)
+            node_trace = auxfun_plots.create_node_trace(G, pos, __ranking, node_size_multiplier, cmap)
             plot = go.Figure(
                     data=edge_trace + [node_trace],
                     layout=go.Layout(

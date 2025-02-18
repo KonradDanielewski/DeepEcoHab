@@ -6,7 +6,7 @@ import numpy as np
 from plotly.express.colors import sample_colorscale
 
 
-def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int, colormap: str = "Bluered") -> list:
+def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int, cmap: str = "bluered") -> list:
     """Auxfun to create edges trace with color mapping based on edge width."""
     edge_trace = []
     
@@ -20,7 +20,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
         normalized_widths = [0 for _ in edge_widths]
     else:
         normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
-    colorscale = sample_colorscale(colormap, normalized_widths)
+    colorscale = sample_colorscale(cmap, normalized_widths)
     for i, edge in enumerate(G.edges()):
         x0, y0 = pos[edge[1]]  # Start point (source node)
         x1, y1 = pos[edge[0]]  # End point (target node)
@@ -63,7 +63,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
     
     return edge_trace
 
-def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.Series, node_size_multiplier: float | int) -> go.Scatter:
+def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node_size_multiplier: float | int, cmap: str = "Bluered") -> go.Scatter:
     """Auxfun to create node trace
     """
     node_trace = go.Scatter(
