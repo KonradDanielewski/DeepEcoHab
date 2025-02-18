@@ -264,7 +264,7 @@ def plot_cage_position_visits(cfp: str, visits_per_position: pd.DataFrame, save_
         fig.show()
 
 def plot_time_together(cfp: str, time_together: pd.DataFrame, save_plot: bool = True):
-    """Plot simplebar plot of time spent together.
+    """Plot heatmap of time spent together.
 
     Args:
         cfp (str): Path to project config file.
@@ -320,7 +320,7 @@ def plot_time_together(cfp: str, time_together: pd.DataFrame, save_plot: bool = 
         fig.show()
         
 def plot_incohort_soc(cfp: str, time_together: pd.DataFrame, save_plot: bool = True):
-    """Plot simplebar plot of time spent together.
+    """Plot heatmap of time spent together.
 
     Args:
         cfp (str): Path to project config file.
