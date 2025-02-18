@@ -3,17 +3,15 @@ import networkx as nx
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
+from plotly.express.colors import sample_colorscale
 
 
-def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int) -> list:
+def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int, colormap: str = "Bluered") -> list:
     """Auxfun to create edges trace with color mapping based on edge width."""
     edge_trace = []
     
     # Get all edge widths to create a color scale
     edge_widths = [G.edges[edge]['chasings'] * width_multiplier for edge in G.edges()]
-    
-    # Create a color scale based on edge widths
-    color_scale = px.colors.sequential.Bluered
     
     # Normalize edge widths to the range [0, 1] for color mapping
     max_width = max(edge_widths)
@@ -22,7 +20,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
         normalized_widths = [0 for _ in edge_widths]
     else:
         normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
-    
+    colorscale = sample_colorscale(colormap, normalized_widths)
     for i, edge in enumerate(G.edges()):
         x0, y0 = pos[edge[1]]  # Start point (source node)
         x1, y1 = pos[edge[0]]  # End point (target node)
@@ -46,15 +44,15 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
             x1_new, y1_new = x1, y1
         
         # Map the normalized width to a color in the color scale
-        color_index = int(normalized_widths[i] * (len(color_scale) - 1))
-        line_color = color_scale[color_index]
+        # color_index = int(normalized_widths[i] * (len(color_scale) - 1))
+        # line_color = color_scale[i]
         
         edge_trace.append(go.Scatter(
             x=[x0, x1_new, None],  
             y=[y0, y1_new, None],
             line=dict(
                 width=edge_width,
-                color=line_color,
+                color=colorscale[i],
             ),
             hoverinfo='none',
             mode="lines+markers",
