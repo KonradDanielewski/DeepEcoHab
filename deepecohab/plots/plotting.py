@@ -136,7 +136,7 @@ def plot_network_graph(
     
     # Create phase aware network graph
     for phase_type in data['phase'].unique():
-        _type = "dark" if "dark" in phase_type else "light"
+        phase_type_name = "dark" if "dark" in phase_type else "light"
         _data = data[data['phase'] == phase_type]
         _ranking = ranking_data[ranking_data['phase'] == phase_type]
         frames = []
@@ -173,12 +173,12 @@ def plot_network_graph(
                     height=800,
                     width=800,
                     plot_bgcolor='white',
-                    title=dict(text=f"<b>Time spent together [s] during {_type} phase</b>", x=0.01, y=0.95)
+                    title=dict(text=f"<b>Time spent together [s] during {phase_type_name} phase</b>", x=0.01, y=0.95)
                 )
         fig.update_xaxes(showticklabels=False)
         fig.update_yaxes(showticklabels=False)
         if save_plot:
-            fig.write_html(project_location / "plots" / f"time_per_position_{_type}.html")
+            fig.write_html(project_location / "plots" / f"time_per_position_{phase_type_name}.html")
         fig.show()
 
 def plot_cage_position_time(cfp: str, time_per_position: pd.DataFrame, save_plot: bool = True):
@@ -195,7 +195,7 @@ def plot_cage_position_time(cfp: str, time_per_position: pd.DataFrame, save_plot
     
     plot_data = auxfun_plots.prep_time_per_position_df(time_per_position)
     for phase in plot_data['phase'].unique():
-        _phase = "dark" if "dark" in phase else "light"
+        phase_type_name = "dark" if "dark" in phase else "light"
         data = plot_data[plot_data['phase']==phase].drop("phase", axis=1).sort_values(["phase_count", "animal_id"])
         max_y = data["Time[s]"].max() + 1000
         
@@ -206,7 +206,7 @@ def plot_cage_position_time(cfp: str, time_per_position: pd.DataFrame, save_plot
             color="position",
             animation_frame='phase_count',
             barmode='group',
-            title=f"<b>Time[s] spent in each position during {_phase} phase</b>",
+            title=f"<b>Time[s] spent in each position during {phase_type_name} phase</b>",
             range_y=[0, max_y],
             width=800,
             height=500,
@@ -219,7 +219,7 @@ def plot_cage_position_time(cfp: str, time_per_position: pd.DataFrame, save_plot
         fig.update_yaxes(title_text="<b>Time spent [s]</b>")
         
         if save_plot:
-            fig.write_html(project_location / "plots" / f"time_per_position_{phase}.html")
+            fig.write_html(project_location / "plots" / f"time_per_position_{phase_type_name}.html")
         fig.show()
             
 def plot_cage_position_visits(cfp: str, visits_per_position: pd.DataFrame, save_plot: bool = True):
@@ -236,7 +236,7 @@ def plot_cage_position_visits(cfp: str, visits_per_position: pd.DataFrame, save_
     
     plot_data = auxfun_plots.prep_visits_per_position_df(visits_per_position)
     for phase in plot_data['phase'].unique():
-        _phase = "dark" if "dark" in phase else "light"
+        phase_type_name = "dark" if "dark" in phase else "light"
         data = plot_data[plot_data['phase']==phase].drop("phase", axis=1).sort_values(["phase_count", "animal_id"])
         max_y = data["Visits[n]"].max() + 100
         
@@ -247,7 +247,7 @@ def plot_cage_position_visits(cfp: str, visits_per_position: pd.DataFrame, save_
             color="position",
             animation_frame='phase_count',
             barmode='group',
-            title=f"<b>Visits[n] spent in each position during {_phase} phase</b>",
+            title=f"<b>Visits[n] spent in each position during {phase_type_name} phase</b>",
             range_y=[0, max_y],
             width=800,
             height=500,
@@ -260,7 +260,7 @@ def plot_cage_position_visits(cfp: str, visits_per_position: pd.DataFrame, save_
         fig.update_yaxes(title_text="<b>Visits to compartmens [n]</b>")
         
         if save_plot:
-            fig.write_html(project_location / "plots" / f"visits_per_position_{phase}.html")
+            fig.write_html(project_location / "plots" / f"visits_per_position_{phase_type_name}.html")
         fig.show()
 
 def plot_time_together(cfp: str, time_together: pd.DataFrame, save_plot: bool = True):
@@ -278,7 +278,7 @@ def plot_time_together(cfp: str, time_together: pd.DataFrame, save_plot: bool = 
     plot_data = auxfun_plots.prep_time_together_df(time_together)
     
     for phase_type in plot_data['phase'].unique():
-        _type = "dark" if "dark" in phase_type else "light"
+        phase_type_name = "dark" if "dark" in phase_type else "light"
         _data = plot_data[plot_data['phase']==phase_type].drop(columns=["phase"])
         min_val = 0
         max = int(_data.iloc[:,2:].max().max() * 1.1)
@@ -313,9 +313,9 @@ def plot_time_together(cfp: str, time_together: pd.DataFrame, save_plot: bool = 
             xaxis={"title": 'Animal ID', "tickangle": 20, 'side': 'top'},
             title_x=0.5,
         )
-        fig.update_layout(title=dict(text=f"Time spent together [s] during {_type} phase", x=0.01, y=0.99))
+        fig.update_layout(title=dict(text=f"Time spent together [s] during {phase_type_name} phase", x=0.01, y=0.99))
         if save_plot:
-            fig.write_html(project_location / "plots" / f"time_together_{_type}.html")
+            fig.write_html(project_location / "plots" / f"time_together_{phase_type_name}.html")
         fig.show()
         
 def plot_incohort_soc(cfp: str, time_together: pd.DataFrame, save_plot: bool = True):
@@ -333,7 +333,7 @@ def plot_incohort_soc(cfp: str, time_together: pd.DataFrame, save_plot: bool = T
     plot_data = auxfun_plots.prep_incohort_soc_df(time_together)
     
     for phase_type in plot_data['phase'].unique():
-        _type = "dark" if "dark" in phase_type else "light"
+        phase_type_name = "dark" if "dark" in phase_type else "light"
         _data = plot_data[plot_data['phase']==phase_type].drop(columns=["phase"])
         min_val = _data.iloc[:,2:].min().min() - 0.01
         max = _data.iloc[:,2:].max().max() + 0.01
@@ -368,7 +368,7 @@ def plot_incohort_soc(cfp: str, time_together: pd.DataFrame, save_plot: bool = T
             xaxis={"title": 'Animal ID', "tickangle": 20, 'side': 'top'},
             title_x=0.5,
         )
-        fig.update_layout(title=dict(text=f"In-cohort sociability {_type} phase", x=0.01, y=0.99))
+        fig.update_layout(title=dict(text=f"In-cohort sociability {phase_type_name} phase", x=0.01, y=0.99))
         if save_plot:
-            fig.write_html(project_location / "plots" / f"in_cohort_sociability_{_type}.html")
+            fig.write_html(project_location / "plots" / f"in_cohort_sociability_{phase_type_name}.html")
         fig.show()
