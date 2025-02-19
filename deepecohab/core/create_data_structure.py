@@ -162,7 +162,7 @@ def get_ecohab_data_structure(
     Returns:
         EcoHab data structure as a pd.DataFrame
     """
-    cfg = auxfun.read_config(cfp)
+    cfg = auxfun.check_cfp_validity(cfp)
     data_path = Path(cfg["results_path"])
     key = "main_df"
     
@@ -181,7 +181,7 @@ def get_ecohab_data_structure(
         min_antenna_crossings=min_antenna_crossings,
     )
     
-    cfg = auxfun.read_config(cfp) # reload config potential animal_id changes due to sanitation
+    cfg = auxfun.check_cfp_validity(cfp) # reload config potential animal_id changes due to sanitation
     df = _prepare_columns(cfg, df, positions)
 
     # Slice to start and end date

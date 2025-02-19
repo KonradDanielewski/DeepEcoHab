@@ -26,7 +26,7 @@ def social_dominance_evaluation(
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
-    cfg = auxfun.read_config(cfp)
+    cfg = auxfun.check_cfp_validity(cfp)
     fig = make_subplots(
         rows=2, cols=2,
         specs=[[{"type": "bar"}, {"type": "bar"}],
@@ -81,7 +81,7 @@ def plot_ranking_in_time(
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
-    cfg = auxfun.read_config(cfp)
+    cfg = auxfun.check_cfp_validity(cfp)
     
     fig = px.line(
         ranking_in_time,
@@ -132,7 +132,7 @@ def plot_network_graph(
         Dictionary containing the graph, figure, and traces.
     """
     # Read config file
-    cfg = auxfun.read_config(cfp)
+    cfg = auxfun.check_cfp_validity(cfp)
     project_location = Path(cfg["project_location"])
 
     # Create graph and layout
