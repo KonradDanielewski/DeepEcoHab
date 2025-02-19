@@ -97,7 +97,7 @@ def calculate_time_together(
     Returns:
         Multiindex DataFrame of time spent together per phase, per cage.
     """    
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
     key="time_together"
     
@@ -163,7 +163,7 @@ def calculate_pairwise_encounters(
     Returns:
         Multiindex DataFrame of time spent together per phase, per cage.
     """   
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
     key="pairwise_encounters"
     
@@ -218,7 +218,7 @@ def calculate_in_cohort_sociability(
     Returns:
         Multiindex DataFrame of in-cohort sociability per phase for each possible pair of mice.
     """    
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
     key="in_cohort_sociability"
     

@@ -9,7 +9,7 @@ from deepecohab.utils import auxfun
 def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, min_antenna_crossings: int = 100) -> pd.DataFrame:
     """Auxfum to load and combine text files into a pandas dataframe
     """    
-    cfg = auxfun.check_cfp_validity(cfp)   
+    cfg = auxfun.read_config(cfp)   
     data_path = cfg["data_path"]
     
     data_files = auxfun.get_data_paths(data_path)
@@ -162,7 +162,7 @@ def get_ecohab_data_structure(
     Returns:
         EcoHab data structure as a pd.DataFrame
     """
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
     key = "main_df"
     
@@ -181,7 +181,7 @@ def get_ecohab_data_structure(
         min_antenna_crossings=min_antenna_crossings,
     )
     
-    cfg = auxfun.check_cfp_validity(cfp) # reload config potential animal_id changes due to sanitation
+    cfg = auxfun.read_config(cfp) # reload config potential animal_id changes due to sanitation
     df = _prepare_columns(cfg, df, positions)
 
     # Slice to start and end date

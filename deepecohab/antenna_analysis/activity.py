@@ -132,7 +132,7 @@ def calculate_time_spent_per_position(
     Returns:
         Multiindex DataFrame of time spent per position in seconds.
     """
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     
     data_path = Path(cfg["results_path"])
     key="time_per_position"
@@ -186,7 +186,7 @@ def calculate_visits_per_position(
     Returns:
         Multiindex DataFrame with number of visits per position.
     """
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
     key="visits_per_position"
     
@@ -239,7 +239,7 @@ def create_binary_df(
     Returns:
         _description_
     """
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
     key="binary_df"
     
