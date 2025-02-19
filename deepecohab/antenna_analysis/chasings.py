@@ -91,7 +91,7 @@ def calculate_chasings(
     Returns:
         MultiIndex DataFrame of chasings per phase every animal vs every animal. Column chases the row
     """
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
     key="chasings"
     
@@ -196,7 +196,7 @@ def calculate_ranking(
     Returns:
         Series with ordinal of the rank calculated for each animal
     """    
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
     key="ranking_ordinal"
     

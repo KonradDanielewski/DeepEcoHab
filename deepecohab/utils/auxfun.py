@@ -17,7 +17,7 @@ def get_data_paths(data_path: str) -> list:
         data_files = glob(os.path.join(data_path, "20*.txt"))
     return data_files
 
-def check_cfp_validity(cfp: str | Path | dict) -> dict:
+def read_config(cfp: str | Path | dict) -> dict:
     """Auxfun to check validity of the passed cfp variable (config path or dict)
     """    
     if isinstance(cfp, (str, Path)):
@@ -41,7 +41,7 @@ def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
     Returns:
         Desired data structure loaded from the file.
     """
-    cfg = check_cfp_validity(cfp)
+    cfg = read_config(cfp)
     
     data_path = Path(cfg["results_path"])
     
@@ -152,7 +152,7 @@ def get_phase_durations(cfg: dict, df: pd.DataFrame) -> pd.Series:
 def _sanitize_animal_ids(cfp: str, df: pd.DataFrame, min_antenna_crossings: int = 100) -> pd.DataFrame:
     """Auxfun to remove ghost tags (random radio noise reads).
     """    
-    cfg = check_cfp_validity(cfp)
+    cfg = read_config(cfp)
     
     animal_ids = df.animal_id.unique()
     
@@ -181,7 +181,7 @@ def _sanitize_animal_ids(cfp: str, df: pd.DataFrame, min_antenna_crossings: int 
 def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
     """Auxfun to append start and end datetimes of the experiment if not user provided.
     """    
-    cfg = check_cfp_validity(cfp)
+    cfg = read_config(cfp)
     start_time = str(df.datetime.iloc[0])
     end_time = str(df.datetime.iloc[-1])
     

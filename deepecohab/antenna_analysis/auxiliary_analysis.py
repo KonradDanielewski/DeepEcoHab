@@ -33,7 +33,7 @@ def calculate_approach_to_social_odor(
         3. control stimulus cage on the day of the experiment
         4. control stimulus cage the day before
     """    
-    cfg = auxfun.check_cfp_validity(cfp)
+    cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
     key="social_odor"
     
