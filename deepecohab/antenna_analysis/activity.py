@@ -7,7 +7,7 @@ from tqdm import tqdm
 from deepecohab.utils import auxfun
 from deepecohab.core import create_data_structure
 
-def split_datetime(phase_start: str) -> tuple[str, ...]:
+def _split_datetime(phase_start: str) -> tuple[str, ...]:
     """Auxfun to split datetime string.
     """    
     hour = int(phase_start.split(":")[0])
@@ -16,7 +16,7 @@ def split_datetime(phase_start: str) -> tuple[str, ...]:
     
     return hour, minute, second
 
-def extract_phase_switch_indices(animal_df: pd.DataFrame):
+def _extract_phase_switch_indices(animal_df: pd.DataFrame):
     """Auxfun to find indices of phase switching.
     """    
     animal_df["phase_map"] = animal_df.phase.map({"dark_phase": 0, "light_phase": 1})
@@ -26,7 +26,7 @@ def extract_phase_switch_indices(animal_df: pd.DataFrame):
     
     return indices
 
-def correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame:
+def _correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame:
     """Auxfun to correct information in duplicated indices to match the previous phase.
     """    
     day_col, phase_col, phase_count_col = animal_df.columns.get_loc("day"), animal_df.columns.get_loc("phase"), animal_df.columns.get_loc("phase_count")
@@ -71,7 +71,7 @@ def create_padded_df(
     for animal in animals:
         animal_df = df.query("animal_id == @animal").copy()
 
-        indices = extract_phase_switch_indices(animal_df)
+        indices = _extract_phase_switch_indices(animal_df)
 
         light_phase_starts = indices[indices == 1].index
         dark_phase_starts = indices[indices == -1].index
@@ -89,7 +89,7 @@ def create_padded_df(
             
             # Phase start time split
             phase_start = cfg["phase"][phase]
-            hour, minute, second = split_datetime(phase_start)
+            hour, minute, second = _split_datetime(phase_start)
 
             for i in times: 
                 location = animal_df.index.get_loc(animal_df.loc[i, "datetime"].index[0]).start # iloc of the duplicated index for data assignement purposes
@@ -98,7 +98,7 @@ def create_padded_df(
                 animal_df.iloc[location, 2] = animal_df.iloc[location, 2] - phase_start_diff
                 
                 # Correct also day, phase and phase_count
-                animal_df = correct_padded_info(animal_df, location)
+                animal_df = _correct_padded_info(animal_df, location)
         
         animal_dfs.append(animal_df)
 
@@ -164,6 +164,8 @@ def calculate_time_spent_per_position(
         .round(3)
     )
     
+    time_per_position = auxfun._drop_empty_slices(time_per_position)
+    
     if save_data:
         time_per_position.to_hdf(data_path, key=key, mode="a", format="table")
     
@@ -212,6 +214,8 @@ def calculate_visits_per_position(
         .unstack()
     )
     
+    visits_per_position = auxfun._drop_empty_slices(visits_per_position)
+    
     if save_data:
         visits_per_position.to_hdf(data_path, key=key, mode="a", format="table")
     
@@ -239,10 +243,10 @@ def create_binary_df(
     data_path = Path(cfg["results_path"])
     key="binary_df"
     
-    time_together_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    binary_df = None if overwrite else auxfun.check_save_data(data_path, key)
     
-    if isinstance(time_together_df, pd.DataFrame):
-        return time_together_df
+    if isinstance(binary_df, pd.DataFrame):
+        return binary_df
     
     if precision > 20:
         print("Warning! High precision may result in a very large DataFrame and potential python kernel crash!")
@@ -250,24 +254,27 @@ def create_binary_df(
     df = auxfun.load_ecohab_data(cfg, key="main_df")
     animals = cfg["animal_ids"]
     positions = list(set(cfg["antenna_combinations"].values()))
+    positions = [pos for pos in positions if "cage" in pos]
 
     # Prepare empty DF
-    index_len = np.ceil((df.datetime.iloc[-1] - df.datetime.iloc[0]).total_seconds()*10).astype(int)
+    index_len = np.ceil((df.datetime.iloc[-1] - df.datetime.iloc[0]).total_seconds()*precision).astype(int)
     cols = pd.MultiIndex.from_product([positions, animals])
     idx = pd.date_range(df.datetime.iloc[0], df.datetime.iloc[-1], index_len).round("ms")
 
-    bin_df = pd.DataFrame(False, index=idx, columns=cols, dtype=bool)
+    binary_df = pd.DataFrame(False, index=idx, columns=cols, dtype=bool)
+    df = df.query("position in @positions")
 
     print("Filling the DataFrame for each animal...")
     for animal in tqdm(animals):
-        starts = df.query("animal_id == @animal").datetime.iloc[:-1]
-        stops = df.query("animal_id == @animal").datetime.iloc[1:]
+        data_slice = df.query("animal_id == @animal").iloc[1:]
+        starts = data_slice.datetime - pd.to_timedelta(data_slice.timedelta, "s") 
+        stops = data_slice.datetime
         ending_pos = df.query("animal_id == @animal").position.iloc[1:]
         
         for i in range(len(starts)):
-            bin_df.loc[starts.iloc[i]:stops.iloc[i], (ending_pos.iloc[i], animal)] = True
+            binary_df.loc[starts.iloc[i]:stops.iloc[i], (ending_pos.iloc[i], animal)] = True
 
     if save_data:
-        bin_df.to_hdf(cfg["results_path"], key=key, format="table")
+        binary_df.to_hdf(cfg["results_path"], key=key, format="table")
     
-    return bin_df
+    return binary_df

@@ -21,7 +21,7 @@ def check_cfp_validity(cfp: str | Path | dict) -> dict:
     """Auxfun to check validity of the passed cfp variable (config path or dict)
     """    
     if isinstance(cfp, (str, Path)):
-        cfg = read_config(cfp)
+        cfg = toml.load(cfp)
     elif isinstance(cfp, dict):
         cfg=cfp
     else:
@@ -51,16 +51,6 @@ def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
             return df
         except KeyError:
             print(f"{key} not found in the specified location: {data_path}. Perhaps not analyzed yet!")
-
-def read_config(cfp: str | Path) -> dict:
-    """Auxfun reads the config and returns it as a dictionary
-    """
-    if isinstance(cfp, (str, Path)):
-        cfg = toml.load(cfp)
-    else:
-        raise ValueError(f"Config path should be a str or a Path object. Type {type(cfp)} provided!")
-    
-    return cfg
 
 def check_save_data(data_path: Path, key: str) -> pd.DataFrame | None:
     try:
@@ -203,3 +193,23 @@ def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
     f.close()
     
     print(f"Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True")
+    
+    
+def _drop_empty_slices(df: pd.DataFrame):
+    """Auxfun to drop parts of DataFrame where no data was recorded.
+    """    
+    index_depth = len(df.index[0]) - 1
+    
+    condition = (df.groupby(level=[*range(index_depth)], observed=False).sum() == 0).all(axis=1)
+    condition = condition[condition].index
+    
+    indices_to_drop = []
+
+    for i in condition:
+        start = df.index.get_slice_bound(i, side="left")
+        stop = df.index.get_slice_bound(i, side="right")
+        indices_to_drop += list(range(start, stop))
+
+    df = df.drop(df.index[indices_to_drop])
+    
+    return df

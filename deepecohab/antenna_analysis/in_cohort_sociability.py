@@ -7,16 +7,16 @@ from itertools import (
 )
 
 import pandas as pd
+from tqdm import tqdm
 from joblib import (
     Parallel,
     delayed,
 )
 
+from deepecohab.antenna_analysis import activity
 from deepecohab.utils import auxfun
 
-from deepecohab.antenna_analysis import activity
-
-def generate_sociability_combinations(cfg: dict, df: pd.DataFrame) -> list:
+def _generate_sociability_combinations(cfg: dict, df: pd.DataFrame) -> list:
     """Auxfun to generate a product of phases, phase_count, cages and mouse pairs for in-cohort sociability calculation.
     """    
     mouse_pairs = combinations(cfg["animal_ids"], 2)
@@ -114,12 +114,12 @@ def calculate_time_together(
     if not isinstance(n_workers, int):
         n_workers = os.cpu_count() / 2 
     
-    sociability_combinations = generate_sociability_combinations(cfg, padded_df)
-
+    sociability_combinations = _generate_sociability_combinations(cfg, padded_df)
+    print("Calculating pairwise time spent together...")
     # Calc time spent together per cage for each phase
     results = Parallel(n_jobs=n_workers, prefer='processes')(
         delayed(_pairwise_time_together)(padded_df=padded_df, animal_1=animal_1, animal_2=animal_2, cage=cage, phase_count=phase_N, phase=phase, minimum_time=minimum_time) 
-        for animal_1, animal_2, cage, phase_N, phase in sociability_combinations
+        for animal_1, animal_2, cage, phase_N, phase in tqdm(sociability_combinations)
     )
     pickle_path = data_path.parent / "time_together.pickle"
     with open(pickle_path, "wb") as output_file:
@@ -139,6 +139,8 @@ def calculate_time_together(
                         .round(3)
                        )
     
+    time_together_df = auxfun._drop_empty_slices(time_together_df)
+
     if save_data:
         time_together_df.to_hdf(data_path, key=key, mode="a", format="table")
     
@@ -190,7 +192,8 @@ def calculate_pairwise_encounters(
                               .round(3)
                              )
     
-    pairwise_encounters_df = pairwise_encounters_df[(pairwise_encounters_df != 0).any(axis=1)]
+    pairwise_encounters_df = auxfun._drop_empty_slices(pairwise_encounters_df)
+    
     if save_data:
         pairwise_encounters_df.to_hdf(data_path, key=key, mode="a", format="table")
     
@@ -235,8 +238,10 @@ def calculate_in_cohort_sociability(
 
     # Get time spent together in cages
     time_together_df = calculate_time_together(cfg, minimum_time, n_workers)
+    # Get index of time_together to match properly as the data is dependent on previous sanitation
+    idx = time_together_df.index.droplevel(2).drop_duplicates()
     time_together_df = _process_df_format_incohort(time_together_df)
-
+    
     # Get time per position
     time_per_position = activity.calculate_time_spent_per_position(cfg, padded_df)
     time_per_cage = time_per_position.loc[slice(None), slice(None), cages].copy()
@@ -247,10 +252,9 @@ def calculate_in_cohort_sociability(
     # Normalize times as proportion of the phase duration
     proportion_alone = time_per_cage.div(phase_durations, axis=0)
     proportion_together = time_together_df.div(phase_durations, axis=0)
-
-    idx = auxfun._create_phase_multiindex(cfg, animals=True)
+    
+    # idx = auxfun._create_phase_multiindex(cfg, animals=True)
     in_cohort_sociability = pd.DataFrame(columns=animals, index=idx).sort_index()
-
     # Calculate pairwise in-cohort sociability
     for animal_1, animal_2 in mouse_pairs:
         col_name = f"{animal_1}_{animal_2}"
@@ -263,6 +267,8 @@ def calculate_in_cohort_sociability(
         .round(3)
         .astype(float)
     )
+    
+    in_cohort_sociability = auxfun._drop_empty_slices(in_cohort_sociability)
     
     if save_data:
         in_cohort_sociability.to_hdf(data_path, key=key, mode="a", format="table")

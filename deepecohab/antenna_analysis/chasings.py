@@ -119,6 +119,7 @@ def calculate_chasings(
     matches = []
     iterator = list(product(phases, phase_N, mouse_pairs))
     
+    print("Calculating chasings...")
     for phase, N, (mouse1, mouse2) in tqdm(iterator): # TODO: Think about parallelization - output a df then concat a list of dfs
         # Calculates time spent in the tube together
         temp = df.query("phase == @phase and phase_count == @N and (animal_id == @mouse1 or animal_id == @mouse2)").sort_values("datetime").reset_index(drop=True)
@@ -165,6 +166,8 @@ def calculate_chasings(
     # reindex most chasing to least
     new_index = chasings.sum(axis=0).sort_values(ascending=False).index
     chasings = chasings.reindex(new_index, axis=1).reindex(new_index, level=2, axis=0)
+    
+    chasings = auxfun._drop_empty_slices(chasings)
     
     if save_data:
         chasings.to_hdf(data_path, key="chasings", mode="a", format="table")
