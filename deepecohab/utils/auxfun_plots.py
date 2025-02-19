@@ -137,11 +137,8 @@ def prep_time_together_df(time_together: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare time_together data for plotting
     """
     time_together_df = (
-        time_together.reset_index()
-        .groupby(['phase_count', 'phase','animal_ids'])
-        .sum()
+        time_together
         .reset_index()
-        .drop(columns=["cages"])
         .replace(0, np.nan)
     )
     return time_together_df
