@@ -134,7 +134,6 @@ def calculate_time_together(
         time_together_df.loc[(phase, n, cage, animal_2), animal_1] = sum(time_encounters)
         
     time_together_df = (time_together_df
-                        .dropna(axis=1, how="all")
                         .astype(float)
                         .round(3)
                        )
@@ -187,7 +186,6 @@ def calculate_pairwise_encounters(
         pairwise_encounters_df.loc[(phase, n, cage, animal_2), animal_1] = sum(n_encounters)
         
     pairwise_encounters_df = (pairwise_encounters_df
-                              .dropna(axis=1, how="all")
                               .astype(float)
                               .round(3)
                              )
@@ -263,7 +261,6 @@ def calculate_in_cohort_sociability(
     
     in_cohort_sociability = (
         in_cohort_sociability
-        .dropna(axis=1, how="all")
         .round(3)
         .astype(float)
     )

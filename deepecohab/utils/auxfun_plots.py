@@ -58,7 +58,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
             mode="lines+markers",
             marker=dict(size=edge_width * 4, symbol="arrow", angleref="previous"),
             opacity=0.5,
-            showlegend=False
+            showlegend=False,
         ))
     
     return edge_trace
@@ -83,7 +83,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node
                 thickness=15,
                 title='Ranking',
                 xanchor='left',
-                titleside='right'
+                titleside='right',
             )
         )
     )
@@ -110,7 +110,8 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare network data for plotting
     """
     graph_data = (
-        chasing_data.melt(ignore_index=False, value_name="chasings", var_name="target")
+        chasing_data
+        .melt(ignore_index=False, value_name="chasings", var_name="target")
         .dropna()
         .reset_index()
         .rename(columns={"animal_ids": "source"})
@@ -121,7 +122,7 @@ def prep_per_position_df(visits_per_position: pd.DataFrame, type: Literal["visit
     """Auxfun to prepare visits_per_positiondata for plotting
     """
     if type == "visits":
-        val_name = "Visits[n]"
+        val_name = "Visits[#]"
     elif type == "time":
         val_name = "Time[s]"
     else:
@@ -130,21 +131,12 @@ def prep_per_position_df(visits_per_position: pd.DataFrame, type: Literal["visit
     visits_per_position_df = visits_per_position.melt(ignore_index=False, value_name=val_name, var_name="animal_id").reset_index()
     return visits_per_position_df
 
-def prep_time_together_df(time_together: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prepare time_together data for plotting
-    """
-    time_together_df = (
-        time_together
-        .reset_index()
-        .replace(0, np.nan)
-    )
-    return time_together_df
-
 def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
     """Auxfun to prepare ranking data for plotting
     """
     ranking = (
-        ranking_df.melt(ignore_index=False, var_name="mouse_id", value_name="ranking")
+        ranking_df
+        .melt(ignore_index=False, var_name="mouse_id", value_name="ranking")
         .reset_index()
         )
     return ranking

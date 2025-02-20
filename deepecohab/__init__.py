@@ -24,5 +24,6 @@ from deepecohab.plots.plotting import (
     plot_cage_position_time,
     plot_cage_position_visits,
     plot_time_together,
-    plot_incohort_soc
+    plot_incohort_sociability,
+    plot_pairwise_encounters,
 )
