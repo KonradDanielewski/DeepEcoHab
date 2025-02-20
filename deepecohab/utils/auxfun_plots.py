@@ -22,13 +22,13 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
         normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
     colorscale = sample_colorscale(cmap, normalized_widths)
     for i, edge in enumerate(G.edges()):
-        x0, y0 = pos[edge[1]]  # Start point (source node)
-        x1, y1 = pos[edge[0]]  # End point (target node)
+        source_x, source_y = pos[edge[0]]  # Start point (source node)
+        target_x, target_y = pos[edge[1]]  # End point (target node)
         edge_width = edge_widths[i]
         
-        # Calculate the direction vector from (x0, y0) to (x1, y1)
-        dx = x1 - x0
-        dy = y1 - y0
+        # Calculate the direction vector from (source_x, source_y) to (target_x, target_y)
+        dx = target_x - source_x
+        dy = target_y - source_y
         
         # Calculate the length of the edge
         length = (dx**2 + dy**2)**0.5
@@ -36,20 +36,20 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
         # Calculate the offset to shorten the line (e.g., by 10% of the node size)
         offset = 0.02 * node_size_multiplier  
         
-        # Calculate new end point (x1_new, y1_new) by moving back along the line
+        # Calculate new end point (target_x_new, target_y_new) by moving back along the line
         if length > 0:  # Avoid division by zero
-            x1_new = x1 - (dx / length) * offset
-            y1_new = y1 - (dy / length) * offset
+            target_x_new = target_x - (dx / length) * offset
+            target_y_new = target_y - (dy / length) * offset
         else:
-            x1_new, y1_new = x1, y1
+            target_x_new, target_y_new = target_x, target_y
         
         # Map the normalized width to a color in the color scale
         # color_index = int(normalized_widths[i] * (len(color_scale) - 1))
         # line_color = color_scale[i]
         
         edge_trace.append(go.Scatter(
-            x=[x0, x1_new, None],  
-            y=[y0, y1_new, None],
+            x=[source_x, target_x_new, None],  
+            y=[source_y, target_y_new, None],
             line=dict(
                 width=edge_width,
                 color=colorscale[i],
@@ -111,15 +111,15 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     """
     graph_data = (
         chasing_data
-        .melt(ignore_index=False, value_name="chasings", var_name="target")
+        .melt(ignore_index=False, value_name="chasings", var_name="source")
         .dropna()
         .reset_index()
-        .rename(columns={"animal_ids": "source"})
+        .rename(columns={"animal_ids": "target"})
     )
     return graph_data
 
 def prep_per_position_df(visits_per_position: pd.DataFrame, type: Literal["visits", "time"]) -> pd.DataFrame:
-    """Auxfun to prepare visits_per_positiondata for plotting
+    """Auxfun to prepare visits_per_position data for plotting
     """
     if type == "visits":
         val_name = "Visits[#]"

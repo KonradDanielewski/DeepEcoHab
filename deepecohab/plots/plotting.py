@@ -133,24 +133,25 @@ def plot_network_graph(
     project_location = Path(cfg["project_location"])
 
     # Prepare data
-    data = auxfun_plots.prep_network_df(chasing_data)
+    chasing_data = auxfun_plots.prep_network_df(chasing_data)
     ranking_data = auxfun_plots.prep_ranking(ranking_ordinal)
-    
+
     # Create phase aware network graph
-    for phase_type in data['phase'].unique():
+    for phase_type in chasing_data['phase'].unique():
         phase_type_name = "dark" if "dark" in phase_type else "light"
-        _data = data[data['phase'] == phase_type]
+        _data = chasing_data[chasing_data['phase'] == phase_type]
         _ranking = ranking_data[ranking_data['phase'] == phase_type]
         frames = []
         for phase in _data['phase_count'].unique():        
             __data = _data[_data['phase_count'] == phase].drop(columns=['phase', 'phase_count'])
             G = nx.from_pandas_edgelist(__data, create_using=nx.DiGraph, edge_attr="chasings")
-            pos = nx.spring_layout(G, k=None, iterations=500, seed=42)
+            pos = nx.spring_layout(G, k=None, iterations=500, seed=42, weight="chasings")
             __ranking = _ranking[_ranking['phase_count'] == phase].drop(columns=['phase', 'phase_count']).set_index('mouse_id')['ranking']
             if len(__ranking) == 0:
                 continue
             node_trace = auxfun_plots.create_node_trace(G, pos, __ranking, node_size_multiplier, node_cmap)
             edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier, edge_cmap)
+            
             plot = go.Figure(
                     data=edge_trace + [node_trace],
                     layout=go.Layout(
