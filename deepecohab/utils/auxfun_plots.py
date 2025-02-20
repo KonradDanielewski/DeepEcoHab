@@ -1,8 +1,8 @@
 import pandas as pd
 import networkx as nx
-import plotly.graph_objects as go
-import plotly.express as px
 import numpy as np
+import plotly.graph_objects as go
+from typing import Literal
 from plotly.express.colors import sample_colorscale
 
 
@@ -117,20 +117,17 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     )
     return graph_data
 
-def prep_time_per_position_df(time_per_position: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prepare time_per_positiondata for plotting
-    """
-    time_per_position_df = time_per_position.melt(ignore_index=False, value_name="Time[s]", var_name="animal_id").reset_index()
-    time_per_position_df = time_per_position_df[time_per_position_df['position'].isin(['cage_1', 'cage_2', 'cage_3', 'cage_4'])]
-    time_per_position_df = time_per_position_df.replace({'cage_1': 'Cage 1', 'cage_2': 'Cage 2', 'cage_3': 'Cage 3', 'cage_4': 'Cage 4'})
-    return time_per_position_df
-
-def prep_visits_per_position_df(visits_per_position: pd.DataFrame) -> pd.DataFrame:
+def prep_per_position_df(visits_per_position: pd.DataFrame, type: Literal["visits", "time"]) -> pd.DataFrame:
     """Auxfun to prepare visits_per_positiondata for plotting
     """
-    visits_per_position_df = visits_per_position.melt(ignore_index=False, value_name="Visits[n]", var_name="animal_id").reset_index()
-    visits_per_position_df = visits_per_position_df[visits_per_position_df['position'].isin(['cage_1', 'cage_2', 'cage_3', 'cage_4'])]
-    visits_per_position_df = visits_per_position_df.replace({'cage_1': 'Cage 1', 'cage_2': 'Cage 2', 'cage_3': 'Cage 3', 'cage_4': 'Cage 4'})
+    if type == "visits":
+        val_name = "Visits[n]"
+    elif type == "time":
+        val_name = "Time[s]"
+    else:
+        raise ValueError("Invalid type. Choose between 'visits' and 'time'.")
+        
+    visits_per_position_df = visits_per_position.melt(ignore_index=False, value_name=val_name, var_name="animal_id").reset_index()
     return visits_per_position_df
 
 def prep_time_together_df(time_together: pd.DataFrame) -> pd.DataFrame:
