@@ -13,7 +13,7 @@ pip install -e .
 
 
 TODO:
-1. Static plot export - kaleido issues, check if version dependent (python, plotly, kaleido)
+1. Static plot export - kaleido issues, check if version dependent (python, plotly, kaleido) - This may be a chromium not on PATH in the current env issue
 2. Activity plots - time spent in cages, visits etc.
 3. Streamline antenna_pair creation for positions (product of adjacent antennas for cages and tunnels (is it necessary?)
 
