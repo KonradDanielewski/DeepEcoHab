@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 import networkx as nx
 import pandas as pd
@@ -10,6 +11,131 @@ from plotly.subplots import make_subplots
 
 from deepecohab.utils import auxfun
 from deepecohab.utils import auxfun_plots
+
+def _super_plot_per_position(
+    project_location: Path,
+    df: pd.DataFrame, 
+    plot_type: Literal["time", "visits"], 
+    cmap: str,
+    save_plot: bool,
+    ):
+    """Auxfun does the plotting for barplots per position
+    """
+    
+    plot_data = auxfun_plots.prep_per_position_df(df, plot_type)
+    for phase in plot_data['phase'].unique():
+        phase_type_name = "dark" if "dark" in phase else "light"
+        data = plot_data[plot_data['phase']==phase].drop("phase", axis=1).sort_values(["phase_count", "animal_id"])
+        
+        if plot_type == "time":
+            title = f"<b>Time spent in each position: <u>{phase_type_name} phase</u></b>"
+            y_title = "<b>Time spent [s]</b>"
+            y = "Time[s]"
+            y_range_add = 1000
+            
+        elif plot_type == "visits":
+            title = f"<b>Visits to each position: <u>{phase_type_name} phase</u></b>"
+            y_title = "<b>Number of visits</b>"
+            y = "Visits[#]"
+            y_range_add = 50
+        
+        max_y = data[y].max() + y_range_add
+        
+        fig = px.bar(
+            data,
+            x="animal_id",
+            y=y,
+            color="position",
+            color_discrete_sequence=px.colors.qualitative.__dict__[cmap],
+            animation_frame='phase_count',
+            barmode='group',
+            title=title,
+            range_y=[0, max_y],
+            width=800,
+            height=500,
+        )
+        fig["layout"].pop("updatemenus")
+
+        fig.update_layout(sliders=[{"currentvalue": {"prefix": "Phase="}}])
+        
+        fig.update_xaxes(title_text="<b>Animal ID</b>")
+        fig.update_yaxes(title_text=y_title)
+        
+        if save_plot:
+            fig.write_html(project_location / "plots" / f"{plot_type}_per_position_{phase_type_name}.html")
+        fig.show()
+        
+def _super_plot_together(
+    project_location: Path, 
+    animal_ids: list,
+    df: pd.DataFrame,
+    plot_type: Literal["time_together", "pairwise_encounters"],
+    cmap: str,
+    show_cell_vals: bool,
+    save_plot: bool,
+    ):
+    """Auxfun does the plotting for per cage heatmaps
+    """    
+    plot_data = df.reset_index()
+    
+    for phase_type in plot_data['phase'].unique():
+        phase_type_name = "dark" if "dark" in phase_type else "light"
+            
+        if plot_type == "time_together":
+            title = f"<b>Time spent in each position: <u>{phase_type_name} phase</u></b>"
+            z_label = "Time [s]: %{z}"
+        
+        elif plot_type == "pairwise_encounters":
+            title = f"<b>Number of pairwise encounters: <u>{phase_type_name} phase</u></b>"
+            z_label = "Number: %{z}"
+        
+        _data = plot_data[plot_data['phase']==phase_type].copy()
+
+        n_phases = len(_data['phase_count'].unique())
+        n_cages = len(_data['cages'].unique())
+        
+        heatmap_data = (
+            _data
+            .drop(columns=["phase", "phase_count", "animal_ids", "cages"])
+            .values
+            .reshape(n_phases, n_cages, len(animal_ids), len(animal_ids))
+        )
+
+        fig = px.imshow(
+            heatmap_data,
+            animation_frame=0,
+            x=animal_ids,
+            y=animal_ids,
+            color_continuous_scale=cmap,  
+            text_auto=show_cell_vals,
+            facet_col=1,
+            facet_col_wrap=2,
+            )
+        
+        fig["layout"].pop("updatemenus")
+        fig = fig.update_layout(
+                            sliders=[{"currentvalue": {"prefix": "Phase="}}],
+                            height=800,
+                            width=800,
+                            plot_bgcolor='white',
+                            title=dict(text=title),
+                        )
+        for i in range(n_cages):
+            facet_col_n = int(fig.layout.annotations[i]['text'][-1])
+            fig.layout.annotations[i]['text'] = f"Cage {facet_col_n+1}"
+            
+        fig.update_xaxes(showspikes=True, spikemode="across")
+        fig.update_yaxes(showspikes=True, spikemode="across")
+        fig.update_traces(
+            hovertemplate="<br>".join([
+                "X: %{x}",
+                "Y: %{y}",
+                z_label,
+            ])
+        )
+        if save_plot:
+            fig.write_html(project_location / "plots" / f"{plot_type}_{phase_type_name}.html")
+        fig.show()
 
 def social_dominance_evaluation(
     cfp: str,
@@ -125,7 +251,8 @@ def plot_network_graph(
         ranking_ordinal: Pandas Series with ordinal ranking.
         node_size_multiplier: Node size multiplier. Defaults to 1.
         edge_width_multiplier: Edge width multiplier. Defaults to 1.
-        cmap: Color map for nodes. Defaults to "inferno".
+        node_cmap: Color map for nodes. Defaults to "bluered".
+        edge_cmap: Color map for edges. Defaults to "bluered".
         save_plot: Save plot. Defaults to True.
     """
     # Read config file
@@ -184,7 +311,6 @@ def plot_network_graph(
             fig.write_html(project_location / "plots" / f"time_per_position_{phase_type_name}.html")
         fig.show()
 
-# NOTE: this and cage visits is basically the same, creating a lot of redundancy. Consider simplification into one super function under the hood with two user callable functions.
 def plot_cage_position_time(
         cfp: str, 
         time_per_position: pd.DataFrame, 
@@ -199,39 +325,16 @@ def plot_cage_position_time(
         time_per_position: dataframe generated by deepecohab.calculate_time_spent_per_position.
         save_plot: Save plot. Defaults to True.
     """
-     # Read config file
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
     
-    plot_data = auxfun_plots.prep_per_position_df(time_per_position, 'time')
-    for phase in plot_data['phase'].unique():
-        phase_type_name = "dark" if "dark" in phase else "light"
-        data = plot_data[plot_data['phase']==phase].drop("phase", axis=1).sort_values(["phase_count", "animal_id"])
-        max_y = data["Time[s]"].max() + 1000
-        
-        fig = px.bar(
-            data,
-            x="animal_id",
-            y="Time[s]",
-            color="position",
-            color_discrete_sequence=px.colors.qualitative.__dict__[cmap],
-            animation_frame='phase_count',
-            barmode='group',
-            title=f"<b>Time spent in each position: <u>{phase_type_name} phase</u></b>",
-            range_y=[0, max_y],
-            width=800,
-            height=500,
-        )
-        fig["layout"].pop("updatemenus")
-    
-        fig.update_layout(sliders=[{"currentvalue": {"prefix": "Phase="}}])
-        
-        fig.update_xaxes(title_text="<b>Animal ID</b>")
-        fig.update_yaxes(title_text="<b>Time spent [s]</b>")
-        
-        if save_plot:
-            fig.write_html(project_location / "plots" / f"time_per_position_{phase_type_name}.html")
-        fig.show()
+    _super_plot_per_position(
+        project_location,
+        time_per_position,
+        "time",
+        cmap,
+        save_plot,
+    )
             
 def plot_cage_position_visits(
         cfp: str, 
@@ -247,41 +350,17 @@ def plot_cage_position_visits(
         cmap: Color map for bar plot. Defaults to "Set1".
         save_plot: Save plot. Defaults to True.
     """
-     # Read config file
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
     
-    plot_data = auxfun_plots.prep_per_position_df(visits_per_position, 'visits')
-    for phase in plot_data['phase'].unique():
-        phase_type_name = "dark" if "dark" in phase else "light"
-        data = plot_data[plot_data['phase']==phase].drop("phase", axis=1).sort_values(["phase_count", "animal_id"])
-        max_y = data["Visits[#]"].max() + 100
-        
-        fig = px.bar(
-            data,
-            x="animal_id",
-            y="Visits[#]",
-            color="position",
-            color_discrete_sequence=px.colors.qualitative.__dict__[cmap],
-            animation_frame='phase_count',
-            barmode='group',
-            title=f"<b>Visits to each position: <u>{phase_type_name} phase</u></b>",
-            range_y=[0, max_y],
-            width=800,
-            height=500,
-        )
-        fig["layout"].pop("updatemenus")
-    
-        fig.update_layout(sliders=[{"currentvalue": {"prefix": "Phase="}}])
-        
-        fig.update_xaxes(title_text="<b>Animal ID</b>")
-        fig.update_yaxes(title_text="<b>Number of visits</b>")
-        
-        if save_plot:
-            fig.write_html(project_location / "plots" / f"visits_per_position_{phase_type_name}.html")
-        fig.show()
+    _super_plot_per_position(
+        project_location, 
+        visits_per_position, 
+        "visits", 
+        cmap, 
+        save_plot,
+    )
 
-# NOTE: this and pairwise encounters is basically the same, creating a lot of redundancy. Consider simplification into one super function under the hood with two user callable functions.
 def plot_time_together(
         cfp: str, 
         time_together: pd.DataFrame, 
@@ -298,66 +377,20 @@ def plot_time_together(
         show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
         save_plot: Save plot. Defaults to True.
     """
-    # Read config file
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
-    
-    plot_data = time_together.reset_index()
-
     animal_ids = cfg["animal_ids"]
     
-    for phase_type in plot_data['phase'].unique():
-        
-        phase_type_name = "dark" if "dark" in phase_type else "light"
-        
-        _data = plot_data[plot_data['phase']==phase_type].copy()
-
-        n_phases = len(_data['phase_count'].unique())
-        n_cages = len(_data['cages'].unique())
-        
-        heatmap_data = (
-            _data
-            .drop(columns=["phase", "phase_count", "animal_ids", "cages"])
-            .values
-            .reshape(n_phases, n_cages, len(animal_ids), len(animal_ids))
-        )
-
-        fig = px.imshow(
-            np.floor(heatmap_data),
-            animation_frame=0,
-            x=animal_ids,
-            y=animal_ids,
-            color_continuous_scale=cmap,  
-            text_auto=show_cell_vals,
-            facet_col=1,
-            facet_col_wrap=2,
-            )
-        
-        fig["layout"].pop("updatemenus")
-        fig = fig.update_layout(
-                            sliders=[{"currentvalue": {"prefix": "Phase="}}],
-                            height=800,
-                            width=800,
-                            plot_bgcolor='white',
-                            title=dict(text=f"<b>Time spent together: <u>{phase_type_name} phase</u></b>"),
-                        )
-        for i in range(n_cages):
-            facet_col_n = int(fig.layout.annotations[i]['text'][-1])
-            fig.layout.annotations[i]['text'] = f"Cage {facet_col_n+1}"
-            
-        fig.update_xaxes(showspikes=True, spikemode="across")
-        fig.update_yaxes(showspikes=True, spikemode="across")
-        fig.update_traces(
-            hovertemplate="<br>".join([
-                "X: %{x}",
-                "Y: %{y}",
-                "Time [s]: %{z}",
-            ])
-        )
-        if save_plot:
-            fig.write_html(project_location / "plots" / f"time_together_{phase_type_name}.html")
-        fig.show()
-
+    _super_plot_together(
+        project_location,
+        animal_ids,
+        time_together,
+        "time_together",
+        cmap,
+        show_cell_vals,
+        save_plot,
+    )
+    
 def plot_pairwise_encounters(
         cfp: str, 
         pairwise_encounters: pd.DataFrame, 
@@ -374,65 +407,19 @@ def plot_pairwise_encounters(
         show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
         save_plot: Save plot. Defaults to True.
     """
-    # Read config file
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
-    
-    plot_data = pairwise_encounters.reset_index()
-
     animal_ids = cfg["animal_ids"]
     
-    for phase_type in plot_data['phase'].unique():
-        
-        phase_type_name = "dark" if "dark" in phase_type else "light"
-        
-        _data = plot_data[plot_data['phase']==phase_type].copy()
-
-        n_phases = len(_data['phase_count'].unique())
-        n_cages = len(_data['cages'].unique())
-        
-        heatmap_data = (
-            _data
-            .drop(columns=["phase", "phase_count", "animal_ids", "cages"])
-            .values
-            .reshape(n_phases, n_cages, len(animal_ids), len(animal_ids))
-        )
-
-        fig = px.imshow(
-            heatmap_data,
-            animation_frame=0,
-            x=animal_ids,
-            y=animal_ids,
-            color_continuous_scale=cmap,  
-            text_auto=show_cell_vals,
-            facet_col=1,
-            facet_col_wrap=2,
-            )
-        
-        fig["layout"].pop("updatemenus")
-        fig = fig.update_layout(
-                            sliders=[{"currentvalue": {"prefix": "Phase="}}],
-                            height=800,
-                            width=800,
-                            plot_bgcolor='white',
-                            title=dict(text=f"<b>Number of pairwise encounters: <u>{phase_type_name} phase</u></b>"),
-                        )
-        for i in range(n_cages):
-            facet_col_n = int(fig.layout.annotations[i]['text'][-1])
-            fig.layout.annotations[i]['text'] = f"Cage {facet_col_n+1}"
-            
-        fig.update_xaxes(showspikes=True, spikemode="across")
-        fig.update_yaxes(showspikes=True, spikemode="across")
-        fig.update_traces(
-            hovertemplate="<br>".join([
-                "X: %{x}",
-                "Y: %{y}",
-                "Number: %{z}",
-            ])
-        )
-        if save_plot:
-            fig.write_html(project_location / "plots" / f"pairwise_encounters_{phase_type_name}.html")
-        fig.show()
+    _super_plot_together(
+        project_location,
+        animal_ids,
+        pairwise_encounters,
+        "pairwise_encounters",
+        cmap,
+        show_cell_vals,
+        save_plot,
+    )
         
 def plot_incohort_sociability(
         cfp: str, 
