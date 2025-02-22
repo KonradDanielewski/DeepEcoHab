@@ -11,6 +11,8 @@ conda activate deepecohab
 pip install -e .
 ```
 
+To check out the package please run the example_notebook provided in the examples directory of this repository.
+
 
 TODO:
 1. Static plot export - kaleido issues, check if version dependent (python, plotly, kaleido) - This may be a chromium not on PATH in the current env issue
