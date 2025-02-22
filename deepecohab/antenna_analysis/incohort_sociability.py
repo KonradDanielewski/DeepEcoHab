@@ -134,7 +134,6 @@ def calculate_time_together(
         time_together_df.loc[(phase, n, cage, animal_2), animal_1] = sum(time_encounters)
         
     time_together_df = (time_together_df
-                        .dropna(axis=1, how="all")
                         .astype(float)
                         .round(3)
                        )
@@ -187,7 +186,6 @@ def calculate_pairwise_encounters(
         pairwise_encounters_df.loc[(phase, n, cage, animal_2), animal_1] = sum(n_encounters)
         
     pairwise_encounters_df = (pairwise_encounters_df
-                              .dropna(axis=1, how="all")
                               .astype(float)
                               .round(3)
                              )
@@ -199,7 +197,7 @@ def calculate_pairwise_encounters(
     
     return pairwise_encounters_df
 
-def calculate_in_cohort_sociability(
+def calculate_incohort_sociability(
     cfp: dict, 
     save_data: bool = True, 
     overwrite: bool = False, 
@@ -220,12 +218,12 @@ def calculate_in_cohort_sociability(
     """    
     cfg = auxfun.read_config(cfp)
     data_path = Path(cfg["results_path"])
-    key="in_cohort_sociability"
+    key="incohort_sociability"
     
-    in_cohort_sociability = None if overwrite else auxfun.check_save_data(data_path, key)
+    incohort_sociability = None if overwrite else auxfun.check_save_data(data_path, key)
     
-    if isinstance(in_cohort_sociability, pd.DataFrame):
-        return in_cohort_sociability
+    if isinstance(incohort_sociability, pd.DataFrame):
+        return incohort_sociability
     
     df = auxfun.load_ecohab_data(cfg, key="main_df")
     padded_df = activity.create_padded_df(cfg, df)
@@ -254,23 +252,22 @@ def calculate_in_cohort_sociability(
     proportion_together = time_together_df.div(phase_durations, axis=0)
     
     # idx = auxfun._create_phase_multiindex(cfg, animals=True)
-    in_cohort_sociability = pd.DataFrame(columns=animals, index=idx).sort_index()
+    incohort_sociability = pd.DataFrame(columns=animals, index=idx).sort_index()
     # Calculate pairwise in-cohort sociability
     for animal_1, animal_2 in mouse_pairs:
         col_name = f"{animal_1}_{animal_2}"
         meet_chance = (proportion_alone.loc[:, [animal_1]] * proportion_alone.loc[:, [animal_2]].values).unstack(level=2).sum(axis=1)
-        in_cohort_sociability.loc[(slice(None), slice(None), animal_2), animal_1] = proportion_together.loc[:, col_name].subtract(meet_chance).values
+        incohort_sociability.loc[(slice(None), slice(None), animal_2), animal_1] = proportion_together.loc[:, col_name].subtract(meet_chance).values
     
-    in_cohort_sociability = (
-        in_cohort_sociability
-        .dropna(axis=1, how="all")
+    incohort_sociability = (
+        incohort_sociability
         .round(3)
         .astype(float)
     )
     
-    in_cohort_sociability = auxfun._drop_empty_slices(in_cohort_sociability)
+    incohort_sociability = auxfun._drop_empty_slices(incohort_sociability)
     
     if save_data:
-        in_cohort_sociability.to_hdf(data_path, key=key, mode="a", format="table")
+        incohort_sociability.to_hdf(data_path, key=key, mode="a", format="table")
 
-    return in_cohort_sociability
+    return incohort_sociability

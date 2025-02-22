@@ -1,66 +1,70 @@
 import pandas as pd
 import networkx as nx
+import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
+
+from typing import Literal
+from plotly.express.colors import sample_colorscale
 
 
-def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int) -> list:
+def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int, cmap: str = "bluered") -> list:
     """Auxfun to create edges trace with color mapping based on edge width."""
     edge_trace = []
     
     # Get all edge widths to create a color scale
-    edge_widths = [G.edges[edge]['weight'] * width_multiplier for edge in G.edges()]
-    
-    # Create a color scale based on edge widths
-    color_scale = px.colors.sequential.Bluered
+    edge_widths = [G.edges[edge]['chasings'] * width_multiplier for edge in G.edges()]
     
     # Normalize edge widths to the range [0, 1] for color mapping
     max_width = max(edge_widths)
     min_width = min(edge_widths)
-    normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
+    if max_width == 0 and min_width == 0:
+        normalized_widths = [0 for _ in edge_widths]
+    else:
+        normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
+    
+    colorscale = sample_colorscale(cmap, normalized_widths)
     
     for i, edge in enumerate(G.edges()):
-        x0, y0 = pos[edge[1]]  # Start point (source node)
-        x1, y1 = pos[edge[0]]  # End point (target node)
+        source_x, source_y = pos[edge[0]]  # Start point (source node)
+        target_x, target_y = pos[edge[1]]  # End point (target node)
         edge_width = edge_widths[i]
         
-        # Calculate the direction vector from (x0, y0) to (x1, y1)
-        dx = x1 - x0
-        dy = y1 - y0
+        # Calculate the direction vector from (source_x, source_y) to (target_x, target_y)
+        dx = target_x - source_x
+        dy = target_y - source_y
         
         # Calculate the length of the edge
         length = (dx**2 + dy**2)**0.5
         
         # Calculate the offset to shorten the line (e.g., by 10% of the node size)
-        offset = 0.08 * node_size_multiplier  
+        offset = 0.02 * node_size_multiplier  
         
-        # Calculate new end point (x1_new, y1_new) by moving back along the line
+        # Calculate new end point (target_x_new, target_y_new) by moving back along the line
         if length > 0:  # Avoid division by zero
-            x1_new = x1 - (dx / length) * offset
-            y1_new = y1 - (dy / length) * offset
+            target_x_new = target_x - (dx / length) * offset
+            target_y_new = target_y - (dy / length) * offset
         else:
-            x1_new, y1_new = x1, y1
+            target_x_new, target_y_new = target_x, target_y
         
-        # Map the normalized width to a color in the color scale
-        color_index = int(normalized_widths[i] * (len(color_scale) - 1))
-        line_color = color_scale[color_index]
-        
-        edge_trace.append(go.Scatter(
-            x=[x0, x1_new, None],  
-            y=[y0, y1_new, None],
-            line=dict(
-                width=edge_width,
-                color=line_color,
-            ),
-            hoverinfo='none',
-            mode="lines+markers",
-            marker=dict(size=edge_width * 4, symbol="arrow", angleref="previous"),
-            opacity=0.5
-        ))
+        edge_trace.append(
+            go.Scatter(
+                x=[source_x, target_x_new, None],  
+                y=[source_y, target_y_new, None],
+                line=dict(
+                    width=edge_width,
+                    color=colorscale[i],
+                ),
+                hoverinfo='none',
+                mode="lines+markers",
+                marker=dict(size=edge_width * 4, symbol="arrow", angleref="previous"),
+                opacity=0.5,
+                showlegend=False,
+            )
+        )
     
     return edge_trace
 
-def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.Series, node_size_multiplier: float | int) -> go.Scatter:
+def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node_size_multiplier: float | int, cmap: str = "Bluered") -> go.Scatter:
     """Auxfun to create node trace
     """
     node_trace = go.Scatter(
@@ -71,6 +75,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.
         hoverinfo='text',
         mode='markers+text',
         textposition='top center',
+        showlegend=False,
         marker=dict(
             showscale=True,
             colorscale=cmap,
@@ -79,7 +84,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.
                 thickness=15,
                 title='Ranking',
                 xanchor='left',
-                titleside='right'
+                titleside='right',
             )
         )
     )
@@ -91,7 +96,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, cmap: str,  ranking_ordinal: pd.
         node_trace['x'] += (x,)
         node_trace['y'] += (y,)
         node_trace['text'] += ('<b>' + node + '</b>',)
-        ranking_score = round(ranking_ordinal[node], 3)
+        ranking_score = round(ranking_ordinal[node], 3) if ranking_ordinal[node] > 0 else 0.1
         ranking_score_list.append(ranking_score)
         node_trace['hovertext'] += (
             f"Mouse ID: {node}<br>Ranking: {ranking_score}",
@@ -107,9 +112,46 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     """
     graph_data = (
         chasing_data
-        .reset_index()
-        .melt(id_vars="index", value_name="weight")
+        .melt(ignore_index=False, value_name="chasings", var_name="source")
         .dropna()
-        .rename(columns={"index": "target", "variable": "source"})
+        .reset_index()
+        .rename(columns={"animal_ids": "target"})
     )
     return graph_data
+
+def prep_per_position_df(visits_per_position: pd.DataFrame, type: Literal["visits", "time"]) -> pd.DataFrame:
+    """Auxfun to prepare visits_per_position data for plotting
+    """
+    if type == "visits":
+        val_name = "Visits[#]"
+    elif type == "time":
+        val_name = "Time[s]"
+    else:
+        raise ValueError("Invalid type. Choose between 'visits' and 'time'.")
+        
+    visits_per_position_df = visits_per_position.melt(ignore_index=False, value_name=val_name, var_name="animal_id").reset_index()
+    return visits_per_position_df
+
+def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
+    """Auxfun to prepare ranking data for plotting
+    """
+    ranking = (
+        ranking_df
+        .melt(ignore_index=False, var_name="mouse_id", value_name="ranking")
+        .reset_index()
+        )
+    return ranking
+
+def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to prep the axes and data for ranking through time plot.
+    """    
+    # Create sampling every 5 minutes (makes plotting prettier and reduces memory footprint)
+    index_len = np.ceil((main_df.datetime.iloc[-1] - main_df.datetime.iloc[0]).total_seconds()*0.00333).astype(int)
+    idx = pd.date_range(main_df.datetime.iloc[0], main_df.datetime.iloc[-1], index_len)
+    idx = idx[idx <= ranking_in_time.index[-1]]
+
+    plot_indices = np.searchsorted(np.array(ranking_in_time.index), np.array(idx), side="left")
+
+    plot_df = ranking_in_time.iloc[plot_indices]
+    
+    return plot_df
