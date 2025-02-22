@@ -129,6 +129,7 @@ def create_ecohab_project(
     else:
         os.mkdir(project_location)
         os.mkdir(project_location / "plots")
+        os.mkdir(project_location / "plots" / "fig_source")
         os.mkdir(project_location / "results")
     
     # Create the toml

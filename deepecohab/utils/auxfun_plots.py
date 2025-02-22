@@ -2,6 +2,7 @@ import pandas as pd
 import networkx as nx
 import numpy as np
 import plotly.graph_objects as go
+
 from typing import Literal
 from plotly.express.colors import sample_colorscale
 
@@ -20,7 +21,9 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
         normalized_widths = [0 for _ in edge_widths]
     else:
         normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
+    
     colorscale = sample_colorscale(cmap, normalized_widths)
+    
     for i, edge in enumerate(G.edges()):
         source_x, source_y = pos[edge[0]]  # Start point (source node)
         target_x, target_y = pos[edge[1]]  # End point (target node)
@@ -43,23 +46,21 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
         else:
             target_x_new, target_y_new = target_x, target_y
         
-        # Map the normalized width to a color in the color scale
-        # color_index = int(normalized_widths[i] * (len(color_scale) - 1))
-        # line_color = color_scale[i]
-        
-        edge_trace.append(go.Scatter(
-            x=[source_x, target_x_new, None],  
-            y=[source_y, target_y_new, None],
-            line=dict(
-                width=edge_width,
-                color=colorscale[i],
-            ),
-            hoverinfo='none',
-            mode="lines+markers",
-            marker=dict(size=edge_width * 4, symbol="arrow", angleref="previous"),
-            opacity=0.5,
-            showlegend=False,
-        ))
+        edge_trace.append(
+            go.Scatter(
+                x=[source_x, target_x_new, None],  
+                y=[source_y, target_y_new, None],
+                line=dict(
+                    width=edge_width,
+                    color=colorscale[i],
+                ),
+                hoverinfo='none',
+                mode="lines+markers",
+                marker=dict(size=edge_width * 4, symbol="arrow", angleref="previous"),
+                opacity=0.5,
+                showlegend=False,
+            )
+        )
     
     return edge_trace
 
@@ -140,3 +141,17 @@ def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
         .reset_index()
         )
     return ranking
+
+def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to prep the axes and data for ranking through time plot.
+    """    
+    # Create sampling every 5 minutes (makes plotting prettier and reduces memory footprint)
+    index_len = np.ceil((main_df.datetime.iloc[-1] - main_df.datetime.iloc[0]).total_seconds()*0.00333).astype(int)
+    idx = pd.date_range(main_df.datetime.iloc[0], main_df.datetime.iloc[-1], index_len)
+    idx = idx[idx <= ranking_in_time.index[-1]]
+
+    plot_indices = np.searchsorted(np.array(ranking_in_time.index), np.array(idx), side="left")
+
+    plot_df = ranking_in_time.iloc[plot_indices]
+    
+    return plot_df

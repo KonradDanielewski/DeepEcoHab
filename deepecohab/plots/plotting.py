@@ -18,6 +18,7 @@ def _super_plot_per_position(
     plot_type: Literal["time", "visits"], 
     cmap: str,
     save_plot: bool,
+    show_plot: bool,
     ):
     """Auxfun does the plotting for barplots per position
     """
@@ -63,7 +64,9 @@ def _super_plot_per_position(
         
         if save_plot:
             fig.write_html(project_location / "plots" / f"{plot_type}_per_position_{phase_type_name}.html")
-        fig.show()
+            fig.write_json(project_location / "plots" / "fig_source" / f"{plot_type}_per_position_{phase_type_name}.json")
+        if show_plot:
+            fig.show()
         
 def _super_plot_together(
     project_location: Path, 
@@ -73,6 +76,7 @@ def _super_plot_together(
     cmap: str,
     show_cell_vals: bool,
     save_plot: bool,
+    show_plot: bool,
     ):
     """Auxfun does the plotting for per cage heatmaps
     """    
@@ -122,7 +126,7 @@ def _super_plot_together(
                         )
         for i in range(n_cages):
             facet_col_n = int(fig.layout.annotations[i]['text'][-1])
-            fig.layout.annotations[i]['text'] = f"Cage {facet_col_n+1}"
+            fig.layout.annotations[i]['text'] = f"<u><b>Cage {facet_col_n+1}</u></b>"
             
         fig.update_xaxes(showspikes=True, spikemode="across")
         fig.update_yaxes(showspikes=True, spikemode="across")
@@ -135,98 +139,58 @@ def _super_plot_together(
         )
         if save_plot:
             fig.write_html(project_location / "plots" / f"{plot_type}_{phase_type_name}.html")
-        fig.show()
-
-def social_dominance_evaluation(
-    cfp: str,
-    chasings: pd.DataFrame,
-    ranking_ordinal: pd.Series,
-    save_plot: bool = True,
-    show_plot: bool = True,
-    ) -> go.Figure:
-    """TODO: data should be read from file
-
-    Args:
-        cfp: path to project config file
-        chasings: chasings matrix created with calculate_chasings
-        ranking_ordinal: ranking created during chasings calculation
-        save_plot: toggle whether to save the plot. Defaults to True.
-        show_plot: toggle whether to show the plot. Defaults to True.
-    """    
-    cfg = auxfun.read_config(cfp)
-    fig = make_subplots(
-        rows=2, cols=2,
-        specs=[[{"type": "bar"}, {"type": "bar"}],
-               [{"type": "bar"}, {"type": "bar"}]],
-        subplot_titles=["Ranking", "Number of chasings", "Win/Loss-Rate", "Number of times being chased"],
-    )
-
-    chases = chasings.sum()
-    chased = chasings.sum(axis=1)
-    proportion = ((chases - chased) / chases) * 100
-
-
-    fig.add_trace(go.Bar(x=ranking_ordinal.index.to_list(), y=ranking_ordinal.values, name="Ranking"),
-                row=1, col=1,
-                )
-    fig.add_trace(go.Bar(x=chases.index.to_list(), y=chases.values, name="Number of chasings"),
-                row=1, col=2,
-                )
-    fig.add_trace(go.Bar(x=chased.index.to_list(), y=chased.values, name="Number of times being chased"),
-                row=2, col=2,
-                )
-    fig.add_trace(go.Bar(x=proportion.index.to_list(), y=proportion.values, name="Proportion chases vs being chased"),
-                row=2, col=1,
-                )
-
-    fig.update_layout(
-        width=1000, 
-        height=600, 
-        title_text="Social dominance evaluation", 
-        showlegend=False,
-    )
-    if save_plot:
-        save_path = Path(cfg["project_location"]) / "plots"
-        fig.write_html(save_path / "social_dominance_evaluation.html")
-        # fig.write_image(save_path / "social_dominance_evaluation.svg")
-    if show_plot:
-        fig.show()
-    
-    return fig
+            fig.write_json(project_location / "plots" / "fig_source" / f"{plot_type}_{phase_type_name}.json")
+        if show_plot:
+            fig.show()
 
 def plot_ranking_in_time(
     cfp: str,
-    ranking_in_time: pd.DataFrame,
+    cmap: str = "Pastel",
     save_plot: bool = True,
     show_plot: bool = True,
     ) -> go.Figure:
-    """TODO: Make it better, x axis showing time, add loading from file
+    """
 
     Args:
         cfp: path to project config file
-        ranking_in_time: DataFrame of ranking changes througout the experiment
+        cmap: Color map for line plot. Defaults to "Pastel".
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
     cfg = auxfun.read_config(cfp)
-    
-    fig = px.line(
-        ranking_in_time,
+    project_location = Path(cfg["project_location"])
+    animals = cfg["animal_ids"]
+    colors = px.colors.qualitative.__dict__[cmap]
+
+    ranking_in_time = auxfun.load_ecohab_data(cfp, "ranking_in_time")
+    main_df = auxfun.load_ecohab_data(cfp, "main_df")
+
+    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time)
+
+    # Make fig
+    fig = go.Figure()
+
+    for i, animal in enumerate(animals):
+        fig.add_trace(
+            go.Scatter(x=plot_df.index, y=plot_df[animal], name=animal, marker=dict(color=colors[i]))
+        )
+
+    fig.update_layout(
+        title="<b>Social dominance ranking in time</b>",
+        xaxis=dict(
+            rangeslider=dict(visible=True),
+            type="date",
+            title="<b>Time</b>"
+        ),
+        yaxis=dict(title="<b>Ranking</b>"),
+        legend=dict(title="<b>Animal IDs</b>"),
         width=1000,
         height=600,
-        color_discrete_sequence=px.colors.qualitative.Dark24, 
-        title="Social dominance ranking in time",
-    )
-    
-    fig.update_layout(
-        yaxis_title="Ordinal",
-        xaxis_title="Chasing events",
     )
     
     if save_plot:
-        save_path = Path(cfg["project_location"]) / "plots"
-        fig.write_html(save_path / "Ranking_change_in_time.html")
-        # fig.write_image(save_path / "Ranking_change_in_time.svg")
+        fig.write_html(project_location / "plots" / "Ranking_change_in_time.html")
+        fig.write_json(project_location / "plots" / "fig_source" / "Ranking_change_in_time.json")
     if show_plot:
         fig.show()
     
@@ -234,30 +198,28 @@ def plot_ranking_in_time(
 
 def plot_network_graph(
     cfp: str,
-    chasing_data: pd.DataFrame,
-    ranking_ordinal: pd.Series,
     node_size_multiplier: int | float = 0.05,
     edge_width_multiplier: int | float = 0.05,
-    node_cmap: str = "bluered",
-    edge_cmap: str = "bluered",
+    cmap: str = "bluered",
     save_plot: bool = True,
+    show_plot: bool = True,
 ):
     """
     Plot network graph of social interactions with interactive node highlighting.
 
     Args:
         cfp: Path to project config file.
-        chasing_data: Pandas DataFrame with graph_data calculated by calculate_chasings function.
-        ranking_ordinal: Pandas Series with ordinal ranking.
-        node_size_multiplier: Node size multiplier. Defaults to 1.
-        edge_width_multiplier: Edge width multiplier. Defaults to 1.
-        node_cmap: Color map for nodes. Defaults to "bluered".
-        edge_cmap: Color map for edges. Defaults to "bluered".
-        save_plot: Save plot. Defaults to True.
+        node_size_multiplier: Node size multiplier. Defaults to 0.05.
+        edge_width_multiplier: Edge width multiplier. Defaults to 0.05.
+        cmap: Color map for nodes and edges. Defaults to "bluered". The colorbar corresponds to node values.
+        save_plot: toggles whether to save the plot. Defaults to True.
+        show_plot: toggles whether to show the plot. Defaults to True.
     """
-    # Read config file
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
+    
+    chasing_data = auxfun.load_ecohab_data(cfp, "chasings")
+    ranking_ordinal = auxfun.load_ecohab_data(cfp, "ranking_ordinal")
 
     # Prepare data
     chasing_data = auxfun_plots.prep_network_df(chasing_data)
@@ -276,8 +238,8 @@ def plot_network_graph(
             __ranking = _ranking[_ranking['phase_count'] == phase].drop(columns=['phase', 'phase_count']).set_index('mouse_id')['ranking']
             if len(__ranking) == 0:
                 continue
-            node_trace = auxfun_plots.create_node_trace(G, pos, __ranking, node_size_multiplier, node_cmap)
-            edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier, edge_cmap)
+            node_trace = auxfun_plots.create_node_trace(G, pos, __ranking, node_size_multiplier, cmap)
+            edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_width_multiplier, node_size_multiplier, cmap)
             
             plot = go.Figure(
                     data=edge_trace + [node_trace],
@@ -309,24 +271,28 @@ def plot_network_graph(
         fig.update_yaxes(showticklabels=False)
         if save_plot:
             fig.write_html(project_location / "plots" / f"time_per_position_{phase_type_name}.html")
-        fig.show()
+            fig.write_json(project_location / "plots" / "fig_source" / f"time_per_position_{phase_type_name}.json")
+        if show_plot:
+            fig.show()
 
 def plot_cage_position_time(
         cfp: str, 
-        time_per_position: pd.DataFrame, 
-        cmap: str = "Set1", 
+        cmap: str = "Pastel", 
         save_plot: bool = True,
+        show_plot: bool = True,
     ):
     """Plot simple bar plot of time spent in each cage.
 
     Args:
         cfp: Path to project config file.
-        cmap: Color map for bar plot. Defaults to "Set1".
-        time_per_position: dataframe generated by deepecohab.calculate_time_spent_per_position.
-        save_plot: Save plot. Defaults to True.
+        cmap: Color map for bar plot. Defaults to "Pastel".
+        save_plot: toggles whether to save the plot. Defaults to True.
+        show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
+    
+    time_per_position = auxfun.load_ecohab_data(cfp, "time_per_position")
     
     _super_plot_per_position(
         project_location,
@@ -334,24 +300,27 @@ def plot_cage_position_time(
         "time",
         cmap,
         save_plot,
+        show_plot,
     )
             
 def plot_cage_position_visits(
-        cfp: str, 
-        visits_per_position: pd.DataFrame, 
-        cmap: str = "Set1", 
+        cfp: str,
+        cmap: str = "Pastel", 
         save_plot: bool = True,
+        show_plot: bool = True,
     ):
     """Plot simple bar plot of visits spent in each cage.
 
     Args:
         cfp: Path to project config file.
-        visits_per_position: dataframe generated by deepecohab.calculate_visits_spent_per_position.
-        cmap: Color map for bar plot. Defaults to "Set1".
-        save_plot: Save plot. Defaults to True.
+        cmap: Color map for bar plot. Defaults to "Pastel".
+        save_plot: toggles whether to save the plot. Defaults to True.
+        show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
+    
+    visits_per_position = auxfun.load_ecohab_data(cfp, "visits_per_position")
     
     _super_plot_per_position(
         project_location, 
@@ -359,27 +328,30 @@ def plot_cage_position_visits(
         "visits", 
         cmap, 
         save_plot,
+        show_plot,
     )
 
 def plot_time_together(
         cfp: str, 
-        time_together: pd.DataFrame, 
         cmap: str = "OrRd",
         show_cell_vals: bool = False,  
         save_plot: bool = True,
+        show_plot: bool = True,
     ):
     """Plot heatmap of time spent together.
 
     Args:
         cfp: Path to project config file.
-        time_together: dataframe generated by deepecohab.calculate_time_together.
         cmap: Color map for heatmap. Defaults to "OrRd".
         show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
-        save_plot: Save plot. Defaults to True.
+        save_plot: toggles whether to save the plot. Defaults to True.
+        show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
     animal_ids = cfg["animal_ids"]
+    
+    time_together = auxfun.load_ecohab_data(cfp, "time_together")
     
     _super_plot_together(
         project_location,
@@ -389,27 +361,30 @@ def plot_time_together(
         cmap,
         show_cell_vals,
         save_plot,
+        show_plot,
     )
     
 def plot_pairwise_encounters(
         cfp: str, 
-        pairwise_encounters: pd.DataFrame, 
         cmap: str = "OrRd",
         show_cell_vals: bool = False,  
         save_plot: bool = True,
+        show_plot: bool = True,
     ):
     """Plot heatmap of time spent together.
 
     Args:
         cfp: Path to project config file.
-        pairwise_encounters: dataframe generated by deepecohab.pairwise_encounters.
         cmap: Color map for heatmap. Defaults to "OrRd".
         show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
-        save_plot: Save plot. Defaults to True.
+        save_plot: toggles whether to save the plot. Defaults to True.
+        show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
     animal_ids = cfg["animal_ids"]
+    
+    pairwise_encounters = auxfun.load_ecohab_data(cfp, "pairwise_encounters")
     
     _super_plot_together(
         project_location,
@@ -419,29 +394,31 @@ def plot_pairwise_encounters(
         cmap,
         show_cell_vals,
         save_plot,
+        show_plot
     )
         
 def plot_incohort_sociability(
         cfp: str, 
-        incohort_soc: pd.DataFrame, 
         cmap: str="OrRd", 
         show_cell_vals: bool = False,  
         save_plot: bool = True,
+        show_plot: bool = True,
     ):
     """Plot heatmap of time spent together.
 
     Args:
         cfp: Path to project config file.
-        incohort_soc: dataframe generated by deepecohab.calculate_in_cohort_sociability.
         cmap: Color map for heatmap. Defaults to "OrRd".
         show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
-        save_plot: Save plot. Defaults to True.
+        save_plot: toggles whether to save the plot. Defaults to True.
+        show_plot: toggles whether to show the plot. Defaults to True.
     """
-    # Read config file
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
     
-    plot_data = incohort_soc.reset_index()
+    incohort_sociability = auxfun.load_ecohab_data(cfp, "incohort_sociability")
+    
+    plot_data = incohort_sociability.reset_index()
     
     for phase_type in plot_data['phase'].unique():
         
@@ -489,5 +466,63 @@ def plot_incohort_sociability(
         )
         if save_plot:
             fig.write_html(project_location / "plots" / f"in_cohort_sociablity_{phase_type_name}.html")
-        fig.show()
+            fig.write_json(project_location / "plots" / "fig_source" / f"in_cohort_sociablity_{phase_type_name}.json")
+        if show_plot:
+            fig.show()
+            
+# TODO: consider relevance of this plot, should we keep it, and if so in what form (per phase> full summary?)
+#
+# def social_dominance_evaluation(
+#     cfp: str,
+#     chasings: pd.DataFrame,
+#     ranking_ordinal: pd.Series,
+#     save_plot: bool = True,
+#     show_plot: bool = True,
+#     ):
+#     """
+#     Args:
+#         cfp: path to project config file
+#         chasings: chasings matrix created with calculate_chasings
+#         ranking_ordinal: ranking created during chasings calculation
+#         save_plot: toggle whether to save the plot. Defaults to True.
+#         show_plot: toggle whether to show the plot. Defaults to True.
+#     """    
+#     cfg = auxfun.read_config(cfp)
+#     fig = make_subplots(
+#         rows=2, cols=2,
+#         specs=[[{"type": "bar"}, {"type": "bar"}],
+#                [{"type": "bar"}, {"type": "bar"}]],
+#         subplot_titles=["Ranking", "Number of chasings", "Win/Loss-Rate", "Number of times being chased"],
+#     )
+
+#     chases = chasings.sum()
+#     chased = chasings.sum(axis=1)
+#     proportion = ((chases - chased) / chases) * 100
+
+
+#     fig.add_trace(go.Bar(x=ranking_ordinal.index.to_list(), y=ranking_ordinal.values, name="Ranking"),
+#                 row=1, col=1,
+#                 )
+#     fig.add_trace(go.Bar(x=chases.index.to_list(), y=chases.values, name="Number of chasings"),
+#                 row=1, col=2,
+#                 )
+#     fig.add_trace(go.Bar(x=chased.index.to_list(), y=chased.values, name="Number of times being chased"),
+#                 row=2, col=2,
+#                 )
+#     fig.add_trace(go.Bar(x=proportion.index.to_list(), y=proportion.values, name="Proportion chases vs being chased"),
+#                 row=2, col=1,
+#                 )
+
+#     fig.update_layout(
+#         width=1000, 
+#         height=600, 
+#         title_text="Social dominance evaluation", 
+#         showlegend=False,
+#     )
+#     if save_plot:
+#         save_path = Path(cfg["project_location"]) / "plots"
+#         fig.write_html(save_path / "social_dominance_evaluation.html")
+#         # fig.write_image(save_path / "social_dominance_evaluation.svg")
+#     if show_plot:
+#         fig.show()
     
