@@ -63,7 +63,7 @@ def _super_plot_per_position(
         fig.update_yaxes(title_text=y_title)
         
         if save_plot:
-            fig.write_html(project_location / "plots" / f"{plot_type}_per_position_{phase_type_name}.html")
+            fig.write_html(project_location / "plots" / f"{plot_type}_per_position_{phase_type_name}.html", auto_play=False)
             fig.write_json(project_location / "plots" / "fig_source" / f"{plot_type}_per_position_{phase_type_name}.json")
         if show_plot:
             fig.show()
@@ -119,8 +119,8 @@ def _super_plot_together(
         fig["layout"].pop("updatemenus")
         fig = fig.update_layout(
                             sliders=[{"currentvalue": {"prefix": "Phase="}}],
-                            height=800,
-                            width=800,
+                            height=600,
+                            width=600,
                             plot_bgcolor='white',
                             title=dict(text=title),
                         )
@@ -138,7 +138,7 @@ def _super_plot_together(
             ])
         )
         if save_plot:
-            fig.write_html(project_location / "plots" / f"{plot_type}_{phase_type_name}.html")
+            fig.write_html(project_location / "plots" / f"{plot_type}_{phase_type_name}.html", auto_play=False)
             fig.write_json(project_location / "plots" / "fig_source" / f"{plot_type}_{phase_type_name}.json")
         if show_plot:
             fig.show()
@@ -189,7 +189,7 @@ def plot_ranking_in_time(
     )
     
     if save_plot:
-        fig.write_html(project_location / "plots" / "Ranking_change_in_time.html")
+        fig.write_html(project_location / "plots" / "Ranking_change_in_time.html", auto_play=False)
         fig.write_json(project_location / "plots" / "fig_source" / "Ranking_change_in_time.json")
     if show_plot:
         fig.show()
@@ -260,15 +260,15 @@ def plot_network_graph(
                                                             "mode": "immediate",},],
                                         "label": f.name, "method": "animate",}
                                         for f in frames],}],
-                    height=800,
-                    width=800,
+                    height=600,
+                    width=700,
                     plot_bgcolor='white',
                     title=dict(text=f"<b>Social structure network graph: <u>{phase_type_name} phase</u></b>", x=0.01, y=0.95),
                 )
         fig.update_xaxes(showticklabels=False)
         fig.update_yaxes(showticklabels=False)
         if save_plot:
-            fig.write_html(project_location / "plots" / f"network_plot_{phase_type_name}.html")
+            fig.write_html(project_location / "plots" / f"network_plot_{phase_type_name}.html", auto_play=False)
             fig.write_json(project_location / "plots" / "fig_source" / f"network_plot_{phase_type_name}.json")
         if show_plot:
             fig.show()
@@ -448,8 +448,8 @@ def _super_plot_heatmap(
         fig["layout"].pop("updatemenus")
         fig = fig.update_layout(
                             sliders=[{"currentvalue": {"prefix": "Phase="}}],
-                            height=800,
-                            width=800,
+                            height=600,
+                            width=700,
                             plot_bgcolor='white',
                             title=dict(text=title),
                         )
@@ -464,7 +464,7 @@ def _super_plot_heatmap(
             ])
         )
         if save_plot:
-            fig.write_html(project_location / "plots" / f"{plot_type}_{phase_type_name}.html")
+            fig.write_html(project_location / "plots" / f"{plot_type}_{phase_type_name}.html", auto_play=False)
             fig.write_json(project_location / "plots" / "fig_source" / f"{plot_type}_{phase_type_name}.json")
         if show_plot:
             fig.show()
