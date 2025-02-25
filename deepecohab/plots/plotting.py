@@ -268,8 +268,8 @@ def plot_network_graph(
         fig.update_xaxes(showticklabels=False)
         fig.update_yaxes(showticklabels=False)
         if save_plot:
-            fig.write_html(project_location / "plots" / f"time_per_position_{phase_type_name}.html")
-            fig.write_json(project_location / "plots" / "fig_source" / f"time_per_position_{phase_type_name}.json")
+            fig.write_html(project_location / "plots" / f"network_plot_{phase_type_name}.html")
+            fig.write_json(project_location / "plots" / "fig_source" / f"network_plot_{phase_type_name}.json")
         if show_plot:
             fig.show()
 
