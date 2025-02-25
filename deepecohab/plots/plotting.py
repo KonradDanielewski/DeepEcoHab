@@ -193,8 +193,6 @@ def plot_ranking_in_time(
         fig.write_json(project_location / "plots" / "fig_source" / "Ranking_change_in_time.json")
     if show_plot:
         fig.show()
-    
-    return fig
 
 def plot_network_graph(
     cfp: str,
@@ -416,14 +414,14 @@ def _super_plot_heatmap(
         
         if plot_type == "incohort_sociability":
             title = f"<b>In-cohort sociability: <u>{phase_type_name} phase</u></b>"
-            min_range = df.min().iloc[0]
-            max_range = df.max().iloc[0]
+            min_range = df.min().min()
+            max_range = df.max().max()
             z_label = "%{z}"
         
         elif plot_type == "chasings":
             title = f"<b>Number of chasings: <u>{phase_type_name} phase</u></b>"
-            min_range = int(df.min().iloc[0])
-            max_range = int(df.max().iloc[0])
+            min_range = int(df.min().min())
+            max_range = int(df.max().max())
             z_label = "Number: %{z}"
         
         _data = plot_data[plot_data['phase']==phase_type].copy()
