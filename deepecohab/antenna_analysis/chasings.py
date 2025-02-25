@@ -163,10 +163,6 @@ def calculate_chasings(
         chasings.loc[(phase, N, mouse1), mouse2] = len(chase_times1[(chase_times1 < 1) & (chase_times1 > 0.1)])
         chasings.loc[(phase, N, mouse2), mouse1] = len(chase_times2[(chase_times2 < 1) & (chase_times2 > 0.1)])
     
-    # reindex most chasing to least
-    new_index = chasings.sum(axis=0).sort_values(ascending=False).index
-    chasings = chasings.reindex(new_index, axis=1).reindex(new_index, level=2, axis=0)
-    
     chasings = auxfun._drop_empty_slices(chasings)
     
     if save_data:
