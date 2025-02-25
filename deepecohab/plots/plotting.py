@@ -396,6 +396,80 @@ def plot_pairwise_encounters(
         save_plot,
         show_plot
     )
+    
+def _super_plot_heatmap(
+    project_location: str | Path, 
+    animal_ids: list[str], 
+    df: pd.DataFrame, 
+    plot_type: str, 
+    cmap: str, 
+    show_cell_vals: bool,
+    save_plot: bool,
+    show_plot: bool,
+    ):
+    """Auxfun plots chasings and incohort sociablity heatmaps
+    """ 
+    plot_data = df.reset_index()
+    
+    for phase_type in plot_data['phase'].unique():
+        phase_type_name = "dark" if "dark" in phase_type else "light"
+        
+        if plot_type == "incohort_sociability":
+            title = f"<b>In-cohort sociability: <u>{phase_type_name} phase</u></b>"
+            min_range = df.min().iloc[0]
+            max_range = df.max().iloc[0]
+            z_label = "%{z}"
+        
+        elif plot_type == "chasings":
+            title = f"<b>Number of chasings: <u>{phase_type_name} phase</u></b>"
+            min_range = int(df.min().iloc[0])
+            max_range = int(df.max().iloc[0])
+            z_label = "Number: %{z}"
+        
+        _data = plot_data[plot_data['phase']==phase_type].copy()
+        n_phases = len(_data['phase_count'].unique())
+        
+        heatmap_data = (
+            _data
+            .drop(columns=["phase", "phase_count", "animal_ids"])
+            .values
+            .reshape(n_phases, len(animal_ids), len(animal_ids))
+            .round(3)
+        )
+
+        fig = px.imshow(
+            heatmap_data,
+            animation_frame=0,
+            x=animal_ids,
+            y=animal_ids,
+            color_continuous_scale=cmap,  
+            text_auto=show_cell_vals,
+            range_color=[min_range, max_range]
+        )
+        
+        fig["layout"].pop("updatemenus")
+        fig = fig.update_layout(
+                            sliders=[{"currentvalue": {"prefix": "Phase="}}],
+                            height=800,
+                            width=800,
+                            plot_bgcolor='white',
+                            title=dict(text=title),
+                        )
+            
+        fig.update_xaxes(showspikes=True, spikemode="across")
+        fig.update_yaxes(showspikes=True, spikemode="across")
+        fig.update_traces(
+            hovertemplate="<br>".join([
+                "X: %{x}",
+                "Y: %{y}",
+                z_label,
+            ])
+        )
+        if save_plot:
+            fig.write_html(project_location / "plots" / f"{plot_type}_{phase_type_name}.html")
+            fig.write_json(project_location / "plots" / "fig_source" / f"{plot_type}_{phase_type_name}.json")
+        if show_plot:
+            fig.show()
         
 def plot_incohort_sociability(
         cfp: str, 
@@ -415,60 +489,53 @@ def plot_incohort_sociability(
     """
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg["project_location"])
+    animal_ids = cfg["animal_ids"]
     
     incohort_sociability = auxfun.load_ecohab_data(cfp, "incohort_sociability")
     
-    plot_data = incohort_sociability.reset_index()
-    
-    for phase_type in plot_data['phase'].unique():
-        
-        phase_type_name = "dark" if "dark" in phase_type else "light"
-        
-        _data = plot_data[plot_data['phase']==phase_type].copy()
-        
-        animals_ids = _data['animal_ids'].unique() 
-        n_phases = len(_data['phase_count'].unique())
-        
-        heatmap_data = (
-            _data
-            .drop(columns=["phase", "phase_count", "animal_ids"])
-            .values
-            .reshape(n_phases, len(animals_ids), len(animals_ids))
-            .round(3)
-        )
-
-        fig = px.imshow(
-            heatmap_data,
-            animation_frame=0,
-            x=animals_ids,
-            y=animals_ids,
-            color_continuous_scale=cmap,  
-            text_auto=show_cell_vals,
-        )
-        
-        fig["layout"].pop("updatemenus")
-        fig = fig.update_layout(
-                            sliders=[{"currentvalue": {"prefix": "Phase="}}],
-                            height=800,
-                            width=800,
-                            plot_bgcolor='white',
-                            title=dict(text=f"<b>In-cohort sociability: <u>{phase_type_name} phase</u></b>"),
-                        )
+    _super_plot_heatmap(
+        project_location, 
+        animal_ids, 
+        incohort_sociability, 
+        "incohort_sociability",
+        cmap,
+        show_cell_vals,
+        save_plot,
+        show_plot,
+    )
             
-        fig.update_xaxes(showspikes=True, spikemode="across")
-        fig.update_yaxes(showspikes=True, spikemode="across")
-        fig.update_traces(
-            hovertemplate="<br>".join([
-                "X: %{x}",
-                "Y: %{y}",
-                "In-cohort sociability: %{z}",
-            ])
-        )
-        if save_plot:
-            fig.write_html(project_location / "plots" / f"in_cohort_sociablity_{phase_type_name}.html")
-            fig.write_json(project_location / "plots" / "fig_source" / f"in_cohort_sociablity_{phase_type_name}.json")
-        if show_plot:
-            fig.show()
+def plot_chasings(
+        cfp: str, 
+        cmap: str="OrRd", 
+        show_cell_vals: bool = False,  
+        save_plot: bool = True,
+        show_plot: bool = True,
+    ):
+    """Plot heatmap of time spent together.
+
+    Args:
+        cfp: Path to project config file.
+        cmap: Color map for heatmap. Defaults to "OrRd".
+        show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
+        save_plot: toggles whether to save the plot. Defaults to True.
+        show_plot: toggles whether to show the plot. Defaults to True.
+    """
+    cfg = auxfun.read_config(cfp)
+    project_location = Path(cfg["project_location"])
+    animal_ids = cfg["animal_ids"]
+    
+    chasings = auxfun.load_ecohab_data(cfp, "chasings")
+    
+    _super_plot_heatmap(
+        project_location, 
+        animal_ids, 
+        chasings, 
+        "chasings",
+        cmap,
+        show_cell_vals,
+        save_plot,
+        show_plot,
+    )
             
 # TODO: consider relevance of this plot, should we keep it, and if so in what form (per phase> full summary?)
 #

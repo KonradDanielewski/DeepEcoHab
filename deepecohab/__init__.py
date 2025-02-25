@@ -25,4 +25,5 @@ from deepecohab.plots.plotting import (
     plot_time_together,
     plot_incohort_sociability,
     plot_pairwise_encounters,
+    plot_chasings,
 )
