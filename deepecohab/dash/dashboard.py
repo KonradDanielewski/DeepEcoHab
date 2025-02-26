@@ -1,76 +1,88 @@
-import dash
-from dash import dcc, html, Input, Output, State
 import os
-import dash_daq as daq
+from dash import Dash, dcc, html, Input, Output
+from flask import send_from_directory
 
-# temporary hardcoded path to the folder with plots
-folder_path = "/home/winiar/Desktop/projects/ecohab/deepecohab/examples/test_name2_2025-02-25/plots"  # Zmienna do zastąpienia argumentem skryptu
+FOLDER_CHARTS = f"/home/winiar/Desktop/projects/ecohab/deepecohab/examples/test_name2_2025-02-25/plots"  # Change this to the path of your folder
+html_files = [f for f in os.listdir(FOLDER_CHARTS) if f.endswith(".html")]
 
-plot_files = [f for f in os.listdir(folder_path) if f.endswith(".html")]
+def format_plot_label(plot_name):
+    return plot_name.replace(".html", "").replace("_", " ").title()
 
-app = dash.Dash(__name__)
-app.title = "Plots Dashboard"
+app = Dash(__name__)
 
-# Layout
+
+@app.server.route('/charts/<path:filename>')
+def serve_chart(filename):
+    return send_from_directory(FOLDER_CHARTS, filename)
+
 app.layout = html.Div([
+    
+    html.Div(
+        html.H1("EcoHAB results", style={
+            "color": "#D3D3D3",
+            "textAlign": "center",
+            "margin": "20px 0"
+        })
+    ),
+    
     html.Div([
-        html.H2("Choose plot:", style={'color': 'white'}),
-        dcc.Dropdown(
-            id='plot-dropdown',
-            options=[{'label': f, 'value': f} for f in plot_files],
-            placeholder="Choose plot:",
-            style={'width': '90%', 'backgroundColor': '#333', 'color': 'white'}
-        ),
-        html.Br(),
-        html.H3("Notes:", style={'color': 'white'}),
-        dcc.Textarea(
-            id='notes-area',
-            style={'width': '90%', 'height': '200px', 'backgroundColor': '#222', 'color': 'white'}
-        ),
-        html.Button("Save notes", id='save-button', n_clicks=0, style={'marginTop': '10px'}),
-        html.Div(id='save-status', style={'marginTop': '10px', 'fontSize': '14px', 'color': 'green'})
-    ], style={'width': '30%', 'float': 'left', 'padding': '20px', 'backgroundColor': '#111', 'height': '100vh'}),
+       
+        html.Div([
+            html.H2("Plots:", style={"color": "#FFFFFF"}),
+            html.Div(
+                dcc.Checklist(
+                    id='file-checklist',
+                    options=sorted([{'label': format_plot_label(f), 'value': f} for f in html_files], key=lambda x: x['label']),
+                    value=[],  
+                    labelStyle={'display': 'block', 'padding': '5px 0', 'color': '#FFFFFF'},
+                ),
+                style={
+                    "border": "2px solid #444444",
+                    "borderRadius": "5px",
+                    "padding": "10px",
+                    "backgroundColor": "#333333"
+                }
+            )
+        ], style={
+            "width": "20%",
+            "padding": "20px",
+            "boxSizing": "border-box"
+        }),
+       
+        html.Div(id='plots-container', style={
+            "width": "80%",
+            "padding": "20px",
+            "boxSizing": "border-box"
+        })
+    ], style={
+        "display": "flex",
+        "alignItems": "flex-start",
+        "backgroundColor": "#2c2c2c",
+        "minHeight": "80vh"
+    })
+], style={
+    "backgroundColor": "#2c2c2c",
+    "fontFamily": "Arial, sans-serif"
+})
 
-    html.Div([
-        html.Iframe(
-            id='plot-frame',
-            style={'width': '100%', 'height': '100vh', 'border': 'none'}
+@app.callback(
+    Output('plots-container', 'children'),
+    Input('file-checklist', 'value')
+)
+def update_plots(selected_files):
+    children = []
+    for file in selected_files:
+        src_url = f"/charts/{file}"
+        children.append(
+            html.Div([
+                html.Iframe(src=src_url, style={
+                    'width': '100%', 
+                    'height': '800px', 
+                    'border': 'none'
+                })
+            ], style={'marginBottom': '20px'})
         )
-    ], style={'width': '65%', 'float': 'right', 'padding': '20px', 'backgroundColor': '#222'})
-], style={'display': 'flex', 'flexDirection': 'row', 'backgroundColor': '#000', 'height': '100vh'})
-
-@app.callback(
-    [Output('plot-frame', 'srcDoc'), Output('notes-area', 'value')],
-    Input('plot-dropdown', 'value')
-)
-def update_plot(selected_file):
-    if selected_file:
-        with open(os.path.join(folder_path, selected_file), "r", encoding="utf-8") as f:
-            plot_content = f.read()
-        
-        notes_path = os.path.join(folder_path, f"{selected_file}.txt")
-        if os.path.exists(notes_path):
-            with open(notes_path, "r", encoding="utf-8") as f:
-                notes_content = f.read()
-        else:
-            notes_content = ""
-        
-        return plot_content, notes_content
-    return "", ""
-
-@app.callback(
-    Output('save-status', 'children'),
-    Input('save-button', 'n_clicks'),
-    State('notes-area', 'value'),
-    State('plot-dropdown', 'value')
-)
-def save_notes(n_clicks, notes, selected_file):
-    if n_clicks > 0 and selected_file and notes:
-        notes_path = os.path.join(folder_path, f"{selected_file}.txt")
-        with open(notes_path, "w", encoding="utf-8") as f:
-            f.write(notes)
-        return "Notes saved"
-    return ""
+    return children
 
 if __name__ == '__main__':
     app.run_server(debug=True)
