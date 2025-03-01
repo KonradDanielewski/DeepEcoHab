@@ -1,88 +1,95 @@
+import dash
+from dash import dcc, html
+from dash.dependencies import Input, Output
+import plotly.io as pio
 import os
-from dash import Dash, dcc, html, Input, Output
-from flask import send_from_directory
+import json
 
-FOLDER_CHARTS = f"/home/winiar/Desktop/projects/ecohab/deepecohab/examples/test_name2_2025-02-25/plots"  # Change this to the path of your folder
-html_files = [f for f in os.listdir(FOLDER_CHARTS) if f.endswith(".html")]
+def create_plot_label(plot_json):
+    return plot_json.replace('.json', '').replace('_', ' ').title()
 
-def format_plot_label(plot_name):
-    return plot_name.replace(".html", "").replace("_", " ").title()
+# Initialize the Dash app
+app = dash.Dash(__name__)
 
-app = Dash(__name__)
+# Path to the directory containing your .json plot files
+plot_dir = r"/home/winiar/Desktop/projects/ecohab/deepecohab/examples/test_name2_2025-02-25/plots/fig_source" # Replace with your directory path
 
+# List all .json files in the directory
+plot_files = [f for f in os.listdir(plot_dir) if f.endswith('.json')]
 
-@app.server.route('/charts/<path:filename>')
-def serve_chart(filename):
-    return send_from_directory(FOLDER_CHARTS, filename)
+# Load plots from .json files
+plots = {}
+for filename in plot_files:
+    with open(os.path.join(plot_dir, filename), 'r') as file:
+        plots[filename] = json.load(file)
 
-app.layout = html.Div([
-    
-    html.Div(
-        html.H1("EcoHAB results", style={
-            "color": "#D3D3D3",
-            "textAlign": "center",
-            "margin": "20px 0"
-        })
-    ),
-    
-    html.Div([
-       
-        html.Div([
-            html.H2("Plots:", style={"color": "#FFFFFF"}),
-            html.Div(
-                dcc.Checklist(
-                    id='file-checklist',
-                    options=sorted([{'label': format_plot_label(f), 'value': f} for f in html_files], key=lambda x: x['label']),
-                    value=[],  
-                    labelStyle={'display': 'block', 'padding': '5px 0', 'color': '#FFFFFF'},
+# Define the layout of the app
+app.layout = html.Div(
+    style={'backgroundColor': '#1a1a1a', 'color': 'lightgray', 'font-family': 'Arial', 'height': '100vh'},
+    children=[
+        html.H1('EcoHab Results', style={'textAlign': 'center'}),
+        html.Div(
+            style={'display': 'flex', 'justifyContent': 'space-around', 'height': '90%'},
+            children=[
+                html.Div(
+                    children=[
+                        dcc.Dropdown(
+                            id='left-plot-dropdown',
+                            options=sorted([{'label': create_plot_label(f), 'value': f} for f in plot_files], key=lambda x: x['label']),
+                            placeholder='Select a plot for the left side',
+                            style={'backgroundColor': '#333', 'color': 'black'}
+                        ),
+                        dcc.Graph(id='left-plot', style={'height': '100%', 'width': '100%'}, config={'responsive': True}),
+                    ],
+                    style={'width': '45%', 'height': '100%'}
                 ),
-                style={
-                    "border": "2px solid #444444",
-                    "borderRadius": "5px",
-                    "padding": "10px",
-                    "backgroundColor": "#333333"
-                }
-            )
-        ], style={
-            "width": "20%",
-            "padding": "20px",
-            "boxSizing": "border-box"
-        }),
-       
-        html.Div(id='plots-container', style={
-            "width": "80%",
-            "padding": "20px",
-            "boxSizing": "border-box"
-        })
-    ], style={
-        "display": "flex",
-        "alignItems": "flex-start",
-        "backgroundColor": "#2c2c2c",
-        "minHeight": "80vh"
-    })
-], style={
-    "backgroundColor": "#2c2c2c",
-    "fontFamily": "Arial, sans-serif"
-})
-
-@app.callback(
-    Output('plots-container', 'children'),
-    Input('file-checklist', 'value')
-)
-def update_plots(selected_files):
-    children = []
-    for file in selected_files:
-        src_url = f"/charts/{file}"
-        children.append(
-            html.Div([
-                html.Iframe(src=src_url, style={
-                    'width': '100%', 
-                    'height': '800px', 
-                    'border': 'none'
-                })
-            ], style={'marginBottom': '20px'})
+                html.Div(
+                    children=[
+                        dcc.Dropdown(
+                            id='right-plot-dropdown',
+                            options=sorted([{'label': create_plot_label(f), 'value': f} for f in plot_files], key=lambda x: x['label']),
+                            placeholder='Select a plot for the right side',
+                            style={'backgroundColor': '#333', 'color': 'black'}
+                        ),
+                        dcc.Graph(id='right-plot', style={'height': '100%', 'width': '100%'}, config={'responsive': True}),
+                    ],
+                    style={'width': '45%', 'height': '100%'}
+                ),
+            ]
         )
-    return children
+    ]
+)
 
+# Callback to update the left plot based on dropdown selection
+@app.callback(
+    Output('left-plot', 'figure'),
+    Input('left-plot-dropdown', 'value')
+)
+def update_left_plot(selected_plot):
+    if selected_plot:
+        plot = plots[selected_plot]
+        # Update layout for responsiveness
+        plot['layout']['autosize'] = True
+        plot['layout']['width'] = None
+        plot['layout']['height'] = None
+        return plot
+    return {}
+
+# Callback to update the right plot based on dropdown selection
+@app.callback(
+    Output('right-plot', 'figure'),
+    Input('right-plot-dropdown', 'value')
+)
+def update_right_plot(selected_plot):
+    if selected_plot:
+        plot = plots[selected_plot]
+        # Update layout for responsiveness
+        plot['layout']['autosize'] = True
+        plot['layout']['width'] = None
+        plot['layout']['height'] = None
+        return plot
+    return {}
+
+# Run the app
 if __name__ == '__main__':
     app.run_server(debug=True)
