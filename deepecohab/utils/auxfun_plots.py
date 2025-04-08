@@ -154,3 +154,32 @@ def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame
     plot_df = ranking_in_time.iloc[plot_indices]
     
     return plot_df
+
+def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
+    """Auxfun to load data from HDF5 store
+    """
+    ranking_in_time = pd.read_hdf(store, key='ranking_in_time').reset_index().melt(id_vars='datetime', var_name='mouse_id', value_name='ranking')
+    time_per_position_df = pd.read_hdf(store, key="time_per_position")
+    time_per_position_df = time_per_position_df.melt(ignore_index=False, value_name="Time[s]", var_name="animal_id").reset_index()
+    visits_per_position_df = pd.read_hdf(store, key="visits_per_position")
+    visits_per_position_df = visits_per_position_df.melt(ignore_index=False, value_name="Visits[#]", var_name="animal_id").reset_index()
+    time_together = pd.read_hdf(store, key='time_together').reset_index()
+    pairwise_encounters = pd.read_hdf(store, key='pairwise_encounters').reset_index()
+    chasings_df = pd.read_hdf(store, key='chasings')
+    incohort_sociability_df = pd.read_hdf(store, key='incohort_sociability')
+    ranking_ordinal_df = pd.read_hdf(store, key='ranking_ordinal')
+    plot_chasing_data = prep_network_df(chasings_df)
+    plot_ranking_data = prep_ranking(ranking_ordinal_df)
+    
+    return {
+        "ranking_in_time": ranking_in_time,
+        "time_per_position_df": time_per_position_df,
+        "visits_per_position_df": visits_per_position_df,
+        "time_together": time_together,
+        "pairwise_encounters": pairwise_encounters,
+        "chasings_df": chasings_df,
+        "incohort_sociability_df": incohort_sociability_df,
+        "ranking_ordinal_df": ranking_ordinal_df,
+        "plot_chasing_data": plot_chasing_data,
+        "plot_ranking_data": plot_ranking_data
+    }    
