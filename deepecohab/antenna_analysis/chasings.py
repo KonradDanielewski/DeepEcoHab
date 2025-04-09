@@ -222,6 +222,7 @@ def calculate_ranking(
         .max()
     ).dropna()
 
+    ranking_in_time = ranking_in_time[~ranking_in_time.index.duplicated(keep='last')] # handle possible duplicate indices
     ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns, dtype=float)
 
     for phase, count in product(phases, phase_count):
