@@ -16,8 +16,8 @@ from plots import (
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "EcoHAB Dashboard"
 
-# Load data from hdf
-store = pd.HDFStore('examples/test_name2_2025-02-25/results/test_name2_data.h5')
+# Load data from hdf keep mode as "r"
+store = pd.HDFStore(r'C:\Repositories\DeepEcoHab\examples\test_name2_2025-04-15\results\test_name2_data.h5', mode="r")
 dash_data = auxfun_plots.load_dashboard_data(store)
 n_phases = dash_data["time_per_position_df"]["phase_count"].max()
 phases = list(range(1, n_phases + 1))
@@ -56,29 +56,36 @@ dashboard_layout = html.Div([
                 value='dark',
                 labelStyle={'display': 'inline-block', 'margin-left': '10px'}
             )
-        ], style={'width': '100%', 'textAlign': 'center'})
+        ], style={
+            'width': '100%', 
+            'textAlign': 'center',
+            })
     ], style={
+        'position': 'sticky',
+        'top': '0',
+        'background-color': 'white', 
         'padding': '10px',
         'background-color': '#FFFFFF',
         'z-index': '1000',
-        'textAlign': 'center'
+        'textAlign': 'center',
+        'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
     }),
     html.Div([
         dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
-        dcc.Graph(id='position-plot'),
         dcc.RadioItems(
             id='position-switch',
             options=[{'label': 'Visits', 'value': 'visits'}, {'label': 'Time', 'value': 'time'}],
             value='visits',
             labelStyle={'display': 'inline-block'}
         ),
-        dcc.Graph(id='pairwise-heatmap'),
+        dcc.Graph(id='position-plot'),
         dcc.RadioItems(
             id='pairwise-switch',
             options=[{'label': 'Visits', 'value': 'visits'}, {'label': 'Time', 'value': 'time'}],
             value='visits',
             labelStyle={'display': 'inline-block'}
         ),
+        dcc.Graph(id='pairwise-heatmap'),
         html.Div([
             dcc.Graph(id='chasings-heatmap', style={'display': 'inline-block', 'width': '49%'}),
             dcc.Graph(id='sociability-heatmap', style={'display': 'inline-block', 'width': '49%'})
@@ -163,8 +170,6 @@ comparison_tab = html.Div([
     ])
 ])
 
-
-
 # Tabs callback
 @app.callback(Output('tabs-content', 'children'), [Input('tabs', 'value')])
 def render_content(tab):
@@ -207,9 +212,9 @@ def update_independent_plots(plot_left, phase_left, plot_right, phase_right,):
         if plot_type == 'position_dark_visits':
             return plot_position_fig(dash_data, "dark", phase, 'visits')
         elif plot_type == 'position_light_visits':
-            return plot_position_fig(dash_data, "lght", phase, 'visits')
+            return plot_position_fig(dash_data, "light", phase, 'visits')
         elif plot_type == 'position_dark_time':
-            return plot_position_fig(dash_data, "light", phase, 'time')
+            return plot_position_fig(dash_data, "dark", phase, 'time')
         elif plot_type == 'position_light_time':
             return plot_position_fig(dash_data, "light", phase, 'time')
         elif plot_type == 'pairwise_encounters_dark':
