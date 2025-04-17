@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from tzlocal import get_localzone
 
 from deepecohab.utils import auxfun
 
@@ -137,7 +138,7 @@ def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list) -> pd.DataFra
 
     df["animal_id"] = df["animal_id"].astype("category").cat.set_categories(cfg["animal_ids"])
     df["datetime"] = df["date"] + " " + df["time"]
-    df["datetime"] = pd.to_datetime(df["datetime"])
+    df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(get_localzone().key)
     df["antenna"] = df.antenna.astype(int)
     df = df.drop(["date", "time"], axis=1)
     df = df.drop_duplicates(["datetime", "animal_id"])
@@ -190,7 +191,7 @@ def get_ecohab_data_structure(
         finish_date = cfg["experiment_timeline"]["finish_date"]
         if isinstance(start_date, str) & isinstance(finish_date, str): 
             start, finish = pd.to_datetime(start_date), pd.to_datetime(finish_date)
-            timeframe = (df.datetime >= start) & (df.datetime <= finish)
+            timeframe = (df.datetime.dt.tz_localize(None) >= start) & (df.datetime.dt.tz_localize(None) <= finish)
             df = df.loc[timeframe, :].sort_values("datetime").reset_index(drop=True)
     except KeyError:
         print("Start and end dates not provided. Extracting from data...")

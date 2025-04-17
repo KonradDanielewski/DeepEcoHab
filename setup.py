@@ -29,6 +29,7 @@ setuptools.setup(
         'nbformat',
         'kaleido',
         'joblib',
+        'tzlocal',
     ], 
     url='https://github.com/KonradDanielewski/DeepEcoHab'
 )
