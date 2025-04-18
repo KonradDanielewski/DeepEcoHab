@@ -163,8 +163,6 @@ def calculate_chasings(
         chasings.loc[(phase, N, mouse1), mouse2] = len(chase_times1[(chase_times1 < 1) & (chase_times1 > 0.1)])
         chasings.loc[(phase, N, mouse2), mouse1] = len(chase_times2[(chase_times2 < 1) & (chase_times2 > 0.1)])
     
-    chasings = auxfun._drop_empty_slices(chasings)
-    
     if save_data:
         chasings.to_hdf(data_path, key="chasings", mode="a", format="table")
         

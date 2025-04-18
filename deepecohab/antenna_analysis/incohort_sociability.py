@@ -73,7 +73,7 @@ def _pairwise_time_together(
 def _process_df_format_incohort(time_together_df: pd.DataFrame) -> pd.DataFrame:
     """Process format of the df to easily match time proportion calculation
     """    
-    time_together_df = time_together_df.unstack(level=3).dropna(axis=1, how="all")
+    time_together_df = time_together_df.unstack(level=3)
     time_together_df.columns = ['_'.join(col).strip() for col in time_together_df.columns.values]
     return time_together_df
 
@@ -133,12 +133,11 @@ def calculate_time_together(
     for n_encounters, time_encounters, animal_1, animal_2, cage, phase, n in results:
         time_together_df.loc[(phase, n, cage, animal_2), animal_1] = sum(time_encounters)
         
-    time_together_df = (time_together_df
-                        .astype(float)
-                        .round(3)
-                       )
-    
-    time_together_df = auxfun._drop_empty_slices(time_together_df)
+    time_together_df = (
+        time_together_df
+        .astype(float)
+        .round(3)
+    )
 
     if save_data:
         time_together_df.to_hdf(data_path, key=key, mode="a", format="table")
@@ -185,12 +184,11 @@ def calculate_pairwise_encounters(
     for n_encounters, time_encounters, animal_1, animal_2, cage, phase, n in results:
         pairwise_encounters_df.loc[(phase, n, cage, animal_2), animal_1] = sum(n_encounters)
         
-    pairwise_encounters_df = (pairwise_encounters_df
-                              .astype(float)
-                              .round(3)
-                             )
-    
-    pairwise_encounters_df = auxfun._drop_empty_slices(pairwise_encounters_df)
+    pairwise_encounters_df = (
+        pairwise_encounters_df
+        .astype(float)
+        .round(3)
+    )
     
     if save_data:
         pairwise_encounters_df.to_hdf(data_path, key=key, mode="a", format="table")
@@ -264,8 +262,6 @@ def calculate_incohort_sociability(
         .round(3)
         .astype(float)
     )
-    
-    incohort_sociability = auxfun._drop_empty_slices(incohort_sociability)
     
     if save_data:
         incohort_sociability.to_hdf(data_path, key=key, mode="a", format="table")

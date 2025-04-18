@@ -164,8 +164,6 @@ def calculate_time_spent_per_position(
         .round(3)
     )
     
-    time_per_position = auxfun._drop_empty_slices(time_per_position)
-    
     if save_data:
         time_per_position.to_hdf(data_path, key=key, mode="a", format="table")
     
@@ -213,8 +211,6 @@ def calculate_visits_per_position(
         .value_counts()
         .unstack()
     )
-    
-    visits_per_position = auxfun._drop_empty_slices(visits_per_position)
     
     if save_data:
         visits_per_position.to_hdf(data_path, key=key, mode="a", format="table")
