@@ -222,6 +222,8 @@ def calculate_ranking(
 
     ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns, dtype=float)
 
+    ranking_in_time = ranking_in_time[~ranking_in_time.index.duplicated(keep='last')] # handle possible duplicate indices
+
     for phase, count in product(phases, phase_count):
         try:
             datetime = phase_end_marks.loc[(phase,  count)].iloc[0]
