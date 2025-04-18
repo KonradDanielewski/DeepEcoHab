@@ -17,7 +17,7 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "EcoHAB Dashboard"
 
 # Load data from hdf keep mode as "r"
-store = pd.HDFStore(r'C:\Repositories\DeepEcoHab\examples\test_name2_2025-04-15\results\test_name2_data.h5', mode="r")
+store = pd.HDFStore(r'examples/test_name2_2025-04-18/results/test_name2_data.h5', mode="r")
 dash_data = auxfun_plots.load_dashboard_data(store)
 n_phases = dash_data["time_per_position_df"]["phase_count"].max()
 phases = list(range(1, n_phases + 1))
@@ -74,8 +74,21 @@ dashboard_layout = html.Div([
         dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
         dcc.RadioItems(
             id='position-switch',
-            options=[{'label': 'Visits', 'value': 'visits'}, {'label': 'Time', 'value': 'time'}],
+            options=[
+                {'label': 'Visits', 'value': 'visits'},
+                {'label': 'Time', 'value': 'time'}
+                ],
             value='visits',
+            labelStyle={'display': 'inline-block'}
+        ),
+        dcc.RadioItems(
+            id='summary-postion-switch',
+            options=[
+                {'label': 'Phases', 'value': 'phases'},
+                {'label': 'Sum', 'value': 'sum'},
+                {'label': 'Mean', 'value': 'mean'},
+                ],
+            value='phases',
             labelStyle={'display': 'inline-block'}
         ),
         dcc.Graph(id='position-plot'),
@@ -83,6 +96,16 @@ dashboard_layout = html.Div([
             id='pairwise-switch',
             options=[{'label': 'Visits', 'value': 'visits'}, {'label': 'Time', 'value': 'time'}],
             value='visits',
+            labelStyle={'display': 'inline-block'}
+        ),
+        dcc.RadioItems(
+            id='summary-pairwise-switch',
+            options=[
+                {'label': 'Phases', 'value': 'phases'},
+                {'label': 'Sum', 'value': 'sum'},
+                {'label': 'Mean', 'value': 'mean'},
+                ],
+            value='phases',
             labelStyle={'display': 'inline-block'}
         ),
         dcc.Graph(id='pairwise-heatmap'),
@@ -188,11 +211,13 @@ def render_content(tab):
     [Input('phase-slider', 'value'),
      Input('mode-switch', 'value'),
      Input('position-switch', 'value'),
-     Input('pairwise-switch', 'value')]
+     Input('summary-postion-switch', 'value'),
+     Input('pairwise-switch', 'value'),
+     Input('summary-pairwise-switch', 'value')]
 )
-def update_plots(selected_phase, mode, position_switch, pairwise_switch):
-    position_fig = plot_position_fig(dash_data, mode, selected_phase, position_switch)
-    pairwise_plot = plot_pairwise_plot(dash_data, mode, selected_phase, pairwise_switch)
+def update_plots(selected_phase, mode, position_switch, summary_postion_switch , pairwise_switch, summary_pairwise_switch):
+    position_fig = plot_position_fig(dash_data, mode, selected_phase, position_switch, summary_postion_switch)
+    pairwise_plot = plot_pairwise_plot(dash_data, mode, selected_phase, pairwise_switch, summary_pairwise_switch)
     chasings_plot = plot_chasings(dash_data, mode, selected_phase)
     incohort_soc_plot = plot_in_cohort_sociability(dash_data, mode, selected_phase)
     network_plot = plot_network_grah(dash_data, mode, selected_phase)

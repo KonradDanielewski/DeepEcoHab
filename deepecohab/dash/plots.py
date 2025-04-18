@@ -13,7 +13,7 @@ def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
     )
     return ranking_fig
 
-def plot_position_fig(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, position_switch:str) -> go.Figure:
+def plot_position_fig(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, position_switch:str, summary_postion_switch) -> go.Figure:
     """Auxfun to plot position data
     """
     if mode == 'dark':
@@ -40,8 +40,17 @@ def plot_position_fig(dash_data: dict[pd.DataFrame], mode:str, selected_phase:in
     position_filtered = position_df[position_df['phase'] == phase]
     position_filtered = position_filtered[position_filtered['phase_count'] == selected_phase]
     
+    if summary_postion_switch == "sum":
+        fig_data = position_df[position_df['phase'] == phase].groupby(['animal_id', 'phase', 'position']).sum().reset_index()
+        position_max_y = fig_data[position_y].max() + position_y_range_add
+    elif summary_postion_switch == "mean":
+        fig_data = position_df[position_df['phase'] == phase].groupby(['animal_id', 'phase', 'position']).mean().reset_index()
+        position_max_y = fig_data[position_y].max() + position_y_range_add
+    else:
+        fig_data  = position_filtered
+        
     position_fig = px.bar(
-            position_filtered,
+            fig_data,
             x="animal_id",
             y=position_y,
             color="position",
@@ -56,7 +65,7 @@ def plot_position_fig(dash_data: dict[pd.DataFrame], mode:str, selected_phase:in
     
     return position_fig
 
-def plot_pairwise_plot(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, pairwise_switch:str) -> go.Figure:
+def plot_pairwise_plot(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, pairwise_switch:str, summary_pairwise_switch) -> go.Figure:
     """Auxfun to plot pairwise data
     """ 
     if mode == 'dark':
@@ -74,16 +83,43 @@ def plot_pairwise_plot(dash_data: dict[pd.DataFrame], mode:str, selected_phase:i
         pairwise_z_label = "Time [s]: %{z}"
     
     pairwise_filtered = pairwise_df[pairwise_df['phase'] == phase]
-    pairwise_filtered = pairwise_filtered[pairwise_filtered['phase_count'] == selected_phase]
-    
-    pairwise_n_phases = len(pairwise_filtered['phase_count'].unique())
     pairwise_n_cages = len(pairwise_filtered['cages'].unique())
     pairwise_animal_ids = pairwise_filtered['animal_ids'].unique()
     pairwise_n_animals_ids = len(pairwise_animal_ids)
     
-    pairwise_heatmap_data = (
-        pairwise_filtered
-        .drop(columns=["phase", "phase_count", "animal_ids", "cages"])
+    if summary_pairwise_switch == "sum":
+        fig_data = pairwise_filtered.groupby(['cages','animal_ids',  'phase']).sum().reset_index().drop(columns=["phase_count"])
+        pairwise_heatmap_data = (
+        fig_data
+        .drop(columns=["phase", "animal_ids", "cages"])
+        .values
+        .reshape(
+            1,
+            pairwise_n_cages,
+            pairwise_n_animals_ids, 
+            pairwise_n_animals_ids
+        )
+    )
+    elif summary_pairwise_switch == "mean":
+        fig_data = pairwise_filtered.groupby(['cages','animal_ids',  'phase']).sum().reset_index().drop(columns=["phase_count"])
+        pairwise_heatmap_data = (
+        fig_data
+        .drop(columns=["phase", "animal_ids", "cages"])
+        .values
+        .reshape(
+            1,
+            pairwise_n_cages,
+            pairwise_n_animals_ids, 
+            pairwise_n_animals_ids
+        )
+    )
+    else:
+        fig_data  = pairwise_filtered[pairwise_filtered['phase_count'] == selected_phase]
+        pairwise_n_phases = len(fig_data['phase_count'].unique())
+        fig_data = fig_data.drop(columns=["phase_count"])
+        pairwise_heatmap_data = (
+        fig_data
+        .drop(columns=["phase", "animal_ids", "cages"])
         .values
         .reshape(
             pairwise_n_phases,
@@ -92,6 +128,7 @@ def plot_pairwise_plot(dash_data: dict[pd.DataFrame], mode:str, selected_phase:i
             pairwise_n_animals_ids
         )
     )
+    
 
     pairwise_plot = px.imshow(
         pairwise_heatmap_data,
