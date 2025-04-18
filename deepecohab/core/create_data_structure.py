@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 from pathlib import Path
 
@@ -67,10 +68,46 @@ def get_phase(cfg: dict, df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun for getting the phase
     """
     start_time, end_time = cfg["phase"].values()
-
+    
     index = pd.DatetimeIndex(df['datetime'])
     df.loc[index.indexer_between_time(start_time, end_time), "phase"] = "light_phase"
     df["phase"] = df.phase.fillna("dark_phase")
+    
+    return df
+
+def check_for_dst(df: pd.DataFrame) -> tuple[int, int]:
+    zone_offset = df.datetime.dt.strftime("%z").map(lambda x: x[1:3]).astype(int)
+    time_change_happened = len(np.where((zone_offset != zone_offset[0]))[0]) > 0
+    if time_change_happened:
+        time_change_ind = np.where((zone_offset != zone_offset[0]))[0][0]
+        time_change = zone_offset[time_change_ind] - zone_offset[time_change_ind-1]
+        return int(time_change), int(time_change_ind)
+    else:
+        return None, None
+
+def correct_phases_dst(cfg: dict, df: pd.DataFrame, time_change: int, time_change_index: int) -> pd.DataFrame:
+    """Auxfun to correct phase start and end when daylight saving happens during the recording
+    """    
+    start_time, end_time = cfg["phase"].values()
+    
+    start_time = (":").join(
+        (str(int(start_time.split(":")[0]) + time_change), 
+            start_time.split(":")[1], 
+            start_time.split(":")[2])
+    )
+    end_time = (":").join(
+        (str(int(end_time.split(":")[0]) + time_change), 
+            end_time.split(":")[1], 
+            end_time.split(":")[2])
+    )
+    
+    temp_df = df.loc[time_change_index:].copy()
+    
+    index = pd.DatetimeIndex(temp_df['datetime'])
+    temp_df.loc[index.indexer_between_time(start_time, end_time) + time_change_index, "phase"] = "light_phase"
+    temp_df["phase"] = temp_df.phase.fillna("dark_phase")
+    
+    df.loc[time_change_index:, "phase"] = temp_df["phase"].values
     
     return df
 
@@ -203,6 +240,12 @@ def get_ecohab_data_structure(
     df = get_day(df)
     df = get_animal_position(df, remapping_dict)
     df = get_phase(cfg, df)
+    
+    time_change, time_change_ind = check_for_dst(df)
+    if isinstance(time_change, int):
+        print("Correcting for daylight savings...")
+        df = correct_phases_dst(cfg, df, time_change, time_change_ind)
+    
     df = get_phase_count(cfg, df)
     
     condition_map = {key: i+1 for i, key in enumerate(positions)}
