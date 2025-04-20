@@ -41,10 +41,10 @@ def plot_position_fig(dash_data: dict[pd.DataFrame], mode:str, selected_phase:in
     position_filtered = position_filtered[position_filtered['phase_count'] == selected_phase]
     
     if summary_postion_switch == "sum":
-        fig_data = position_df[position_df['phase'] == phase].groupby(['animal_id', 'phase', 'position']).sum().reset_index()
+        fig_data = position_df[position_df['phase'] == phase].groupby(['animal_id', 'phase', 'position'], observed=False).sum().reset_index()
         position_max_y = fig_data[position_y].max() + position_y_range_add
     elif summary_postion_switch == "mean":
-        fig_data = position_df[position_df['phase'] == phase].groupby(['animal_id', 'phase', 'position']).mean().reset_index()
+        fig_data = position_df[position_df['phase'] == phase].groupby(['animal_id', 'phase', 'position'], observed=False).mean().reset_index()
         position_max_y = fig_data[position_y].max() + position_y_range_add
     else:
         fig_data  = position_filtered
@@ -88,7 +88,7 @@ def plot_pairwise_plot(dash_data: dict[pd.DataFrame], mode:str, selected_phase:i
     pairwise_n_animals_ids = len(pairwise_animal_ids)
     
     if summary_pairwise_switch == "sum":
-        fig_data = pairwise_filtered.groupby(['cages','animal_ids',  'phase']).sum().reset_index().drop(columns=["phase_count"])
+        fig_data = pairwise_filtered.groupby(['cages','animal_ids',  'phase'], observed=False).sum().reset_index().drop(columns=["phase_count"])
         pairwise_heatmap_data = (
         fig_data
         .drop(columns=["phase", "animal_ids", "cages"])
@@ -101,7 +101,7 @@ def plot_pairwise_plot(dash_data: dict[pd.DataFrame], mode:str, selected_phase:i
         )
     )
     elif summary_pairwise_switch == "mean":
-        fig_data = pairwise_filtered.groupby(['cages','animal_ids',  'phase']).sum().reset_index().drop(columns=["phase_count"])
+        fig_data = pairwise_filtered.groupby(['cages','animal_ids',  'phase'], observed=False).mean().reset_index().drop(columns=["phase_count"])
         pairwise_heatmap_data = (
         fig_data
         .drop(columns=["phase", "animal_ids", "cages"])
