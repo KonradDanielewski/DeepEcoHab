@@ -23,7 +23,7 @@ is the ecohab data structure - each antenna read assigned to an animal, position
 ### `pairwise_encounters`:
  MultiIndex DataFrame with number of encounters between each pair of animals for all possible mouse pair combinations.
 
-### `in_cohort_sociability`:
+### `incohort_sociability`:
  MultiIndex DataFrame with in-cohort sociability measure. More info in the methods section: https://doi.org/10.7554/eLife.19532
 
 ### `phase_durations`:
