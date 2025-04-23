@@ -145,7 +145,7 @@ def _super_plot_together(
 
 def plot_ranking_in_time(
     cfp: str,
-    cmap: str = "Pastel",
+    cmap: str = "Set3",
     save_plot: bool = True,
     show_plot: bool = True,
     ) -> go.Figure:
@@ -153,7 +153,7 @@ def plot_ranking_in_time(
 
     Args:
         cfp: path to project config file
-        cmap: Color map for line plot. Defaults to "Pastel".
+        cmap: Color map for line plot. Defaults to "Set3".
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
@@ -275,7 +275,7 @@ def plot_network_graph(
 
 def plot_cage_position_time(
         cfp: str, 
-        cmap: str = "Pastel", 
+        cmap: str = "Set3", 
         save_plot: bool = True,
         show_plot: bool = True,
     ):
@@ -283,7 +283,7 @@ def plot_cage_position_time(
 
     Args:
         cfp: Path to project config file.
-        cmap: Color map for bar plot. Defaults to "Pastel".
+        cmap: Color map for bar plot. Defaults to "Set3".
         save_plot: toggles whether to save the plot. Defaults to True.
         show_plot: toggles whether to show the plot. Defaults to True.
     """
@@ -303,7 +303,7 @@ def plot_cage_position_time(
             
 def plot_cage_position_visits(
         cfp: str,
-        cmap: str = "Pastel", 
+        cmap: str = "Set3", 
         save_plot: bool = True,
         show_plot: bool = True,
     ):
@@ -311,7 +311,7 @@ def plot_cage_position_visits(
 
     Args:
         cfp: Path to project config file.
-        cmap: Color map for bar plot. Defaults to "Pastel".
+        cmap: Color map for bar plot. Defaults to "Set3".
         save_plot: toggles whether to save the plot. Defaults to True.
         show_plot: toggles whether to show the plot. Defaults to True.
     """
