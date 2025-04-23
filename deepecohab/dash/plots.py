@@ -61,7 +61,7 @@ def plot_position_fig(
             x="animal_id",
             y=position_y,
             color="position",
-            color_discrete_sequence=px.colors.qualitative.__dict__["Pastel"],
+            color_discrete_sequence=px.colors.qualitative.__dict__["Set3"],
             barmode='group',
             title=position_title,
             range_y=[0, position_max_y],
