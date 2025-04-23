@@ -1,3 +1,5 @@
+from typing import Literal
+
 import networkx as nx
 import plotly.express as px
 from deepecohab.utils import auxfun_plots
@@ -13,7 +15,12 @@ def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
     )
     return ranking_fig
 
-def plot_position_fig(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, position_switch:str, summary_postion_switch) -> go.Figure:
+def plot_position_fig(
+    dash_data: dict[pd.DataFrame], 
+    mode: str, selected_phase: int, 
+    position_switch: str, 
+    summary_postion_switch: Literal["mean", "sum"] | None = None,
+    ) -> go.Figure:
     """Auxfun to plot position data
     """
     if mode == 'dark':
@@ -65,7 +72,13 @@ def plot_position_fig(dash_data: dict[pd.DataFrame], mode:str, selected_phase:in
     
     return position_fig
 
-def plot_pairwise_plot(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, pairwise_switch:str, summary_pairwise_switch) -> go.Figure:
+def plot_pairwise_plot(
+    dash_data: dict[pd.DataFrame], 
+    mode: str, 
+    selected_phase: int, 
+    pairwise_switch: str, 
+    summary_pairwise_switch: Literal["mean", "sum"] | None = None,
+    ) -> go.Figure:
     """Auxfun to plot pairwise data
     """ 
     if mode == 'dark':

@@ -273,4 +273,4 @@ def update_independent_plots(plot_left, phase_left, plot_right, phase_right,):
 
 # Run the app
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run(debug=True)
