@@ -176,7 +176,7 @@ def plot_pairwise_plot(
     
     return pairwise_plot
 
-def plot_chasings(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int) -> go.Figure:
+def plot_chasings(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, chasings_summary_switch:str) -> go.Figure:
     """Auxfun to plot pairwise data
     """ 
     
@@ -187,7 +187,7 @@ def plot_chasings(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int) -
         
     chasings_filtered = dash_data["chasings_df"].reset_index()
     chasings_filtered = chasings_filtered[chasings_filtered['phase'] == phase]
-    chasings_filtered = chasings_filtered[chasings_filtered['phase_count'] == selected_phase]
+    
     
     chasings_title = f"<b>Number of chasings: <u>{mode} phase</u></b>"
     chasings_min_range = int(dash_data["chasings_df"].min().min())
@@ -195,15 +195,42 @@ def plot_chasings(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int) -
     chasings_z_label = "Number: %{z}"
     chasings_animal_ids = chasings_filtered['animal_ids'].unique()
     chasings_n_animal_ids = len(chasings_animal_ids)
-    
-    chasings_heatmap_data = (
+        
+    if chasings_summary_switch == "sum":
+        fig_data = chasings_filtered.groupby(['animal_ids',  'phase'], observed=False).sum().reset_index().drop(columns=["phase_count","phase", "animal_ids"])
+        chasings_min_range = fig_data.min().min()
+        chasings_max_range = fig_data.max().max()
+        chasings_heatmap_data = (
+        fig_data
+        .values
+        .reshape(
+            chasings_n_animal_ids, 
+            chasings_n_animal_ids
+        ).round(3)
+        )
+        
+    elif chasings_summary_switch == "mean":
+        fig_data = chasings_filtered.groupby(['animal_ids',  'phase'], observed=False).mean().reset_index().drop(columns=["phase_count","phase", "animal_ids"])
+        chasings_min_range = fig_data.min().min()
+        chasings_max_range = fig_data.max().max()
+        chasings_heatmap_data = (
+        fig_data
+        .values
+        .reshape(
+            chasings_n_animal_ids, 
+            chasings_n_animal_ids
+        ).round(3)
+        )
+    else:
+        chasings_filtered = chasings_filtered[chasings_filtered['phase_count'] == selected_phase]
+        chasings_heatmap_data = (
         chasings_filtered
         .drop(columns=["phase", "phase_count", "animal_ids"])
         .values
         .reshape(chasings_n_animal_ids, chasings_n_animal_ids)
         .round(3)
     )
-
+ 
     chasings_plot = px.imshow(
         chasings_heatmap_data,
         x=chasings_animal_ids,
@@ -229,7 +256,7 @@ def plot_chasings(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int) -
     )
     return chasings_plot
 
-def plot_in_cohort_sociability(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int) -> go.Figure:
+def plot_in_cohort_sociability(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, sociability_summary_switch:str) -> go.Figure:
     """Auxfun to plot in cohort sociability data
     """
     if mode == 'dark':
@@ -239,23 +266,47 @@ def plot_in_cohort_sociability(dash_data: dict[pd.DataFrame], mode:str, selected
         
     incohort_soc_filtered = dash_data["incohort_sociability_df"].reset_index()
     incohort_soc_filtered = incohort_soc_filtered[incohort_soc_filtered['phase'] == phase]
-    incohort_soc_filtered = incohort_soc_filtered[incohort_soc_filtered['phase_count'] == selected_phase]
 
     incohort_soc_title = f"<b>Incohort sociability: <u>{mode} phase</u></b>"
     incohort_soc_min_range = int(dash_data["incohort_sociability_df"].min().min())
     incohort_soc_max_range = int(dash_data["incohort_sociability_df"].max().max())
-    incohort_soc_z_label = "{z}"
+    incohort_soc_z_label = "Sociability: %{z}"
     incohort_soc_animal_ids = incohort_soc_filtered['animal_ids'].unique()
     incohort_soc_n_animal_ids = len(incohort_soc_animal_ids)
-    
-    incohort_soc_heatmap_data = (
+    if sociability_summary_switch == "sum":
+        fig_data = incohort_soc_filtered.groupby(['animal_ids',  'phase'], observed=False).sum().reset_index().drop(columns=["phase_count","phase", "animal_ids"])
+        incohort_soc_min_range = fig_data.min().min()
+        incohort_soc_max_range = fig_data.max().max()
+        incohort_soc_heatmap_data = (
+        fig_data
+        .values
+        .reshape(
+            incohort_soc_n_animal_ids, 
+            incohort_soc_n_animal_ids
+        ).round(3)
+        )
+        
+    elif sociability_summary_switch == "mean":
+        fig_data = incohort_soc_filtered.groupby(['animal_ids',  'phase'], observed=False).mean().reset_index().drop(columns=["phase_count","phase", "animal_ids"])
+        incohort_soc_min_range = fig_data.min().min()
+        incohort_soc_max_range = fig_data.max().max()
+        incohort_soc_heatmap_data = (
+        fig_data
+        .values
+        .reshape(
+            incohort_soc_n_animal_ids, 
+            incohort_soc_n_animal_ids
+        ).round(3)
+        )
+    else:
+        incohort_soc_filtered = incohort_soc_filtered[incohort_soc_filtered['phase_count'] == selected_phase]
+        incohort_soc_heatmap_data = (
         incohort_soc_filtered
         .drop(columns=["phase", "phase_count", "animal_ids"])
         .values
         .reshape(incohort_soc_n_animal_ids, incohort_soc_n_animal_ids)
         .round(3)
     )
-
     incohort_soc_plot = px.imshow(
         incohort_soc_heatmap_data,
         x=incohort_soc_animal_ids,

@@ -110,11 +110,36 @@ dashboard_layout = html.Div([
         ),
         dcc.Graph(id='pairwise-heatmap'),
         html.Div([
-            dcc.Graph(id='chasings-heatmap', style={'display': 'inline-block', 'width': '49%'}),
-            dcc.Graph(id='sociability-heatmap', style={'display': 'inline-block', 'width': '49%'})
+    html.Div([
+        dcc.RadioItems(
+            id='chasings-summary-switch',
+            options=[
+                {'label': 'Phases', 'value': 'phases'},
+                {'label': 'Sum', 'value': 'sum'},
+                {'label': 'Mean', 'value': 'mean'},
+            ],
+            value='phases',
+            labelStyle={'display': 'inline-block'}
+        ),
+        dcc.Graph(id='chasings-heatmap')
+    ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+
+    html.Div([
+        dcc.RadioItems(
+            id='sociability-summary-switch',
+            options=[
+                {'label': 'Phases', 'value': 'phases'},
+                {'label': 'Sum', 'value': 'sum'},
+                {'label': 'Mean', 'value': 'mean'},
+            ],
+            value='phases',
+            labelStyle={'display': 'inline-block'}
+        ),
+        dcc.Graph(id='sociability-heatmap')
+    ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'})
         ], style={'width': '80%', 'margin': 'auto'}),
-        dcc.Graph(id='network-graph')
-    ], style={'padding': '20px'})
+                dcc.Graph(id='network-graph')
+            ], style={'padding': '20px'})
 ])
 
 comparison_tab = html.Div([
@@ -213,13 +238,15 @@ def render_content(tab):
      Input('position-switch', 'value'),
      Input('summary-postion-switch', 'value'),
      Input('pairwise-switch', 'value'),
-     Input('summary-pairwise-switch', 'value')]
+     Input('summary-pairwise-switch', 'value'),
+     Input('chasings-summary-switch', 'value'),
+     Input('sociability-summary-switch', 'value')]  
 )
-def update_plots(selected_phase, mode, position_switch, summary_postion_switch , pairwise_switch, summary_pairwise_switch):
+def update_plots(selected_phase, mode, position_switch, summary_postion_switch , pairwise_switch, summary_pairwise_switch, chasings_summary_switch, sociability_summary_switch):
     position_fig = plot_position_fig(dash_data, mode, selected_phase, position_switch, summary_postion_switch)
     pairwise_plot = plot_pairwise_plot(dash_data, mode, selected_phase, pairwise_switch, summary_pairwise_switch)
-    chasings_plot = plot_chasings(dash_data, mode, selected_phase)
-    incohort_soc_plot = plot_in_cohort_sociability(dash_data, mode, selected_phase)
+    chasings_plot = plot_chasings(dash_data, mode, selected_phase, chasings_summary_switch)
+    incohort_soc_plot = plot_in_cohort_sociability(dash_data, mode, selected_phase, sociability_summary_switch)
     network_plot = plot_network_grah(dash_data, mode, selected_phase)
 
     return [position_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot]
