@@ -161,7 +161,7 @@ def _rename_antennas(df: pd.DataFrame, com_name: str, rename_dicts: dict) -> pd.
     df.loc[df.COM == com_name, "antenna"] = df.query("COM == @com_name")["antenna"].map(mapping)
     return df
 
-def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list) -> pd.DataFrame:
+def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list, timezone: str | None = None) -> pd.DataFrame:
     """Auxfun to prepare the df, adding new columns
     """    
     # Establish all possible categories for position
@@ -175,7 +175,10 @@ def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list) -> pd.DataFra
 
     df["animal_id"] = df["animal_id"].astype("category").cat.set_categories(cfg["animal_ids"])
     df["datetime"] = df["date"] + " " + df["time"]
-    df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(get_localzone().key)
+    if not isinstance(timezone, str):
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(get_localzone().key)
+    else:
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(timezone)
     df["antenna"] = df.antenna.astype(int)
     df = df.drop(["date", "time"], axis=1)
     df = df.drop_duplicates(["datetime", "animal_id"])
@@ -188,6 +191,7 @@ def get_ecohab_data_structure(
     min_antenna_crossings: int = 100,
     custom_layout: bool = False,
     overwrite: bool = False,
+    timezone: str | None = None,
 ) -> pd.DataFrame:
     """Prepares EcoHab data for further analysis
 
@@ -220,7 +224,7 @@ def get_ecohab_data_structure(
     )
     
     cfg = auxfun.read_config(cfp) # reload config potential animal_id changes due to sanitation
-    df = _prepare_columns(cfg, df, positions)
+    df = _prepare_columns(cfg, df, positions, timezone)
 
     # Slice to start and end date
     try:
