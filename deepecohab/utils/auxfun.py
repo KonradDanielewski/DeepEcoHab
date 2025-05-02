@@ -48,6 +48,8 @@ def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
     if data_path.is_file():
         try:
             df = pd.read_hdf(data_path, key=key)
+            if key == 'binary_df': # restore index
+                df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in df.columns])
             return df
         except KeyError:
             print(f"{key} not found in the specified location: {data_path}. Perhaps not analyzed yet!")

@@ -258,19 +258,28 @@ def create_binary_df(
     idx = pd.date_range(df.datetime.iloc[0], df.datetime.iloc[-1], index_len).round("ms")
 
     binary_df = pd.DataFrame(False, index=idx, columns=cols, dtype=bool)
-    df = df.query("position in @positions")
+    df_cages = df.query("position in @positions")
 
     print("Filling the DataFrame for each animal...")
     for animal in tqdm(animals):
-        data_slice = df.query("animal_id == @animal").iloc[1:]
+        data_slice = df_cages.query("animal_id == @animal").iloc[1:]
         starts = data_slice.datetime - pd.to_timedelta(data_slice.timedelta, "s") 
         stops = data_slice.datetime
-        ending_pos = df.query("animal_id == @animal").position.iloc[1:]
+        ending_pos = df_cages.query("animal_id == @animal").position.iloc[1:]
         
         for i in range(len(starts)):
             binary_df.loc[starts.iloc[i]:stops.iloc[i], (ending_pos.iloc[i], animal)] = True
 
+    indices = np.searchsorted(df.datetime.to_numpy(), binary_df.index.to_numpy())
+    new_index = df.loc[indices, ["phase", "phase_count"]]
+    new_index["datetime"] = idx
+    new_index = pd.MultiIndex.from_frame(new_index)
+    binary_df.index = new_index
+    binary_df.columns = ['.'.join(map(str, col)).strip() for col in binary_df.columns.values]
+
     if save_data:
-        binary_df.to_hdf(cfg["results_path"], key=key, format="table")
+        binary_df.to_hdf(cfg["results_path"], key=key, format="table", index=False)
+    
+    binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
     
     return binary_df
