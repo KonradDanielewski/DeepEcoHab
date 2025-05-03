@@ -95,7 +95,7 @@ def calculate_chasings(
     data_path = Path(cfg["results_path"])
     key="chasings"
     
-    chasings = None if overwrite else auxfun.check_save_data(data_path, key)
+    chasings = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(chasings, pd.DataFrame):
         return chasings
@@ -194,7 +194,7 @@ def calculate_ranking(
     data_path = Path(cfg["results_path"])
     key="ranking_ordinal"
     
-    ranking_ordinal = None if overwrite else auxfun.check_save_data(data_path, key)
+    ranking_ordinal = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(ranking_ordinal, pd.DataFrame):
         return ranking_ordinal

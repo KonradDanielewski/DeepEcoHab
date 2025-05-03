@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
+import toml
 from tqdm import tqdm
 
 from deepecohab.utils import auxfun
@@ -38,7 +39,7 @@ def _correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame
     return animal_df
 
 def create_padded_df(
-    cfg: dict,
+    cfp: dict,
     df: pd.DataFrame,
     save_data: bool = True, 
     overwrite: bool = False
@@ -55,10 +56,11 @@ def create_padded_df(
     Returns:
         Padded DataFrame of the main_df.
     """
+    cfg = toml.load(cfp)
     data_path = Path(cfg["results_path"])
     key="padded_df"
     
-    padded_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    padded_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(padded_df, pd.DataFrame):
         return padded_df
@@ -137,7 +139,7 @@ def calculate_time_spent_per_position(
     data_path = Path(cfg["results_path"])
     key="time_per_position"
     
-    time_per_position = None if overwrite else auxfun.check_save_data(data_path, key)
+    time_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(time_per_position, pd.DataFrame):
         return time_per_position
@@ -145,7 +147,7 @@ def calculate_time_spent_per_position(
     tunnels = cfg["tunnels"]
     
     df = auxfun.load_ecohab_data(cfg, key="main_df")
-    padded_df = create_padded_df(cfg, df)
+    padded_df = create_padded_df(cfp, df)
     
     # Map directional tunnel position to non-directional
     mapper = padded_df.position.isin(tunnels.keys())
@@ -188,7 +190,7 @@ def calculate_visits_per_position(
     data_path = Path(cfg["results_path"])
     key="visits_per_position"
     
-    visits_per_position = None if overwrite else auxfun.check_save_data(data_path, key)
+    visits_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(visits_per_position, pd.DataFrame):
         return visits_per_position
@@ -196,7 +198,7 @@ def calculate_visits_per_position(
     tunnels = cfg["tunnels"]
     
     df = auxfun.load_ecohab_data(cfg, key="main_df")
-    padded_df = create_padded_df(cfg, df)
+    padded_df = create_padded_df(cfp, df)
     
     # Map directional tunnel position to non-directional
     padded_df.position = padded_df.position.astype(str)
@@ -236,10 +238,9 @@ def create_binary_df(
         _description_
     """
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg["results_path"])
     key="binary_df"
     
-    binary_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    binary_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(binary_df, pd.DataFrame):
         return binary_df

@@ -28,7 +28,7 @@ def read_config(cfp: str | Path | dict) -> dict:
         return print(f"cfp should be either a dict, Path or str, but {type(cfp)} provided.")
     return cfg
 
-def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
+def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pd.DataFrame:
     """Loads already analyzed main data structure
 
     Args:
@@ -52,16 +52,10 @@ def load_ecohab_data(cfp: str, key: str) -> pd.DataFrame:
                 df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in df.columns])
             return df
         except KeyError:
-            print(f"{key} not found in the specified location: {data_path}. Perhaps not analyzed yet!")
-
-def check_save_data(data_path: Path, key: str) -> pd.DataFrame | None:
-    try:
-        df = pd.read_hdf(data_path, key=key)
-        # NOTE: should this be printed? Feels annoying
-        #print(f"Already calculated for {key}. Loading from {data_path}. If you wish to overwrite the data please set overwrite=True")
-        return df
-    except (KeyError, FileNotFoundError):
-        return None
+            if verbose:
+                print(f"{key} not found in the specified location: {data_path}. Perhaps not analyzed yet!")
+            else:
+                pass
     
 def get_animal_ids(data_path: str) -> list:
     """Auxfun to read animal IDs from the data if not provided
@@ -195,23 +189,3 @@ def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
     f.close()
     
     print(f"Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True")
-    
-    
-def _drop_empty_slices(df: pd.DataFrame):
-    """Auxfun to drop parts of DataFrame where no data was recorded.
-    """    
-    index_depth = len(df.index[0]) - 1
-    
-    condition = (df.groupby(level=[*range(index_depth)], observed=False).sum() == 0).all(axis=1)
-    condition = condition[condition].index
-    
-    indices_to_drop = []
-
-    for i in condition:
-        start = df.index.get_slice_bound(i, side="left")
-        stop = df.index.get_slice_bound(i, side="right")
-        indices_to_drop += list(range(start, stop))
-
-    df = df.drop(df.index[indices_to_drop])
-    
-    return df

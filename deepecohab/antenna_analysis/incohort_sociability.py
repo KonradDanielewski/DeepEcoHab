@@ -101,13 +101,13 @@ def calculate_time_together(
     data_path = Path(cfg["results_path"])
     key="time_together"
     
-    time_together_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    time_together_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(time_together_df, pd.DataFrame):
         return time_together_df
     
     df = auxfun.load_ecohab_data(cfg, key="main_df")
-    padded_df = activity.create_padded_df(cfg, df)
+    padded_df = activity.create_padded_df(cfp, df)
     animals = cfg["animal_ids"]
     
     # By default use half of the available cpu threads
@@ -165,7 +165,7 @@ def calculate_pairwise_encounters(
     data_path = Path(cfg["results_path"])
     key="pairwise_encounters"
     
-    pairwise_encounters_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    pairwise_encounters_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(pairwise_encounters_df, pd.DataFrame):
         return pairwise_encounters_df
@@ -218,13 +218,13 @@ def calculate_incohort_sociability(
     data_path = Path(cfg["results_path"])
     key="incohort_sociability"
     
-    incohort_sociability = None if overwrite else auxfun.check_save_data(data_path, key)
+    incohort_sociability = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(incohort_sociability, pd.DataFrame):
         return incohort_sociability
     
     df = auxfun.load_ecohab_data(cfg, key="main_df")
-    padded_df = activity.create_padded_df(cfg, df)
+    padded_df = activity.create_padded_df(cfp, df)
 
     animals = cfg["animal_ids"]
     mouse_pairs = list(combinations(animals, 2))

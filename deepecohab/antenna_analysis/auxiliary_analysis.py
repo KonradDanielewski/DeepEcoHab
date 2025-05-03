@@ -37,7 +37,7 @@ def calculate_approach_to_social_odor(
     data_path = Path(cfg["results_path"])
     key="social_odor"
     
-    social_odor = None if overwrite else auxfun.check_save_data(data_path, key)
+    social_odor = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(social_odor, pd.DataFrame):
         return social_odor

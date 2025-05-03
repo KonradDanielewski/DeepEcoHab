@@ -166,7 +166,7 @@ def get_ecohab_data_structure(
     data_path = Path(cfg["results_path"])
     key = "main_df"
     
-    df = None if overwrite else auxfun.check_save_data(data_path, key)
+    df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(df, pd.DataFrame):
         return df
