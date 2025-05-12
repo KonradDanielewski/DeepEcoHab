@@ -8,6 +8,10 @@ import numpy as np
 import pandas as pd
 import toml
 
+import subprocess
+import sys
+import webbrowser
+
 
 def get_data_paths(data_path: str) -> list:
     """Auxfun to load all raw data paths
@@ -213,3 +217,8 @@ def _drop_empty_slices(df: pd.DataFrame):
     df = df.drop(df.index[indices_to_drop])
     
     return df
+
+def run_dashboard(data_path):
+    path_to_dashboard = r"/home/winiar/Desktop/projects/ecohab/deepecohab/deepecohab/dash/dashboard.py"
+    # Uruchomienie skryptu z argumentami
+    subprocess.run([sys.executable, path_to_dashboard, "--data-path", data_path])
