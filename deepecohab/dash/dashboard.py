@@ -15,7 +15,6 @@ from plots import (
 )
 import sys
 import webbrowser
-from threading import Timer
 
 def open_browser():
     webbrowser.open_new("http://127.0.0.1:8050/")
@@ -51,13 +50,7 @@ if __name__ == '__main__':
     phases = list(range(1, n_phases + 1))
 
     # Layout with Tabs
-    app.layout = html.Div([
-        dcc.Tabs(id='tabs', value='tab-dashboard', children=[
-            dcc.Tab(label='Dashboard', value='tab-dashboard'),
-            dcc.Tab(label='Plots comparison ', value='tab-other'),
-        ]),
-        html.Div(id='tabs-content')
-    ])
+    
 
     # Dashboard layout
     dashboard_layout = html.Div([
@@ -76,6 +69,7 @@ if __name__ == '__main__':
                 updatemode='drag',
                 included=True,
                 vertical=False,
+                persistence=True,
                 className='slider'
             ),
             dcc.RadioItems(
@@ -252,7 +246,12 @@ if __name__ == '__main__':
             ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '0 10px'}),
         ])
     ])
-
+    app.layout = html.Div([
+        dcc.Tabs(id='tabs', value='tab-dashboard', children=[
+            dcc.Tab(label='Dashboard', value='tab-dashboard', children=dashboard_layout),
+            dcc.Tab(label='Plots Comparison', value='tab-other', children=comparison_tab),
+        ])
+    ])
     # Tabs callback
     @app.callback(Output('tabs-content', 'children'), [Input('tabs', 'value')])
     def render_content(tab):
@@ -360,6 +359,6 @@ if __name__ == '__main__':
         return n_clicks
 
     # Run the app
-    Timer(1, open_browser()).start()
-    app.run(debug=True)
+    open_browser()
+    app.run(debug=False)
     
