@@ -8,6 +8,10 @@ import numpy as np
 import pandas as pd
 import toml
 
+import subprocess
+import sys
+import webbrowser
+
 
 def get_data_paths(data_path: str) -> list:
     """Auxfun to load all raw data paths
@@ -189,3 +193,28 @@ def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
     f.close()
     
     print(f"Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True")
+    
+    
+def _drop_empty_slices(df: pd.DataFrame):
+    """Auxfun to drop parts of DataFrame where no data was recorded.
+    """    
+    index_depth = len(df.index[0]) - 1
+    
+    condition = (df.groupby(level=[*range(index_depth)], observed=False).sum() == 0).all(axis=1)
+    condition = condition[condition].index
+    
+    indices_to_drop = []
+
+    for i in condition:
+        start = df.index.get_slice_bound(i, side="left")
+        stop = df.index.get_slice_bound(i, side="right")
+        indices_to_drop += list(range(start, stop))
+
+    df = df.drop(df.index[indices_to_drop])
+    
+    return df
+
+def run_dashboard(data_path):
+    path_to_dashboard = r"/home/winiar/Desktop/projects/ecohab/deepecohab/deepecohab/dash/dashboard.py"
+    # Uruchomienie skryptu z argumentami
+    subprocess.run([sys.executable, path_to_dashboard, "--data-path", data_path])
