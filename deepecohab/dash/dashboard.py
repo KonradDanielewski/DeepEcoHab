@@ -44,7 +44,10 @@ if __name__ == '__main__':
     # Otwarcie pliku HDF5
     store = pd.HDFStore(data_path, mode="r")
     dash_data = auxfun_plots.load_dashboard_data(store)
-    n_phases = dash_data["time_per_position_df"]["phase_count"].max()
+    _data = dash_data["time_per_position_df"]
+    n_phases_dark = _data["phase_count"][_data["phase"] == "dark_phase"].max()
+    n_phases_light = _data["phase_count"][_data["phase"] == "light_phase"].max()
+    n_phases = min(n_phases_dark, n_phases_light)
     phases = list(range(1, n_phases + 1))
 
     # Layout with Tabs
@@ -58,43 +61,50 @@ if __name__ == '__main__':
 
     # Dashboard layout
     dashboard_layout = html.Div([
+    html.Div([
+        html.H1('EcoHAB Results', style={'textAlign': 'center', 'margin-bottom': '10px'}),
         html.Div([
-            html.H1('EcoHAB Results', style={'textAlign': 'center', 'margin-bottom': '10px'}),
-            html.Div([
-                html.Label('Phases', style={'margin-right': '10px'}),
-                dcc.Slider(
-                    id='phase-slider',
-                    min=min(phases),
-                    max=max(phases),
-                    value=min(phases),
-                    marks={str(phase): str(phase) for phase in phases},
-                    step=None,
-                    tooltip={"placement": "bottom", "always_visible": True},
-                    updatemode='drag',
-                    included=True,
-                    vertical=False,
-                    className='slider'
-                ),
-                dcc.RadioItems(
-                    id='mode-switch',
-                    options=[{'label': 'Dark', 'value': 'dark'}, {'label': 'Light', 'value': 'light'}],
-                    value='dark',
-                    labelStyle={'display': 'inline-block', 'margin-left': '10px'}
-                )
-            ], style={
-                'width': '100%', 
-                'textAlign': 'center',
+            html.Label('Phases', style={'margin-right': '10px'}),
+            dcc.Slider(
+                id='phase-slider',
+                min=min(phases),
+                max=max(phases),
+                value=min(phases),
+                marks={str(phase): str(phase) for phase in phases},
+                step=None,
+                tooltip={"placement": "bottom", "always_visible": True},
+                updatemode='drag',
+                included=True,
+                vertical=False,
+                className='slider'
+            ),
+            dcc.RadioItems(
+                id='mode-switch',
+                options=[{'label': 'Dark', 'value': 'dark'}, {'label': 'Light', 'value': 'light'}],
+                value='dark',
+                labelStyle={'display': 'inline-block', 'margin-left': '10px'}
+            ),
+            # Dodajemy przycisk "Save Plots"
+            html.Button(
+                'Save Plots', 
+                id='save-plots-btn', 
+                n_clicks=0, 
+                style={'margin-left': '10px'}
+            ),
+                ], style={
+                    'width': '100%', 
+                    'textAlign': 'center',
                 })
-        ], style={
-            'position': 'sticky',
-            'top': '0',
-            'background-color': 'white', 
-            'padding': '10px',
-            'background-color': '#FFFFFF',
-            'z-index': '1000',
-            'textAlign': 'center',
-            'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
-        }),
+            ], style={
+                'position': 'sticky',
+                'top': '0',
+                'background-color': 'white', 
+                'padding': '10px',
+                'background-color': '#FFFFFF',
+                'z-index': '1000',
+                'textAlign': 'center',
+                'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
+            }),
         html.Div([
             dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
             dcc.RadioItems(
@@ -303,13 +313,13 @@ if __name__ == '__main__':
             elif plot_type == 'pairwise_time_light':
                 return plot_pairwise_plot(dash_data, "light", phase, 'time')
             elif plot_type == 'chasings_dark':
-                return plot_chasings(dash_data, "dark", phase)
+                return plot_chasings(dash_data, "dark", phase, "phases")
             elif plot_type == 'chasings_light': 
-                return plot_chasings(dash_data, "light", phase)
+                return plot_chasings(dash_data, "light", phase, "phases")
             elif plot_type == 'sociability_dark':
-                return plot_in_cohort_sociability(dash_data, "dark", phase)
+                return plot_in_cohort_sociability(dash_data, "dark", phase, "phases")
             elif plot_type == 'sociability_light':
-                return plot_in_cohort_sociability(dash_data, "light", phase)
+                return plot_in_cohort_sociability(dash_data, "light", phase, "phases")
             elif plot_type == 'network_dark':
                 return plot_network_grah(dash_data, "dark", phase)
             elif plot_type == 'network_light':
@@ -321,9 +331,35 @@ if __name__ == '__main__':
         fig_right = get_plot(plot_right, phase_right)
 
         return fig_left, fig_right
+    
+    # Callback do zapisywania wykresów
+    @app.callback(
+        Output('save-plots-btn', 'n_clicks'),
+        [Input('save-plots-btn', 'n_clicks')]
+        )
+    def save_plots(n_clicks):
+        plots_path = os.path.abspath(os.path.join(os.path.dirname(data_path),'..', 'plots'))
+        if n_clicks > 0:
+            for phase in phases:
+                plot_position_fig(dash_data, "dark", phase, 'visits').write_html(os.path.join(plots_path,f"position_dark_visits_phase_{phase}.html"))
+                plot_position_fig(dash_data, "light", phase, 'visits').write_html(os.path.join(plots_path,f"position_light_visits_phase_{phase}.html"))
+                plot_position_fig(dash_data, "dark", phase, 'time').write_html(os.path.join(plots_path,f"position_dark_time_phase_{phase}.html"))
+                plot_position_fig(dash_data, "light", phase, 'time').write_html(os.path.join(plots_path,f"position_light_time_phase_{phase}.html")) 
+                plot_pairwise_plot(dash_data, "dark", phase, 'visits').write_html(os.path.join(plots_path,f"pairwise_dark_visits_phase_{phase}.html"))  
+                plot_pairwise_plot(dash_data, "light", phase, 'visits').write_html(os.path.join(plots_path,f"pairwise_light_visits_phase_{phase}.html"))    
+                plot_pairwise_plot(dash_data, "dark", phase, 'time').write_html(os.path.join(plots_path,f"pairwise_dark_time_phase_{phase}.html"))  
+                plot_pairwise_plot(dash_data, "light", phase, 'time').write_html(os.path.join(plots_path,f"pairwise_light_time_phase_{phase}.html"))    
+                plot_chasings(dash_data, "dark", phase, "phases").write_html(os.path.join(plots_path,f"chasings_dark_phase_{phase}.html"))    
+                plot_chasings(dash_data, "light", phase, "phases").write_html(os.path.join(plots_path,f"chasings_light_phase_{phase}.html"))
+                plot_in_cohort_sociability(dash_data, "dark", phase, "phases").write_html(os.path.join(plots_path,f"sociability_dark_phase_{phase}.html"))
+                plot_in_cohort_sociability(dash_data, "light", phase, "phases").write_html(os.path.join(plots_path,f"sociability_light_phase_{phase}.html"))  
+                plot_network_grah(dash_data, "dark", phase).write_html(os.path.join(plots_path,f"network_dark_phase_{phase}.html")) 
+                plot_network_grah(dash_data, "light", phase).write_html(os.path.join(plots_path,f"network_light_phase_{phase}.html"))   
+            return 0  
 
+        return n_clicks
 
     # Run the app
     Timer(1, open_browser()).start()
-    app.run(debug=False)
+    app.run(debug=True)
     
