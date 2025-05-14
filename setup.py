@@ -18,7 +18,7 @@ setuptools.setup(
     python_requires='>=3.10',
     install_requires=[
         'numpy',
-        'plotly',
+        'plotly==5.24.1',
         'matplotlib',
         'scipy',
         'pandas',
@@ -29,6 +29,7 @@ setuptools.setup(
         'nbformat',
         'kaleido',
         'joblib',
+        'tqdm',
     ], 
     url='https://github.com/KonradDanielewski/DeepEcoHab'
 )
