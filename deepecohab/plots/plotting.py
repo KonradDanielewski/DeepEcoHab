@@ -86,7 +86,7 @@ def _super_plot_together(
         phase_type_name = "dark" if "dark" in phase_type else "light"
             
         if plot_type == "time_together":
-            title = f"<b>Time spent in each position: <u>{phase_type_name} phase</u></b>"
+            title = f"<b>Time spent together: <u>{phase_type_name} phase</u></b>"
             z_label = "Time [s]: %{z}"
         
         elif plot_type == "pairwise_encounters":
