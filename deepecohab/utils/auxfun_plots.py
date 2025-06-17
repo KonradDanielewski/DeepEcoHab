@@ -158,6 +158,7 @@ def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame
 def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
     """Auxfun to load data from HDF5 store
     """
+    main_df = pd.read_hdf(store, key="main_df")
     ranking_in_time = pd.read_hdf(store, key='ranking_in_time').reset_index().melt(id_vars='datetime', var_name='mouse_id', value_name='ranking')
     time_per_position_df = pd.read_hdf(store, key="time_per_position")
     time_per_position_df = time_per_position_df.melt(ignore_index=False, value_name="Time[s]", var_name="animal_id").reset_index()
@@ -172,6 +173,7 @@ def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
     plot_ranking_data = prep_ranking(ranking_ordinal_df)
     
     return {
+        "main_df": main_df,
         "ranking_in_time": ranking_in_time,
         "time_per_position_df": time_per_position_df,
         "visits_per_position_df": visits_per_position_df,
