@@ -9,11 +9,33 @@ import pandas as pd
 def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
     """Auxfun to plot ranking through time
     """
-    ranking_fig = px.line(dash_data['ranking_in_time'], x='datetime', y='ranking', color='mouse_id')
-    ranking_fig.update_layout(
-        title='Ranking in Time'
+    colors = px.colors.qualitative.__dict__["Set3"]
+
+    ranking_in_time = pd.read_hdf(r"C:\Repositories\DeepEcoHab\examples\test_name2_2025-04-15\results\test_name2_data.h5", key="ranking_in_time")
+    main_df = pd.read_hdf(r"C:\Repositories\DeepEcoHab\examples\test_name2_2025-04-15\results\test_name2_data.h5", key="main_df")
+
+    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time)
+
+    # Make fig
+    fig = go.Figure()
+
+    for i, animal in enumerate(ranking_in_time.columns):
+        fig.add_trace(
+            go.Scatter(x=plot_df.index, y=plot_df[animal], name=animal, marker=dict(color=colors[i]))
+        )
+
+    fig.update_layout(
+        title="<b>Social dominance ranking in time</b>",
+        xaxis=dict(
+            rangeslider=dict(visible=True),
+            type="date",
+            title="<b>Time</b>"
+        ),
+        yaxis=dict(title="<b>Ranking</b>"),
+        legend=dict(title="<b>Animal IDs</b>"),
+        height=600,
     )
-    return ranking_fig
+    return fig
 
 def plot_position_fig(
     dash_data: dict[pd.DataFrame], 
