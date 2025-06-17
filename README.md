@@ -14,11 +14,13 @@ pip install -e .
 To check out the package please run the example_notebook provided in the examples directory of this repository.
 
 
+
+
+
 <b><u>TODO:</b></u>
 1. Dashboard implementation
 2. Pose estimation analysis
-3. Static plot export - kaleido issues, check if version dependent (python, plotly, kaleido) - This may be a chromium not on PATH in the current env issue
-4. Streamline antenna_pair creation for positions (product of adjacent antennas for cages and tunnels (is it necessary?) 
+3. Streamline antenna_pair creation for positions (product of adjacent antennas for cages and tunnels (is it necessary?))
 
 ### Data structure:
 
