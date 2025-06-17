@@ -27,3 +27,4 @@ from deepecohab.plots.plotting import (
     plot_pairwise_encounters,
     plot_chasings,
 )
+from deepecohab.utils.auxfun import load_ecohab_data

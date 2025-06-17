@@ -95,7 +95,7 @@ def calculate_chasings(
     data_path = Path(cfg["results_path"])
     key="chasings"
     
-    chasings = None if overwrite else auxfun.check_save_data(data_path, key)
+    chasings = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(chasings, pd.DataFrame):
         return chasings
@@ -163,8 +163,6 @@ def calculate_chasings(
         chasings.loc[(phase, N, mouse1), mouse2] = len(chase_times1[(chase_times1 < 1) & (chase_times1 > 0.1)])
         chasings.loc[(phase, N, mouse2), mouse1] = len(chase_times2[(chase_times2 < 1) & (chase_times2 > 0.1)])
     
-    chasings = auxfun._drop_empty_slices(chasings)
-    
     if save_data:
         chasings.to_hdf(data_path, key="chasings", mode="a", format="table")
         
@@ -196,7 +194,7 @@ def calculate_ranking(
     data_path = Path(cfg["results_path"])
     key="ranking_ordinal"
     
-    ranking_ordinal = None if overwrite else auxfun.check_save_data(data_path, key)
+    ranking_ordinal = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(ranking_ordinal, pd.DataFrame):
         return ranking_ordinal
@@ -223,6 +221,8 @@ def calculate_ranking(
     ).dropna()
 
     ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns, dtype=float)
+
+    ranking_in_time = ranking_in_time[~ranking_in_time.index.duplicated(keep='last')] # handle possible duplicate indices
 
     for phase, count in product(phases, phase_count):
         try:

@@ -27,8 +27,9 @@ setuptools.setup(
         'openskill',
         'networkx',
         'nbformat',
-        'kaleido',
+        'kaleido==1.0.0rc13',
         'joblib',
+        'tqdm',
     ], 
     url='https://github.com/KonradDanielewski/DeepEcoHab'
 )

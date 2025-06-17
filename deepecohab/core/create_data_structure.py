@@ -21,7 +21,7 @@ def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, m
         df["COM"] = comport
         dfs.append(df)
 
-    df = pd.concat(dfs, ignore_index=True).drop(["ind", "time_under"], axis=1)
+    df = pd.concat(dfs, ignore_index=True).drop("ind", axis=1)
     
     if sanitize_animal_ids:
         df = auxfun._sanitize_animal_ids(cfp, df, min_antenna_crossings)
@@ -166,7 +166,7 @@ def get_ecohab_data_structure(
     data_path = Path(cfg["results_path"])
     key = "main_df"
     
-    df = None if overwrite else auxfun.check_save_data(data_path, key)
+    df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(df, pd.DataFrame):
         return df

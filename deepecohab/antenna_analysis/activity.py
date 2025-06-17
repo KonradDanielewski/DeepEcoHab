@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
+import toml
 from tqdm import tqdm
 
 from deepecohab.utils import auxfun
@@ -38,7 +39,7 @@ def _correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame
     return animal_df
 
 def create_padded_df(
-    cfg: dict,
+    cfp: dict,
     df: pd.DataFrame,
     save_data: bool = True, 
     overwrite: bool = False
@@ -55,10 +56,11 @@ def create_padded_df(
     Returns:
         Padded DataFrame of the main_df.
     """
+    cfg = toml.load(cfp)
     data_path = Path(cfg["results_path"])
     key="padded_df"
     
-    padded_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    padded_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(padded_df, pd.DataFrame):
         return padded_df
@@ -137,7 +139,7 @@ def calculate_time_spent_per_position(
     data_path = Path(cfg["results_path"])
     key="time_per_position"
     
-    time_per_position = None if overwrite else auxfun.check_save_data(data_path, key)
+    time_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(time_per_position, pd.DataFrame):
         return time_per_position
@@ -145,7 +147,7 @@ def calculate_time_spent_per_position(
     tunnels = cfg["tunnels"]
     
     df = auxfun.load_ecohab_data(cfg, key="main_df")
-    padded_df = create_padded_df(cfg, df)
+    padded_df = create_padded_df(cfp, df)
     
     # Map directional tunnel position to non-directional
     mapper = padded_df.position.isin(tunnels.keys())
@@ -163,8 +165,6 @@ def calculate_time_spent_per_position(
         .fillna(0)
         .round(3)
     )
-    
-    time_per_position = auxfun._drop_empty_slices(time_per_position)
     
     if save_data:
         time_per_position.to_hdf(data_path, key=key, mode="a", format="table")
@@ -190,7 +190,7 @@ def calculate_visits_per_position(
     data_path = Path(cfg["results_path"])
     key="visits_per_position"
     
-    visits_per_position = None if overwrite else auxfun.check_save_data(data_path, key)
+    visits_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(visits_per_position, pd.DataFrame):
         return visits_per_position
@@ -198,7 +198,7 @@ def calculate_visits_per_position(
     tunnels = cfg["tunnels"]
     
     df = auxfun.load_ecohab_data(cfg, key="main_df")
-    padded_df = create_padded_df(cfg, df)
+    padded_df = create_padded_df(cfp, df)
     
     # Map directional tunnel position to non-directional
     padded_df.position = padded_df.position.astype(str)
@@ -213,8 +213,6 @@ def calculate_visits_per_position(
         .value_counts()
         .unstack()
     )
-    
-    visits_per_position = auxfun._drop_empty_slices(visits_per_position)
     
     if save_data:
         visits_per_position.to_hdf(data_path, key=key, mode="a", format="table")
@@ -240,10 +238,9 @@ def create_binary_df(
         _description_
     """
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg["results_path"])
     key="binary_df"
     
-    binary_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    binary_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(binary_df, pd.DataFrame):
         return binary_df
@@ -262,19 +259,28 @@ def create_binary_df(
     idx = pd.date_range(df.datetime.iloc[0], df.datetime.iloc[-1], index_len).round("ms")
 
     binary_df = pd.DataFrame(False, index=idx, columns=cols, dtype=bool)
-    df = df.query("position in @positions")
+    df_cages = df.query("position in @positions")
 
     print("Filling the DataFrame for each animal...")
     for animal in tqdm(animals):
-        data_slice = df.query("animal_id == @animal").iloc[1:]
+        data_slice = df_cages.query("animal_id == @animal").iloc[1:]
         starts = data_slice.datetime - pd.to_timedelta(data_slice.timedelta, "s") 
         stops = data_slice.datetime
-        ending_pos = df.query("animal_id == @animal").position.iloc[1:]
+        ending_pos = df_cages.query("animal_id == @animal").position.iloc[1:]
         
         for i in range(len(starts)):
             binary_df.loc[starts.iloc[i]:stops.iloc[i], (ending_pos.iloc[i], animal)] = True
 
+    indices = np.searchsorted(df.datetime.to_numpy(), binary_df.index.to_numpy())
+    new_index = df.loc[indices, ["phase", "phase_count"]]
+    new_index["datetime"] = idx
+    new_index = pd.MultiIndex.from_frame(new_index)
+    binary_df.index = new_index
+    binary_df.columns = ['.'.join(map(str, col)).strip() for col in binary_df.columns.values]
+
     if save_data:
-        binary_df.to_hdf(cfg["results_path"], key=key, format="table")
+        binary_df.to_hdf(cfg["results_path"], key=key, format="table", index=False)
+    
+    binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
     
     return binary_df

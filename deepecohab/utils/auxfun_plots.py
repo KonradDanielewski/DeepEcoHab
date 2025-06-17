@@ -82,9 +82,8 @@ def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node
             size=[], color=[],
             colorbar=dict(
                 thickness=15,
-                title='Ranking',
+                title=dict(text='Ranking', side='right'),
                 xanchor='left',
-                titleside='right',
             )
         )
     )

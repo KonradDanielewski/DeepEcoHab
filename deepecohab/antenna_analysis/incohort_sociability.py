@@ -73,7 +73,7 @@ def _pairwise_time_together(
 def _process_df_format_incohort(time_together_df: pd.DataFrame) -> pd.DataFrame:
     """Process format of the df to easily match time proportion calculation
     """    
-    time_together_df = time_together_df.unstack(level=3).dropna(axis=1, how="all")
+    time_together_df = time_together_df.unstack(level=3)
     time_together_df.columns = ['_'.join(col).strip() for col in time_together_df.columns.values]
     return time_together_df
 
@@ -101,13 +101,13 @@ def calculate_time_together(
     data_path = Path(cfg["results_path"])
     key="time_together"
     
-    time_together_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    time_together_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(time_together_df, pd.DataFrame):
         return time_together_df
     
     df = auxfun.load_ecohab_data(cfg, key="main_df")
-    padded_df = activity.create_padded_df(cfg, df)
+    padded_df = activity.create_padded_df(cfp, df)
     animals = cfg["animal_ids"]
     
     # By default use half of the available cpu threads
@@ -133,12 +133,11 @@ def calculate_time_together(
     for n_encounters, time_encounters, animal_1, animal_2, cage, phase, n in results:
         time_together_df.loc[(phase, n, cage, animal_2), animal_1] = sum(time_encounters)
         
-    time_together_df = (time_together_df
-                        .astype(float)
-                        .round(3)
-                       )
-    
-    time_together_df = auxfun._drop_empty_slices(time_together_df)
+    time_together_df = (
+        time_together_df
+        .astype(float)
+        .round(3)
+    )
 
     if save_data:
         time_together_df.to_hdf(data_path, key=key, mode="a", format="table")
@@ -166,7 +165,7 @@ def calculate_pairwise_encounters(
     data_path = Path(cfg["results_path"])
     key="pairwise_encounters"
     
-    pairwise_encounters_df = None if overwrite else auxfun.check_save_data(data_path, key)
+    pairwise_encounters_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(pairwise_encounters_df, pd.DataFrame):
         return pairwise_encounters_df
@@ -185,12 +184,11 @@ def calculate_pairwise_encounters(
     for n_encounters, time_encounters, animal_1, animal_2, cage, phase, n in results:
         pairwise_encounters_df.loc[(phase, n, cage, animal_2), animal_1] = sum(n_encounters)
         
-    pairwise_encounters_df = (pairwise_encounters_df
-                              .astype(float)
-                              .round(3)
-                             )
-    
-    pairwise_encounters_df = auxfun._drop_empty_slices(pairwise_encounters_df)
+    pairwise_encounters_df = (
+        pairwise_encounters_df
+        .astype(float)
+        .round(3)
+    )
     
     if save_data:
         pairwise_encounters_df.to_hdf(data_path, key=key, mode="a", format="table")
@@ -220,13 +218,13 @@ def calculate_incohort_sociability(
     data_path = Path(cfg["results_path"])
     key="incohort_sociability"
     
-    incohort_sociability = None if overwrite else auxfun.check_save_data(data_path, key)
+    incohort_sociability = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(incohort_sociability, pd.DataFrame):
         return incohort_sociability
     
     df = auxfun.load_ecohab_data(cfg, key="main_df")
-    padded_df = activity.create_padded_df(cfg, df)
+    padded_df = activity.create_padded_df(cfp, df)
 
     animals = cfg["animal_ids"]
     mouse_pairs = list(combinations(animals, 2))
@@ -264,8 +262,6 @@ def calculate_incohort_sociability(
         .round(3)
         .astype(float)
     )
-    
-    incohort_sociability = auxfun._drop_empty_slices(incohort_sociability)
     
     if save_data:
         incohort_sociability.to_hdf(data_path, key=key, mode="a", format="table")
