@@ -298,36 +298,37 @@ if __name__ == '__main__':
     )
     def update_independent_plots(plot_left, phase_left, plot_right, phase_right,):
         def get_plot(plot_type, phase):
-            if plot_type == 'position_dark_visits':
-                return plot_position_fig(dash_data, "dark", phase, 'visits')
-            elif plot_type == 'position_light_visits':
-                return plot_position_fig(dash_data, "light", phase, 'visits')
-            elif plot_type == 'position_dark_time':
-                return plot_position_fig(dash_data, "dark", phase, 'time')
-            elif plot_type == 'position_light_time':
-                return plot_position_fig(dash_data, "light", phase, 'time')
-            elif plot_type == 'pairwise_encounters_dark':
-                return plot_pairwise_plot(dash_data, "dark", phase, 'visits')
-            elif plot_type == 'pairwise_encounters_light':
-                return plot_pairwise_plot(dash_data, "light", phase, 'visits')
-            elif plot_type == 'pairwise_time_dark': 
-                return plot_pairwise_plot(dash_data, "dark", phase, 'time')
-            elif plot_type == 'pairwise_time_light':
-                return plot_pairwise_plot(dash_data, "light", phase, 'time')
-            elif plot_type == 'chasings_dark':
-                return plot_chasings(dash_data, "dark", phase, "phases")
-            elif plot_type == 'chasings_light': 
-                return plot_chasings(dash_data, "light", phase, "phases")
-            elif plot_type == 'sociability_dark':
-                return plot_in_cohort_sociability(dash_data, "dark", phase, "phases")
-            elif plot_type == 'sociability_light':
-                return plot_in_cohort_sociability(dash_data, "light", phase, "phases")
-            elif plot_type == 'network_dark':
-                return plot_network_grah(dash_data, "dark", phase)
-            elif plot_type == 'network_light':
-                return plot_network_grah(dash_data, "light", phase)
-            else:
-                return {}
+            match plot_type:
+                case 'position_dark_visits':
+                    return plot_position_fig(dash_data, "dark", phase, 'visits')
+                case 'position_light_visits':
+                    return plot_position_fig(dash_data, "light", phase, 'visits')
+                case 'position_dark_time':
+                    return plot_position_fig(dash_data, "dark", phase, 'time')
+                case 'position_light_time':
+                    return plot_position_fig(dash_data, "light", phase, 'time')
+                case 'pairwise_encounters_dark':
+                    return plot_pairwise_plot(dash_data, "dark", phase, 'visits')
+                case 'pairwise_encounters_light':
+                    return plot_pairwise_plot(dash_data, "light", phase, 'visits')
+                case 'pairwise_time_dark': 
+                    return plot_pairwise_plot(dash_data, "dark", phase, 'time')
+                case 'pairwise_time_light':
+                    return plot_pairwise_plot(dash_data, "light", phase, 'time')
+                case 'chasings_dark':
+                    return plot_chasings(dash_data, "dark", phase, "phases")
+                case 'chasings_light': 
+                    return plot_chasings(dash_data, "light", phase, "phases")
+                case 'sociability_dark':
+                    return plot_in_cohort_sociability(dash_data, "dark", phase, "phases")
+                case 'sociability_light':
+                    return plot_in_cohort_sociability(dash_data, "light", phase, "phases")
+                case 'network_dark':
+                    return plot_network_grah(dash_data, "dark", phase)
+                case 'network_light':
+                    return plot_network_grah(dash_data, "light", phase)
+                case _:
+                    return {}
 
         fig_left = get_plot(plot_left, phase_left)
         fig_right = get_plot(plot_right, phase_right)
