@@ -1,11 +1,15 @@
 import argparse
+import sys
+import webbrowser
+import os
+
 import dash
+import pandas as pd
 from dash import dcc, html
 from dash.dependencies import Input, Output
-import pandas as pd
+
 from deepecohab.utils import auxfun_plots
-import os
-from plots import (
+from deepecohab.dash.plots import (
     plot_ranking_in_time,
     plot_position_fig,
     plot_pairwise_plot,
@@ -13,8 +17,7 @@ from plots import (
     plot_in_cohort_sociability,
     plot_network_grah
 )
-import sys
-import webbrowser
+
 
 def open_browser():
     webbrowser.open_new("http://127.0.0.1:8050/")

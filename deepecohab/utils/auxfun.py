@@ -1,4 +1,5 @@
 import datetime as dt
+import importlib
 import os
 from itertools import product
 from glob import glob
@@ -11,6 +12,9 @@ import toml
 import subprocess
 import sys
 import webbrowser
+
+from deepecohab.dash import dashboard
+from deepecohab.utils import auxfun
 
 
 def get_data_paths(data_path: str) -> list:
@@ -214,7 +218,10 @@ def _drop_empty_slices(df: pd.DataFrame):
     
     return df
 
-def run_dashboard(data_path):
-    path_to_dashboard = r"/home/winiar/Desktop/projects/ecohab/deepecohab/deepecohab/dash/dashboard.py"
-    # Uruchomienie skryptu z argumentami
-    subprocess.run([sys.executable, path_to_dashboard, "--data-path", data_path])
+def run_dashboard(cfp):
+    cfg = auxfun.read_config(cfp)
+    data_path = cfg["results_path"]
+    
+    path_to_dashboard = importlib.util.find_spec("deepecohab.dash.dashboard").origin
+
+    subprocess.Popen([sys.executable, path_to_dashboard, "--data-path", data_path])

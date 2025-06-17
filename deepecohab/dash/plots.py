@@ -1,18 +1,20 @@
 from typing import Literal
 
 import networkx as nx
-import plotly.express as px
-from deepecohab.utils import auxfun_plots
-import plotly.graph_objects as go
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+from deepecohab.utils import auxfun_plots
 
 def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
     """Auxfun to plot ranking through time
     """
     colors = px.colors.qualitative.__dict__["Set3"]
 
-    ranking_in_time = pd.read_hdf(r"C:\Repositories\DeepEcoHab\examples\test_name2_2025-04-15\results\test_name2_data.h5", key="ranking_in_time")
-    main_df = pd.read_hdf(r"C:\Repositories\DeepEcoHab\examples\test_name2_2025-04-15\results\test_name2_data.h5", key="main_df")
+
+    ranking_in_time = dash_data["ranking_in_time"]
+    main_df = dash_data["main_df"]
 
     plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time)
 
