@@ -18,7 +18,7 @@ setuptools.setup(
     python_requires='>=3.10',
     install_requires=[
         'numpy',
-        'plotly==5.24.1',
+        'plotly',
         'matplotlib',
         'scipy',
         'pandas',
@@ -27,7 +27,7 @@ setuptools.setup(
         'openskill',
         'networkx',
         'nbformat',
-        'kaleido',
+        'kaleido==1.0.0rc13',
         'joblib',
         'tqdm',
     ], 

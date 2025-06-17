@@ -1,3 +1,2 @@
 numpy<2.0
 nbformat>=4.2.0
-plotly==5.24.1
