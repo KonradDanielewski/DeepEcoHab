@@ -260,19 +260,23 @@ if __name__ == '__main__':
 
     # Plots update callback
     @app.callback(
-        [Output('position-plot', 'figure'),
-        Output('pairwise-heatmap', 'figure'),
-        Output('chasings-heatmap', 'figure'),
-        Output('sociability-heatmap', 'figure'),
-        Output('network-graph', 'figure')],
-        [Input('phase-slider', 'value'),
-        Input('mode-switch', 'value'),
-        Input('position-switch', 'value'),
-        Input('summary-postion-switch', 'value'),
-        Input('pairwise-switch', 'value'),
-        Input('summary-pairwise-switch', 'value'),
-        Input('chasings-summary-switch', 'value'),
-        Input('sociability-summary-switch', 'value')]  
+        [
+            Output('position-plot', 'figure'),
+            Output('pairwise-heatmap', 'figure'),
+            Output('chasings-heatmap', 'figure'),
+            Output('sociability-heatmap', 'figure'),
+            Output('network-graph', 'figure'),
+        ],
+        [
+            Input('phase-slider', 'value'),
+            Input('mode-switch', 'value'),
+            Input('position-switch', 'value'),
+            Input('summary-postion-switch', 'value'),
+            Input('pairwise-switch', 'value'),
+            Input('summary-pairwise-switch', 'value'),
+            Input('chasings-summary-switch', 'value'),
+            Input('sociability-summary-switch', 'value'),
+        ]  
     )
     def update_plots(selected_phase, mode, position_switch, summary_postion_switch , pairwise_switch, summary_pairwise_switch, chasings_summary_switch, sociability_summary_switch):
         position_fig = plot_position_fig(dash_data, mode, selected_phase, position_switch, summary_postion_switch)
@@ -284,12 +288,16 @@ if __name__ == '__main__':
         return [position_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot]
 
     @app.callback(
-        [Output('comparison-plot-left', 'figure'),
-        Output('comparison-plot-right', 'figure')],
-        [Input('dropdown-plot-left', 'value'),
-        Input('slider-phase-left', 'value'),
-        Input('dropdown-plot-right', 'value'),
-        Input('slider-phase-right', 'value')]  # lub 'comparison-mode' jeśli chcesz osobny
+        [
+            Output('comparison-plot-left', 'figure'),
+            Output('comparison-plot-right', 'figure'),
+        ],
+        [
+            Input('dropdown-plot-left', 'value'),
+            Input('slider-phase-left', 'value'),
+            Input('dropdown-plot-right', 'value'),
+            Input('slider-phase-right', 'value'),
+        ]
     )
     def update_independent_plots(plot_left, phase_left, plot_right, phase_right,):
         def get_plot(plot_type, phase):
@@ -329,33 +337,6 @@ if __name__ == '__main__':
         fig_right = get_plot(plot_right, phase_right)
 
         return fig_left, fig_right
-    
-    # Callback do zapisywania wykresów
-    @app.callback(
-        Output('save-plots-btn', 'n_clicks'),
-        [Input('save-plots-btn', 'n_clicks')]
-        )
-    def save_plots(n_clicks):
-        plots_path = os.path.abspath(os.path.join(os.path.dirname(data_path),'..', 'plots'))
-        if n_clicks > 0:
-            for phase in phases:
-                plot_position_fig(dash_data, 'dark', phase, 'visits').write_html(os.path.join(plots_path,f'position_dark_visits_phase_{phase}.html'))
-                plot_position_fig(dash_data, 'light', phase, 'visits').write_html(os.path.join(plots_path,f'position_light_visits_phase_{phase}.html'))
-                plot_position_fig(dash_data, 'dark', phase, 'time').write_html(os.path.join(plots_path,f'position_dark_time_phase_{phase}.html'))
-                plot_position_fig(dash_data, 'light', phase, 'time').write_html(os.path.join(plots_path,f'position_light_time_phase_{phase}.html')) 
-                plot_pairwise_plot(dash_data, 'dark', phase, 'visits').write_html(os.path.join(plots_path,f'pairwise_dark_visits_phase_{phase}.html'))  
-                plot_pairwise_plot(dash_data, 'light', phase, 'visits').write_html(os.path.join(plots_path,f'pairwise_light_visits_phase_{phase}.html'))    
-                plot_pairwise_plot(dash_data, 'dark', phase, 'time').write_html(os.path.join(plots_path,f'pairwise_dark_time_phase_{phase}.html'))  
-                plot_pairwise_plot(dash_data, 'light', phase, 'time').write_html(os.path.join(plots_path,f'pairwise_light_time_phase_{phase}.html'))    
-                plot_chasings(dash_data, 'dark', phase, 'phases').write_html(os.path.join(plots_path,f'chasings_dark_phase_{phase}.html'))    
-                plot_chasings(dash_data, 'light', phase, 'phases').write_html(os.path.join(plots_path,f'chasings_light_phase_{phase}.html'))
-                plot_in_cohort_sociability(dash_data, 'dark', phase, 'phases').write_html(os.path.join(plots_path,f'sociability_dark_phase_{phase}.html'))
-                plot_in_cohort_sociability(dash_data, 'light', phase, 'phases').write_html(os.path.join(plots_path,f'sociability_light_phase_{phase}.html'))  
-                plot_network_grah(dash_data, 'dark', phase).write_html(os.path.join(plots_path,f'network_dark_phase_{phase}.html')) 
-                plot_network_grah(dash_data, 'light', phase).write_html(os.path.join(plots_path,f'network_light_phase_{phase}.html'))   
-            return 0  
-
-        return n_clicks
 
     # Run the app
     open_browser()
