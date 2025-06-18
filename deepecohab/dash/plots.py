@@ -119,7 +119,7 @@ def plot_pairwise_plot(
             pairwise_z_label = 'Number: %{z}'   
         case 'time':
             pairwise_df = dash_data['time_together']
-            pairwise_title = f'<b>Time spent in each position: <u>{mode} phase</u></b>'
+            pairwise_title = f'<b>Time spent together: <u>{mode} phase</u></b>'
             pairwise_z_label = 'Time [s]: %{z}'
     
     pairwise_filtered = pairwise_df[pairwise_df['phase'] == phase]
