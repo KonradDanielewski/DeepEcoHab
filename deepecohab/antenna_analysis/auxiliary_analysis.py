@@ -18,8 +18,8 @@ def calculate_approach_to_social_odor(
 
     Args:
         cfp: path to project config file.
-        stim_start: datetime of the stimulus placement, in format "2021-07-14 20:56:01.473".
-        stim_end: datetime to mark the end of analyzed period, in format "2021-07-14 20:56:01.473".
+        stim_start: datetime of the stimulus placement, in format '2021-07-14 20:56:01.473'.
+        stim_end: datetime to mark the end of analyzed period, in format '2021-07-14 20:56:01.473'.
         stim_cage: name of the cage where the stimulus was placed.
         control_cage: name of the cage where the control stimulus was placed.
         time_bins: number of time bins into which the stimulation period should be divided
@@ -34,25 +34,25 @@ def calculate_approach_to_social_odor(
         4. control stimulus cage the day before
     """    
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg["results_path"])
-    key="social_odor"
+    data_path = Path(cfg['results_path'])
+    key='social_odor'
     
     social_odor = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(social_odor, pd.DataFrame):
         return social_odor
     
-    animals = cfg["animal_ids"]
+    animals = cfg['animal_ids']
     
     stim_start = pd.to_datetime(stim_start)
     stim_end = pd.to_datetime(stim_end)
-    normalization_start = stim_start - pd.Timedelta(1, "d")
+    normalization_start = stim_start - pd.Timedelta(1, 'd')
     bin_len = (stim_end - stim_start) / time_bins
     
-    binary_df = auxfun.load_ecohab_data(cfg, key="binary_df").loc[normalization_start:stim_end]
+    binary_df = auxfun.load_ecohab_data(cfg, key='binary_df').loc[normalization_start:stim_end]
     
     idx = pd.MultiIndex.from_product([range(1, time_bins+1), animals])
-    cols = ["stim_cage", "stim_cage_prev_day", "control_cage", "control_cage_prev_day"]
+    cols = ['stim_cage', 'stim_cage_prev_day', 'control_cage', 'control_cage_prev_day']
     social_odor = pd.DataFrame(index=idx, columns=cols)
     
     for i in range(time_bins): 
@@ -85,7 +85,7 @@ def calculate_approach_to_social_odor(
         social_odor = social_odor.droplevel(0, axis=0)
             
     if save_data:
-        social_odor.to_hdf(data_path, key="social_odor", mode="a", format="table")
+        social_odor.to_hdf(data_path, key='social_odor', mode='a', format='table')
         
     return social_odor   
     
