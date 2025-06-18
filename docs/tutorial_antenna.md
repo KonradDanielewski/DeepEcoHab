@@ -13,12 +13,12 @@ The deepecohab project can be created by passing:
 ```python
 config_path = deepecohab.create_ecohab_project(
     project_location=r'path/where/project/will/be/created',
-    experiment_name="experiment1",
+    experiment_name='experiment1',
     data_path=r'path/to/raw/recording/data',
-    start_datetime="2023-05-24 12:00:00", 
-    finish_datetime="2023-05-29 23:00:00",
-    light_phase_start="00:00:00",
-    dark_phase_start="12:00:00",
+    start_datetime='2023-05-24 12:00:00', 
+    finish_datetime='2023-05-29 23:00:00',
+    light_phase_start='00:00:00',
+    dark_phase_start='12:00:00',
     )
 ```
 
@@ -69,10 +69,10 @@ Approach to social odor calculates time spent in the stimulation cage and time s
 ```python
 deepecohab.auxiliary_analysis.calculate_approach_to_social_odor(
   config_path = config_path,
-  stimulation_start = "2023-05-24 12:00:00", #datetime str of YYYY-MM-DD HH:MM:SS format
-  stimulation_end = "2023-05-24 14:00:00",
-  stimulation_cage = "cage_1",
-  control_cage = "cage_3",
+  stimulation_start = '2023-05-24 12:00:00', #datetime str of YYYY-MM-DD HH:MM:SS format
+  stimulation_end = '2023-05-24 14:00:00',
+  stimulation_cage = 'cage_1',
+  control_cage = 'cage_3',
   N_time_bins = 10, # Number of time bins into which the data should be divided
 )
 ```

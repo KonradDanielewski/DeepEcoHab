@@ -11,17 +11,17 @@ from deepecohab.core import create_data_structure
 def _split_datetime(phase_start: str) -> tuple[str, ...]:
     """Auxfun to split datetime string.
     """    
-    hour = int(phase_start.split(":")[0])
-    minute = int(phase_start.split(":")[1])
-    second = int(phase_start.split(":")[2].split(".")[0])
+    hour = int(phase_start.split(':')[0])
+    minute = int(phase_start.split(':')[1])
+    second = int(phase_start.split(':')[2].split('.')[0])
     
     return hour, minute, second
 
 def _extract_phase_switch_indices(animal_df: pd.DataFrame):
     """Auxfun to find indices of phase switching.
     """    
-    animal_df["phase_map"] = animal_df.phase.map({"dark_phase": 0, "light_phase": 1})
-    shift = animal_df["phase_map"].astype("int").diff()
+    animal_df['phase_map'] = animal_df.phase.map({'dark_phase': 0, 'light_phase': 1})
+    shift = animal_df['phase_map'].astype('int').diff()
     shift.loc[0] = 0
     indices = shift[shift != 0]
     
@@ -30,7 +30,7 @@ def _extract_phase_switch_indices(animal_df: pd.DataFrame):
 def _correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame:
     """Auxfun to correct information in duplicated indices to match the previous phase.
     """    
-    day_col, phase_col, phase_count_col = animal_df.columns.get_loc("day"), animal_df.columns.get_loc("phase"), animal_df.columns.get_loc("phase_count")
+    day_col, phase_col, phase_count_col = animal_df.columns.get_loc('day'), animal_df.columns.get_loc('phase'), animal_df.columns.get_loc('phase_count')
    
     animal_df.iloc[location, day_col] = animal_df.iloc[location-1, day_col]
     animal_df.iloc[location, phase_col] = animal_df.iloc[location-1, phase_col]
@@ -57,21 +57,21 @@ def create_padded_df(
         Padded DataFrame of the main_df.
     """
     cfg = toml.load(cfp)
-    data_path = Path(cfg["results_path"])
-    key="padded_df"
+    data_path = Path(cfg['results_path'])
+    key='padded_df'
     
     padded_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(padded_df, pd.DataFrame):
         return padded_df
     
-    animals = cfg["animal_ids"]
-    phases = list(cfg["phase"].keys())
+    animals = cfg['animal_ids']
+    phases = list(cfg['phase'].keys())
 
     animal_dfs = []
 
     for animal in animals:
-        animal_df = df.query("animal_id == @animal").copy()
+        animal_df = df.query('animal_id == @animal').copy()
 
         indices = _extract_phase_switch_indices(animal_df)
 
@@ -79,7 +79,7 @@ def create_padded_df(
         dark_phase_starts = indices[indices == -1].index
 
         for phase in phases:
-            if phase == "light_phase":
+            if phase == 'light_phase':
                 idx = light_phase_starts
             else:
                 idx = dark_phase_starts
@@ -90,11 +90,11 @@ def create_padded_df(
             times = animal_df.loc[idx].index[::2] 
             
             # Phase start time split
-            phase_start = cfg["phase"][phase]
+            phase_start = cfg['phase'][phase]
             hour, minute, second = _split_datetime(phase_start)
 
             for i in times: 
-                location = animal_df.index.get_loc(animal_df.loc[i, "datetime"].index[0]).start # iloc of the duplicated index for data assignement purposes
+                location = animal_df.index.get_loc(animal_df.loc[i, 'datetime'].index[0]).start # iloc of the duplicated index for data assignement purposes
                 # Get timedelta between the start of phase and first datetime. Subtract this time + 1 microsecond to create a datetime in the previuous phase
                 phase_start_diff = animal_df.iloc[location, 2] - animal_df.iloc[location, 2].replace(hour=hour, minute=minute, second=second, microsecond=0) + pd.Timedelta(microseconds=1)
                 animal_df.iloc[location, 2] = animal_df.iloc[location, 2] - phase_start_diff
@@ -106,16 +106,16 @@ def create_padded_df(
 
     padded_df = (
         pd.concat(animal_dfs)
-        .sort_values("datetime")
+        .sort_values('datetime')
         .reset_index(drop=True)
-        .drop("phase_map", axis=1)
+        .drop('phase_map', axis=1)
     )
 
     # Overwrite with new timedelta
     padded_df = create_data_structure.calculate_timedelta(padded_df)
     
     if save_data:
-        padded_df.to_hdf(data_path, key=key, mode="a", format="table")
+        padded_df.to_hdf(data_path, key=key, mode='a', format='table')
     
     return padded_df
 
@@ -136,29 +136,29 @@ def calculate_time_spent_per_position(
     """
     cfg = auxfun.read_config(cfp)
     
-    data_path = Path(cfg["results_path"])
-    key="time_per_position"
+    data_path = Path(cfg['results_path'])
+    key='time_per_position'
     
     time_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(time_per_position, pd.DataFrame):
         return time_per_position
     
-    tunnels = cfg["tunnels"]
+    tunnels = cfg['tunnels']
     
-    df = auxfun.load_ecohab_data(cfg, key="main_df")
+    df = auxfun.load_ecohab_data(cfg, key='main_df')
     padded_df = create_padded_df(cfp, df)
     
     # Map directional tunnel position to non-directional
     mapper = padded_df.position.isin(tunnels.keys())
     padded_df.position = padded_df.position.astype(str)
-    padded_df.loc[mapper, "position"] = padded_df.loc[mapper, "position"].map(tunnels).values
+    padded_df.loc[mapper, 'position'] = padded_df.loc[mapper, 'position'].map(tunnels).values
     
     # Calculate time spent per position per phase
     time_per_position = (
         padded_df
-        .loc[:, ["animal_id", "position", "phase", "phase_count", "timedelta"]]
-        .groupby(["animal_id", "phase", "phase_count", "position"], observed=False)
+        .loc[:, ['animal_id', 'position', 'phase', 'phase_count', 'timedelta']]
+        .groupby(['animal_id', 'phase', 'phase_count', 'position'], observed=False)
         .sum()
         .unstack(level=0)
         .droplevel(0, axis=1)
@@ -167,7 +167,7 @@ def calculate_time_spent_per_position(
     )
     
     if save_data:
-        time_per_position.to_hdf(data_path, key=key, mode="a", format="table")
+        time_per_position.to_hdf(data_path, key=key, mode='a', format='table')
     
     return time_per_position
 
@@ -187,35 +187,35 @@ def calculate_visits_per_position(
         Multiindex DataFrame with number of visits per position.
     """
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg["results_path"])
-    key="visits_per_position"
+    data_path = Path(cfg['results_path'])
+    key='visits_per_position'
     
     visits_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(visits_per_position, pd.DataFrame):
         return visits_per_position
     
-    tunnels = cfg["tunnels"]
+    tunnels = cfg['tunnels']
     
-    df = auxfun.load_ecohab_data(cfg, key="main_df")
+    df = auxfun.load_ecohab_data(cfg, key='main_df')
     padded_df = create_padded_df(cfp, df)
     
     # Map directional tunnel position to non-directional
     padded_df.position = padded_df.position.astype(str)
     mapper = padded_df.position.isin(tunnels.keys())
-    padded_df.loc[mapper, "position"] = padded_df.loc[mapper, "position"].map(tunnels).values
+    padded_df.loc[mapper, 'position'] = padded_df.loc[mapper, 'position'].map(tunnels).values
     
     # Calculate visits to each position
     visits_per_position = (
         padded_df
-        .loc[:, ["animal_id", "position", "phase", "phase_count"]]
-        .groupby(["phase", "phase_count", "position"], observed=False)
+        .loc[:, ['animal_id', 'position', 'phase', 'phase_count']]
+        .groupby(['phase', 'phase_count', 'position'], observed=False)
         .value_counts()
         .unstack()
     )
     
     if save_data:
-        visits_per_position.to_hdf(data_path, key=key, mode="a", format="table")
+        visits_per_position.to_hdf(data_path, key=key, mode='a', format='table')
     
     return visits_per_position
 
@@ -238,7 +238,7 @@ def create_binary_df(
         _description_
     """
     cfg = auxfun.read_config(cfp)
-    key="binary_df"
+    key='binary_df'
     
     binary_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
@@ -246,40 +246,40 @@ def create_binary_df(
         return binary_df
     
     if precision > 20:
-        print("Warning! High precision may result in a very large DataFrame and potential python kernel crash!")
+        print('Warning! High precision may result in a very large DataFrame and potential python kernel crash!')
     
-    df = auxfun.load_ecohab_data(cfg, key="main_df")
-    animals = cfg["animal_ids"]
-    positions = list(set(cfg["antenna_combinations"].values()))
-    positions = [pos for pos in positions if "cage" in pos]
+    df = auxfun.load_ecohab_data(cfg, key='main_df')
+    animals = cfg['animal_ids']
+    positions = list(set(cfg['antenna_combinations'].values()))
+    positions = [pos for pos in positions if 'cage' in pos]
 
     # Prepare empty DF
     index_len = np.ceil((df.datetime.iloc[-1] - df.datetime.iloc[0]).total_seconds()*precision).astype(int)
     cols = pd.MultiIndex.from_product([positions, animals])
-    idx = pd.date_range(df.datetime.iloc[0], df.datetime.iloc[-1], index_len).round("ms")
+    idx = pd.date_range(df.datetime.iloc[0], df.datetime.iloc[-1], index_len).round('ms')
 
     binary_df = pd.DataFrame(False, index=idx, columns=cols, dtype=bool)
-    df_cages = df.query("position in @positions")
+    df_cages = df.query('position in @positions')
 
-    print("Filling the DataFrame for each animal...")
+    print('Filling the DataFrame for each animal...')
     for animal in tqdm(animals):
-        data_slice = df_cages.query("animal_id == @animal").iloc[1:]
-        starts = data_slice.datetime - pd.to_timedelta(data_slice.timedelta, "s") 
+        data_slice = df_cages.query('animal_id == @animal').iloc[1:]
+        starts = data_slice.datetime - pd.to_timedelta(data_slice.timedelta, 's') 
         stops = data_slice.datetime
-        ending_pos = df_cages.query("animal_id == @animal").position.iloc[1:]
+        ending_pos = df_cages.query('animal_id == @animal').position.iloc[1:]
         
         for i in range(len(starts)):
             binary_df.loc[starts.iloc[i]:stops.iloc[i], (ending_pos.iloc[i], animal)] = True
 
     indices = np.searchsorted(df.datetime.to_numpy(), binary_df.index.to_numpy())
-    new_index = df.loc[indices, ["phase", "phase_count"]]
-    new_index["datetime"] = idx
+    new_index = df.loc[indices, ['phase', 'phase_count']]
+    new_index['datetime'] = idx
     new_index = pd.MultiIndex.from_frame(new_index)
     binary_df.index = new_index
     binary_df.columns = ['.'.join(map(str, col)).strip() for col in binary_df.columns.values]
 
     if save_data:
-        binary_df.to_hdf(cfg["results_path"], key=key, format="table", index=False)
+        binary_df.to_hdf(cfg['results_path'], key=key, format='table', index=False)
     
     binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
     

@@ -16,9 +16,9 @@ def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame
     """Auxfun to get each chasing event as a match
     """    
     matches = pd.DataFrame({
-        "loser": chased_mouse.animal_id, 
-        "winner": chasing_mouse.animal_id,
-        "datetime": chasing_mouse.datetime,
+        'loser': chased_mouse.animal_id, 
+        'winner': chasing_mouse.animal_id,
+        'datetime': chasing_mouse.datetime,
     })
     return matches
 
@@ -27,12 +27,12 @@ def _combine_matches(matches: list[pd.DataFrame]) -> tuple[list, pd.Series]:
     """    
     matches_df = (
         pd.concat(matches).
-            sort_values(by="datetime").
+            sort_values(by='datetime').
             reset_index(drop=True)
         )
     datetimes = matches_df.datetime
 
-    matches = list(matches_df.drop("datetime", axis=1).itertuples(index=False, name=None))
+    matches = list(matches_df.drop('datetime', axis=1).itertuples(index=False, name=None))
     return matches, datetimes
 
 def _rank_mice_openskill(
@@ -92,24 +92,24 @@ def calculate_chasings(
         MultiIndex DataFrame of chasings per phase every animal vs every animal. Column chases the row
     """
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg["results_path"])
-    key="chasings"
+    data_path = Path(cfg['results_path'])
+    key='chasings'
     
     chasings = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(chasings, pd.DataFrame):
         return chasings
     
-    df = auxfun.load_ecohab_data(cfg, key="main_df")
+    df = auxfun.load_ecohab_data(cfg, key='main_df')
     
-    experiment_name = cfg["experiment_name"]
-    positions = list(set(cfg["antenna_combinations"].values()))
-    tunnel_combinations = [comb for comb in positions if "cage" not in comb]
-    cage_combinations = [comb for comb in positions if "cage" in comb]
-    data_path = Path(cfg["results_path"])
-    phases = list(cfg["phase"].keys())
+    experiment_name = cfg['experiment_name']
+    positions = list(set(cfg['antenna_combinations'].values()))
+    tunnel_combinations = [comb for comb in positions if 'cage' not in comb]
+    cage_combinations = [comb for comb in positions if 'cage' in comb]
+    data_path = Path(cfg['results_path'])
+    phases = list(cfg['phase'].keys())
     phase_N = df.phase_count.unique()
-    animals = cfg["animal_ids"]
+    animals = cfg['animal_ids']
 
     idx = auxfun._create_phase_multiindex(cfg, animals=True)
 
@@ -119,10 +119,10 @@ def calculate_chasings(
     matches = []
     iterator = list(product(phases, phase_N, mouse_pairs))
     
-    print("Calculating chasings...")
+    print('Calculating chasings...')
     for phase, N, (mouse1, mouse2) in tqdm(iterator): # TODO: Think about parallelization - output a df then concat a list of dfs
         # Calculates time spent in the tube together
-        temp = df.query("phase == @phase and phase_count == @N and (animal_id == @mouse1 or animal_id == @mouse2)").sort_values("datetime").reset_index(drop=True)
+        temp = df.query('phase == @phase and phase_count == @N and (animal_id == @mouse1 or animal_id == @mouse2)').sort_values('datetime').reset_index(drop=True)
 
         condition1 = np.sort(np.concatenate([temp.loc[temp.position_keys.diff() == 0].index, 
                                             temp.loc[temp.position_keys.diff() == 0].index - 1]))
@@ -154,20 +154,20 @@ def calculate_chasings(
         matches.append(_get_chasing_matches(chasing_mouse, chased_mouse))
 
         chase_times1 = (
-            chased_mouse.query("animal_id == @mouse1").datetime.reset_index(drop=True) - 
-            chasing_mouse.query("animal_id == @mouse2").datetime.reset_index(drop=True)).dt.total_seconds()
+            chased_mouse.query('animal_id == @mouse1').datetime.reset_index(drop=True) - 
+            chasing_mouse.query('animal_id == @mouse2').datetime.reset_index(drop=True)).dt.total_seconds()
         chase_times2 = (
-            chased_mouse.query("animal_id == @mouse2").datetime.reset_index(drop=True) - 
-            chasing_mouse.query("animal_id == @mouse1").datetime.reset_index(drop=True)).dt.total_seconds()
+            chased_mouse.query('animal_id == @mouse2').datetime.reset_index(drop=True) - 
+            chasing_mouse.query('animal_id == @mouse1').datetime.reset_index(drop=True)).dt.total_seconds()
         
         chasings.loc[(phase, N, mouse1), mouse2] = len(chase_times1[(chase_times1 < 1) & (chase_times1 > 0.1)])
         chasings.loc[(phase, N, mouse2), mouse1] = len(chase_times2[(chase_times2 < 1) & (chase_times2 > 0.1)])
     
     if save_data:
-        chasings.to_hdf(data_path, key="chasings", mode="a", format="table")
+        chasings.to_hdf(data_path, key='chasings', mode='a', format='table')
         
-        ranking_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_match_data.pickle")
-        with open(str(ranking_data), "wb") as outfile: 
+        ranking_data = Path(cfg['project_location']) / 'results' / (experiment_name + '_match_data.pickle')
+        with open(str(ranking_data), 'wb') as outfile: 
             pickle.dump(matches, outfile)
 
     return chasings
@@ -191,32 +191,32 @@ def calculate_ranking(
         Series with ordinal of the rank calculated for each animal
     """    
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg["results_path"])
-    key="ranking_ordinal"
+    data_path = Path(cfg['results_path'])
+    key='ranking_ordinal'
     
     ranking_ordinal = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
     if isinstance(ranking_ordinal, pd.DataFrame):
         return ranking_ordinal
     
-    experiment_name = cfg["experiment_name"]
-    animals = cfg["animal_ids"]
-    df = auxfun.load_ecohab_data(cfp, "main_df")
-    phases = cfg["phase"].keys()
+    experiment_name = cfg['experiment_name']
+    animals = cfg['animal_ids']
+    df = auxfun.load_ecohab_data(cfp, 'main_df')
+    phases = cfg['phase'].keys()
     phase_count = df.phase_count.unique()
     
-    match_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_match_data.pickle")
+    match_data = Path(cfg['project_location']) / 'results' / (experiment_name + '_match_data.pickle')
     matches = pd.read_pickle(match_data)
             
     # Get the ranking and calculate ranking ordinal
     ranking, ranking_in_time = _rank_mice_openskill(matches, animals, ranking)
     
     # Calculate ranking at the end of each phase
-    phase_end_marks = df[df.datetime.isin(ranking_in_time.index)].sort_values("datetime")
+    phase_end_marks = df[df.datetime.isin(ranking_in_time.index)].sort_values('datetime')
     phase_end_marks = (
         phase_end_marks
-        .loc[:, ["datetime", "phase", "phase_count"]]
-        .groupby(["phase", "phase_count"], observed=False)
+        .loc[:, ['datetime', 'phase', 'phase_count']]
+        .groupby(['phase', 'phase_count'], observed=False)
         .max()
     ).dropna()
 
@@ -233,12 +233,12 @@ def calculate_ranking(
             pass
     
     if save_data:
-        ranking_data = Path(cfg["project_location"]) / "results" / (experiment_name + "_ranking_data.pickle")
-        pickle_file = {"ranking": ranking}
-        with open(str(ranking_data), "wb") as outfile: 
+        ranking_data = Path(cfg['project_location']) / 'results' / (experiment_name + '_ranking_data.pickle')
+        pickle_file = {'ranking': ranking}
+        with open(str(ranking_data), 'wb') as outfile: 
             pickle.dump(pickle_file, outfile)
             
-        ranking_ordinal.to_hdf(data_path, key="ranking_ordinal", mode="a", format="table")
-        ranking_in_time.to_hdf(data_path, key="ranking_in_time", mode="a", format="table")
+        ranking_ordinal.to_hdf(data_path, key='ranking_ordinal', mode='a', format='table')
+        ranking_in_time.to_hdf(data_path, key='ranking_in_time', mode='a', format='table')
     
     return ranking_ordinal

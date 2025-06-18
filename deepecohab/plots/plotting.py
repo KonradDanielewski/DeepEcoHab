@@ -15,7 +15,7 @@ from deepecohab.utils import auxfun_plots
 def _super_plot_per_position(
     project_location: Path,
     df: pd.DataFrame, 
-    plot_type: Literal["time", "visits"], 
+    plot_type: Literal['time', 'visits'], 
     cmap: str,
     save_plot: bool,
     show_plot: bool,
@@ -25,28 +25,28 @@ def _super_plot_per_position(
     
     plot_data = auxfun_plots.prep_per_position_df(df, plot_type)
     for phase in plot_data['phase'].unique():
-        phase_type_name = "dark" if "dark" in phase else "light"
-        data = plot_data[plot_data['phase']==phase].drop("phase", axis=1).sort_values(["phase_count", "animal_id"])
+        phase_type_name = 'dark' if 'dark' in phase else 'light'
+        data = plot_data[plot_data['phase']==phase].drop('phase', axis=1).sort_values(['phase_count', 'animal_id'])
         
-        if plot_type == "time":
-            title = f"<b>Time spent in each position: <u>{phase_type_name} phase</u></b>"
-            y_title = "<b>Time spent [s]</b>"
-            y = "Time[s]"
+        if plot_type == 'time':
+            title = f'<b>Time spent in each position: <u>{phase_type_name} phase</u></b>'
+            y_title = '<b>Time spent [s]</b>'
+            y = 'Time[s]'
             y_range_add = 1000
             
-        elif plot_type == "visits":
-            title = f"<b>Visits to each position: <u>{phase_type_name} phase</u></b>"
-            y_title = "<b>Number of visits</b>"
-            y = "Visits[#]"
+        elif plot_type == 'visits':
+            title = f'<b>Visits to each position: <u>{phase_type_name} phase</u></b>'
+            y_title = '<b>Number of visits</b>'
+            y = 'Visits[#]'
             y_range_add = 50
         
         max_y = data[y].max() + y_range_add
         
         fig = px.bar(
             data,
-            x="animal_id",
+            x='animal_id',
             y=y,
-            color="position",
+            color='position',
             color_discrete_sequence=px.colors.qualitative.__dict__[cmap],
             animation_frame='phase_count',
             barmode='group',
@@ -55,16 +55,16 @@ def _super_plot_per_position(
             width=800,
             height=500,
         )
-        fig["layout"].pop("updatemenus")
+        fig['layout'].pop('updatemenus')
 
-        fig.update_layout(sliders=[{"currentvalue": {"prefix": "Phase="}}])
+        fig.update_layout(sliders=[{'currentvalue': {'prefix': 'Phase='}}])
         
-        fig.update_xaxes(title_text="<b>Animal ID</b>")
+        fig.update_xaxes(title_text='<b>Animal ID</b>')
         fig.update_yaxes(title_text=y_title)
         
         if save_plot:
-            fig.write_html(project_location / "plots" / f"{plot_type}_per_position_{phase_type_name}.html", auto_play=False)
-            fig.write_json(project_location / "plots" / "fig_source" / f"{plot_type}_per_position_{phase_type_name}.json")
+            fig.write_html(project_location / 'plots' / f'{plot_type}_per_position_{phase_type_name}.html', auto_play=False)
+            fig.write_json(project_location / 'plots' / 'fig_source' / f'{plot_type}_per_position_{phase_type_name}.json')
         if show_plot:
             fig.show()
         
@@ -72,7 +72,7 @@ def _super_plot_together(
     project_location: Path, 
     animal_ids: list,
     df: pd.DataFrame,
-    plot_type: Literal["time_together", "pairwise_encounters"],
+    plot_type: Literal['time_together', 'pairwise_encounters'],
     cmap: str,
     show_cell_vals: bool,
     save_plot: bool,
@@ -83,15 +83,15 @@ def _super_plot_together(
     plot_data = df.reset_index()
     
     for phase_type in plot_data['phase'].unique():
-        phase_type_name = "dark" if "dark" in phase_type else "light"
+        phase_type_name = 'dark' if 'dark' in phase_type else 'light'
             
-        if plot_type == "time_together":
-            title = f"<b>Time spent together: <u>{phase_type_name} phase</u></b>"
-            z_label = "Time [s]: %{z}"
+        if plot_type == 'time_together':
+            title = f'<b>Time spent together: <u>{phase_type_name} phase</u></b>'
+            z_label = 'Time [s]: %{z}'
         
-        elif plot_type == "pairwise_encounters":
-            title = f"<b>Number of pairwise encounters: <u>{phase_type_name} phase</u></b>"
-            z_label = "Number: %{z}"
+        elif plot_type == 'pairwise_encounters':
+            title = f'<b>Number of pairwise encounters: <u>{phase_type_name} phase</u></b>'
+            z_label = 'Number: %{z}'
         
         _data = plot_data[plot_data['phase']==phase_type].copy()
 
@@ -100,7 +100,7 @@ def _super_plot_together(
         
         heatmap_data = (
             _data
-            .drop(columns=["phase", "phase_count", "animal_ids", "cages"])
+            .drop(columns=['phase', 'phase_count', 'animal_ids', 'cages'])
             .values
             .reshape(n_phases, n_cages, len(animal_ids), len(animal_ids))
         )
@@ -116,9 +116,9 @@ def _super_plot_together(
             facet_col_wrap=2,
             )
         
-        fig["layout"].pop("updatemenus")
+        fig['layout'].pop('updatemenus')
         fig = fig.update_layout(
-                            sliders=[{"currentvalue": {"prefix": "Phase="}}],
+                            sliders=[{'currentvalue': {'prefix': 'Phase='}}],
                             height=600,
                             width=600,
                             plot_bgcolor='white',
@@ -126,26 +126,26 @@ def _super_plot_together(
                         )
         for i in range(n_cages):
             facet_col_n = int(fig.layout.annotations[i]['text'][-1])
-            fig.layout.annotations[i]['text'] = f"<u><b>Cage {facet_col_n+1}</u></b>"
+            fig.layout.annotations[i]['text'] = f'<u><b>Cage {facet_col_n+1}</u></b>'
             
-        fig.update_xaxes(showspikes=True, spikemode="across")
-        fig.update_yaxes(showspikes=True, spikemode="across")
+        fig.update_xaxes(showspikes=True, spikemode='across')
+        fig.update_yaxes(showspikes=True, spikemode='across')
         fig.update_traces(
-            hovertemplate="<br>".join([
-                "X: %{x}",
-                "Y: %{y}",
+            hovertemplate='<br>'.join([
+                'X: %{x}',
+                'Y: %{y}',
                 z_label,
             ])
         )
         if save_plot:
-            fig.write_html(project_location / "plots" / f"{plot_type}_{phase_type_name}.html", auto_play=False)
-            fig.write_json(project_location / "plots" / "fig_source" / f"{plot_type}_{phase_type_name}.json")
+            fig.write_html(project_location / 'plots' / f'{plot_type}_{phase_type_name}.html', auto_play=False)
+            fig.write_json(project_location / 'plots' / 'fig_source' / f'{plot_type}_{phase_type_name}.json')
         if show_plot:
             fig.show()
 
 def plot_ranking_in_time(
     cfp: str,
-    cmap: str = "Set3",
+    cmap: str = 'Set3',
     save_plot: bool = True,
     show_plot: bool = True,
     ) -> go.Figure:
@@ -153,17 +153,17 @@ def plot_ranking_in_time(
 
     Args:
         cfp: path to project config file
-        cmap: Color map for line plot. Defaults to "Set3".
+        cmap: Color map for line plot. Defaults to 'Set3'.
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
     cfg = auxfun.read_config(cfp)
-    project_location = Path(cfg["project_location"])
-    animals = cfg["animal_ids"]
+    project_location = Path(cfg['project_location'])
+    animals = cfg['animal_ids']
     colors = px.colors.qualitative.__dict__[cmap]
 
-    ranking_in_time = auxfun.load_ecohab_data(cfp, "ranking_in_time")
-    main_df = auxfun.load_ecohab_data(cfp, "main_df")
+    ranking_in_time = auxfun.load_ecohab_data(cfp, 'ranking_in_time')
+    main_df = auxfun.load_ecohab_data(cfp, 'main_df')
 
     plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time)
 
@@ -176,21 +176,21 @@ def plot_ranking_in_time(
         )
 
     fig.update_layout(
-        title="<b>Social dominance ranking in time</b>",
+        title='<b>Social dominance ranking in time</b>',
         xaxis=dict(
             rangeslider=dict(visible=True),
-            type="date",
-            title="<b>Time</b>"
+            type='date',
+            title='<b>Time</b>'
         ),
-        yaxis=dict(title="<b>Ranking</b>"),
-        legend=dict(title="<b>Animal IDs</b>"),
+        yaxis=dict(title='<b>Ranking</b>'),
+        legend=dict(title='<b>Animal IDs</b>'),
         width=1000,
         height=600,
     )
     
     if save_plot:
-        fig.write_html(project_location / "plots" / "Ranking_change_in_time.html", auto_play=False)
-        fig.write_json(project_location / "plots" / "fig_source" / "Ranking_change_in_time.json")
+        fig.write_html(project_location / 'plots' / 'Ranking_change_in_time.html', auto_play=False)
+        fig.write_json(project_location / 'plots' / 'fig_source' / 'Ranking_change_in_time.json')
     if show_plot:
         fig.show()
 
@@ -198,7 +198,7 @@ def plot_network_graph(
     cfp: str,
     node_size_multiplier: int | float = 0.05,
     edge_width_multiplier: int | float = 0.05,
-    cmap: str = "bluered",
+    cmap: str = 'bluered',
     save_plot: bool = True,
     show_plot: bool = True,
 ):
@@ -209,15 +209,15 @@ def plot_network_graph(
         cfp: Path to project config file.
         node_size_multiplier: Node size multiplier. Defaults to 0.05.
         edge_width_multiplier: Edge width multiplier. Defaults to 0.05.
-        cmap: Color map for nodes and edges. Defaults to "bluered". The colorbar corresponds to node values.
+        cmap: Color map for nodes and edges. Defaults to 'bluered'. The colorbar corresponds to node values.
         save_plot: toggles whether to save the plot. Defaults to True.
         show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
-    project_location = Path(cfg["project_location"])
+    project_location = Path(cfg['project_location'])
     
-    chasing_data = auxfun.load_ecohab_data(cfp, "chasings")
-    ranking_ordinal = auxfun.load_ecohab_data(cfp, "ranking_ordinal")
+    chasing_data = auxfun.load_ecohab_data(cfp, 'chasings')
+    ranking_ordinal = auxfun.load_ecohab_data(cfp, 'ranking_ordinal')
 
     # Prepare data
     chasing_data = auxfun_plots.prep_network_df(chasing_data)
@@ -225,14 +225,14 @@ def plot_network_graph(
 
     # Create phase aware network graph
     for phase_type in chasing_data['phase'].unique():
-        phase_type_name = "dark" if "dark" in phase_type else "light"
+        phase_type_name = 'dark' if 'dark' in phase_type else 'light'
         _data = chasing_data[chasing_data['phase'] == phase_type]
         _ranking = ranking_data[ranking_data['phase'] == phase_type]
         frames = []
         for phase in _data['phase_count'].unique():        
             __data = _data[_data['phase_count'] == phase].drop(columns=['phase', 'phase_count'])
-            G = nx.from_pandas_edgelist(__data, create_using=nx.DiGraph, edge_attr="chasings")
-            pos = nx.spring_layout(G, k=None, iterations=500, seed=42, weight="chasings")
+            G = nx.from_pandas_edgelist(__data, create_using=nx.DiGraph, edge_attr='chasings')
+            pos = nx.spring_layout(G, k=None, iterations=500, seed=42, weight='chasings')
             __ranking = _ranking[_ranking['phase_count'] == phase].drop(columns=['phase', 'phase_count']).set_index('mouse_id')['ranking']
             if len(__ranking) == 0:
                 continue
@@ -251,31 +251,31 @@ def plot_network_graph(
                 )
             frame = go.Frame(
                     data=plot.data,
-                    name=f"Phase {phase}",
+                    name=f'Phase {phase}',
                 )
             frames.append(frame)
             
         fig = go.Figure(data=frames[0].data, frames=frames).update_layout(
-                    sliders=[{"steps": [{"args": [[f.name],{"frame": {"duration": 0, "redraw": True},
-                                                            "mode": "immediate",},],
-                                        "label": f.name, "method": "animate",}
+                    sliders=[{'steps': [{'args': [[f.name],{'frame': {'duration': 0, 'redraw': True},
+                                                            'mode': 'immediate',},],
+                                        'label': f.name, 'method': 'animate',}
                                         for f in frames],}],
                     height=600,
                     width=700,
                     plot_bgcolor='white',
-                    title=dict(text=f"<b>Social structure network graph: <u>{phase_type_name} phase</u></b>", x=0.01, y=0.95),
+                    title=dict(text=f'<b>Social structure network graph: <u>{phase_type_name} phase</u></b>', x=0.01, y=0.95),
                 )
         fig.update_xaxes(showticklabels=False)
         fig.update_yaxes(showticklabels=False)
         if save_plot:
-            fig.write_html(project_location / "plots" / f"network_plot_{phase_type_name}.html", auto_play=False)
-            fig.write_json(project_location / "plots" / "fig_source" / f"network_plot_{phase_type_name}.json")
+            fig.write_html(project_location / 'plots' / f'network_plot_{phase_type_name}.html', auto_play=False)
+            fig.write_json(project_location / 'plots' / 'fig_source' / f'network_plot_{phase_type_name}.json')
         if show_plot:
             fig.show()
 
 def plot_cage_position_time(
         cfp: str, 
-        cmap: str = "Set3", 
+        cmap: str = 'Set3', 
         save_plot: bool = True,
         show_plot: bool = True,
     ):
@@ -283,19 +283,19 @@ def plot_cage_position_time(
 
     Args:
         cfp: Path to project config file.
-        cmap: Color map for bar plot. Defaults to "Set3".
+        cmap: Color map for bar plot. Defaults to 'Set3'.
         save_plot: toggles whether to save the plot. Defaults to True.
         show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
-    project_location = Path(cfg["project_location"])
+    project_location = Path(cfg['project_location'])
     
-    time_per_position = auxfun.load_ecohab_data(cfp, "time_per_position")
+    time_per_position = auxfun.load_ecohab_data(cfp, 'time_per_position')
     
     _super_plot_per_position(
         project_location,
         time_per_position,
-        "time",
+        'time',
         cmap,
         save_plot,
         show_plot,
@@ -303,7 +303,7 @@ def plot_cage_position_time(
             
 def plot_cage_position_visits(
         cfp: str,
-        cmap: str = "Set3", 
+        cmap: str = 'Set3', 
         save_plot: bool = True,
         show_plot: bool = True,
     ):
@@ -311,19 +311,19 @@ def plot_cage_position_visits(
 
     Args:
         cfp: Path to project config file.
-        cmap: Color map for bar plot. Defaults to "Set3".
+        cmap: Color map for bar plot. Defaults to 'Set3'.
         save_plot: toggles whether to save the plot. Defaults to True.
         show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
-    project_location = Path(cfg["project_location"])
+    project_location = Path(cfg['project_location'])
     
-    visits_per_position = auxfun.load_ecohab_data(cfp, "visits_per_position")
+    visits_per_position = auxfun.load_ecohab_data(cfp, 'visits_per_position')
     
     _super_plot_per_position(
         project_location, 
         visits_per_position, 
-        "visits", 
+        'visits', 
         cmap, 
         save_plot,
         show_plot,
@@ -331,7 +331,7 @@ def plot_cage_position_visits(
 
 def plot_time_together(
         cfp: str, 
-        cmap: str = "OrRd",
+        cmap: str = 'OrRd',
         show_cell_vals: bool = False,  
         save_plot: bool = True,
         show_plot: bool = True,
@@ -340,22 +340,22 @@ def plot_time_together(
 
     Args:
         cfp: Path to project config file.
-        cmap: Color map for heatmap. Defaults to "OrRd".
+        cmap: Color map for heatmap. Defaults to 'OrRd'.
         show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
         save_plot: toggles whether to save the plot. Defaults to True.
         show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
-    project_location = Path(cfg["project_location"])
-    animal_ids = cfg["animal_ids"]
+    project_location = Path(cfg['project_location'])
+    animal_ids = cfg['animal_ids']
     
-    time_together = auxfun.load_ecohab_data(cfp, "time_together")
+    time_together = auxfun.load_ecohab_data(cfp, 'time_together')
     
     _super_plot_together(
         project_location,
         animal_ids,
         time_together,
-        "time_together",
+        'time_together',
         cmap,
         show_cell_vals,
         save_plot,
@@ -364,7 +364,7 @@ def plot_time_together(
     
 def plot_pairwise_encounters(
         cfp: str, 
-        cmap: str = "OrRd",
+        cmap: str = 'OrRd',
         show_cell_vals: bool = False,  
         save_plot: bool = True,
         show_plot: bool = True,
@@ -373,22 +373,22 @@ def plot_pairwise_encounters(
 
     Args:
         cfp: Path to project config file.
-        cmap: Color map for heatmap. Defaults to "OrRd".
+        cmap: Color map for heatmap. Defaults to 'OrRd'.
         show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
         save_plot: toggles whether to save the plot. Defaults to True.
         show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
-    project_location = Path(cfg["project_location"])
-    animal_ids = cfg["animal_ids"]
+    project_location = Path(cfg['project_location'])
+    animal_ids = cfg['animal_ids']
     
-    pairwise_encounters = auxfun.load_ecohab_data(cfp, "pairwise_encounters")
+    pairwise_encounters = auxfun.load_ecohab_data(cfp, 'pairwise_encounters')
     
     _super_plot_together(
         project_location,
         animal_ids,
         pairwise_encounters,
-        "pairwise_encounters",
+        'pairwise_encounters',
         cmap,
         show_cell_vals,
         save_plot,
@@ -410,26 +410,26 @@ def _super_plot_heatmap(
     plot_data = df.reset_index()
     
     for phase_type in plot_data['phase'].unique():
-        phase_type_name = "dark" if "dark" in phase_type else "light"
+        phase_type_name = 'dark' if 'dark' in phase_type else 'light'
         
-        if plot_type == "incohort_sociability":
-            title = f"<b>In-cohort sociability: <u>{phase_type_name} phase</u></b>"
+        if plot_type == 'incohort_sociability':
+            title = f'<b>In-cohort sociability: <u>{phase_type_name} phase</u></b>'
             min_range = df.min().min()
             max_range = df.max().max()
-            z_label = "%{z}"
+            z_label = '%{z}'
         
-        elif plot_type == "chasings":
-            title = f"<b>Number of chasings: <u>{phase_type_name} phase</u></b>"
+        elif plot_type == 'chasings':
+            title = f'<b>Number of chasings: <u>{phase_type_name} phase</u></b>'
             min_range = int(df.min().min())
             max_range = int(df.max().max())
-            z_label = "Number: %{z}"
+            z_label = 'Number: %{z}'
         
         _data = plot_data[plot_data['phase']==phase_type].copy()
         n_phases = len(_data['phase_count'].unique())
         
         heatmap_data = (
             _data
-            .drop(columns=["phase", "phase_count", "animal_ids"])
+            .drop(columns=['phase', 'phase_count', 'animal_ids'])
             .values
             .reshape(n_phases, len(animal_ids), len(animal_ids))
             .round(3)
@@ -445,33 +445,33 @@ def _super_plot_heatmap(
             range_color=[min_range, max_range]
         )
         
-        fig["layout"].pop("updatemenus")
+        fig['layout'].pop('updatemenus')
         fig = fig.update_layout(
-                            sliders=[{"currentvalue": {"prefix": "Phase="}}],
+                            sliders=[{'currentvalue': {'prefix': 'Phase='}}],
                             height=600,
                             width=700,
                             plot_bgcolor='white',
                             title=dict(text=title),
                         )
             
-        fig.update_xaxes(showspikes=True, spikemode="across")
-        fig.update_yaxes(showspikes=True, spikemode="across")
+        fig.update_xaxes(showspikes=True, spikemode='across')
+        fig.update_yaxes(showspikes=True, spikemode='across')
         fig.update_traces(
-            hovertemplate="<br>".join([
-                "X: %{x}",
-                "Y: %{y}",
+            hovertemplate='<br>'.join([
+                'X: %{x}',
+                'Y: %{y}',
                 z_label,
             ])
         )
         if save_plot:
-            fig.write_html(project_location / "plots" / f"{plot_type}_{phase_type_name}.html", auto_play=False)
-            fig.write_json(project_location / "plots" / "fig_source" / f"{plot_type}_{phase_type_name}.json")
+            fig.write_html(project_location / 'plots' / f'{plot_type}_{phase_type_name}.html', auto_play=False)
+            fig.write_json(project_location / 'plots' / 'fig_source' / f'{plot_type}_{phase_type_name}.json')
         if show_plot:
             fig.show()
         
 def plot_incohort_sociability(
         cfp: str, 
-        cmap: str="OrRd", 
+        cmap: str='OrRd', 
         show_cell_vals: bool = False,  
         save_plot: bool = True,
         show_plot: bool = True,
@@ -480,22 +480,22 @@ def plot_incohort_sociability(
 
     Args:
         cfp: Path to project config file.
-        cmap: Color map for heatmap. Defaults to "OrRd".
+        cmap: Color map for heatmap. Defaults to 'OrRd'.
         show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
         save_plot: toggles whether to save the plot. Defaults to True.
         show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
-    project_location = Path(cfg["project_location"])
-    animal_ids = cfg["animal_ids"]
+    project_location = Path(cfg['project_location'])
+    animal_ids = cfg['animal_ids']
     
-    incohort_sociability = auxfun.load_ecohab_data(cfp, "incohort_sociability")
+    incohort_sociability = auxfun.load_ecohab_data(cfp, 'incohort_sociability')
     
     _super_plot_heatmap(
         project_location, 
         animal_ids, 
         incohort_sociability, 
-        "incohort_sociability",
+        'incohort_sociability',
         cmap,
         show_cell_vals,
         save_plot,
@@ -504,7 +504,7 @@ def plot_incohort_sociability(
             
 def plot_chasings(
         cfp: str, 
-        cmap: str="OrRd", 
+        cmap: str='OrRd', 
         show_cell_vals: bool = False,  
         save_plot: bool = True,
         show_plot: bool = True,
@@ -513,22 +513,22 @@ def plot_chasings(
 
     Args:
         cfp: Path to project config file.
-        cmap: Color map for heatmap. Defaults to "OrRd".
+        cmap: Color map for heatmap. Defaults to 'OrRd'.
         show_cell_vals: toggles whether to show value text in the heatmap cell. Defaults to False.
         save_plot: toggles whether to save the plot. Defaults to True.
         show_plot: toggles whether to show the plot. Defaults to True.
     """
     cfg = auxfun.read_config(cfp)
-    project_location = Path(cfg["project_location"])
-    animal_ids = cfg["animal_ids"]
+    project_location = Path(cfg['project_location'])
+    animal_ids = cfg['animal_ids']
     
-    chasings = auxfun.load_ecohab_data(cfp, "chasings")
+    chasings = auxfun.load_ecohab_data(cfp, 'chasings')
     
     _super_plot_heatmap(
         project_location, 
         animal_ids, 
         chasings, 
-        "chasings",
+        'chasings',
         cmap,
         show_cell_vals,
         save_plot,
@@ -555,9 +555,9 @@ def plot_chasings(
 #     cfg = auxfun.read_config(cfp)
 #     fig = make_subplots(
 #         rows=2, cols=2,
-#         specs=[[{"type": "bar"}, {"type": "bar"}],
-#                [{"type": "bar"}, {"type": "bar"}]],
-#         subplot_titles=["Ranking", "Number of chasings", "Win/Loss-Rate", "Number of times being chased"],
+#         specs=[[{'type': 'bar'}, {'type': 'bar'}],
+#                [{'type': 'bar'}, {'type': 'bar'}]],
+#         subplot_titles=['Ranking', 'Number of chasings', 'Win/Loss-Rate', 'Number of times being chased'],
 #     )
 
 #     chases = chasings.sum()
@@ -565,29 +565,29 @@ def plot_chasings(
 #     proportion = ((chases - chased) / chases) * 100
 
 
-#     fig.add_trace(go.Bar(x=ranking_ordinal.index.to_list(), y=ranking_ordinal.values, name="Ranking"),
+#     fig.add_trace(go.Bar(x=ranking_ordinal.index.to_list(), y=ranking_ordinal.values, name='Ranking'),
 #                 row=1, col=1,
 #                 )
-#     fig.add_trace(go.Bar(x=chases.index.to_list(), y=chases.values, name="Number of chasings"),
+#     fig.add_trace(go.Bar(x=chases.index.to_list(), y=chases.values, name='Number of chasings'),
 #                 row=1, col=2,
 #                 )
-#     fig.add_trace(go.Bar(x=chased.index.to_list(), y=chased.values, name="Number of times being chased"),
+#     fig.add_trace(go.Bar(x=chased.index.to_list(), y=chased.values, name='Number of times being chased'),
 #                 row=2, col=2,
 #                 )
-#     fig.add_trace(go.Bar(x=proportion.index.to_list(), y=proportion.values, name="Proportion chases vs being chased"),
+#     fig.add_trace(go.Bar(x=proportion.index.to_list(), y=proportion.values, name='Proportion chases vs being chased'),
 #                 row=2, col=1,
 #                 )
 
 #     fig.update_layout(
 #         width=1000, 
 #         height=600, 
-#         title_text="Social dominance evaluation", 
+#         title_text='Social dominance evaluation', 
 #         showlegend=False,
 #     )
 #     if save_plot:
-#         save_path = Path(cfg["project_location"]) / "plots"
-#         fig.write_html(save_path / "social_dominance_evaluation.html")
-#         # fig.write_image(save_path / "social_dominance_evaluation.svg")
+#         save_path = Path(cfg['project_location']) / 'plots'
+#         fig.write_html(save_path / 'social_dominance_evaluation.html')
+#         # fig.write_image(save_path / 'social_dominance_evaluation.svg')
 #     if show_plot:
 #         fig.show()
     

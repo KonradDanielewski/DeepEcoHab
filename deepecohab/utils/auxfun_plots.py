@@ -7,7 +7,7 @@ from typing import Literal
 from plotly.express.colors import sample_colorscale
 
 
-def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int, cmap: str = "bluered") -> list:
+def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int, cmap: str = 'bluered') -> list:
     """Auxfun to create edges trace with color mapping based on edge width."""
     edge_trace = []
     
@@ -55,8 +55,8 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
                     color=colorscale[i],
                 ),
                 hoverinfo='none',
-                mode="lines+markers",
-                marker=dict(size=edge_width * 4, symbol="arrow", angleref="previous"),
+                mode='lines+markers',
+                marker=dict(size=edge_width * 4, symbol='arrow', angleref='previous'),
                 opacity=0.5,
                 showlegend=False,
             )
@@ -64,7 +64,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
     
     return edge_trace
 
-def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node_size_multiplier: float | int, cmap: str = "Bluered") -> go.Scatter:
+def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node_size_multiplier: float | int, cmap: str = 'Bluered') -> go.Scatter:
     """Auxfun to create node trace
     """
     node_trace = go.Scatter(
@@ -98,7 +98,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node
         ranking_score = round(ranking_ordinal[node], 3) if ranking_ordinal[node] > 0 else 0.1
         ranking_score_list.append(ranking_score)
         node_trace['hovertext'] += (
-            f"Mouse ID: {node}<br>Ranking: {ranking_score}",
+            f'Mouse ID: {node}<br>Ranking: {ranking_score}',
             )
         
     # Scale node size and color
@@ -111,24 +111,25 @@ def prep_network_df(chasing_data: pd.DataFrame) -> pd.DataFrame:
     """
     graph_data = (
         chasing_data
-        .melt(ignore_index=False, value_name="chasings", var_name="source")
+        .melt(ignore_index=False, value_name='chasings', var_name='source')
         .dropna()
         .reset_index()
-        .rename(columns={"animal_ids": "target"})
+        .rename(columns={'animal_ids': 'target'})
     )
     return graph_data
 
-def prep_per_position_df(visits_per_position: pd.DataFrame, type: Literal["visits", "time"]) -> pd.DataFrame:
+def prep_per_position_df(visits_per_position: pd.DataFrame, plot_type: Literal['visits', 'time']) -> pd.DataFrame:
     """Auxfun to prepare visits_per_position data for plotting
     """
-    if type == "visits":
-        val_name = "Visits[#]"
-    elif type == "time":
-        val_name = "Time[s]"
-    else:
-        raise ValueError("Invalid type. Choose between 'visits' and 'time'.")
+    match plot_type:
+        case 'visits':
+            val_name = 'Visits[#]'
+        case 'time':
+            val_name = 'Time[s]'
+        case _:
+            raise ValueError('Invalid type. Choose between "visits" and "time".')
         
-    visits_per_position_df = visits_per_position.melt(ignore_index=False, value_name=val_name, var_name="animal_id").reset_index()
+    visits_per_position_df = visits_per_position.melt(ignore_index=False, value_name=val_name, var_name='animal_id').reset_index()
     return visits_per_position_df
 
 def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
@@ -136,7 +137,7 @@ def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
     """
     ranking = (
         ranking_df
-        .melt(ignore_index=False, var_name="mouse_id", value_name="ranking")
+        .melt(ignore_index=False, var_name='mouse_id', value_name='ranking')
         .reset_index()
         )
     return ranking
@@ -149,7 +150,7 @@ def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame
     idx = pd.date_range(main_df.datetime.iloc[0], main_df.datetime.iloc[-1], index_len)
     idx = idx[idx <= ranking_in_time.index[-1]]
 
-    plot_indices = np.searchsorted(np.array(ranking_in_time.index), np.array(idx), side="left")
+    plot_indices = np.searchsorted(np.array(ranking_in_time.index), np.array(idx), side='left')
 
     plot_df = ranking_in_time.iloc[plot_indices]
     
@@ -158,12 +159,12 @@ def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame
 def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
     """Auxfun to load data from HDF5 store
     """
-    main_df = pd.read_hdf(store, key="main_df")
+    main_df = pd.read_hdf(store, key='main_df')
     ranking_in_time = pd.read_hdf(store, key='ranking_in_time')
-    time_per_position_df = pd.read_hdf(store, key="time_per_position")
-    time_per_position_df = time_per_position_df.melt(ignore_index=False, value_name="Time[s]", var_name="animal_id").reset_index()
-    visits_per_position_df = pd.read_hdf(store, key="visits_per_position")
-    visits_per_position_df = visits_per_position_df.melt(ignore_index=False, value_name="Visits[#]", var_name="animal_id").reset_index()
+    time_per_position_df = pd.read_hdf(store, key='time_per_position')
+    time_per_position_df = time_per_position_df.melt(ignore_index=False, value_name='Time[s]', var_name='animal_id').reset_index()
+    visits_per_position_df = pd.read_hdf(store, key='visits_per_position')
+    visits_per_position_df = visits_per_position_df.melt(ignore_index=False, value_name='Visits[#]', var_name='animal_id').reset_index()
     time_together = pd.read_hdf(store, key='time_together').reset_index()
     pairwise_encounters = pd.read_hdf(store, key='pairwise_encounters').reset_index()
     chasings_df = pd.read_hdf(store, key='chasings')
@@ -173,15 +174,15 @@ def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
     plot_ranking_data = prep_ranking(ranking_ordinal_df)
     
     return {
-        "main_df": main_df,
-        "ranking_in_time": ranking_in_time,
-        "time_per_position_df": time_per_position_df,
-        "visits_per_position_df": visits_per_position_df,
-        "time_together": time_together,
-        "pairwise_encounters": pairwise_encounters,
-        "chasings_df": chasings_df,
-        "incohort_sociability_df": incohort_sociability_df,
-        "ranking_ordinal_df": ranking_ordinal_df,
-        "plot_chasing_data": plot_chasing_data,
-        "plot_ranking_data": plot_ranking_data
+        'main_df': main_df,
+        'ranking_in_time': ranking_in_time,
+        'time_per_position_df': time_per_position_df,
+        'visits_per_position_df': visits_per_position_df,
+        'time_together': time_together,
+        'pairwise_encounters': pairwise_encounters,
+        'chasings_df': chasings_df,
+        'incohort_sociability_df': incohort_sociability_df,
+        'ranking_ordinal_df': ranking_ordinal_df,
+        'plot_chasing_data': plot_chasing_data,
+        'plot_ranking_data': plot_ranking_data
     }    

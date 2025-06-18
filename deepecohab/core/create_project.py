@@ -12,9 +12,9 @@ def create_ecohab_project(
     data_path: str | Path,
     start_datetime: str | None = None,
     finish_datetime: str | None = None,
-    experiment_name: str = "ecohab_project",
-    dark_phase_start: str = "12:00:00",
-    light_phase_start: str = "23:59:59.999",
+    experiment_name: str = 'ecohab_project',
+    dark_phase_start: str = '12:00:00',
+    light_phase_start: str = '23:59:59.999',
     animal_ids: list | None = None,
     custom_layout: bool = False,
     field_ecohab: bool = False,
@@ -25,11 +25,11 @@ def create_ecohab_project(
     Args:
         project_location: path to where the project should be created.
         data_path: path to directory that contains raw data (COMxxxxx.txt files).
-        start_datetime: full date and time of the proper start of the experiment. Defaults to "yyyy-mm-dd HH:MM:SS.ffffff". If not provided data is taken as is
-        finish_datetime: full date and time of the proper end of the experiment. Defaults to "yyyy-mm-dd HH:MM:SS.ffffff". If not provided data is taken as is
-        experiment_name: name of the experiment. Defaults to "ecohab_project".
-        dark_phase_start: hour, minute, second, milisecond of the dark phase start. Defaults to "23:59:59:999".
-        light_phase_start: hour, minute and second of the light phase start. Defaults to "12:00:00".
+        start_datetime: full date and time of the proper start of the experiment. Defaults to 'yyyy-mm-dd HH:MM:SS.ffffff'. If not provided data is taken as is
+        finish_datetime: full date and time of the proper end of the experiment. Defaults to 'yyyy-mm-dd HH:MM:SS.ffffff'. If not provided data is taken as is
+        experiment_name: name of the experiment. Defaults to 'ecohab_project'.
+        dark_phase_start: hour, minute, second, milisecond of the dark phase start. Defaults to '23:59:59:999'.
+        light_phase_start: hour, minute and second of the light phase start. Defaults to '12:00:00'.
         animal_ids: if not provided reads animal ids from the first file with data. Defaults to [].
         custom_layout: change to True if using multiple boards at the same time during one recordig with a custom arena geometry. Defaults to False.
         field_ecohab: change to True if the data is from a field ecohab. Defaults to False.
@@ -44,20 +44,20 @@ def create_ecohab_project(
     """
 
     if not isinstance(project_location, (str, Path)):
-        print("Project location not provided")
+        print('Project location not provided')
         return
     if not isinstance(data_path, (str, Path)):
-        print("Data location not provided")
+        print('Data location not provided')
         return
     if len(os.listdir(data_path)) == 0:
-        print(f"{data_path} is empty, please check if you provided the correct directory")
+        print(f'{data_path} is empty, please check if you provided the correct directory')
         return
-    dt_format = "%Y-%m-%d %H:%M:%S"
+    dt_format = '%Y-%m-%d %H:%M:%S'
     check_date = (datetime.strptime(finish_datetime, dt_format) - 
                   datetime.strptime(start_datetime, dt_format)).days < 0
     
     if check_date:
-        raise ValueError("Finish date before start date! Please check provided dates.")
+        raise ValueError('Finish date before start date! Please check provided dates.')
     
     if not isinstance(project_location, str): # Has to be a string for config purposes
         data_path = str(data_path)
@@ -99,7 +99,7 @@ def create_ecohab_project(
             ).to_dict()
     
     elif custom_layout or field_ecohab and not isinstance(antenna_rename_scheme, dict):
-        raise TypeError("Chosen custom layout/field layout but antenna renaming graph not provided!")
+        raise TypeError('Chosen custom layout/field layout but antenna renaming graph not provided!')
     
     else:
         config = config_templates.DefaultConfig(
@@ -120,21 +120,21 @@ def create_ecohab_project(
     
     # Check/make the project directory
     if os.path.exists(project_location):
-        print("Project already exists! Loading existing project config.")
-        config_path = project_location / "config.toml"
+        print('Project already exists! Loading existing project config.')
+        config_path = project_location / 'config.toml'
         if config_path.exists():
             return config_path
         else:
-            raise FileNotFoundError(f"Config file not found in {project_location}!")
+            raise FileNotFoundError(f'Config file not found in {project_location}!')
     else:
         os.mkdir(project_location)
-        os.mkdir(project_location / "plots")
-        os.mkdir(project_location / "plots" / "fig_source")
-        os.mkdir(project_location / "results")
+        os.mkdir(project_location / 'plots')
+        os.mkdir(project_location / 'plots' / 'fig_source')
+        os.mkdir(project_location / 'results')
     
     # Create the toml
-    config_path = project_location / "config.toml"
-    with open(config_path, "w") as toml_file:
+    config_path = project_location / 'config.toml'
+    with open(config_path, 'w') as toml_file:
         toml.dump(config, toml_file)
 
     return config_path
