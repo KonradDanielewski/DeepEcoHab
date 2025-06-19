@@ -5,7 +5,7 @@ with open('README.md', 'r') as f:
 
 setuptools.setup(
     name='deepecohab',
-    version='0.1',
+    version='0.2',
     author='Konrad Danielewski',
     author_email='kdanielewski@gmail.com',
     description='EcoHab with some machine learning',
