@@ -147,7 +147,7 @@ def calculate_time_spent_per_position(
     tunnels = cfg['tunnels']
     
     df = auxfun.load_ecohab_data(cfg, key='main_df')
-    padded_df = create_padded_df(cfp, df)
+    padded_df = create_padded_df(cfp, df, overwrite=overwrite)
     
     # Map directional tunnel position to non-directional
     mapper = padded_df.position.isin(tunnels.keys())
