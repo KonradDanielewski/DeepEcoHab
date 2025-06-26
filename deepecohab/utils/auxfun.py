@@ -71,7 +71,7 @@ def get_animal_ids(data_path: str) -> list:
     data_files = get_data_paths(data_path)
     
     dfs = [pd.read_csv(file, delimiter='\t', names=['ind', 'date', 'time', 'antenna', 'time_under', 'animal_id']) for file in data_files[:10]]
-    animal_ids = pd.concat(dfs).animal_id.unique()
+    animal_ids = pd.concat(dfs).animal_id.astype(str).unique()
     return animal_ids
 
 def make_project_path(project_location: str, experiment_name: str) -> str:
