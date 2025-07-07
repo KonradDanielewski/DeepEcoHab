@@ -218,7 +218,7 @@ def _drop_empty_slices(df: pd.DataFrame):
     
     return df
 
-def run_dashboard(cfp):
+def run_dashboard(cfp: str | dict):
     cfg = auxfun.read_config(cfp)
     data_path = cfg['results_path']
     

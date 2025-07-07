@@ -23,12 +23,12 @@ def open_browser():
     webbrowser.open_new('http://127.0.0.1:8050/')
     
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Uruchomienie EcoHAB Dashboard z określonym plikiem HDF5.')
+    parser = argparse.ArgumentParser(description='Run DeepEcoHab Dashboard')
     parser.add_argument(
         '--data-path',
         type=str,
         required=True,
-        help='Ścieżka do pliku HDF5 z danymi (np. examples/test_name2_2025-04-18/results/test_name2_data.h5)'
+        help='h5 file path extracted from the config (examples/test_name2_2025-04-18/results/test_name2_data.h5)'
     )
     return parser.parse_args()
 
@@ -39,11 +39,9 @@ if __name__ == '__main__':
     args = parse_arguments()
     data_path = args.data_path
 
-    # Sprawdzenie, czy plik istnieje
     if not os.path.isfile(data_path):
         print(f'Error {data_path} does not exist.')
         sys.exit(1)
-    # Otwarcie pliku HDF5
     store = pd.HDFStore(data_path, mode='r')
     dash_data = auxfun_plots.load_dashboard_data(store)
     _data = dash_data['time_per_position_df']
@@ -51,9 +49,6 @@ if __name__ == '__main__':
     n_phases_light = _data['phase_count'][_data['phase'] == 'light_phase'].max()
     n_phases = min(n_phases_dark, n_phases_light)
     phases = list(range(1, n_phases + 1))
-
-    # Layout with Tabs
-    
 
     # Dashboard layout
     dashboard_layout = html.Div([
@@ -156,7 +151,6 @@ if __name__ == '__main__':
                 id='sociability-summary-switch',
                 options=[
                     {'label': 'Phases', 'value': 'phases'},
-                    {'label': 'Sum', 'value': 'sum'},
                     {'label': 'Mean', 'value': 'mean'},
                 ],
                 value='phases',

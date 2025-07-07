@@ -30,6 +30,7 @@ setuptools.setup(
         'kaleido==1.0.0rc13',
         'joblib',
         'tqdm',
+        'tzlocal',
     ], 
     url='https://github.com/KonradDanielewski/DeepEcoHab'
 )

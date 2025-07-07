@@ -142,11 +142,15 @@ def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
         )
     return ranking
 
-def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame) -> pd.DataFrame:
+def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame, per_hour: bool) -> pd.DataFrame:
     """Auxfun to prep the axes and data for ranking through time plot.
     """    
     # Create sampling every 5 minutes (makes plotting prettier and reduces memory footprint)
-    index_len = np.ceil((main_df.datetime.iloc[-1] - main_df.datetime.iloc[0]).total_seconds()*0.00333).astype(int)
+    if per_hour:
+        multiplier = 0.0002778
+    else:
+        multiplier = 0.00333
+    index_len = np.ceil((main_df.datetime.iloc[-1] - main_df.datetime.iloc[0]).total_seconds()*multiplier).astype(int)
     idx = pd.date_range(main_df.datetime.iloc[0], main_df.datetime.iloc[-1], index_len)
     idx = idx[idx <= ranking_in_time.index[-1]]
 

@@ -146,6 +146,7 @@ def _super_plot_together(
 def plot_ranking_in_time(
     cfp: str,
     cmap: str = 'Set3',
+    per_hour: bool = False,
     save_plot: bool = True,
     show_plot: bool = True,
     ) -> go.Figure:
@@ -165,7 +166,7 @@ def plot_ranking_in_time(
     ranking_in_time = auxfun.load_ecohab_data(cfp, 'ranking_in_time')
     main_df = auxfun.load_ecohab_data(cfp, 'main_df')
 
-    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time)
+    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time, per_hour)
 
     # Make fig
     fig = go.Figure()

@@ -14,7 +14,7 @@ def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
     ranking_in_time = dash_data['ranking_in_time']
     main_df = dash_data['main_df']
 
-    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time)
+    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time, per_hour=False)
 
     # Make fig
     fig = go.Figure()
