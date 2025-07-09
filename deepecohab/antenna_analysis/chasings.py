@@ -1,4 +1,3 @@
-import pickle
 from itertools import (
     combinations,
     product,

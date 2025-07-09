@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import toml
@@ -49,7 +48,7 @@ def create_ecohab_project(
     if not isinstance(data_path, (str, Path)):
         print('Data location not provided')
         return
-    if len(os.listdir(data_path)) == 0: # TODO: change to pathlib glob for .txt or csv
+    if len(list(Path(data_path).glob('*.txt'))) == 0:
         print(f'{data_path} is empty, please check if you provided the correct directory')
         return
     dt_format = '%Y-%m-%d %H:%M:%S'
@@ -119,18 +118,18 @@ def create_ecohab_project(
     data_path = Path(data_path)
     
     # Check/make the project directory
-    if os.path.exists(project_location):
+    if Path(project_location).is_dir():
         print('Project already exists! Loading existing project config.')
         config_path = project_location / 'config.toml'
-        if config_path.exists():
+        if config_path.is_file():
             return config_path
         else:
             raise FileNotFoundError(f'Config file not found in {project_location}!')
     else:
-        os.mkdir(project_location)
-        os.mkdir(project_location / 'plots')
-        os.mkdir(project_location / 'plots' / 'fig_source')
-        os.mkdir(project_location / 'results')
+        Path.mkdir(project_location)
+        Path.mkdir(project_location / 'plots')
+        Path.mkdir(project_location / 'plots' / 'fig_source')
+        Path.mkdir(project_location / 'results')
     
     # Create the toml
     config_path = project_location / 'config.toml'

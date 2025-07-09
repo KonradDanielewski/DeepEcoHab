@@ -1,7 +1,7 @@
 import argparse
 import sys
 import webbrowser
-import os
+from pathlib import Path
 
 import dash
 import pandas as pd
@@ -39,8 +39,8 @@ if __name__ == '__main__':
     args = parse_arguments()
     data_path = args.data_path
 
-    if not os.path.isfile(data_path):
-        print(f'Error {data_path} does not exist.')
+    if not Path(data_path).is_file():
+        FileNotFoundError(f'{data_path} not found.')
         sys.exit(1)
     store = pd.HDFStore(data_path, mode='r')
     dash_data = auxfun_plots.load_dashboard_data(store)

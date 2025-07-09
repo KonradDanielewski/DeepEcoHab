@@ -1,8 +1,6 @@
 import datetime as dt
 import importlib
-import os
 from itertools import product
-from glob import glob
 from pathlib import Path
 
 import numpy as np
@@ -11,18 +9,16 @@ import toml
 
 import subprocess
 import sys
-import webbrowser
 
-from deepecohab.dash import dashboard
 from deepecohab.utils import auxfun
 
 
-def get_data_paths(data_path: str) -> list:
+def get_data_paths(data_path: Path) -> list:
     """Auxfun to load all raw data paths
     """    
-    data_files = glob(os.path.join(data_path, 'COM*.txt'))
+    data_files = list(data_path.glob('COM*.txt'))
     if len(data_files) == 0:
-        data_files = glob(os.path.join(data_path, '20*.txt'))
+        data_files = list(data_path.glob('20*.txt'))
     return data_files
 
 def read_config(cfp: str | Path | dict) -> dict:
@@ -68,7 +64,7 @@ def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pd.DataFrame:
 def get_animal_ids(data_path: str) -> list:
     """Auxfun to read animal IDs from the data if not provided
     """    
-    data_files = get_data_paths(data_path)
+    data_files = get_data_paths(Path(data_path))
     
     dfs = [pd.read_csv(file, delimiter='\t', names=['ind', 'date', 'time', 'antenna', 'time_under', 'animal_id']) for file in data_files[:10]]
     animal_ids = pd.concat(dfs).animal_id.astype(str).unique()

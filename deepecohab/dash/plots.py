@@ -453,6 +453,7 @@ def plot_network_grah(dash_data: dict[pd.DataFrame], mode:str, selected_phase:in
     net_plot = net_plot.update_layout(
                 plot_bgcolor='white',
                 title=dict(text=f'<b>Social structure network graph: <u>{mode} phase</u></b>', x=0.01, y=0.95),
+                height=800,
             )
     net_plot.update_xaxes(showticklabels=False)
     net_plot.update_yaxes(showticklabels=False)

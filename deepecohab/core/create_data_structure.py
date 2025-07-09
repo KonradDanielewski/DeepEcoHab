@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import numpy as np
@@ -12,14 +11,14 @@ def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, m
     """Auxfum to load and combine text files into a pandas dataframe
     """    
     cfg = auxfun.read_config(cfp)   
-    data_path = cfg['data_path']
+    data_path = Path(cfg['data_path'])
     
     data_files = auxfun.get_data_paths(data_path)
 
     dfs = []
     for file in data_files:
         df = pd.read_csv(file, sep='\t', names=['ind', 'date', 'time', 'antenna', 'time_under', 'animal_id'])
-        comport = os.path.basename(file).split('_')[0]
+        comport = Path(file).name.split('_')[0]
         df['COM'] = comport
         dfs.append(df)
 
