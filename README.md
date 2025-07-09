@@ -13,14 +13,10 @@ pip install -e .
 
 To check out the package please run the example_notebook provided in the examples directory of this repository.
 
-
-
-
-
-<b><u>TODO:</b></u>
-1. Dashboard implementation
-2. Pose estimation analysis
-3. Streamline antenna_pair creation for positions (product of adjacent antennas for cages and tunnels (is it necessary?))
+<b><u>BIG TODO:</b></u>
+1. Pose estimation model training
+2. Animal reid with antenna reads
+3. Custom tracklet stitching based on more features (our own simplified fork of DLC?)
 
 ### Data structure:
 
