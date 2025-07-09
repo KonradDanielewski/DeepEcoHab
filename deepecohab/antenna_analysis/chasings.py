@@ -210,6 +210,9 @@ def calculate_ranking(
             
     # Get the ranking and calculate ranking ordinal
     ranking, ranking_in_time = _rank_mice_openskill(matches, animals, ranking)
+
+    ranking_df = pd.DataFrame([(key, val.mu, val.sigma) for key, val in i.items()])
+    ranking_df.columns = ["animal_id", "mu", "sigma"]
     
     # Calculate ranking at the end of each phase
     phase_end_marks = df[df.datetime.isin(ranking_in_time.index)].sort_values('datetime')
@@ -233,12 +236,8 @@ def calculate_ranking(
             pass
     
     if save_data:
-        ranking_data = Path(cfg['project_location']) / 'results' / (experiment_name + '_ranking_data.pickle')
-        pickle_file = {'ranking': ranking}
-        with open(str(ranking_data), 'wb') as outfile: 
-            pickle.dump(pickle_file, outfile)
-            
         ranking_ordinal.to_hdf(data_path, key='ranking_ordinal', mode='a', format='table')
         ranking_in_time.to_hdf(data_path, key='ranking_in_time', mode='a', format='table')
+        ranking_df.to_hdf(data_path, key='ranking', mode='a', format='table')
     
-    return ranking_ordinal
+    return ranking_ordinal, ranking

@@ -49,7 +49,7 @@ def create_ecohab_project(
     if not isinstance(data_path, (str, Path)):
         print('Data location not provided')
         return
-    if len(os.listdir(data_path)) == 0:
+    if len(os.listdir(data_path)) == 0: # TODO: change to pathlib glob for .txt or csv
         print(f'{data_path} is empty, please check if you provided the correct directory')
         return
     dt_format = '%Y-%m-%d %H:%M:%S'

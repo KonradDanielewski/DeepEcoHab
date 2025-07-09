@@ -190,8 +190,10 @@ def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
     end_time = str(df.datetime.iloc[-1])
     
     f = open(cfp,'w')
-    cfg['experiment_timeline'] = {'start_date': start_time}
-    cfg['experiment_timeline'] = {'finish_date': end_time}
+    cfg['experiment_timeline'] = {
+        'start_date': start_time,
+        'finish_date': end_time,
+    }
     
     toml.dump(cfg, f)
     f.close()
