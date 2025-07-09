@@ -121,7 +121,7 @@ def calculate_time_together(
         delayed(_pairwise_time_together)(padded_df=padded_df, animal_1=animal_1, animal_2=animal_2, cage=cage, phase_count=phase_N, phase=phase, minimum_time=minimum_time) 
         for animal_1, animal_2, cage, phase_N, phase in tqdm(sociability_combinations)
     )
-    pickle_path = results_path.parent / 'time_together.pickle'
+    pickle_path = results_path.parent / 'time_together.pickle' # TODO: does it have to be a pickle? Would be better to store it with other data in h5 and avoid pickle overall
     with open(pickle_path, 'wb') as output_file:
         pickle.dump(results, output_file)
     

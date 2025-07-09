@@ -12,6 +12,12 @@ from plotly.subplots import make_subplots
 from deepecohab.utils import auxfun
 from deepecohab.utils import auxfun_plots
 
+# General TODO: 
+# 1. plots.plotting.py and dash.plots.py are redundant - refactor 
+# 2. Some plots are redundant (_super... functions) - refactor - OOP?
+# 3. Network graph code feels very complicated - can we simplify + it's auxfuns ideally should be reusable for another network graph that shows sociability
+# 4. Network graph - make the edges additive over phases to make it stable over time
+
 def _super_plot_per_position(
     project_location: Path,
     df: pd.DataFrame, 
@@ -240,7 +246,7 @@ def plot_ranking_in_time(
     if show_plot:
         fig.show()
 
-def plot_network_graph(
+def plot_network_graph( 
     cfp: str,
     node_size_multiplier: int | float = 0.05,
     edge_width_multiplier: int | float = 0.05,

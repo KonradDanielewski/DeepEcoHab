@@ -334,5 +334,5 @@ if __name__ == '__main__':
 
     # Run the app
     open_browser()
-    app.run(debug=False)
+    app.run(debug=False, port=8050)
     
