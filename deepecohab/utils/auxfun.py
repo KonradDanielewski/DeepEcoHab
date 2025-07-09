@@ -226,4 +226,6 @@ def run_dashboard(cfp: str | dict):
     
     path_to_dashboard = importlib.util.find_spec('deepecohab.dash.dashboard').origin
 
-    subprocess.Popen([sys.executable, path_to_dashboard, '--data-path', data_path])
+    process = subprocess.Popen([sys.executable, path_to_dashboard, '--data-path', data_path])
+    
+    return process
