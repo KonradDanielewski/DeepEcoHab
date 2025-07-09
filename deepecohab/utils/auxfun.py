@@ -201,7 +201,7 @@ def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
     print(f'Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True')
     
     
-def _drop_empty_slices(df: pd.DataFrame):
+def _drop_empty_slices(df: pd.DataFrame): # TODO: Not used anymore. See if still useful in a modified way or no
     """Auxfun to drop parts of DataFrame where no data was recorded.
     """    
     index_depth = len(df.index[0]) - 1

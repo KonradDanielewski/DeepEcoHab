@@ -145,48 +145,93 @@ def _super_plot_together(
 
 def plot_ranking_in_time(
     cfp: str,
-    cmap: str = 'Set3',
+    cmap: str = 'Phase',
     per_hour: bool = False,
     save_plot: bool = True,
     show_plot: bool = True,
     ) -> go.Figure:
     """
-
     Args:
         cfp: path to project config file
-        cmap: Color map for line plot. Defaults to 'Set3'.
+        cmap: Color map for line plot. Can sample any continuous colorscale from plotly https://plotly.com/python/builtin-colorscales/.
         save_plot: toggle whether to save the plot. Defaults to True.
         show_plot: toggle whether to show the plot. Defaults to True.
     """    
     cfg = auxfun.read_config(cfp)
     project_location = Path(cfg['project_location'])
     animals = cfg['animal_ids']
-    colors = px.colors.qualitative.__dict__[cmap]
+
+    x = np.linspace(0, 1, len(animals))
+    colors = px.colors.sample_colorscale(cmap, list(x))
 
     ranking_in_time = auxfun.load_ecohab_data(cfp, 'ranking_in_time')
+    ranking = auxfun.load_ecohab_data(cfp, 'ranking')
     main_df = auxfun.load_ecohab_data(cfp, 'main_df')
 
     plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time, per_hour)
+    distribution_df = auxfun_plots.prep_ranking_distribution(ranking)
+
+    max_range_y1 = distribution_df.max().max() + 0.02
+    min_range_y2 = plot_df.min().min() - 5
+    max_range_y2 = plot_df.max().max() + 5
 
     # Make fig
-    fig = go.Figure()
+    fig = make_subplots(
+        rows=2, 
+        cols=1, 
+        subplot_titles=['<b>Ranking probability distribution</b>', '<b>Social dominance ranking in time</b>'],
+        vertical_spacing=0.12,
+    )
 
     for i, animal in enumerate(animals):
         fig.add_trace(
-            go.Scatter(x=plot_df.index, y=plot_df[animal], name=animal, marker=dict(color=colors[i]))
+            go.Scatter(
+                x=distribution_df.index,
+                y=distribution_df[animal], 
+                mode='lines',
+                fill='tozeroy',
+                name=animal,
+                marker=dict(color=colors[i]),
+                showlegend=False,
+                legendgroup=f"group{i}",
+                ),
+            row=1,
+            col=1,
+            )
+
+    for i, animal in enumerate(animals):
+        fig.add_trace(
+            go.Scatter(
+                x=plot_df.index, 
+                y=plot_df[animal], 
+                name=animal, 
+                marker=dict(color=colors[i]),
+                showlegend=True,
+                legendgroup=f"group{i}",
+            ),
+            row=2,
+            col=1,
         )
 
     fig.update_layout(
-        title='<b>Social dominance ranking in time</b>',
         xaxis=dict(
-            rangeslider=dict(visible=True),
-            type='date',
-            title='<b>Time</b>'
+            title="Ranking",
         ),
-        yaxis=dict(title='<b>Ranking</b>'),
-        legend=dict(title='<b>Animal IDs</b>'),
+        xaxis2=dict(
+            rangeslider=dict(visible=True, thickness=0.05),
+            title="Timeline"
+        ),
+        yaxis=dict(
+            title="Probability density",
+            range=[0, max_range_y1],
+        ),
+        yaxis2=dict(
+            title="Ranking",
+            range=[min_range_y2, max_range_y2],
+        ),
         width=1000,
-        height=600,
+        height=800,
+        margin=dict(t=40, b=40, l=60, r=40),
     )
     
     if save_plot:

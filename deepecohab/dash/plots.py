@@ -1,39 +1,90 @@
 from typing import Literal
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+
+from plotly.subplots import make_subplots
 
 from deepecohab.utils import auxfun_plots
 
 def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
     """Auxfun to plot ranking through time
     """
-    colors = px.colors.qualitative.__dict__['Set3']
     ranking_in_time = dash_data['ranking_in_time']
     main_df = dash_data['main_df']
+    ranking = dash_data['ranking']
 
-    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time, per_hour=False)
+    animals = ranking_in_time.columns
+
+    x = np.linspace(0, 1, len(animals))
+    colors = px.colors.sample_colorscale("Phase", list(x))
+
+    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time, True)
+    distribution_df = auxfun_plots.prep_ranking_distribution(ranking)
+
+    max_range_y1 = distribution_df.max().max() + 0.02
+    min_range_y2 = plot_df.min().min() - 5
+    max_range_y2 = plot_df.max().max() + 5
 
     # Make fig
-    fig = go.Figure()
+    fig = make_subplots(
+        rows=2, 
+        cols=1, 
+        subplot_titles=['<b>Ranking probability distribution</b>', '<b>Social dominance ranking in time</b>'],
+        vertical_spacing=0.12,
+    )
 
-    for i, animal in enumerate(ranking_in_time.columns):
+    for i, animal in enumerate(animals):
         fig.add_trace(
-            go.Scatter(x=plot_df.index, y=plot_df[animal], name=animal, marker=dict(color=colors[i]))
+            go.Scatter(
+                x=distribution_df.index,
+                y=distribution_df[animal], 
+                mode='lines',
+                fill='tozeroy',
+                name=animal,
+                marker=dict(color=colors[i]),
+                showlegend=False,
+                legendgroup=f"group{i}",
+                ),
+            row=1,
+            col=1,
+            )
+
+    for i, animal in enumerate(animals):
+        fig.add_trace(
+            go.Scatter(
+                x=plot_df.index, 
+                y=plot_df[animal], 
+                name=animal, 
+                marker=dict(color=colors[i]),
+                showlegend=True,
+                legendgroup=f"group{i}",
+            ),
+            row=2,
+            col=1,
         )
 
     fig.update_layout(
-        title='<b>Social dominance ranking in time</b>',
         xaxis=dict(
-            rangeslider=dict(visible=True),
-            type='date',
-            title='<b>Time</b>'
+            title="Ranking",
         ),
-        yaxis=dict(title='<b>Ranking</b>'),
-        legend=dict(title='<b>Animal IDs</b>'),
-        height=600,
+        xaxis2=dict(
+            rangeslider=dict(visible=True, thickness=0.05),
+            title="Timeline"
+        ),
+        yaxis=dict(
+            title="Probability density",
+            range=[0, max_range_y1],
+        ),
+        yaxis2=dict(
+            title="Ranking",
+            range=[min_range_y2, max_range_y2],
+        ),
+        height=800,
+        margin=dict(t=40, b=40, l=60, r=40),
     )
     
     return fig

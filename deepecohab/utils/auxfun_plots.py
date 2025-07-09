@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 
 from typing import Literal
 from plotly.express.colors import sample_colorscale
+from scipy.stats import norm
 
 
 def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int, cmap: str = 'bluered') -> list:
@@ -133,7 +134,7 @@ def prep_per_position_df(visits_per_position: pd.DataFrame, plot_type: Literal['
     return visits_per_position_df
 
 def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
-    """Auxfun to prepare ranking data for plotting
+    """Auxfun to prepare ranking data for plotting.
     """
     ranking = (
         ranking_df
@@ -141,6 +142,16 @@ def prep_ranking(ranking_df: pd.DataFrame) -> pd.Series:
         .reset_index()
         )
     return ranking
+
+def prep_ranking_distribution(ranking_df: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to prepare df for ranking distribution plotting.
+    """
+    df = pd.DataFrame()
+    df.index = np.arange(-25, 75, 0.1)
+    for ind, row in ranking_df.iterrows():
+        df[row.animal_id] = norm.pdf(df.index, row.mu, row.sigma)
+    
+    return df
 
 def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame, per_hour: bool) -> pd.DataFrame:
     """Auxfun to prep the axes and data for ranking through time plot.
@@ -174,6 +185,7 @@ def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
     chasings_df = pd.read_hdf(store, key='chasings')
     incohort_sociability_df = pd.read_hdf(store, key='incohort_sociability')
     ranking_ordinal_df = pd.read_hdf(store, key='ranking_ordinal')
+    ranking = pd.read_hdf(store, key='ranking')
     plot_chasing_data = prep_network_df(chasings_df)
     plot_ranking_data = prep_ranking(ranking_ordinal_df)
     
@@ -188,5 +200,6 @@ def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
         'incohort_sociability_df': incohort_sociability_df,
         'ranking_ordinal_df': ranking_ordinal_df,
         'plot_chasing_data': plot_chasing_data,
-        'plot_ranking_data': plot_ranking_data
+        'plot_ranking_data': plot_ranking_data,
+        'ranking': ranking,
     }    

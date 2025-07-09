@@ -211,7 +211,7 @@ def calculate_ranking(
     # Get the ranking and calculate ranking ordinal
     ranking, ranking_in_time = _rank_mice_openskill(matches, animals, ranking)
 
-    ranking_df = pd.DataFrame([(key, val.mu, val.sigma) for key, val in i.items()])
+    ranking_df = pd.DataFrame([(key, val.mu, val.sigma) for key, val in ranking.items()])
     ranking_df.columns = ["animal_id", "mu", "sigma"]
     
     # Calculate ranking at the end of each phase
