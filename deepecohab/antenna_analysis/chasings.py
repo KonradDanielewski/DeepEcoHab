@@ -22,27 +22,24 @@ def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame
     })
     return matches
 
-def _combine_matches(matches: list[pd.DataFrame]) -> tuple[list, pd.Series]:
+def _combine_matches(cfg: dict) -> tuple[list, pd.Series]:
     """Auxfun to combine all the chasing events into one data structure
     """    
-    matches_df = (
-        pd.concat(matches).
-            sort_values(by='datetime').
-            reset_index(drop=True)
-        )
+    matches_df = auxfun.load_ecohab_data(cfg, "match_df", verbose=False)
     datetimes = matches_df.datetime
 
     matches = list(matches_df.drop('datetime', axis=1).itertuples(index=False, name=None))
     return matches, datetimes
 
 def _rank_mice_openskill(
-    matches: list[pd.DataFrame], 
+    cfg: dict,
     animal_ids: list[str], 
     ranking: dict | None = None,
     ) -> tuple[dict, pd.DataFrame, pd.Series]:
     """Rank mice using PlackettLuce algorithm from openskill. More info: https://arxiv.org/pdf/2401.05451
 
     Args:
+        cfg: config dict
         matches: list of all matches structured
         animal_ids: list of animal IDs
         ranking: dictionary that contains ranking of animals - if provided the ranking will start from this state. Defaults to None.
@@ -53,10 +50,11 @@ def _rank_mice_openskill(
         datetimes: pd.Series of all matches datetimes for sorting or axis setting purposes
     """    
     model = PlackettLuce(limit_sigma=True, balance=True)
-    match_list, datetimes = _combine_matches(matches)
+    match_list, datetimes = _combine_matches(cfg)
     
-    ranking = {}
-    
+    if not isinstance(ranking, dict):
+        ranking = {}
+
     for player in animal_ids:
         ranking[player] = model.rating()
     
@@ -166,9 +164,13 @@ def calculate_chasings(
     if save_data:
         chasings.to_hdf(data_path, key='chasings', mode='a', format='table')
         
-        ranking_data = Path(cfg['project_location']) / 'results' / (experiment_name + '_match_data.pickle')
-        with open(str(ranking_data), 'wb') as outfile: 
-            pickle.dump(matches, outfile)
+        matches_df = (
+            pd.concat(matches).
+                sort_values(by='datetime').
+                reset_index(drop=True)
+            )
+        
+        matches_df.to_hdf(data_path, key='match_df', mode='a', format='table')
 
     return chasings
 
@@ -204,12 +206,9 @@ def calculate_ranking(
     df = auxfun.load_ecohab_data(cfp, 'main_df')
     phases = cfg['phase'].keys()
     phase_count = df.phase_count.unique()
-    
-    match_data = Path(cfg['project_location']) / 'results' / (experiment_name + '_match_data.pickle')
-    matches = pd.read_pickle(match_data)
             
     # Get the ranking and calculate ranking ordinal
-    ranking, ranking_in_time = _rank_mice_openskill(matches, animals, ranking)
+    ranking, ranking_in_time = _rank_mice_openskill(cfg, animals, ranking)
 
     ranking_df = pd.DataFrame([(key, val.mu, val.sigma) for key, val in ranking.items()])
     ranking_df.columns = ["animal_id", "mu", "sigma"]

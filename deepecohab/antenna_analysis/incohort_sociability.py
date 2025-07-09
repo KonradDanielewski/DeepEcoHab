@@ -112,7 +112,7 @@ def calculate_time_together(
     
     # By default use half of the available cpu threads
     if not isinstance(n_workers, int):
-        n_workers = os.cpu_count() / 2 
+        n_workers = os.cpu_count() // 2 
     
     sociability_combinations = _generate_sociability_combinations(cfg, padded_df)
     print('Calculating pairwise time spent together...')
