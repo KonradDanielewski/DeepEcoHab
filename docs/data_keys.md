@@ -41,5 +41,8 @@ is the ecohab data structure - each antenna read assigned to an animal, position
 ### `social_odor`:
  optional analysis, DataFrame contains proportion of time spent in compartments with and without a social stimulus on the day of the experiment and same day before.
 
-### `_ranking_data`:
- pickle file contains a dictionary with the raw ranking containing mu and sigma values. Can be used between projects when the same mice are used. Allows to start ranking from the last state instead of zero-state.
+### `ranking`:
+ DataFrame with the raw ranking containing mu and sigma values. Can be put into dict and used between projects when the same mice are used. Allows to start ranking from the last state instead of zero-state. Used for ranking distribution plotting
+
+### `match_df`:
+ DataFrame with datetime of every chasing event separeted into winner/loser columns (chaser/chased)

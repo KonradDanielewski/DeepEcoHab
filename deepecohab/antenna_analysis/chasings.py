@@ -25,10 +25,10 @@ def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame
 def _combine_matches(cfg: dict) -> tuple[list, pd.Series]:
     """Auxfun to combine all the chasing events into one data structure
     """    
-    matches_df = auxfun.load_ecohab_data(cfg, "match_df", verbose=False)
-    datetimes = matches_df.datetime
+    match_df = auxfun.load_ecohab_data(cfg, "match_df", verbose=False)
+    datetimes = match_df.datetime
 
-    matches = list(matches_df.drop('datetime', axis=1).itertuples(index=False, name=None))
+    matches = list(match_df.drop('datetime', axis=1).itertuples(index=False, name=None))
     return matches, datetimes
 
 def _rank_mice_openskill(
