@@ -5,7 +5,6 @@ from abc import ABC
 class ExperimentConfig(ABC):
     project_location: str
     experiment_name: str
-    results_path: str
     data_path: str
     animal_ids: list[str]
     dark_phase_start: str
@@ -43,7 +42,6 @@ class ExperimentConfig(ABC):
         data = {}
         data['project_location'] = self.project_location
         data['experiment_name'] = self.experiment_name
-        data['results_path'] = self.results_path
         data['data_path'] = self.data_path
         data['animal_ids'] = self.animal_ids
         data['phase'] = self.phase

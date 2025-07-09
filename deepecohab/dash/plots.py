@@ -20,7 +20,7 @@ def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
     animals = ranking_in_time.columns
 
     x = np.linspace(0, 1, len(animals))
-    colors = px.colors.sample_colorscale("Phase", list(x))
+    colors = px.colors.sample_colorscale('Phase', list(x))
 
     plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time, True)
     distribution_df = auxfun_plots.prep_ranking_distribution(ranking)
@@ -47,7 +47,7 @@ def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
                 name=animal,
                 marker=dict(color=colors[i]),
                 showlegend=False,
-                legendgroup=f"group{i}",
+                legendgroup=f'group{i}',
                 ),
             row=1,
             col=1,
@@ -61,7 +61,7 @@ def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
                 name=animal, 
                 marker=dict(color=colors[i]),
                 showlegend=True,
-                legendgroup=f"group{i}",
+                legendgroup=f'group{i}',
             ),
             row=2,
             col=1,
@@ -69,18 +69,18 @@ def plot_ranking_in_time(dash_data:dict[pd.DataFrame]) -> go.Figure:
 
     fig.update_layout(
         xaxis=dict(
-            title="Ranking",
+            title='Ranking',
         ),
         xaxis2=dict(
             rangeslider=dict(visible=True, thickness=0.05),
-            title="Timeline"
+            title='Timeline'
         ),
         yaxis=dict(
-            title="Probability density",
+            title='Probability density',
             range=[0, max_range_y1],
         ),
         yaxis2=dict(
-            title="Ranking",
+            title='Ranking',
             range=[min_range_y2, max_range_y2],
         ),
         height=800,

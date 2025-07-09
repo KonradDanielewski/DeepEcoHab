@@ -57,7 +57,7 @@ def create_padded_df(
         Padded DataFrame of the main_df.
     """
     cfg = toml.load(cfp)
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='padded_df'
     
     padded_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -115,7 +115,7 @@ def create_padded_df(
     padded_df = create_data_structure.calculate_timedelta(padded_df)
     
     if save_data:
-        padded_df.to_hdf(data_path, key=key, mode='a', format='table')
+        padded_df.to_hdf(results_path, key=key, mode='a', format='table')
     
     return padded_df
 
@@ -136,7 +136,7 @@ def calculate_time_spent_per_position(
     """
     cfg = auxfun.read_config(cfp)
     
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='time_per_position'
     
     time_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -167,7 +167,7 @@ def calculate_time_spent_per_position(
     )
     
     if save_data:
-        time_per_position.to_hdf(data_path, key=key, mode='a', format='table')
+        time_per_position.to_hdf(results_path, key=key, mode='a', format='table')
     
     return time_per_position
 
@@ -187,7 +187,7 @@ def calculate_visits_per_position(
         Multiindex DataFrame with number of visits per position.
     """
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='visits_per_position'
     
     visits_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -215,7 +215,7 @@ def calculate_visits_per_position(
     )
     
     if save_data:
-        visits_per_position.to_hdf(data_path, key=key, mode='a', format='table')
+        visits_per_position.to_hdf(results_path, key=key, mode='a', format='table')
     
     return visits_per_position
 
@@ -238,6 +238,7 @@ def create_binary_df(
         _description_
     """
     cfg = auxfun.read_config(cfp)
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='binary_df'
     
     binary_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -279,7 +280,7 @@ def create_binary_df(
     binary_df.columns = ['.'.join(map(str, col)).strip() for col in binary_df.columns.values]
 
     if save_data:
-        binary_df.to_hdf(cfg['results_path'], key=key, format='table', index=False)
+        binary_df.to_hdf(results_path, key=key, format='table', index=False)
     
     binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
     

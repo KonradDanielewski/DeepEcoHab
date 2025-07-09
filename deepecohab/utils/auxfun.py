@@ -47,17 +47,17 @@ def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pd.DataFrame:
     """
     cfg = read_config(cfp)
     
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     
-    if data_path.is_file():
+    if results_path.is_file():
         try:
-            df = pd.read_hdf(data_path, key=key)
+            df = pd.read_hdf(results_path, key=key)
             if key == 'binary_df': # restore index
                 df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in df.columns])
             return df
         except KeyError:
             if verbose:
-                print(f'{key} not found in the specified location: {data_path}. Perhaps not analyzed yet!')
+                print(f'{key} not found in the specified location: {results_path}. Perhaps not analyzed yet!')
             else:
                 pass
     
@@ -77,14 +77,6 @@ def make_project_path(project_location: str, experiment_name: str) -> str:
     project_location = Path(project_location) / project_name
 
     return str(project_location)
-
-def make_results_path(project_location: str, experiment_name: str) -> str:
-    """Auxfun to make a name of the project directory using its name and time of creation
-    """    
-    experiment_name = experiment_name
-    results_path = Path(project_location) / 'results' / f'{experiment_name}_data.h5'
-
-    return str(results_path)
 
 def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = False, animals: bool = False) -> pd.MultiIndex:
     """Auxfun to create multindices for various DataFrames
@@ -218,10 +210,10 @@ def _drop_empty_slices(df: pd.DataFrame): # TODO: Not used anymore. See if still
 
 def run_dashboard(cfp: str | dict):
     cfg = auxfun.read_config(cfp)
-    data_path = cfg['results_path']
+    data_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     
     path_to_dashboard = importlib.util.find_spec('deepecohab.dash.dashboard').origin
 
-    process = subprocess.Popen([sys.executable, path_to_dashboard, '--data-path', data_path])
+    process = subprocess.Popen([sys.executable, path_to_dashboard, '--results-path', data_path])
     
     return process

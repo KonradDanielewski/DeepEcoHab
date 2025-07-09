@@ -193,7 +193,7 @@ def plot_ranking_in_time(
                 name=animal,
                 marker=dict(color=colors[i]),
                 showlegend=False,
-                legendgroup=f"group{i}",
+                legendgroup=f'group{i}',
                 ),
             row=1,
             col=1,
@@ -207,7 +207,7 @@ def plot_ranking_in_time(
                 name=animal, 
                 marker=dict(color=colors[i]),
                 showlegend=True,
-                legendgroup=f"group{i}",
+                legendgroup=f'group{i}',
             ),
             row=2,
             col=1,
@@ -215,18 +215,18 @@ def plot_ranking_in_time(
 
     fig.update_layout(
         xaxis=dict(
-            title="Ranking",
+            title='Ranking',
         ),
         xaxis2=dict(
             rangeslider=dict(visible=True, thickness=0.05),
-            title="Timeline"
+            title='Timeline'
         ),
         yaxis=dict(
-            title="Probability density",
+            title='Probability density',
             range=[0, max_range_y1],
         ),
         yaxis2=dict(
-            title="Ranking",
+            title='Ranking',
             range=[min_range_y2, max_range_y2],
         ),
         width=1000,
@@ -580,60 +580,4 @@ def plot_chasings(
         save_plot,
         show_plot,
     )
-            
-# TODO: consider relevance of this plot, should we keep it, and if so in what form (per phase> full summary?)
-#
-# def social_dominance_evaluation(
-#     cfp: str,
-#     chasings: pd.DataFrame,
-#     ranking_ordinal: pd.Series,
-#     save_plot: bool = True,
-#     show_plot: bool = True,
-#     ):
-#     """
-#     Args:
-#         cfp: path to project config file
-#         chasings: chasings matrix created with calculate_chasings
-#         ranking_ordinal: ranking created during chasings calculation
-#         save_plot: toggle whether to save the plot. Defaults to True.
-#         show_plot: toggle whether to show the plot. Defaults to True.
-#     """    
-#     cfg = auxfun.read_config(cfp)
-#     fig = make_subplots(
-#         rows=2, cols=2,
-#         specs=[[{'type': 'bar'}, {'type': 'bar'}],
-#                [{'type': 'bar'}, {'type': 'bar'}]],
-#         subplot_titles=['Ranking', 'Number of chasings', 'Win/Loss-Rate', 'Number of times being chased'],
-#     )
-
-#     chases = chasings.sum()
-#     chased = chasings.sum(axis=1)
-#     proportion = ((chases - chased) / chases) * 100
-
-
-#     fig.add_trace(go.Bar(x=ranking_ordinal.index.to_list(), y=ranking_ordinal.values, name='Ranking'),
-#                 row=1, col=1,
-#                 )
-#     fig.add_trace(go.Bar(x=chases.index.to_list(), y=chases.values, name='Number of chasings'),
-#                 row=1, col=2,
-#                 )
-#     fig.add_trace(go.Bar(x=chased.index.to_list(), y=chased.values, name='Number of times being chased'),
-#                 row=2, col=2,
-#                 )
-#     fig.add_trace(go.Bar(x=proportion.index.to_list(), y=proportion.values, name='Proportion chases vs being chased'),
-#                 row=2, col=1,
-#                 )
-
-#     fig.update_layout(
-#         width=1000, 
-#         height=600, 
-#         title_text='Social dominance evaluation', 
-#         showlegend=False,
-#     )
-#     if save_plot:
-#         save_path = Path(cfg['project_location']) / 'plots'
-#         fig.write_html(save_path / 'social_dominance_evaluation.html')
-#         # fig.write_image(save_path / 'social_dominance_evaluation.svg')
-#     if show_plot:
-#         fig.show()
     

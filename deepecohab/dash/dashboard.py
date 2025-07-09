@@ -25,7 +25,7 @@ def open_browser():
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Run DeepEcoHab Dashboard')
     parser.add_argument(
-        '--data-path',
+        '--results-path',
         type=str,
         required=True,
         help='h5 file path extracted from the config (examples/test_name2_2025-04-18/results/test_name2_data.h5)'
@@ -37,12 +37,12 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = 'EcoHAB Dashboard'
 if __name__ == '__main__':
     args = parse_arguments()
-    data_path = args.data_path
+    results_path = args.results_path
 
-    if not Path(data_path).is_file():
-        FileNotFoundError(f'{data_path} not found.')
+    if not Path(results_path).is_file():
+        FileNotFoundError(f'{results_path} not found.')
         sys.exit(1)
-    store = pd.HDFStore(data_path, mode='r')
+    store = pd.HDFStore(results_path, mode='r')
     dash_data = auxfun_plots.load_dashboard_data(store)
     _data = dash_data['time_per_position_df']
     n_phases_dark = _data['phase_count'][_data['phase'] == 'dark_phase'].max()

@@ -24,7 +24,7 @@ def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame
 def _combine_matches(cfg: dict) -> tuple[list, pd.Series]:
     """Auxfun to combine all the chasing events into one data structure
     """    
-    match_df = auxfun.load_ecohab_data(cfg, "match_df", verbose=False)
+    match_df = auxfun.load_ecohab_data(cfg, 'match_df', verbose=False)
     datetimes = match_df.datetime
 
     matches = list(match_df.drop('datetime', axis=1).itertuples(index=False, name=None))
@@ -89,7 +89,7 @@ def calculate_chasings(
         MultiIndex DataFrame of chasings per phase every animal vs every animal. Column chases the row
     """
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='chasings'
     
     chasings = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -103,7 +103,7 @@ def calculate_chasings(
     positions = list(set(cfg['antenna_combinations'].values()))
     tunnel_combinations = [comb for comb in positions if 'cage' not in comb]
     cage_combinations = [comb for comb in positions if 'cage' in comb]
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     phases = list(cfg['phase'].keys())
     phase_N = df.phase_count.unique()
     animals = cfg['animal_ids']
@@ -161,7 +161,7 @@ def calculate_chasings(
         chasings.loc[(phase, N, mouse2), mouse1] = len(chase_times2[(chase_times2 < 1) & (chase_times2 > 0.1)])
     
     if save_data:
-        chasings.to_hdf(data_path, key='chasings', mode='a', format='table')
+        chasings.to_hdf(results_path, key='chasings', mode='a', format='table')
         
         matches_df = (
             pd.concat(matches).
@@ -169,7 +169,7 @@ def calculate_chasings(
                 reset_index(drop=True)
             )
         
-        matches_df.to_hdf(data_path, key='match_df', mode='a', format='table')
+        matches_df.to_hdf(results_path, key='match_df', mode='a', format='table')
 
     return chasings
 
@@ -192,7 +192,7 @@ def calculate_ranking(
         Series with ordinal of the rank calculated for each animal
     """    
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='ranking_ordinal'
     
     ranking_ordinal = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -210,7 +210,7 @@ def calculate_ranking(
     ranking, ranking_in_time = _rank_mice_openskill(cfg, animals, ranking)
 
     ranking_df = pd.DataFrame([(key, val.mu, val.sigma) for key, val in ranking.items()])
-    ranking_df.columns = ["animal_id", "mu", "sigma"]
+    ranking_df.columns = ['animal_id', 'mu', 'sigma']
     
     # Calculate ranking at the end of each phase
     phase_end_marks = df[df.datetime.isin(ranking_in_time.index)].sort_values('datetime')
@@ -234,8 +234,8 @@ def calculate_ranking(
             pass
     
     if save_data:
-        ranking_ordinal.to_hdf(data_path, key='ranking_ordinal', mode='a', format='table')
-        ranking_in_time.to_hdf(data_path, key='ranking_in_time', mode='a', format='table')
-        ranking_df.to_hdf(data_path, key='ranking', mode='a', format='table')
+        ranking_ordinal.to_hdf(results_path, key='ranking_ordinal', mode='a', format='table')
+        ranking_in_time.to_hdf(results_path, key='ranking_in_time', mode='a', format='table')
+        ranking_df.to_hdf(results_path, key='ranking', mode='a', format='table')
     
     return ranking_ordinal, ranking

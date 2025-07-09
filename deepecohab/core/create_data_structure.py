@@ -35,7 +35,7 @@ def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, m
     return df
 
 def check_for_dst(df: pd.DataFrame) -> tuple[int, int]:
-    zone_offset = df.datetime.dt.strftime("%z").map(lambda x: x[1:3]).astype(int)
+    zone_offset = df.datetime.dt.strftime('%z').map(lambda x: x[1:3]).astype(int)
     time_change_happened = len(np.where((zone_offset != zone_offset[0]))[0]) > 0
     if time_change_happened:
         time_change_ind = np.where((zone_offset != zone_offset[0]))[0][0]
@@ -47,26 +47,26 @@ def check_for_dst(df: pd.DataFrame) -> tuple[int, int]:
 def correct_phases_dst(cfg: dict, df: pd.DataFrame, time_change: int, time_change_index: int) -> pd.DataFrame:
     """Auxfun to correct phase start and end when daylight saving happens during the recording
     """    
-    start_time, end_time = cfg["phase"].values()
+    start_time, end_time = cfg['phase'].values()
 
-    start_time = (":").join(
-        (str(int(start_time.split(":")[0]) + time_change), 
-            start_time.split(":")[1], 
-            start_time.split(":")[2])
+    start_time = (':').join(
+        (str(int(start_time.split(':')[0]) + time_change), 
+            start_time.split(':')[1], 
+            start_time.split(':')[2])
     )
-    end_time = (":").join(
-        (str(int(end_time.split(":")[0]) + time_change), 
-            end_time.split(":")[1], 
-            end_time.split(":")[2])
+    end_time = (':').join(
+        (str(int(end_time.split(':')[0]) + time_change), 
+            end_time.split(':')[1], 
+            end_time.split(':')[2])
     )
 
     temp_df = df.loc[time_change_index:].copy()
 
     index = pd.DatetimeIndex(temp_df['datetime'])
-    temp_df.loc[index.indexer_between_time(start_time, end_time) + time_change_index, "phase"] = "light_phase"
-    temp_df["phase"] = temp_df.phase.fillna("dark_phase")
+    temp_df.loc[index.indexer_between_time(start_time, end_time) + time_change_index, 'phase'] = 'light_phase'
+    temp_df['phase'] = temp_df.phase.fillna('dark_phase')
 
-    df.loc[time_change_index:, "phase"] = temp_df["phase"].values
+    df.loc[time_change_index:, 'phase'] = temp_df['phase'].values
 
     return df
 
@@ -175,9 +175,9 @@ def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list, timezone: str
     df['animal_id'] = df['animal_id'].astype('category').cat.set_categories(cfg['animal_ids'])
     df['datetime'] = df['date'] + ' ' + df['time']
     if not isinstance(timezone, str):
-        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(get_localzone().key, ambiguous='infer')
+        df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(get_localzone().key, ambiguous='infer')
     else:
-        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(timezone, ambiguous='infer')
+        df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(timezone, ambiguous='infer')
     df['antenna'] = df.antenna.astype(int)
     df = df.drop(['date', 'time'], axis=1)
     df = df.drop_duplicates(['datetime', 'animal_id'])
@@ -204,7 +204,7 @@ def get_ecohab_data_structure(
         EcoHab data structure as a pd.DataFrame
     """
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key = 'main_df'
     
     df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -249,7 +249,7 @@ def get_ecohab_data_structure(
 
     time_change, time_change_ind = check_for_dst(df)
     if isinstance(time_change, int):
-        print("Correcting for daylight savings...")
+        print('Correcting for daylight savings...')
         df = correct_phases_dst(cfg, df, time_change, time_change_ind)
 
     df = get_phase_count(cfg, df)
@@ -261,9 +261,9 @@ def get_ecohab_data_structure(
 
     df = df.drop('COM', axis=1)
     
-    df.to_hdf(data_path, key=key, mode='a', format='table')
+    df.to_hdf(results_path, key=key, mode='a', format='table')
     
     phase_durations = auxfun.get_phase_durations(cfg, df)
-    phase_durations.to_hdf(data_path, key='phase_durations', mode='a', format='table')
+    phase_durations.to_hdf(results_path, key='phase_durations', mode='a', format='table')
 
     return df

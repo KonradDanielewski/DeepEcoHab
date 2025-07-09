@@ -98,7 +98,7 @@ def calculate_time_together(
         Multiindex DataFrame of time spent together per phase, per cage.
     """    
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='time_together'
     
     time_together_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -121,7 +121,7 @@ def calculate_time_together(
         delayed(_pairwise_time_together)(padded_df=padded_df, animal_1=animal_1, animal_2=animal_2, cage=cage, phase_count=phase_N, phase=phase, minimum_time=minimum_time) 
         for animal_1, animal_2, cage, phase_N, phase in tqdm(sociability_combinations)
     )
-    pickle_path = data_path.parent / 'time_together.pickle'
+    pickle_path = results_path.parent / 'time_together.pickle'
     with open(pickle_path, 'wb') as output_file:
         pickle.dump(results, output_file)
     
@@ -140,7 +140,7 @@ def calculate_time_together(
     )
 
     if save_data:
-        time_together_df.to_hdf(data_path, key=key, mode='a', format='table')
+        time_together_df.to_hdf(results_path, key=key, mode='a', format='table')
     
     return time_together_df
 
@@ -162,7 +162,7 @@ def calculate_pairwise_encounters(
         Multiindex DataFrame of time spent together per phase, per cage.
     """   
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='pairwise_encounters'
     
     pairwise_encounters_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -172,7 +172,7 @@ def calculate_pairwise_encounters(
     
     animals = cfg['animal_ids']
     
-    pickle_path = data_path.parent / 'time_together.pickle'
+    pickle_path = results_path.parent / 'time_together.pickle'
     with open(pickle_path, 'rb') as input_file:
         results = pickle.load(input_file)
         
@@ -191,7 +191,7 @@ def calculate_pairwise_encounters(
     )
     
     if save_data:
-        pairwise_encounters_df.to_hdf(data_path, key=key, mode='a', format='table')
+        pairwise_encounters_df.to_hdf(results_path, key=key, mode='a', format='table')
     
     return pairwise_encounters_df
 
@@ -215,7 +215,7 @@ def calculate_incohort_sociability(
         Multiindex DataFrame of in-cohort sociability per phase for each possible pair of mice.
     """    
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='incohort_sociability'
     
     incohort_sociability = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -264,6 +264,6 @@ def calculate_incohort_sociability(
     )
     
     if save_data:
-        incohort_sociability.to_hdf(data_path, key=key, mode='a', format='table')
+        incohort_sociability.to_hdf(results_path, key=key, mode='a', format='table')
 
     return incohort_sociability

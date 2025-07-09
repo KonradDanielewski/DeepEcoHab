@@ -62,7 +62,6 @@ def create_ecohab_project(
         data_path = str(data_path)
 
     project_location = auxfun.make_project_path(project_location, experiment_name)
-    results_path = auxfun.make_results_path(project_location, experiment_name)
     
     if not isinstance(animal_ids, list):
         animal_ids = sorted(auxfun.get_animal_ids(data_path))
@@ -73,7 +72,6 @@ def create_ecohab_project(
         config = config_templates.FieldConfig(
             project_location=project_location,
             experiment_name=experiment_name,
-            results_path=results_path,
             data_path=data_path,
             animal_ids=animal_ids,
             light_phase_start=light_phase_start,
@@ -87,7 +85,6 @@ def create_ecohab_project(
         config = config_templates.CustomConfig(
             project_location=project_location,
             experiment_name=experiment_name,
-            results_path=results_path,
             data_path=data_path,
             animal_ids=animal_ids,
             light_phase_start=light_phase_start,
@@ -104,7 +101,6 @@ def create_ecohab_project(
         config = config_templates.DefaultConfig(
             project_location=project_location,
             experiment_name=experiment_name,
-            results_path=results_path,
             data_path=data_path,
             animal_ids=animal_ids,
             light_phase_start=light_phase_start,
@@ -115,7 +111,6 @@ def create_ecohab_project(
     
     # Remake into Path here for safety
     project_location = Path(project_location) 
-    data_path = Path(data_path)
     
     # Check/make the project directory
     if Path(project_location).is_dir():

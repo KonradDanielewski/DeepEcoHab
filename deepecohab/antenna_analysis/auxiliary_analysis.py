@@ -34,7 +34,7 @@ def calculate_approach_to_social_odor(
         4. control stimulus cage the day before
     """    
     cfg = auxfun.read_config(cfp)
-    data_path = Path(cfg['results_path'])
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='social_odor'
     
     social_odor = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -85,7 +85,7 @@ def calculate_approach_to_social_odor(
         social_odor = social_odor.droplevel(0, axis=0)
             
     if save_data:
-        social_odor.to_hdf(data_path, key='social_odor', mode='a', format='table')
+        social_odor.to_hdf(results_path, key='social_odor', mode='a', format='table')
         
     return social_odor   
     
