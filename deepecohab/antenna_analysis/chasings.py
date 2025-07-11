@@ -99,7 +99,6 @@ def calculate_chasings(
     
     df = auxfun.load_ecohab_data(cfg, key='main_df')
     
-    experiment_name = cfg['experiment_name']
     positions = list(set(cfg['antenna_combinations'].values()))
     tunnel_combinations = [comb for comb in positions if 'cage' not in comb]
     cage_combinations = [comb for comb in positions if 'cage' in comb]
@@ -148,17 +147,16 @@ def calculate_chasings(
         chased_mouse = chased.loc[chased.animal_id != chasing.animal_id]
         chasing_mouse = chasing.loc[chasing.animal_id != chased.animal_id]
 
-        matches.append(_get_chasing_matches(chasing_mouse, chased_mouse))
+        times = (chased_mouse.datetime - chasing_mouse.datetime).dt.total_seconds()
 
-        chase_times1 = (
-            chased_mouse.query('animal_id == @mouse1').datetime.reset_index(drop=True) - 
-            chasing_mouse.query('animal_id == @mouse2').datetime.reset_index(drop=True)).dt.total_seconds()
-        chase_times2 = (
-            chased_mouse.query('animal_id == @mouse2').datetime.reset_index(drop=True) - 
-            chasing_mouse.query('animal_id == @mouse1').datetime.reset_index(drop=True)).dt.total_seconds()
-        
-        chasings.loc[(phase, N, mouse1), mouse2] = len(chase_times1[(chase_times1 < 1) & (chase_times1 > 0.1)])
-        chasings.loc[(phase, N, mouse2), mouse1] = len(chase_times2[(chase_times2 < 1) & (chase_times2 > 0.1)])
+        # Add filtering by length of the event
+        filtered_chased = chased_mouse[(times < 1) & (times > 0.1)]
+        filtered_chasing = chasing_mouse[(times < 1) & (times > 0.1)]
+
+        matches.append(_get_chasing_matches(filtered_chasing, filtered_chased))
+
+        chasings.loc[(phase, N, mouse1), mouse2] = sum(filtered_chasing.animal_id == mouse2)
+        chasings.loc[(phase, N, mouse2), mouse1] = sum(filtered_chasing.animal_id == mouse1)
     
     if save_data:
         chasings.to_hdf(results_path, key='chasings', mode='a', format='table')
