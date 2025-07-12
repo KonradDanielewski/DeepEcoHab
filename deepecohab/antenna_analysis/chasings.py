@@ -71,7 +71,7 @@ def _rank_mice_openskill(
     ranking_in_time = ranking_in_time.T
     ranking_in_time.index = datetimes
 
-    return ranking, ranking_in_time, model
+    return ranking, ranking_in_time
 
 def calculate_chasings(
     cfp: str | Path | dict, 
@@ -204,7 +204,7 @@ def calculate_ranking(
     phase_count = df.phase_count.unique()
             
     # Get the ranking and calculate ranking ordinal
-    ranking, ranking_in_time, model = _rank_mice_openskill(cfg, animals, ranking)
+    ranking, ranking_in_time = _rank_mice_openskill(cfg, animals, ranking)
 
     ranking_df = pd.DataFrame([(key, val.mu, val.sigma) for key, val in ranking.items()])
     ranking_df.columns = ['animal_id', 'mu', 'sigma']
@@ -233,4 +233,4 @@ def calculate_ranking(
         ranking_in_time.to_hdf(results_path, key='ranking_in_time', mode='a', format='table')
         ranking_df.to_hdf(results_path, key='ranking', mode='a', format='table')
     
-    return ranking_ordinal, ranking, model
+    return ranking_ordinal, ranking
