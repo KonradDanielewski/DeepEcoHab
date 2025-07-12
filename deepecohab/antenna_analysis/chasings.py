@@ -64,14 +64,14 @@ def _rank_mice_openskill(
         ranking[loser_name] = new_ratings[0][0]
         ranking[winner_name] = new_ratings[1][0]
         
-        temp = {key: round(ranking[key].ordinal(), 3) for key in ranking.keys()}
+        temp = {key: round(ranking[key].ordinal(), 3) for key in ranking.keys()} # alpha=200/ranking[key].sigma, target=1000 for ordinal if ELO like values
         ranking_update.append(temp)
 
     ranking_in_time = pd.concat([pd.Series(match) for match in ranking_update], axis=1)
     ranking_in_time = ranking_in_time.T
     ranking_in_time.index = datetimes
 
-    return ranking, ranking_in_time
+    return ranking, ranking_in_time, model
 
 def calculate_chasings(
     cfp: str | Path | dict, 
@@ -198,14 +198,13 @@ def calculate_ranking(
     if isinstance(ranking_ordinal, pd.DataFrame):
         return ranking_ordinal
     
-    experiment_name = cfg['experiment_name']
     animals = cfg['animal_ids']
     df = auxfun.load_ecohab_data(cfp, 'main_df')
     phases = cfg['phase'].keys()
     phase_count = df.phase_count.unique()
             
     # Get the ranking and calculate ranking ordinal
-    ranking, ranking_in_time = _rank_mice_openskill(cfg, animals, ranking)
+    ranking, ranking_in_time, model = _rank_mice_openskill(cfg, animals, ranking)
 
     ranking_df = pd.DataFrame([(key, val.mu, val.sigma) for key, val in ranking.items()])
     ranking_df.columns = ['animal_id', 'mu', 'sigma']
@@ -222,8 +221,6 @@ def calculate_ranking(
     ranking_in_time = ranking_in_time[~ranking_in_time.index.duplicated(keep='last')] # handle possible duplicate indices
     ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns, dtype=float)
 
-    ranking_in_time = ranking_in_time[~ranking_in_time.index.duplicated(keep='last')] # handle possible duplicate indices
-
     for phase, count in product(phases, phase_count):
         try:
             datetime = phase_end_marks.loc[(phase,  count)].iloc[0]
@@ -236,4 +233,4 @@ def calculate_ranking(
         ranking_in_time.to_hdf(results_path, key='ranking_in_time', mode='a', format='table')
         ranking_df.to_hdf(results_path, key='ranking', mode='a', format='table')
     
-    return ranking_ordinal, ranking
+    return ranking_ordinal, ranking, model
