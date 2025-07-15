@@ -6,6 +6,7 @@ from pathlib import Path
 import dash
 import pandas as pd
 from dash import dcc, html
+import dash_daq as daq
 from dash.dependencies import Input, Output
 
 from deepecohab.utils import auxfun_plots
@@ -33,7 +34,26 @@ def parse_arguments():
     return parser.parse_args()
 
 # Initialize the Dash app
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
+app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=["/assets/styles.css"])
+
+import plotly.graph_objects as go
+import plotly.io as pio
+
+dark_dash_template = go.layout.Template(
+    layout=go.Layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#e0e6f0"),
+        xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
+        yaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
+        legend=dict(bgcolor="rgba(0,0,0,0)")
+    )
+)
+
+# register & set as default
+pio.templates["dash_dark"] = dark_dash_template
+pio.templates.default = "dash_dark"
+
 app.title = 'EcoHAB Dashboard'
 if __name__ == '__main__':
     args = parse_arguments()
@@ -53,43 +73,103 @@ if __name__ == '__main__':
     # Dashboard layout
     dashboard_layout = html.Div([
     html.Div([
-        html.H2('EcoHAB Results', style={'textAlign': 'center', 'margin-bottom': '10px'}),
         html.Div([
-            html.Label('Phases', style={'margin-right': '10px'}),
-            dcc.Slider(
-                id='phase-slider',
-                min=min(phases),
-                max=max(phases),
-                value=min(phases),
-                marks={str(phase): str(phase) for phase in phases},
-                step=None,
-                tooltip={'placement': 'bottom', 'always_visible': True},
-                updatemode='drag',
-                included=True,
-                vertical=False,
-                persistence=True,
-                className='slider',
-            ),
-            dcc.RadioItems(
-                id='mode-switch',
-                options=[{'label': 'Dark', 'value': 'dark'}, {'label': 'Light', 'value': 'light'}],
-                value='dark',
-                labelStyle={'display': 'inline-block', 'margin-left': '10px'}
-            ),
-            ], style={
-                    'width': '100%', 
-                    'textAlign': 'center',
-                }
-            )
+            html.Div([
+                # Left: vertical radio items
+                html.Div([
+                    dcc.RadioItems(
+                        id='mode-switch',
+                        options=[
+                            {'label': 'Dark', 'value': 'dark'},
+                            {'label': 'Light', 'value': 'light'},
+                            {'label': 'All', 'value': 'all'},
+                        ],
+                        value='dark',
+                        labelStyle={'display': 'block', 'marginBottom': '5px'},
+                        inputStyle={'marginRight': '6px'},
+                    )
+                ], style={
+                    'marginRight': '20px',
+                    'minWidth': '70px',
+                    'textAlign': 'left',
+                }),
+                html.Div(style={
+                    'width': '1px',
+                    'backgroundColor': '#5a6b8c',
+                    'height': '40px',
+                    'margin': '0 20px'
+                }),
+                html.Div([
+                    dcc.RadioItems(
+                        id='mode-switch',
+                        options=[
+                            {'label': 'Sum', 'value': 'sum'},
+                            {'label': 'Mean', 'value': 'mean'},
+                        ],
+                        value='sum',
+                        labelStyle={'display': 'block', 'marginBottom': '5px'},
+                        inputStyle={'marginRight': '6px'},
+                    )
+                ], style={
+                    'marginRight': '20px',
+                    'minWidth': '70px',
+                    'textAlign': 'left',
+                }),
+                html.Div(style={
+                    'width': '1px',
+                    'backgroundColor': '#5a6b8c',
+                    'height': '40px',
+                    'margin': '0 20px'
+                }),
+                # Right: slider
+                html.Div([
+                    html.Label('Phases', style={
+                        'fontWeight': 'bold',
+                        'textAlign': 'left',
+                        'marginRight': '10px',
+                        'whiteSpace': 'nowrap'
+                    }),
+                    dcc.RangeSlider(
+                        id='phase-slider',
+                        min=min(phases),
+                        max=max(phases),
+                        value=[1,1],
+                        count=1,
+                        step=1,
+                        tooltip={'placement': 'bottom', 'always_visible': True},
+                        updatemode='drag',
+                        included=True,
+                        vertical=False,
+                        persistence=True,
+                        className='slider',
+                    )
+                ], style={'flex': '1'})  # let it take remaining space
+            ],
+            style={
+                'display': 'flex',
+                'alignItems': 'center',
+                'justifyContent': 'center',
+                'width': '100%',
+                'gap': '20px',
+            })
+        ],
+        style={
+            'padding': '10px',
+            'textAlign': 'center',
+            'backgroundColor': "#1f2c44",
+            'position': 'sticky',
+            'top': '0',
+            'zIndex': '1000',
+            'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
+        })
         ], style={
         'position': 'sticky',
         'top': '0',
-        'background-color': 'white', 
         'padding': '10px',
-        'background-color': '#FFFFFF',
         'z-index': '1000',
         'textAlign': 'center',
         'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
+        'background-color': "#1f2c44",
     }),
             
         html.Div([
@@ -103,16 +183,6 @@ if __name__ == '__main__':
                 value='visits',
                 labelStyle={'display': 'inline-block'}
             ),
-            dcc.RadioItems(
-                id='summary-postion-switch',
-                options=[
-                    {'label': 'Phases', 'value': 'phases'},
-                    {'label': 'Sum', 'value': 'sum'},
-                    {'label': 'Mean', 'value': 'mean'},
-                    ],
-                value='phases',
-                labelStyle={'display': 'inline-block'}
-            ),
             dcc.Graph(id='position-plot'),
             dcc.RadioItems(
                 id='pairwise-switch',
@@ -120,42 +190,10 @@ if __name__ == '__main__':
                 value='visits',
                 labelStyle={'display': 'inline-block'}
             ),
-            dcc.RadioItems(
-                id='summary-pairwise-switch',
-                options=[
-                    {'label': 'Phases', 'value': 'phases'},
-                    {'label': 'Sum', 'value': 'sum'},
-                    {'label': 'Mean', 'value': 'mean'},
-                    ],
-                value='phases',
-                labelStyle={'display': 'inline-block'}
-            ),
             dcc.Graph(id='pairwise-heatmap'),
             html.Div([
-        html.Div([
-            dcc.RadioItems(
-                id='chasings-summary-switch',
-                options=[
-                    {'label': 'Phases', 'value': 'phases'},
-                    {'label': 'Sum', 'value': 'sum'},
-                    {'label': 'Mean', 'value': 'mean'},
-                ],
-                value='phases',
-                labelStyle={'display': 'inline-block'}
-            ),
-            dcc.Graph(id='chasings-heatmap')
-        ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
 
         html.Div([
-            dcc.RadioItems(
-                id='sociability-summary-switch',
-                options=[
-                    {'label': 'Phases', 'value': 'phases'},
-                    {'label': 'Mean', 'value': 'mean'},
-                ],
-                value='phases',
-                labelStyle={'display': 'inline-block'}
-            ),
             dcc.Graph(id='sociability-heatmap')
         ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'})
             ], style={'width': '80%', 'margin': 'auto'}),

@@ -137,7 +137,7 @@ def plot_position_fig(
             x='animal_id',
             y=position_y,
             color='position',
-            color_discrete_sequence=px.colors.qualitative.__dict__['Set3'],
+            color_discrete_sequence=px.colors.qualitative.__dict__['Alphabet'],
             barmode='group',
             title=position_title,
             range_y=[0, position_max_y],
@@ -226,7 +226,7 @@ def plot_pairwise_plot(
         animation_frame=0,
         x=pairwise_animal_ids,
         y=pairwise_animal_ids,
-        color_continuous_scale='OrRd',  
+        color_continuous_scale='Viridis',  
         text_auto=False,
         facet_col=1,
         facet_col_wrap=2,
@@ -252,6 +252,7 @@ def plot_pairwise_plot(
             pairwise_z_label,
         ])
     )
+    pairwise_plot.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     
     return pairwise_plot
 
@@ -315,7 +316,7 @@ def plot_chasings(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, c
         chasings_heatmap_data,
         x=chasings_animal_ids,
         y=chasings_animal_ids,
-        color_continuous_scale='OrRd',  
+        color_continuous_scale='Viridis',  
         text_auto=False,
         range_color=[chasings_min_range, chasings_max_range]
     )
@@ -334,7 +335,8 @@ def plot_chasings(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, c
             chasings_z_label,
         ])
     )
-    
+    chasings_plot.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+
     return chasings_plot
 
 def plot_in_cohort_sociability(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int, sociability_summary_switch:str) -> go.Figure:
@@ -357,7 +359,7 @@ def plot_in_cohort_sociability(dash_data: dict[pd.DataFrame], mode:str, selected
     incohort_soc_n_animal_ids = len(incohort_soc_animal_ids)
     
     match sociability_summary_switch:
-        case 'sum':
+        case 'sum': 
             fig_data = incohort_soc_filtered.groupby(['animal_ids',  'phase'], observed=False).sum().reset_index().drop(columns=['phase_count','phase', 'animal_ids'])
             incohort_soc_min_range = fig_data.min().min()
             incohort_soc_max_range = fig_data.max().max()
@@ -395,7 +397,7 @@ def plot_in_cohort_sociability(dash_data: dict[pd.DataFrame], mode:str, selected
         incohort_soc_heatmap_data,
         x=incohort_soc_animal_ids,
         y=incohort_soc_animal_ids,
-        color_continuous_scale='OrRd',  
+        color_continuous_scale='Viridis',  
         text_auto=False,
         range_color=[incohort_soc_min_range, incohort_soc_max_range]
     )
@@ -414,7 +416,8 @@ def plot_in_cohort_sociability(dash_data: dict[pd.DataFrame], mode:str, selected
             incohort_soc_z_label,
         ])
     )
-    
+    incohort_soc_plot.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+
     return incohort_soc_plot
 
 def plot_network_grah(dash_data: dict[pd.DataFrame], mode:str, selected_phase:int) -> go.Figure:
@@ -436,8 +439,8 @@ def plot_network_grah(dash_data: dict[pd.DataFrame], mode:str, selected_phase:in
     
     G = nx.from_pandas_edgelist(plot_chasing_data_filtered, create_using=nx.DiGraph, edge_attr='chasings')
     pos = nx.spring_layout(G, k=None, iterations=500, seed=42, weight='chasings')
-    node_trace = auxfun_plots.create_node_trace(G, pos, plot_ranking_data_filtered, 2, 'bluered')
-    edge_trace = auxfun_plots.create_edges_trace(G, pos, 0.4, 2, 'bluered')
+    node_trace = auxfun_plots.create_node_trace(G, pos, plot_ranking_data_filtered, 2, 'Rainbow') # Cmap should be based on animal name consistent with ranking
+    edge_trace = auxfun_plots.create_edges_trace(G, pos, 0.4, 2, 'Viridis')
     
     net_plot = go.Figure(
             data=edge_trace + [node_trace],
@@ -451,7 +454,8 @@ def plot_network_grah(dash_data: dict[pd.DataFrame], mode:str, selected_phase:in
         )
     
     net_plot = net_plot.update_layout(
-                plot_bgcolor='white',
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
                 title=dict(text=f'<b>Social structure network graph: <u>{mode} phase</u></b>', x=0.01, y=0.95),
                 height=800,
             )
