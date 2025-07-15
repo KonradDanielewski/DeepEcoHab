@@ -277,11 +277,52 @@ if __name__ == '__main__':
         ])
     ])
     app.layout = html.Div([
-        dcc.Tabs(id='tabs', value='tab-dashboard', children=[
-            dcc.Tab(label='Dashboard', value='tab-dashboard', children=dashboard_layout),
-            dcc.Tab(label='Plots Comparison', value='tab-other', children=comparison_tab),
+                dcc.Tabs(
+                id='tabs',
+                value='tab-dashboard',
+                children=[
+                    dcc.Tab(
+                        label='Dashboard',
+                        value='tab-dashboard',
+                        children=dashboard_layout,
+                        style={
+                            'backgroundColor': '#5a6b8c',
+                            'color': 'white',
+                            'padding': '10px',
+                            'fontWeight': 'bold',
+                        },
+                        selected_style={
+                            'backgroundColor': '#2a3f5f',
+                            'color': 'white',
+                            'padding': '10px',
+                            'fontWeight': 'bold',
+                            'borderTop': '3px solid #5a6b8c'
+                        }
+                    ),
+                    dcc.Tab(
+                        label='Plots Comparison',
+                        value='tab-other',
+                        children=comparison_tab,
+                        style={
+                            'backgroundColor': '#5a6b8c',
+                            'color': 'white',
+                            'padding': '10px',
+                            'fontWeight': 'bold',
+                        },
+                        selected_style={
+                            'backgroundColor': '#2a3f5f',
+                            'color': 'white',
+                            'padding': '10px',
+                            'fontWeight': 'bold',
+                            'borderTop': '3px solid #5a6b8c'
+                        }
+                    ),
+                ],
+                style={
+                    'backgroundColor': '#1f2c44',  # Tab bar background
+                }
+            )
         ])
-    ])
     # Tabs callback
     @app.callback(Output('tabs-content', 'children'), [Input('tabs', 'value')])
     def render_content(tab):
