@@ -197,3 +197,20 @@ def run_dashboard(cfp: str | dict):
     process = subprocess.Popen([sys.executable, path_to_dashboard, '--results-path', data_path])
     
     return process
+
+def _drop_empty_phase_counts(cfp: str | dict, df: pd.DataFrame):
+    """Auxfun to drop parts of DataFrame where no data was recorded.
+    """    
+    main_df = load_ecohab_data(cfp, 'main_df')
+    possible_dark_phases = main_df.query('phase == "dark_phase"').phase_count.unique()
+    possible_light_phases = main_df.query('phase == "light_phase"').phase_count.unique()
+    
+    filtered_df = df[
+        (df.index.get_level_values(0) == 'dark_phase') & 
+        (df.index.get_level_values(1).isin(possible_dark_phases)) |
+        
+        (df.index.get_level_values(0) == 'light_phase') & 
+        (df.index.get_level_values(1).isin(possible_light_phases))
+    ]
+
+    return filtered_df

@@ -138,6 +138,8 @@ def calculate_time_together(
         .astype(float)
         .round(3)
     )
+    
+    time_together_df = auxfun._drop_empty_phase_counts(cfp, time_together_df)
 
     if save_data:
         time_together_df.to_hdf(results_path, key=key, mode='a', format='table')
@@ -189,6 +191,8 @@ def calculate_pairwise_encounters(
         .astype(float)
         .round(3)
     )
+    
+    pairwise_encounters_df = auxfun._drop_empty_phase_counts(cfp, pairwise_encounters_df)
     
     if save_data:
         pairwise_encounters_df.to_hdf(results_path, key=key, mode='a', format='table')
@@ -262,6 +266,8 @@ def calculate_incohort_sociability(
         .round(3)
         .astype(float)
     )
+    
+    incohort_sociability = auxfun._drop_empty_phase_counts(cfp, incohort_sociability)
     
     if save_data:
         incohort_sociability.to_hdf(results_path, key=key, mode='a', format='table')

@@ -158,6 +158,8 @@ def calculate_chasings(
         chasings.loc[(phase, N, mouse1), mouse2] = sum(filtered_chasing.animal_id == mouse2)
         chasings.loc[(phase, N, mouse2), mouse1] = sum(filtered_chasing.animal_id == mouse1)
     
+    chasings = auxfun._drop_empty_phase_counts(cfp, chasings)
+    
     if save_data:
         chasings.to_hdf(results_path, key='chasings', mode='a', format='table')
         
@@ -216,7 +218,8 @@ def calculate_ranking(
         .loc[:, ['datetime', 'phase', 'phase_count']]
         .groupby(['phase', 'phase_count'], observed=False)
         .max()
-    ).dropna()
+        .dropna()
+    )
 
     ranking_in_time = ranking_in_time[~ranking_in_time.index.duplicated(keep='last')] # handle possible duplicate indices
     ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns, dtype=float)
