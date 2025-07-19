@@ -12,6 +12,7 @@ from dash.dependencies import Input, Output
 from deepecohab.utils import auxfun_plots
 from deepecohab.dash.plots import (
     plot_ranking_in_time,
+    plot_activity,
     plot_position_fig,
     plot_pairwise_plot,
     plot_chasings,
@@ -75,7 +76,6 @@ if __name__ == '__main__':
     html.Div([
         html.Div([
             html.Div([
-                # Left: vertical radio items
                 html.Div([
                     dcc.RadioItems(
                         id='mode-switch',
@@ -121,7 +121,6 @@ if __name__ == '__main__':
                     'height': '40px',
                     'margin': '0 20px'
                 }),
-                # Right: slider
                 html.Div([
                     html.Label('Phases', style={
                         'fontWeight': 'bold',
@@ -143,7 +142,7 @@ if __name__ == '__main__':
                         persistence=True,
                         className='slider',
                     )
-                ], style={'flex': '1'})  # let it take remaining space
+                ], style={'flex': '1'})
             ],
             style={
                 'display': 'flex',
@@ -173,17 +172,34 @@ if __name__ == '__main__':
     }),
             
         html.Div([
-            dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
-            dcc.RadioItems(
-                id='position-switch',
-                options=[
-                    {'label': 'Visits', 'value': 'visits'},
-                    {'label': 'Time', 'value': 'time'}
-                    ],
-                value='visits',
-                labelStyle={'display': 'inline-block'}
-            ),
-            dcc.Graph(id='position-plot'),
+            # Ranking and network graph
+            html.Div([
+                html.Div([
+                    dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
+                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                html.Div([
+                    dcc.Graph(id='network-graph')
+                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+            ]),
+            # Activity per hour line and per position bar
+            html.Div([
+                dcc.RadioItems(
+                    id='position-switch',
+                    options=[
+                        {'label': 'Visits', 'value': 'visits'},
+                        {'label': 'Time', 'value': 'time'}
+                        ],
+                    value='visits',
+                    labelStyle={'display': 'inline-block'},
+                    ),
+                html.Div([
+                    dcc.Graph(id='position-plot', style={'height': '500px'}),
+                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'bot'}),
+                html.Div([
+                    dcc.Graph(id='activity-plot', style={'height': '500px'})
+                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'bot'}),
+            ]),
+            # Pairwrise time spent / encounters per cage
             dcc.RadioItems(
                 id='pairwise-switch',
                 options=[{'label': 'Visits', 'value': 'visits'}, {'label': 'Time', 'value': 'time'}],
@@ -191,16 +207,17 @@ if __name__ == '__main__':
                 labelStyle={'display': 'inline-block'}
             ),
             dcc.Graph(id='pairwise-heatmap'),
-        html.Div([
+            # Chasings and incohort heatmaps
             html.Div([
-                dcc.Graph(id='chasings-heatmap')
-            ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-            html.Div([
-                dcc.Graph(id='sociability-heatmap')
-            ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-                ], style={'width': '80%', 'margin': 'auto'}),
-                        dcc.Graph(id='network-graph')
-                    ], style={'padding': '20px'})
+                html.Div([
+                    dcc.Graph(id='chasings-heatmap')
+                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                html.Div([
+                    dcc.Graph(id='sociability-heatmap')
+                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                    ], style={'width': '90%', 'margin': 'auto'}),
+            
+            ], style={'padding': '20px'})
     ])
 
     comparison_tab = html.Div([
@@ -337,6 +354,7 @@ if __name__ == '__main__':
     @app.callback(
         [
             Output('position-plot', 'figure'),
+            Output('activity-plot', 'figure'),
             Output('pairwise-heatmap', 'figure'),
             Output('chasings-heatmap', 'figure'),
             Output('sociability-heatmap', 'figure'),
@@ -353,12 +371,13 @@ if __name__ == '__main__':
     def update_plots(phase_range, mode, aggregate_stats_switch, position_switch,  pairwise_switch):
         
         position_fig = plot_position_fig(dash_data, mode,phase_range, position_switch, aggregate_stats_switch)
+        activity_fig = plot_activity(dash_data, phase_range, aggregate_stats_switch)
         pairwise_plot = plot_pairwise_plot(dash_data, mode, phase_range,  pairwise_switch, aggregate_stats_switch)
         chasings_plot = plot_chasings(dash_data, mode, phase_range, aggregate_stats_switch)
-        incohort_soc_plot = plot_in_cohort_sociability(dash_data, mode,phase_range, aggregate_stats_switch)
+        incohort_soc_plot = plot_in_cohort_sociability(dash_data, mode,phase_range, sociability_summary_switch="mean") # it's never a sum, probably just discard the parameter
         network_plot = plot_network_grah(dash_data, mode, phase_range)
 
-        return [position_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot]
+        return [position_fig, activity_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot]
 
     @app.callback(
         [

@@ -4,11 +4,11 @@ import numpy as np
 import plotly.graph_objects as go
 
 from typing import Literal
-from plotly.express.colors import sample_colorscale
+import plotly.express as px
 from scipy.stats import norm
 
 
-def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, node_size_multiplier: float | int, cmap: str = 'bluered') -> list:
+def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, cmap: str = 'bluered') -> list:
     """Auxfun to create edges trace with color mapping based on edge width."""
     edge_trace = []
     
@@ -23,34 +23,17 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
     else:
         normalized_widths = [(width - min_width) / (max_width - min_width) for width in edge_widths]
     
-    colorscale = sample_colorscale(cmap, normalized_widths)
+    colorscale = px.colors.sample_colorscale(cmap, normalized_widths)
     
     for i, edge in enumerate(G.edges()):
         source_x, source_y = pos[edge[0]]  # Start point (source node)
         target_x, target_y = pos[edge[1]]  # End point (target node)
         edge_width = edge_widths[i]
         
-        # Calculate the direction vector from (source_x, source_y) to (target_x, target_y)
-        dx = target_x - source_x
-        dy = target_y - source_y
-        
-        # Calculate the length of the edge
-        length = (dx**2 + dy**2)**0.5
-        
-        # Calculate the offset to shorten the line (e.g., by 10% of the node size)
-        offset = 0.02 * node_size_multiplier  
-        
-        # Calculate new end point (target_x_new, target_y_new) by moving back along the line
-        if length > 0:  # Avoid division by zero
-            target_x_new = target_x - (dx / length) * offset
-            target_y_new = target_y - (dy / length) * offset
-        else:
-            target_x_new, target_y_new = target_x, target_y
-        
         edge_trace.append(
             go.Scatter(
-                x=[source_x, target_x_new, None],  
-                y=[source_y, target_y_new, None],
+                x=[source_x, target_x, None],  
+                y=[source_y, target_y, None],
                 line=dict(
                     width=edge_width,
                     color=colorscale[i],
@@ -65,7 +48,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, width_multiplier: float | int, no
     
     return edge_trace
 
-def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node_size_multiplier: float | int, cmap: str = 'Bluered') -> go.Scatter:
+def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node_size_multiplier: float | int, colors: list, animals: list) -> go.Scatter:
     """Auxfun to create node trace
     """
     node_trace = go.Scatter(
@@ -78,14 +61,9 @@ def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node
         textposition='top center',
         showlegend=False,
         marker=dict(
-            showscale=True,
-            colorscale=cmap,
+            showscale=False,
+            colorscale=colors,
             size=[], color=[],
-            colorbar=dict(
-                thickness=15,
-                title=dict(text='Ranking', side='right'),
-                xanchor='left',
-            )
         )
     )
     
@@ -103,7 +81,7 @@ def create_node_trace(G: nx.DiGraph, pos: dict, ranking_ordinal: pd.Series, node
             )
         
     # Scale node size and color
-    node_trace['marker']['color'] = ranking_score_list
+    node_trace['marker']['color'] = animals
     node_trace['marker']['size'] = [rank * node_size_multiplier for rank in ranking_score_list]
     return node_trace
 
@@ -171,10 +149,136 @@ def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame
     
     return plot_df
 
+def prep_activity_overtime_sum(df: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to prep data for a line plot of activity over hours
+    """    
+    plot_df = (
+        df
+        .loc[:, ["animal_id", 'phase_count', "hour"]]
+        .groupby(["phase_count", "hour"], observed=True)
+        .value_counts()
+        .reset_index()
+    )
+
+    plot_df = plot_df.iloc[:, 1:].groupby(["animal_id", "hour"], observed=False).sum().reset_index()
+
+    return plot_df
+
+def prep_activity_overtime_mean(df: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to prep data for a line plot of activity over hours
+    """   
+    plot_df = (
+        df
+        .loc[:, ["animal_id", 'phase_count', "hour"]]
+        .groupby(["phase_count", "hour"], observed=True)
+        .value_counts()
+        .reset_index()
+    )
+
+    mean_df = plot_df.iloc[:, 1:].groupby(["animal_id", "hour"], observed=False).mean().reset_index()
+    sem_df = plot_df.iloc[:, 1:].groupby(["animal_id", "hour"], observed=False).sem().reset_index()
+    mean_df["lower"] = mean_df['count'].values - sem_df['count'].values
+    mean_df["higher"] = mean_df['count'].values + sem_df['count'].values
+
+    return mean_df
+
+def color_sampling(values: list[str], cmap: str = "Phase") -> list[str]:
+    x = np.linspace(0, 1, len(values))
+    colors = px.colors.sample_colorscale(cmap, x)
+
+    return colors
+
+def plot_mean_activity_per_hour(df: pd.DataFrame, animals: list[str], colors: list[str]) -> go.Figure:
+    """Create a line plot showing per hour activity grouped by phase_count - mean per phase_count. 
+    Activity is defined as every antenna detection.
+
+    Args:
+        df: mean_df of antenna detections per hour
+        animals: animal_ids
+        colors: list of colors to be used for animals
+
+    Returns:
+        Line plot of mean N detections in phase_counts with shaded region for SEM
+    """
+
+    plot_df = prep_activity_overtime_mean(df)
+
+    fig = go.Figure()
+
+    x = list(range(24))
+    x_rev = x[::-1]
+
+    for animal, color in zip(animals, colors):
+        animal_df = plot_df.query("animal_id == @animal")
+        
+        y = list(animal_df["count"].values)
+        y_upper = list(animal_df["higher"].values) 
+        y_lower = list(animal_df["lower"].values)[::-1]
+
+        shade_color = color.replace('rgb', 'rgba').replace(')', ', 0.2)') # shaded region is SEM
+ 
+        fig.add_trace(go.Scatter(
+            x=x+x_rev,
+            y=y_upper+y_lower,
+            fill='toself',
+            fillcolor=shade_color,
+            line_color='rgba(255,255,255,0)',
+            showlegend=False,
+            name=animal,
+            legendgroup=animal,
+            line=dict(
+                shape='spline'
+            )
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=x, y=y,
+            line_color=color,
+            name=animal,
+            legendgroup=animal,
+            line=dict(
+                shape='spline'
+            )
+        ))
+
+    fig.update_layout(title="<b>Activity over time</b>")
+    fig.update_yaxes(title="<b>Antenna detections</b>")
+    fig.update_xaxes(title="<b>Hours</b>")
+    
+    return fig
+
+def plot_sum_activity_per_hour(df: pd.DataFrame, colors: list[str]) -> go.Figure:
+    """Create a line plot showing per hour activity grouped by phase_count - sum of phase_counts. 
+    Activity is defined as every antenna detection.
+
+    Args:
+        df: mean_df of antenna detections per hour
+        colors: list of colors to be used for animals
+
+    Returns:
+        Line plot of sum of all antenna detections across selected phases
+    """
+    plot_df = prep_activity_overtime_sum(df)
+
+    fig = px.line(
+        plot_df, 
+        x="hour", 
+        y="count", 
+        color="animal_id", 
+        color_discrete_sequence=colors, 
+        line_shape='spline', 
+        title="<b>Activity over time</b>", 
+    )
+    fig.update_yaxes(title="Antenna detections")
+    fig.update_xaxes(title="<b>Hours</b>")
+    
+    return fig
+
 def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
     """Auxfun to load data from HDF5 store
     """
     main_df = pd.read_hdf(store, key='main_df')
+    padded_df = pd.read_hdf(store, key='padded_df')
     ranking_in_time = pd.read_hdf(store, key='ranking_in_time')
     time_per_position_df = pd.read_hdf(store, key='time_per_position')
     time_per_position_df = time_per_position_df.melt(ignore_index=False, value_name='Time[s]', var_name='animal_id').reset_index()
@@ -191,6 +295,7 @@ def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
     
     return {
         'main_df': main_df,
+        'padded_df': padded_df,
         'ranking_in_time': ranking_in_time,
         'time_per_position_df': time_per_position_df,
         'visits_per_position_df': visits_per_position_df,

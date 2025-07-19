@@ -135,13 +135,16 @@ def plot_position_fig(
             position_max_y = fig_data[position_y].max() + position_y_range_add
         case _:
             fig_data  = position_df
+
+    x = np.linspace(0, 1, len(position_y))
+    colors = px.colors.sample_colorscale("Phase", x)
         
     position_fig = px.bar(
             fig_data,
             x='animal_id',
             y=position_y,
             color='position',
-            color_discrete_sequence=px.colors.qualitative.__dict__['Alphabet'],
+            color_discrete_sequence=colors,
             barmode='group',
             title=position_title,
             range_y=[0, position_max_y],
@@ -246,7 +249,7 @@ def plot_pairwise_plot(
                         sliders=[{'currentvalue': {'prefix': 'Phase='}}],
                         plot_bgcolor='white',
                         title=dict(text=pairwise_title),
-                        height=600,
+                        height=800,
                     )
     for i in range(pairwise_n_cages):
         facet_col_n = int(pairwise_plot.layout.annotations[i]['text'][-1])
@@ -443,24 +446,35 @@ def plot_network_grah(dash_data: dict[pd.DataFrame], mode:str, phase_range: List
     
     plot_chasing_data_filtered = dash_data['plot_chasing_data'][dash_data['plot_chasing_data']['phase'] == phase]  
     plot_chasing_data_filtered = plot_chasing_data_filtered[
-        (plot_chasing_data_filtered['phase_count'] >= phase_range[0]) &
-        (plot_chasing_data_filtered['phase_count'] <= phase_range[-1])]
+        # This is a special case, the structure is affected by the whole recording always
+        # it can't start counting from a specific point.
+        (plot_chasing_data_filtered['phase_count'] >= 0) & 
+        (plot_chasing_data_filtered['phase_count'] <= phase_range[-1])
+    ]
     
     plot_chasing_data_filtered = plot_chasing_data_filtered.drop(columns=['phase', 'phase_count'])
+    plot_chasing_data_filtered = (
+        plot_chasing_data_filtered
+        .groupby(['target', 'source'])
+        .sum()
+        .reset_index()
+    )
     
     plot_ranking_data_filtered = dash_data['plot_ranking_data'][dash_data['plot_ranking_data']['phase'] == phase]   
-    plot_ranking_data_filtered = plot_ranking_data_filtered[
-        (plot_ranking_data_filtered['phase_count'] >= phase_range[0]) &
-        (plot_ranking_data_filtered['phase_count'] <= phase_range[-1])]
+    plot_ranking_data_filtered = plot_ranking_data_filtered[plot_ranking_data_filtered.phase_count==phase_range[-1]]
     
     plot_ranking_data_filtered = plot_ranking_data_filtered.drop(columns=['phase', 'phase_count']).set_index('mouse_id')['ranking']
+
+    animals = plot_ranking_data_filtered.index # TODO: Move this creation of colorscale out, should return the x and colors
+    x = np.linspace(0, 1, len(animals))
+    colors = px.colors.sample_colorscale('Phase', list(x))
     
     G = nx.from_pandas_edgelist(plot_chasing_data_filtered, create_using=nx.DiGraph, edge_attr='chasings')
-    pos = nx.spring_layout(G, k=None, iterations=500, seed=42, weight='chasings')
-    node_trace = auxfun_plots.create_node_trace(G, pos, plot_ranking_data_filtered, 2, 'Rainbow') # Cmap should be based on animal name consistent with ranking
-    edge_trace = auxfun_plots.create_edges_trace(G, pos, 0.4, 2, 'Viridis')
+    pos = nx.spring_layout(G, k=None, iterations=300, seed=42, weight='chasings', method='energy')
+    node_trace = auxfun_plots.create_node_trace(G, pos, plot_ranking_data_filtered, 1, colors, x)
+    edge_trace = auxfun_plots.create_edges_trace(G, pos, 0.2, 'Viridis')
     
-    net_plot = go.Figure(
+    fig = go.Figure(
             data=edge_trace + [node_trace],
             layout=go.Layout(
                 showlegend=False,
@@ -468,16 +482,35 @@ def plot_network_grah(dash_data: dict[pd.DataFrame], mode:str, phase_range: List
                 margin=dict(b=0, l=0, r=0, t=40),
                 xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                 yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            )
-        )
-    
-    net_plot = net_plot.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 title=dict(text=f'<b>Social structure network graph: <u>{mode} phase</u></b>', x=0.01, y=0.95),
                 height=800,
             )
-    net_plot.update_xaxes(showticklabels=False)
-    net_plot.update_yaxes(showticklabels=False)
+        )
+
+    fig.update_xaxes(showticklabels=False)
+    fig.update_yaxes(showticklabels=False)
     
-    return net_plot
+    return fig
+
+def plot_activity(
+        dash_data: dict[pd.DataFrame],
+        phase_range: List[int], 
+        summary_switch: Literal['sum', 'mean']
+    ) -> go.Figure:
+    
+    df = dash_data['padded_df']
+    df = df[
+        (df['phase_count'] >= phase_range[0]) & 
+        (df['phase_count'] <= phase_range[-1])
+    ]
+    animals = df.animal_id.cat.categories
+    colors = auxfun_plots.color_sampling(animals)
+
+    match summary_switch:
+        case 'sum':
+            return auxfun_plots.plot_sum_activity_per_hour(df, colors)
+        case 'mean':
+            return auxfun_plots.plot_mean_activity_per_hour(df, animals, colors)
+    
