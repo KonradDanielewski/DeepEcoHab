@@ -6,11 +6,10 @@ from pathlib import Path
 import dash
 import pandas as pd
 from dash import dcc, html
-import dash_daq as daq
 from dash.dependencies import Input, Output
 
 from deepecohab.utils import auxfun_plots
-from deepecohab.dash.plots import (
+from deepecohab.dash.plots import ( # TODO: change import style
     plot_ranking_in_time,
     plot_activity,
     plot_position_fig,
