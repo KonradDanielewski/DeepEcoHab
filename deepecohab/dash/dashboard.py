@@ -6,7 +6,7 @@ from pathlib import Path
 import dash
 import pandas as pd
 from dash import dcc, html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, MATCH
 
 from deepecohab.utils import auxfun_plots
 from deepecohab.dash.plots import ( # TODO: change import style
@@ -159,7 +159,7 @@ def generate_comparison_block(side: str, slider_range: list[int]):
     return html.Div([
         html.Label('Select Plot', style={'fontWeight': 'bold'}),
         dcc.Dropdown(
-            id=f'dropdown-plot-{side}',
+            id={'type': 'plot-dropdown', 'side': side},
             options=[
                 {'label': 'Visits to compartments', 'value': 'position_visits'},
                 {'label': 'Time spent in compartments', 'value': 'position_time'},
@@ -172,9 +172,14 @@ def generate_comparison_block(side: str, slider_range: list[int]):
             value='position_visits',
         ),
         html.Div([
-            dcc.Graph(id=f'comparison-plot-{side}'),
+            dcc.Graph(id={'type': 'comparison-plot', 'side': side}),
             ]),
-        generate_settings_block(f'mode-switch-{side}', f'aggregate-stats-switch-{side}', f'phase-slider-{side}', slider_range)
+        generate_settings_block(
+            {'type': 'mode-switch', 'side': side},
+            {'type': 'aggregate-switch', 'side': side},
+            {'type': 'phase-slider', 'side': side},
+            slider_range
+        )
     ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '0 10px'})
 
 app.title = 'EcoHAB Dashboard'
@@ -346,30 +351,18 @@ if __name__ == '__main__':
 
         return [position_fig, activity_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot]
 
-    @app.callback(
-        Output('comparison-plot-left', 'figure'),
-        [
-            Input('dropdown-plot-left', 'value'),
-            Input('mode-switch-left', 'value'),
-            Input('aggregate-stats-switch-left', 'value'),
-            Input('phase-slider-left', 'value'),
-        ]
-    )
-    def update_left_comparison(plot_type, phase_type, aggregate_stats_switch, phase_range):
-        return get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range)
 
     @app.callback(
-        Output('comparison-plot-right', 'figure'),
-        [
-            Input('dropdown-plot-right', 'value'),
-            Input('mode-switch-right', 'value'),
-            Input('aggregate-stats-switch-right', 'value'),
-            Input('phase-slider-right', 'value'),
-        ]
-    )
+    Output({'type': 'comparison-plot', 'side': MATCH}, 'figure'),
+    [
+        Input({'type': 'plot-dropdown', 'side': MATCH}, 'value'),
+        Input({'type': 'mode-switch', 'side': MATCH}, 'value'),
+        Input({'type': 'aggregate-switch', 'side': MATCH}, 'value'),
+        Input({'type': 'phase-slider', 'side': MATCH}, 'value'),
+    ]
+)
     def update_right_comparison(plot_type, phase_type, aggregate_stats_switch, phase_range):
-        result = get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range)
-        return result
+        return get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range)
 
     # Run the app
     open_browser()
