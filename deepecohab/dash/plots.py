@@ -514,3 +514,22 @@ def plot_activity(
         case 'mean':
             return auxfun_plots.plot_mean_activity_per_hour(df, animals, colors)
     
+def get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range):
+    match plot_type:
+        case 'position_visits':
+            return plot_position_fig(dash_data, phase_type, phase_range, 'visits', aggregate_stats_switch)
+        case 'position_time':
+            return plot_position_fig(dash_data, phase_type, phase_range, 'time', aggregate_stats_switch)
+        case 'pairwise_encounters':
+            return plot_pairwise_plot(dash_data, phase_type, phase_range, 'visits', aggregate_stats_switch)
+        case 'pairwise_time': 
+            return plot_pairwise_plot(dash_data, phase_type, phase_range, 'time', aggregate_stats_switch)
+        case 'chasings':
+            return plot_chasings(dash_data, phase_type, phase_range, aggregate_stats_switch)
+        case 'sociability':
+            return plot_in_cohort_sociability(dash_data, phase_type,phase_range, sociability_summary_switch="mean")
+        case 'network':
+            return plot_network_grah(dash_data, phase_type, phase_range)
+        case _:
+            return {}
+

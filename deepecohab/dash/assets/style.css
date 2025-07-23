@@ -166,6 +166,13 @@ p, .dash-description {
   outline: none;
 }
 
+.Select-control, .Select-value-label,
+.Select-menu-outer, .VirtualizedSelectOption,
+.VirtualizedSelectFocusedOption {
+  background-color: #1f2c44 !important;
+  color: #e0e6f0 !important;
+ }
+
 /* Callouts & Alerts */
 .alert {
   background-color: #3a2a2a;

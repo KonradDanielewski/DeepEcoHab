@@ -16,7 +16,8 @@ from deepecohab.dash.plots import ( # TODO: change import style
     plot_pairwise_plot,
     plot_chasings,
     plot_in_cohort_sociability,
-    plot_network_grah
+    plot_network_grah,
+    get_single_plot
 )
 
 
@@ -54,30 +55,14 @@ dark_dash_template = go.layout.Template(
 pio.templates["dash_dark"] = dark_dash_template
 pio.templates.default = "dash_dark"
 
-app.title = 'EcoHAB Dashboard'
-if __name__ == '__main__':
-    args = parse_arguments()
-    results_path = args.results_path
 
-    if not Path(results_path).is_file():
-        FileNotFoundError(f'{results_path} not found.')
-        sys.exit(1)
-    store = pd.HDFStore(results_path, mode='r')
-    dash_data = auxfun_plots.load_dashboard_data(store)
-    _data = dash_data['time_per_position_df']
-    n_phases_dark = _data['phase_count'][_data['phase'] == 'dark_phase'].max()
-    n_phases_light = _data['phase_count'][_data['phase'] == 'light_phase'].max()
-    n_phases = min(n_phases_dark, n_phases_light)
-    phases = list(range(1, n_phases + 1))
-
-    # Dashboard layout
-    dashboard_layout = html.Div([
-    html.Div([
+def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider_range):
+    return html.Div([
         html.Div([
             html.Div([
                 html.Div([
                     dcc.RadioItems(
-                        id='mode-switch',
+                        id=phase_type_id,
                         options=[
                             {'label': 'Dark', 'value': 'dark'},
                             {'label': 'Light', 'value': 'light'},
@@ -100,7 +85,7 @@ if __name__ == '__main__':
                 }),
                 html.Div([
                     dcc.RadioItems(
-                        id='aggregate-stats-switch',
+                        id=aggregate_stats_id,
                         options=[
                             {'label': 'Sum', 'value': 'sum'},
                             {'label': 'Mean', 'value': 'mean'},
@@ -128,9 +113,9 @@ if __name__ == '__main__':
                         'whiteSpace': 'nowrap'
                     }),
                     dcc.RangeSlider(
-                        id='phase-slider',
-                        min=min(phases),
-                        max=max(phases),
+                        id=slider_id,
+                        min=slider_range[0],
+                        max=slider_range[1],
                         value=[1,1],
                         count=1,
                         step=1,
@@ -168,13 +153,60 @@ if __name__ == '__main__':
         'textAlign': 'center',
         'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
         'background-color': "#1f2c44",
-    }),
+    })
+            
+def generate_comparison_block(side: str, slider_range: list[int]):
+    return html.Div([
+        html.Label('Select Plot', style={'fontWeight': 'bold'}),
+        dcc.Dropdown(
+            id=f'dropdown-plot-{side}',
+            options=[
+                {'label': 'Visits to compartments', 'value': 'position_visits'},
+                {'label': 'Time spent in compartments', 'value': 'position_time'},
+                {'label': 'Pairwise encounters', 'value': 'pairwise_encounters'},
+                {'label': 'Pairwise time', 'value': 'pairwise_time'},
+                {'label': 'Chasings', 'value': 'chasings'},
+                {'label': 'In cohort sociability', 'value': 'sociability'},
+                {'label': 'Network graph', 'value': 'network'},
+            ],
+            value='position_visits',
+        ),
+        html.Div([
+            dcc.Graph(id=f'comparison-plot-{side}'),
+            ]),
+        generate_settings_block(f'mode-switch-{side}', f'aggregate-stats-switch-{side}', f'phase-slider-{side}', slider_range)
+    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '0 10px'})
+
+app.title = 'EcoHAB Dashboard'
+if __name__ == '__main__':
+    args = parse_arguments()
+    results_path = args.results_path
+
+    if not Path(results_path).is_file():
+        FileNotFoundError(f'{results_path} not found.')
+        sys.exit(1)
+    store = pd.HDFStore(results_path, mode='r')
+    dash_data = auxfun_plots.load_dashboard_data(store)
+    _data = dash_data['time_per_position_df']
+    n_phases_dark = _data['phase_count'][_data['phase'] == 'dark_phase'].max()
+    n_phases_light = _data['phase_count'][_data['phase'] == 'light_phase'].max()
+    n_phases = min(n_phases_dark, n_phases_light)
+    phases = list(range(1, n_phases + 1))
+
+
+    # Dashboard layout
+    dashboard_layout = html.Div([
+        generate_settings_block('mode-switch', 'aggregate-stats-switch', 'phase-slider', [min(phases), max(phases)]),    
             
         html.Div([
             # Ranking and network graph
             html.Div([
                 html.Div([
                     dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
+                    html.Div([
+                        html.Button("Download SVG", id="btn-ranking-time-plot-svg"),
+                        dcc.Download(id="download-ranking-time-plot-svg")
+                        ])
                 ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
                 html.Div([
                     dcc.Graph(id='network-graph')
@@ -224,74 +256,10 @@ if __name__ == '__main__':
 
         html.Div([
             # Left panel
-            html.Div([
-                html.Label('Select Plot', style={'fontWeight': 'bold'}),
-                dcc.Dropdown(
-                    id='dropdown-plot-left',
-                    options=[
-                        {'label': 'Visits to compartments Dark', 'value': 'position_dark_visits'},
-                        {'label': 'Visits to compartments Light', 'value': 'position_light_visits'},
-                        {'label': 'Time spent in compartments Dark', 'value': 'position_dark_time'},
-                        {'label': 'Time spent in compartments Light', 'value': 'position_light_time'},
-                        {'label': 'Pairwise Encounters Dark', 'value': 'pairwise_encounters_dark'},
-                        {'label': 'Pairwise Encounters Light', 'value': 'pairwise_encounters_light'},
-                        {'label': 'Pairwise Time Dark', 'value': 'pairwise_time_dark'},
-                        {'label': 'Pairwise Time Light', 'value': 'pairwise_time_light'},
-                        {'label': 'Chasings Dark', 'value': 'chasings_dark'},
-                        {'label': 'Chasings Light', 'value': 'chasings_light'},
-                        {'label': 'In cohort sociability Dark', 'value': 'sociability_dark'},
-                        {'label': 'In cohort sociability Light', 'value': 'sociability_light'},
-                        {'label': 'Network Graph Dark', 'value': 'network_dark'},
-                        {'label': 'Network Graph Light', 'value': 'network_light'}
-                    ],
-                    value='position_dark'
-                ),
-                dcc.Graph(id='comparison-plot-left'),
-                html.Label('Phase', style={'margin-top': '20px'}),
-                dcc.Slider(
-                    id='slider-phase-left',
-                    min=min(phases),
-                    max=max(phases),
-                    value=min(phases),
-                    marks={str(phase): str(phase) for phase in phases},
-                    step=None
-                ),
-            ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '0 10px'}),
+            generate_comparison_block('left', [min(phases), max(phases)]),
 
-            # Right panel
-            html.Div([
-                html.Label('Select Plot', style={'fontWeight': 'bold'}),
-                dcc.Dropdown(
-                    id='dropdown-plot-right',
-                    options=[
-                        {'label': 'Visits to compartments Dark', 'value': 'position_dark_visits'},
-                        {'label': 'Visits to compartments Light', 'value': 'position_light_visits'},
-                        {'label': 'Time spent in compartments Dark', 'value': 'position_dark_time'},
-                        {'label': 'Time spent in compartments Light', 'value': 'position_light_time'},
-                        {'label': 'Pairwise Encounters Dark', 'value': 'pairwise_encounters_dark'},
-                        {'label': 'Pairwise Encounters Light', 'value': 'pairwise_encounters_light'},
-                        {'label': 'Pairwise Time Dark', 'value': 'pairwise_time_dark'},
-                        {'label': 'Pairwise Time Light', 'value': 'pairwise_time_light'},
-                        {'label': 'Chasings Dark', 'value': 'chasings_dark'},
-                        {'label': 'Chasings Light', 'value': 'chasings_light'},
-                        {'label': 'In cohort sociability Dark', 'value': 'sociability_dark'},
-                        {'label': 'In cohort sociability Light', 'value': 'sociability_light'},
-                        {'label': 'Network Graph Dark', 'value': 'network_dark'},
-                        {'label': 'Network Graph Light', 'value': 'network_light'}
-                    ],
-                    value='position_dark'
-                ),
-                dcc.Graph(id='comparison-plot-right'),
-                html.Label('Phase', style={'margin-top': '20px'}),
-                dcc.Slider(
-                    id='slider-phase-right',
-                    min=min(phases),
-                    max=max(phases),
-                    value=min(phases),
-                    marks={str(phase): str(phase) for phase in phases},
-                    step=None
-                ),
-            ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '0 10px'}),
+            # Right panel  
+            generate_comparison_block('right', [min(phases), max(phases)]),
         ])
     ])
     app.layout = html.Div([
@@ -379,55 +347,29 @@ if __name__ == '__main__':
         return [position_fig, activity_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot]
 
     @app.callback(
-        [
-            Output('comparison-plot-left', 'figure'),
-            Output('comparison-plot-right', 'figure'),
-        ],
+        Output('comparison-plot-left', 'figure'),
         [
             Input('dropdown-plot-left', 'value'),
-            Input('slider-phase-left', 'value'),
-            Input('dropdown-plot-right', 'value'),
-            Input('slider-phase-right', 'value'),
+            Input('mode-switch-left', 'value'),
+            Input('aggregate-stats-switch-left', 'value'),
+            Input('phase-slider-left', 'value'),
         ]
     )
-    def update_independent_plots(plot_left, phase_left, plot_right, phase_right,):
-        def get_plot(plot_type, phase):
-            match plot_type:
-                case 'position_dark_visits':
-                    return plot_position_fig(dash_data, 'dark', phase, 'visits')
-                case 'position_light_visits':
-                    return plot_position_fig(dash_data, 'light', phase, 'visits')
-                case 'position_dark_time':
-                    return plot_position_fig(dash_data, 'dark', phase, 'time')
-                case 'position_light_time':
-                    return plot_position_fig(dash_data, 'light', phase, 'time')
-                case 'pairwise_encounters_dark':
-                    return plot_pairwise_plot(dash_data, 'dark', phase, 'visits')
-                case 'pairwise_encounters_light':
-                    return plot_pairwise_plot(dash_data, 'light', phase, 'visits')
-                case 'pairwise_time_dark': 
-                    return plot_pairwise_plot(dash_data, 'dark', phase, 'time')
-                case 'pairwise_time_light':
-                    return plot_pairwise_plot(dash_data, 'light', phase, 'time')
-                case 'chasings_dark':
-                    return plot_chasings(dash_data, 'dark', phase, 'phases')
-                case 'chasings_light': 
-                    return plot_chasings(dash_data, 'light', phase, 'phases')
-                case 'sociability_dark':
-                    return plot_in_cohort_sociability(dash_data, 'dark', phase, 'phases')
-                case 'sociability_light':
-                    return plot_in_cohort_sociability(dash_data, 'light', phase, 'phases')
-                case 'network_dark':
-                    return plot_network_grah(dash_data, 'dark', phase)
-                case 'network_light':
-                    return plot_network_grah(dash_data, 'light', phase)
-                case _:
-                    return {}
+    def update_left_comparison(plot_type, phase_type, aggregate_stats_switch, phase_range):
+        return get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range)
 
-        fig_left = get_plot(plot_left, phase_left)
-        fig_right = get_plot(plot_right, phase_right)
-
-        return fig_left, fig_right
+    @app.callback(
+        Output('comparison-plot-right', 'figure'),
+        [
+            Input('dropdown-plot-right', 'value'),
+            Input('mode-switch-right', 'value'),
+            Input('aggregate-stats-switch-right', 'value'),
+            Input('phase-slider-right', 'value'),
+        ]
+    )
+    def update_right_comparison(plot_type, phase_type, aggregate_stats_switch, phase_range):
+        result = get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range)
+        return result
 
     # Run the app
     open_browser()
