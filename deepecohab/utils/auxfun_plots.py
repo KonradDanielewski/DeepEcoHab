@@ -193,7 +193,7 @@ def plot_mean_activity_per_hour(df: pd.DataFrame, animals: list[str], colors: li
     Activity is defined as every antenna detection.
 
     Args:
-        df: mean_df of antenna detections per hour
+        df: main_df of the dataset
         animals: animal_ids
         colors: list of colors to be used for animals
 
@@ -252,7 +252,7 @@ def plot_sum_activity_per_hour(df: pd.DataFrame, colors: list[str]) -> go.Figure
     Activity is defined as every antenna detection.
 
     Args:
-        df: mean_df of antenna detections per hour
+        df: main_df of the dataset
         colors: list of colors to be used for animals
 
     Returns:
@@ -270,6 +270,146 @@ def plot_sum_activity_per_hour(df: pd.DataFrame, colors: list[str]) -> go.Figure
         title="<b>Activity over time</b>", 
     )
     fig.update_yaxes(title="Antenna detections")
+    fig.update_xaxes(title="<b>Hours</b>")
+    
+    return fig
+
+def prep_match_df_line(df, match_df):
+    temp_df = df.loc[:, ['animal_id', 'datetime']].copy()
+    match_df_temp = match_df.loc[:, ['winner', 'datetime']].copy()
+    match_df_temp.columns = ['animal_id', 'datetime']
+
+    temp_df = pd.concat([temp_df, match_df_temp])
+    indices = temp_df[temp_df.duplicated(keep='last')].sort_index().index
+
+    match_df.loc[:, ['phase_count', 'hour']] = df.loc[indices, ['phase_count', 'hour']].values
+
+    match_df = match_df.astype({
+        'phase_count': int,
+        'hour': int,
+    })
+
+    return match_df
+
+def prep_chasing_overtime_mean(match_df):
+    """Auxfun to prep data for a line plot of chasing over hours - mean
+    """   
+    plot_df = (
+        match_df
+        .loc[:, ['winner', 'phase_count', 'hour']]
+        .groupby(['phase_count', 'hour'], observed=True)
+        .value_counts()
+        .reset_index()
+    )
+
+    mean_df = plot_df.iloc[:, 1:].groupby(["winner", "hour"], observed=False).mean().reset_index()
+    sem_df = plot_df.iloc[:, 1:].groupby(["winner", "hour"], observed=False).sem().reset_index()
+    mean_df["lower"] = mean_df['count'].values - sem_df['count'].values
+    mean_df["higher"] = mean_df['count'].values + sem_df['count'].values
+
+    return mean_df
+
+def prep_chasing_overtime_sum(match_df) -> pd.DataFrame:
+    """Auxfun to prep data for a line plot of chasing over hours - sum
+    """       
+    plot_df = (
+        match_df
+        .loc[:, ['winner', 'phase_count', 'hour']]
+        .groupby(['phase_count', 'hour'], observed=True)
+        .value_counts()
+        .reset_index()
+    )
+
+    plot_df = plot_df.iloc[:, 1:].groupby(["winner", "hour"], observed=False).sum().reset_index()
+
+    return plot_df
+
+
+def plot_mean_chasings_per_hour(
+        match_df: pd.DataFrame, 
+        animals: list[str], 
+        colors: list[str]
+    ) -> go.Figure:
+    """Create a line plot showing per hour activity grouped by phase_count - mean per phase_count. 
+    Activity is defined as every antenna detection.
+
+    Args:
+        df: mean_df of antenna detections per hour
+        animals: animal_ids
+        colors: list of colors to be used for animals
+
+    Returns:
+        Line plot of mean N detections in phase_counts with shaded region for SEM
+    """
+
+    plot_df = prep_chasing_overtime_mean(match_df)
+
+    fig = go.Figure()
+
+    x = list(range(24))
+    x_rev = x[::-1]
+
+    for animal, color in zip(animals, colors):
+        animal_df = plot_df.query("winner == @animal")
+        
+        y = list(animal_df["count"].values)
+        y_upper = list(animal_df["higher"].values) 
+        y_lower = list(animal_df["lower"].values)[::-1]
+
+        shade_color = color.replace('rgb', 'rgba').replace(')', ', 0.2)') # shaded region is SEM
+ 
+        fig.add_trace(go.Scatter(
+            x=x+x_rev,
+            y=y_upper+y_lower,
+            fill='toself',
+            fillcolor=shade_color,
+            line_color='rgba(255,255,255,0)',
+            showlegend=False,
+            name=animal,
+            legendgroup=animal,
+            line=dict(
+                shape='spline'
+            )
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=x, y=y,
+            line_color=color,
+            name=animal,
+            legendgroup=animal,
+            line=dict(
+                shape='spline'
+            )
+        ))
+
+    fig.update_layout(title="<b>Chasing over time</b>")
+    fig.update_yaxes(title="<b># of chasing events</b>")
+    fig.update_xaxes(title="<b>Hours</b>")
+    
+    return fig
+
+def plot_sum_chasings_per_hour(match_df: pd.DataFrame, colors: list[str]) -> go.Figure:
+    """Create a line plot showing per hour chasing grouped by phase_count - sum of phase_counts. 
+
+    Args:
+        df: mean_df of antenna detections per hour
+        colors: list of colors to be used for animals
+
+    Returns:
+        Line plot of sum of all antenna detections across selected phases
+    """
+    plot_df = prep_chasing_overtime_sum(match_df)
+
+    fig = px.line(
+        plot_df, 
+        x="hour", 
+        y="count", 
+        color="winner", 
+        color_discrete_sequence=colors, 
+        line_shape='spline', 
+        title="<b>Chasing over time</b>", 
+    )
+    fig.update_yaxes(title="# of chasing events")
     fig.update_xaxes(title="<b>Hours</b>")
     
     return fig
@@ -292,6 +432,7 @@ def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
     ranking = pd.read_hdf(store, key='ranking')
     plot_chasing_data = prep_network_df(chasings_df)
     plot_ranking_data = prep_ranking(ranking_ordinal_df)
+    match_df = pd.read_hdf(store, key='match_df')
     
     return {
         'main_df': main_df,
@@ -307,4 +448,5 @@ def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
         'plot_chasing_data': plot_chasing_data,
         'plot_ranking_data': plot_ranking_data,
         'ranking': ranking,
+        'match_df': match_df,
     }    
