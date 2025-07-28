@@ -21,7 +21,8 @@ from deepecohab.dash.plots import ( # TODO: change import style
     plot_chasings,
     plot_in_cohort_sociability,
     plot_network_grah,
-    get_single_plot
+    get_single_plot,
+    plot_chasing,
 )
 
 
@@ -220,17 +221,31 @@ if __name__ == '__main__':
         generate_settings_block('mode-switch', 'aggregate-stats-switch', 'phase-slider', [min(phases), max(phases)]),    
             
         html.Div([
-            # Ranking and network graph
+            # Ranking, network graph, chasings
+            html.H2('Social hierarchy', style={'textAlign': 'left', 'margin-bottom': '40px'}),
             html.Div([
                 html.Div([
                     dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
-                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                    html.Div([
+                        html.Button("Download SVG", id="btn-ranking-time-plot-svg"),
+                        dcc.Download(id="download-ranking-time-plot-svg")
+                        ]),
+                ], style={'width': '59%', 'display': 'inline-block', 'verticalAlign': 'top'}),
                 html.Div([
                     dcc.Graph(id='network-graph'),
                     generate_download_block('network'),
+                ], style={'width': '39%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+            ]),
+            html.Div([
+                html.Div([
+                    dcc.Graph(id='chasings-heatmap')
+                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                html.Div([
+                    dcc.Graph(id='chasings-plot')
                 ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
             ]),
             # Activity per hour line and per position bar
+            html.H2('Activity', style={'textAlign': 'left', 'margin-bottom': '40px'}),
             html.Div([
                 dcc.RadioItems(
                     id='position-switch',
@@ -248,24 +263,22 @@ if __name__ == '__main__':
                     dcc.Graph(id='activity-plot', style={'height': '500px'})
                 ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'bot'}),
             ]),
-            # Pairwrise time spent / encounters per cage
-            dcc.RadioItems(
+            # Pairwise and incohort heatmaps
+            html.H2('Sociability', style={'textAlign': 'left', 'margin-bottom': '40px'}),
+            html.Div([
+                dcc.RadioItems(
                 id='pairwise-switch',
                 options=[{'label': 'Visits', 'value': 'visits'}, {'label': 'Time', 'value': 'time'}],
                 value='visits',
                 labelStyle={'display': 'inline-block'}
-            ),
-            dcc.Graph(id='pairwise-heatmap'),
-            # Chasings and incohort heatmaps
-            html.Div([
+                ),
                 html.Div([
-                    dcc.Graph(id='chasings-heatmap')
+                    dcc.Graph(id='pairwise-heatmap')
                 ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
                 html.Div([
                     dcc.Graph(id='sociability-heatmap')
                 ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
                     ], style={'width': '90%', 'margin': 'auto'}),
-            
             ], style={'padding': '20px'})
     ])
 
@@ -344,6 +357,7 @@ if __name__ == '__main__':
             Output('chasings-heatmap', 'figure'),
             Output('sociability-heatmap', 'figure'),
             Output('network-graph', 'figure'),
+            Output('chasings-plot', 'figure'),
         ],
         [
             Input('phase-slider', 'value'),
@@ -361,8 +375,9 @@ if __name__ == '__main__':
         chasings_plot = plot_chasings(dash_data, mode, phase_range, aggregate_stats_switch)
         incohort_soc_plot = plot_in_cohort_sociability(dash_data, mode,phase_range, sociability_summary_switch="mean") # it's never a sum, probably just discard the parameter
         network_plot = plot_network_grah(dash_data, mode, phase_range)
+        chasing_line_plot = plot_chasing(dash_data, phase_range, aggregate_stats_switch)
 
-        return [position_fig, activity_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot]
+        return [position_fig, activity_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot, chasing_line_plot]
 
 
     @app.callback(

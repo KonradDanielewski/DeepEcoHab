@@ -513,6 +513,31 @@ def plot_activity(
             return auxfun_plots.plot_sum_activity_per_hour(df, colors)
         case 'mean':
             return auxfun_plots.plot_mean_activity_per_hour(df, animals, colors)
+        
+def plot_chasing(
+        dash_data: dict[pd.DataFrame],
+        phase_range: List[int], 
+        summary_switch: Literal['sum', 'mean']
+    ) -> go.Figure:
+    
+    df = dash_data['main_df']
+    match_df = dash_data['match_df']
+
+    match_df = auxfun_plots.prep_match_df_line(df, match_df)
+
+    match_df = match_df[
+        (match_df['phase_count'] >= phase_range[0]) & 
+        (match_df['phase_count'] <= phase_range[-1])
+    ]
+
+    animals = df.animal_id.cat.categories
+    colors = auxfun_plots.color_sampling(animals)
+
+    match summary_switch:
+        case 'sum':
+            return auxfun_plots.plot_sum_chasings_per_hour(match_df, colors)
+        case 'mean':
+            return auxfun_plots.plot_mean_chasings_per_hour(match_df, animals, colors)
     
 def get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range):
     match plot_type:

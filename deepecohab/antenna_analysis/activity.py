@@ -30,8 +30,14 @@ def _extract_phase_switch_indices(animal_df: pd.DataFrame):
 def _correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame:
     """Auxfun to correct information in duplicated indices to match the previous phase.
     """    
-    day_col, phase_col, phase_count_col = animal_df.columns.get_loc('day'), animal_df.columns.get_loc('phase'), animal_df.columns.get_loc('phase_count')
+    hour_col, day_col, phase_col, phase_count_col = (
+        animal_df.columns.get_loc('hour'), 
+        animal_df.columns.get_loc('day'), 
+        animal_df.columns.get_loc('phase'), 
+        animal_df.columns.get_loc('phase_count')
+    )
    
+    animal_df.iloc[location, hour_col] = animal_df.iloc[location-1, hour_col]
     animal_df.iloc[location, day_col] = animal_df.iloc[location-1, day_col]
     animal_df.iloc[location, phase_col] = animal_df.iloc[location-1, phase_col]
     animal_df.iloc[location, phase_count_col] = animal_df.iloc[location-1, phase_count_col]
