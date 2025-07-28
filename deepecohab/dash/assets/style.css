@@ -219,3 +219,10 @@ a:hover {
 .mb-2 { margin-bottom: 1rem; }
 .p-1 { padding: 0.5rem; }
 .p-2 { padding: 1rem; }
+
+.icon-button-dark {
+    color: #ffffff;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+}

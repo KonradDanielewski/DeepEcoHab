@@ -2,11 +2,15 @@ import argparse
 import sys
 import webbrowser
 from pathlib import Path
+import io
+import json
 
 import dash
 import pandas as pd
-from dash import dcc, html
-from dash.dependencies import Input, Output, MATCH
+from dash import dcc, html, ctx
+from dash.dependencies import Input, Output, State, MATCH, ALL
+import dash_bootstrap_components as dbc
+
 
 from deepecohab.utils import auxfun_plots
 from deepecohab.dash.plots import ( # TODO: change import style
@@ -35,7 +39,7 @@ def parse_arguments():
     return parser.parse_args()
 
 # Initialize the Dash app
-app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=["/assets/styles.css"])
+app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=["/assets/styles.css",dbc.icons.FONT_AWESOME])
 
 import plotly.graph_objects as go
 import plotly.io as pio
@@ -182,6 +186,18 @@ def generate_comparison_block(side: str, slider_range: list[int]):
         )
     ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '0 10px'})
 
+def generate_download_block(graph_id):
+    
+    return html.Div([
+        dcc.Store(id={'type': 'dropdown-visible', 'graph': graph_id}, data=False),
+        dbc.Button(id={'type': 'download-icon-button', 'graph': graph_id}, className="fa-solid fa-file-export icon-button-dark", 
+                   style={"fontSize": "30px", "marginRight": "10px"}),
+        html.Div(id={'type': 'dropdown-container', 'graph': graph_id}, style={"position": "relative"}),
+        dcc.Download(id={'type': 'download-component', 'graph': graph_id})
+    ])
+    
+
+
 app.title = 'EcoHAB Dashboard'
 if __name__ == '__main__':
     args = parse_arguments()
@@ -208,13 +224,10 @@ if __name__ == '__main__':
             html.Div([
                 html.Div([
                     dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
-                    html.Div([
-                        html.Button("Download SVG", id="btn-ranking-time-plot-svg"),
-                        dcc.Download(id="download-ranking-time-plot-svg")
-                        ])
                 ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
                 html.Div([
-                    dcc.Graph(id='network-graph')
+                    dcc.Graph(id='network-graph'),
+                    generate_download_block('network'),
                 ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
             ]),
             # Activity per hour line and per position bar
@@ -340,7 +353,7 @@ if __name__ == '__main__':
             Input('pairwise-switch', 'value'),
         ]  
     )
-    def update_plots(phase_range, mode, aggregate_stats_switch, position_switch,  pairwise_switch):
+    def update_plots(phase_range, mode, aggregate_stats_switch, position_switch, pairwise_switch):
         
         position_fig = plot_position_fig(dash_data, mode,phase_range, position_switch, aggregate_stats_switch)
         activity_fig = plot_activity(dash_data, phase_range, aggregate_stats_switch)
@@ -353,18 +366,88 @@ if __name__ == '__main__':
 
 
     @app.callback(
-    Output({'type': 'comparison-plot', 'side': MATCH}, 'figure'),
-    [
-        Input({'type': 'plot-dropdown', 'side': MATCH}, 'value'),
-        Input({'type': 'mode-switch', 'side': MATCH}, 'value'),
-        Input({'type': 'aggregate-switch', 'side': MATCH}, 'value'),
-        Input({'type': 'phase-slider', 'side': MATCH}, 'value'),
-    ]
-)
-    def update_right_comparison(plot_type, phase_type, aggregate_stats_switch, phase_range):
+        Output({'type': 'comparison-plot', 'side': MATCH}, 'figure'),
+        [
+            Input({'type': 'plot-dropdown', 'side': MATCH}, 'value'),
+            Input({'type': 'mode-switch', 'side': MATCH}, 'value'),
+            Input({'type': 'aggregate-switch', 'side': MATCH}, 'value'),
+            Input({'type': 'phase-slider', 'side': MATCH}, 'value'),
+        ]
+    )
+    def update_comparison_plot(plot_type, phase_type, aggregate_stats_switch, phase_range):
         return get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range)
+    
+    @app.callback(
+        Output({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
+        [
+            Input({'type': 'download-icon-button', 'graph': MATCH}, "n_clicks"),
+            Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks')
+        ],
+        State({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
+        prevent_initial_call=True
+    )
+    def toggle_dropdown(icon_clicks, download_clicks, visible):
+            
+        triggered_id = ctx.triggered_id
 
+        if triggered_id['type']== 'download-icon-button' and icon_clicks is not None:
+            return not visible
+        elif isinstance(triggered_id, dict) and triggered_id['type'] == 'download-option':
+            return False
+        raise dash.exceptions.PreventUpdate
+
+    
+    
+    @app.callback(
+        Output({'type': 'dropdown-container', 'graph': MATCH}, "children"),
+        Input({'type': 'dropdown-visible', 'graph': MATCH}, "data")
+    )
+    def render_dropdown(visible):
+        if visible:
+            triggered_id = ctx.triggered_id
+            graph_id = triggered_id['graph']
+            return html.Div([
+                html.Div([
+                    html.Div("Download SVG", id={'type': 'download-option', 'format': 'svg', 'graph': graph_id},
+                             n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),
+                    html.Div("Download JSON", id={'type': 'download-option', 'format': 'json', 'graph': graph_id},
+                             n_clicks=0, className="dropdown-item", style={"cursor": "pointer"})
+                ], className="dropdown-menu show", style={"position": "absolute", "zIndex": 1000}),
+            ])
+        return None
+
+    
+    @app.callback(
+        Output({'type': 'download-component', 'graph': MATCH}, 'data'),
+        [
+            Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
+            Input('phase-slider', 'value'),
+            Input('mode-switch', 'value'),
+            Input('aggregate-stats-switch', 'value'),
+            Input('position-switch', 'value'),
+            Input('pairwise-switch', 'value'),
+        ],
+        prevent_initial_call=True
+    )
+    def download_figure(n_clicks, phase_range, phase_type, aggregate_stats_switch, position_switch, pairwise_switch):
+        triggered_id = ctx.triggered_id
+    
+        plot_type = triggered_id['graph']
+        fmt = triggered_id['format']
+        
+        fig = get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range)
+
+        if fmt == 'svg':
+            buf = io.BytesIO()
+            pio.write_image(fig, buf, format="svg")
+            return dcc.send_bytes(buf.read(), filename=f"{plot_type}.svg")
+        elif fmt == 'json':
+            return dcc.send_string(json.dumps(fig.to_plotly_json()), filename=f"{plot_type}.json")
+        else:
+            raise dash.exceptions.PreventUpdate
+    
+    
     # Run the app
     open_browser()
-    app.run(debug=True, port=8050)
+    app.run(debug=False, port=8050)
     
