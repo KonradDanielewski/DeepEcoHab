@@ -232,7 +232,7 @@ if __name__ == '__main__':
                         ]),
                 ], style={'width': '59%', 'display': 'inline-block', 'verticalAlign': 'top'}),
                 html.Div([
-                    dcc.Graph(id='network-graph'),
+                    dcc.Graph(id={'graph':'network'}),
                     generate_download_block('network'),
                 ], style={'width': '39%', 'display': 'inline-block', 'verticalAlign': 'top'}),
             ]),
@@ -356,7 +356,7 @@ if __name__ == '__main__':
             Output('pairwise-heatmap', 'figure'),
             Output('chasings-heatmap', 'figure'),
             Output('sociability-heatmap', 'figure'),
-            Output('network-graph', 'figure'),
+            Output({'graph':'network'}, 'figure'),
             Output('chasings-plot', 'figure'),
         ],
         [
@@ -415,7 +415,7 @@ if __name__ == '__main__':
     
     @app.callback(
         Output({'type': 'dropdown-container', 'graph': MATCH}, "children"),
-        Input({'type': 'dropdown-visible', 'graph': MATCH}, "data")
+        Input({'type': 'dropdown-visible', 'graph': MATCH}, "data"),
     )
     def render_dropdown(visible):
         if visible:
@@ -434,30 +434,23 @@ if __name__ == '__main__':
     
     @app.callback(
         Output({'type': 'download-component', 'graph': MATCH}, 'data'),
-        [
-            Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
-            Input('phase-slider', 'value'),
-            Input('mode-switch', 'value'),
-            Input('aggregate-stats-switch', 'value'),
-            Input('position-switch', 'value'),
-            Input('pairwise-switch', 'value'),
-        ],
+        Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
+        State({'graph':MATCH}, 'figure'),
         prevent_initial_call=True
     )
-    def download_figure(n_clicks, phase_range, phase_type, aggregate_stats_switch, position_switch, pairwise_switch):
+    def download_figure(n_clicks, figure):
         triggered_id = ctx.triggered_id
     
         plot_type = triggered_id['graph']
         fmt = triggered_id['format']
         
-        fig = get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range)
+        figure = go.Figure(figure)
 
         if fmt == 'svg':
-            buf = io.BytesIO()
-            pio.write_image(fig, buf, format="svg")
-            return dcc.send_bytes(buf.read(), filename=f"{plot_type}.svg")
+            svg_bytes = figure.to_image(format='svg')
+            return dcc.send_bytes(svg_bytes, filename=f"{plot_type}.svg")
         elif fmt == 'json':
-            return dcc.send_string(json.dumps(fig.to_plotly_json()), filename=f"{plot_type}.json")
+            return dcc.send_string(json.dumps(figure.to_plotly_json()), filename=f"{plot_type}.json")
         else:
             raise dash.exceptions.PreventUpdate
     
