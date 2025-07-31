@@ -193,7 +193,7 @@ def plot_ranking_line(
     animals,
 ) -> go.Figure:
     """Plots line graph of ranking over time."""   
-    plot_df = auxfun_plots.prep_ranking_in_time_df(ranking_in_time, main_df, per_hour=True)
+    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time, per_hour=True)
 
     fig = go.Figure()
     for i, animal in enumerate(animals):

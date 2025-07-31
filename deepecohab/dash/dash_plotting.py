@@ -79,7 +79,7 @@ def chasings_line(
         
 def activity_bar( # TODO: Add choice to show tunnels or no
     store: pd.HDFStore,
-    data_slice: tuple[str | None, slice[int, int]],
+    data_slice: tuple[str | None, slice],
     type_switch: Literal['visits', 'time'],
     agg_switch: Literal['sum', 'mean'],
 ) -> go.Figure:
@@ -115,7 +115,7 @@ def activity_bar( # TODO: Add choice to show tunnels or no
 
 def ranking_distribution(
     store: pd.HDFStore,
-    data_slice: tuple[str | None, slice[int, int]], # TODO: For future use - requires rewrite of ranking calculation but we could show dsitribution change over time
+    data_slice: tuple[str | None, slice], # TODO: For future use - requires rewrite of ranking calculation but we could show dsitribution change over time
 ) -> go.Figure:
     """Generates a line plot of the ranking distribution.
 
@@ -158,7 +158,7 @@ def ranking_over_time(
 
 def pairwise_sociability(
     store: pd.HDFStore,
-    data_slice: tuple[str | None, slice[int, int]],
+    data_slice: tuple[str | None, slice],
     type_switch: Literal['visits', 'time'],
     agg_switch: Literal['sum', 'mean'],
 ) -> go.Figure:
@@ -186,7 +186,7 @@ def pairwise_sociability(
 
 def chasings(
     store: pd.HDFStore,
-    data_slice: tuple[str | None, slice[int, int]],
+    data_slice: tuple[str | None, slice],
     agg_switch: Literal['sum', 'mean'],
 ) -> go.Figure:
     """Generates a heatmap of chasings.
@@ -207,7 +207,7 @@ def chasings(
 
 def within_cohort_sociability(
     store: pd.HDFStore,
-    data_slice: tuple[str | None, slice[int, int]],
+    data_slice: tuple[str | None, slice],
 ) -> go.Figure:
     """Generates a heatmap of within-cohort sociability.
 

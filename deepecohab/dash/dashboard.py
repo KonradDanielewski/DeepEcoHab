@@ -371,7 +371,7 @@ if __name__ == '__main__':
         pairwise_plot = dash_plotting.pairwise_sociability(store, data_slice,  pairwise_switch, aggregate_stats_switch)
         chasings_plot = dash_plotting.chasings(store, data_slice, aggregate_stats_switch)
         incohort_soc_plot = dash_plotting.within_cohort_sociability(store, data_slice)
-        network_plot = dash_plotting.network_graph(store, mode, data_slice, phase_range)
+        network_plot = dash_plotting.network_graph(store, mode, phase_range)
         chasing_line_plot = dash_plotting.chasings_line(store, phase_range, aggregate_stats_switch)
         ranking_line = dash_plotting.ranking_over_time(store)
         ranking_distribution = dash_plotting.ranking_distribution(store, data_slice)
@@ -398,8 +398,13 @@ if __name__ == '__main__':
             Input({'type': 'phase-slider', 'side': MATCH}, 'value'),
         ]
     )
-    def update_comparison_plot(plot_type, phase_type, aggregate_stats_switch, phase_range):
-        return dash_plotting.get_single_plot(store, plot_type, phase_type, aggregate_stats_switch, phase_range)
+    def update_comparison_plot(plot_type, mode, aggregate_stats_switch, phase_range):
+        idx = pd.IndexSlice
+        if mode == 'all':
+            data_slice = idx[(slice(None), slice(phase_range[0], phase_range[-1])), :]
+        else:
+            data_slice = idx[(mode, slice(phase_range[0], phase_range[-1])), :]
+        return dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch)
     
     @app.callback(
         Output({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
