@@ -210,6 +210,7 @@ def calculate_ranking(
 
     ranking_df = pd.DataFrame([(key, val.mu, val.sigma) for key, val in ranking.items()])
     ranking_df.columns = ['animal_id', 'mu', 'sigma']
+    ranking_df['animal_id'] = ranking_df['animal_id'].astype('category')
     
     # Calculate ranking at the end of each phase
     phase_end_marks = df[df.datetime.isin(ranking_in_time.index)].sort_values('datetime')

@@ -11,19 +11,7 @@ from dash import dcc, html, ctx
 from dash.dependencies import Input, Output, State, MATCH, ALL
 import dash_bootstrap_components as dbc
 
-
-from deepecohab.utils import auxfun_plots
-from deepecohab.dash.plots import ( # TODO: change import style
-    plot_ranking_in_time,
-    plot_activity,
-    plot_position_fig,
-    plot_pairwise_plot,
-    plot_chasings,
-    plot_in_cohort_sociability,
-    plot_network_grah,
-    get_single_plot,
-    plot_chasing,
-)
+from deepecohab.dash import dash_plotting
 
 
 def open_browser():
@@ -69,11 +57,11 @@ def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider
                     dcc.RadioItems(
                         id=phase_type_id,
                         options=[
-                            {'label': 'Dark', 'value': 'dark'},
-                            {'label': 'Light', 'value': 'light'},
+                            {'label': 'Dark', 'value': 'dark_phase'},
+                            {'label': 'Light', 'value': 'light_phase'},
                             {'label': 'All', 'value': 'all'},
                         ],
-                        value='dark',
+                        value='dark_phase',
                         labelStyle={'display': 'block', 'marginBottom': '5px'},
                         inputStyle={'marginRight': '6px'},
                     )
@@ -208,10 +196,9 @@ if __name__ == '__main__':
         FileNotFoundError(f'{results_path} not found.')
         sys.exit(1)
     store = pd.HDFStore(results_path, mode='r')
-    dash_data = auxfun_plots.load_dashboard_data(store)
-    _data = dash_data['time_per_position_df']
-    n_phases_dark = _data['phase_count'][_data['phase'] == 'dark_phase'].max()
-    n_phases_light = _data['phase_count'][_data['phase'] == 'light_phase'].max()
+    _data = store['/chasings']
+    n_phases_dark = _data.loc['dark_phase', :].index.get_level_values(0).unique().max()
+    n_phases_light = _data.loc['light_phase', :].index.get_level_values(0).unique().max()
     n_phases = min(n_phases_dark, n_phases_light)
     phases = list(range(1, n_phases + 1))
 
@@ -225,7 +212,8 @@ if __name__ == '__main__':
             html.H2('Social hierarchy', style={'textAlign': 'left', 'margin-bottom': '40px'}),
             html.Div([
                 html.Div([
-                    dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
+                    dcc.Graph(id='ranking-time-plot'),
+                    dcc.Graph(id='ranking-distribution'),
                     html.Div([
                         html.Button("Download SVG", id="btn-ranking-time-plot-svg"),
                         dcc.Download(id="download-ranking-time-plot-svg")
@@ -358,6 +346,8 @@ if __name__ == '__main__':
             Output('sociability-heatmap', 'figure'),
             Output({'graph':'network'}, 'figure'),
             Output('chasings-plot', 'figure'),
+            Output('ranking-time-plot', 'figure'),
+            Output('ranking-distribution', 'figure'),
         ],
         [
             Input('phase-slider', 'value'),
@@ -369,15 +359,34 @@ if __name__ == '__main__':
     )
     def update_plots(phase_range, mode, aggregate_stats_switch, position_switch, pairwise_switch):
         
-        position_fig = plot_position_fig(dash_data, mode,phase_range, position_switch, aggregate_stats_switch)
-        activity_fig = plot_activity(dash_data, phase_range, aggregate_stats_switch)
-        pairwise_plot = plot_pairwise_plot(dash_data, mode, phase_range,  pairwise_switch, aggregate_stats_switch)
-        chasings_plot = plot_chasings(dash_data, mode, phase_range, aggregate_stats_switch)
-        incohort_soc_plot = plot_in_cohort_sociability(dash_data, mode,phase_range, sociability_summary_switch="mean") # it's never a sum, probably just discard the parameter
-        network_plot = plot_network_grah(dash_data, mode, phase_range)
-        chasing_line_plot = plot_chasing(dash_data, phase_range, aggregate_stats_switch)
+        # TODO: to be moved to auxfun_dashboard.py
+        idx = pd.IndexSlice
+        if mode == 'all':
+            data_slice = idx[(slice(None), slice(phase_range[0], phase_range[-1])), :]
+        else:
+            data_slice = idx[(mode, slice(phase_range[0], phase_range[-1])), :]
 
-        return [position_fig, activity_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot, chasing_line_plot]
+        position_fig = dash_plotting.activity_bar(store, data_slice, position_switch, aggregate_stats_switch)
+        activity_fig = dash_plotting.activity_line(store, phase_range, aggregate_stats_switch)
+        pairwise_plot = dash_plotting.pairwise_sociability(store, data_slice,  pairwise_switch, aggregate_stats_switch)
+        chasings_plot = dash_plotting.chasings(store, data_slice, aggregate_stats_switch)
+        incohort_soc_plot = dash_plotting.within_cohort_sociability(store, data_slice)
+        network_plot = dash_plotting.network_graph(store, mode, data_slice, phase_range)
+        chasing_line_plot = dash_plotting.chasings_line(store, phase_range, aggregate_stats_switch)
+        ranking_line = dash_plotting.ranking_over_time(store)
+        ranking_distribution = dash_plotting.ranking_distribution(store, data_slice)
+
+        return [
+            position_fig, 
+            activity_fig, 
+            pairwise_plot, 
+            chasings_plot, 
+            incohort_soc_plot, 
+            network_plot, 
+            chasing_line_plot, 
+            ranking_line, 
+            ranking_distribution,
+        ]
 
 
     @app.callback(
@@ -390,7 +399,7 @@ if __name__ == '__main__':
         ]
     )
     def update_comparison_plot(plot_type, phase_type, aggregate_stats_switch, phase_range):
-        return get_single_plot(dash_data, plot_type, phase_type, aggregate_stats_switch, phase_range)
+        return dash_plotting.get_single_plot(store, plot_type, phase_type, aggregate_stats_switch, phase_range)
     
     @app.callback(
         Output({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
@@ -457,5 +466,5 @@ if __name__ == '__main__':
     
     # Run the app
     open_browser()
-    app.run(debug=False, port=8050)
+    app.run(debug=True, port=8050)
     

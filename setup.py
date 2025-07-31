@@ -15,7 +15,7 @@ setuptools.setup(
         'Programming Language :: Python :: 3',
         'Operating System :: OS Independent'
     ],
-    python_requires='>=3.10',
+    python_requires='>=3.13',
     install_requires=[
         'numpy',
         'plotly',
@@ -27,7 +27,7 @@ setuptools.setup(
         'openskill',
         'networkx',
         'nbformat',
-        'kaleido==1.0.0rc13',
+        'kaleido',
         'joblib',
         'tqdm',
         'tzlocal',

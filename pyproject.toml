@@ -5,7 +5,7 @@ build-backend = 'setuptools.build_meta'
 [project]
 name = 'deepecohab'
 version = '0.2'
-requires-python = '>=3.10'
+requires-python = '>=3.13'
 dependencies = [
     'numpy',
     'plotly',
@@ -17,7 +17,7 @@ dependencies = [
     'openskill',
     'networkx',
     'nbformat',
-    'kaleido==1.0.0rc13',
+    'kaleido',
     'joblib',
     'tqdm',
     'tzlocal',
