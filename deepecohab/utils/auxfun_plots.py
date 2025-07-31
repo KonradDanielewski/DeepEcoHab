@@ -13,10 +13,10 @@ def create_edges_trace(
     pos: dict, 
     cmap: str = 'Viridis'
 ) -> list:
-    """Auxfun to create edges trace with color mapping based on edge width."""
+    """Auxfun to create edges trace with color mapping based on edge width
+    """
     edge_trace = []
     
-    # Get all edge widths to create a color scale
     edge_widths = [G.edges[edge]['chasings'] for edge in G.edges()]
     
     # Normalize edge widths to the range [0, 1] for color mapping
@@ -30,9 +30,9 @@ def create_edges_trace(
     colorscale = px.colors.sample_colorscale(cmap, normalized_widths)
     
     for i, edge in enumerate(G.edges()):
-        source_x, source_y = pos[edge[0]]  # Start point (source node)
-        target_x, target_y = pos[edge[1]]  # End point (target node)
-        edge_width = normalized_widths[i] * 10
+        source_x, source_y = pos[edge[0]]
+        target_x, target_y = pos[edge[1]]
+        edge_width = normalized_widths[i] * 10 # Scale width of edges to be nicely visible
         
         edge_trace.append(
             go.Scatter(
@@ -76,7 +76,6 @@ def create_node_trace(
         )
     )
     
-    # Add positions and text to node_trace
     ranking_score_list = []
     for node in G.nodes():
         x, y = pos[node]
@@ -89,7 +88,6 @@ def create_node_trace(
             f'Mouse ID: {node}<br>Ranking: {ranking_score}',
             )
         
-    # Scale node size and color
     node_trace['marker']['color'] = colors
     node_trace['marker']['size'] = [rank for rank in ranking_score_list]
     return node_trace
@@ -172,6 +170,7 @@ def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame
     return plot_df
 
 def prep_pairwise_arr(df: pd.DataFrame, agg_switch: Literal['sum', 'mean']) -> tuple[np.ndarray, pd.Index]:
+    """Prepares a pairwise array from DataFrame based on aggregation type."""
     cages = df.index.get_level_values('cages').unique()
     animals = df.index.get_level_values('animal_ids').unique()
     match agg_switch:
@@ -185,6 +184,7 @@ def prep_pairwise_arr(df: pd.DataFrame, agg_switch: Literal['sum', 'mean']) -> t
     return plot_arr, animals
 
 def prep_chasings_plot_df(df: pd.DataFrame, agg_switch: Literal['sum', 'mean']) -> pd.DataFrame:
+    """Prepares chasings plot DataFrame based on aggregation type."""
     match agg_switch:
         case 'sum':
             return df.groupby(level='animal_ids').sum(min_count=1)
@@ -192,6 +192,7 @@ def prep_chasings_plot_df(df: pd.DataFrame, agg_switch: Literal['sum', 'mean']) 
             return df.groupby(level='animal_ids').mean()
         
 def prep_within_cohort_plot_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Prepares within-cohort plot DataFrame using mean aggregation."""
     return df.groupby(level='animal_ids').mean()
 
 def prep_activity_overtime_sum(df: pd.DataFrame) -> pd.DataFrame:
@@ -228,12 +229,14 @@ def prep_activity_overtime_mean(df: pd.DataFrame) -> pd.DataFrame:
     return mean_df
 
 def color_sampling(values: list[str], cmap: str = 'Phase') -> list[str]:
+    """Samples colors from a colormap for given values."""
     x = np.linspace(0, 1, len(values))
     colors = px.colors.sample_colorscale(cmap, x)
 
     return colors
 
 def prep_match_df_line(df: pd.DataFrame, match_df: pd.DataFrame) -> pd.DataFrame:
+    """Prepares match DataFrame for line plotting by concatenating and updating indices."""
     temp_df = df.loc[:, ['animal_id', 'datetime']].copy()
     match_df_temp = match_df.loc[:, ['winner', 'datetime']].copy()
     match_df_temp.columns = ['animal_id', 'datetime']
@@ -282,43 +285,3 @@ def prep_chasing_overtime_sum(match_df) -> pd.DataFrame:
     )
 
     return plot_df
-
-
-
-
-# def load_dashboard_data(store: pd.HDFStore) -> dict[pd.DataFrame | pd.Series]:
-#     """Auxfun to load data from HDF5 store
-#     """
-#     main_df = pd.read_hdf(store, key='main_df')
-#     padded_df = pd.read_hdf(store, key='padded_df')
-#     ranking_in_time = pd.read_hdf(store, key='ranking_in_time')
-#     time_per_position_df = pd.read_hdf(store, key='time_per_position')
-#     time_per_position_df = time_per_position_df.melt(ignore_index=False, value_name='Time[s]', var_name='animal_id').reset_index()
-#     visits_per_position_df = pd.read_hdf(store, key='visits_per_position')
-#     visits_per_position_df = visits_per_position_df.melt(ignore_index=False, value_name='Visits[#]', var_name='animal_id').reset_index()
-#     time_together = pd.read_hdf(store, key='time_together').reset_index()
-#     pairwise_encounters = pd.read_hdf(store, key='pairwise_encounters').reset_index()
-#     chasings_df = pd.read_hdf(store, key='chasings')
-#     incohort_sociability_df = pd.read_hdf(store, key='incohort_sociability')
-#     ranking_ordinal_df = pd.read_hdf(store, key='ranking_ordinal')
-#     ranking = pd.read_hdf(store, key='ranking')
-#     plot_chasing_data = prep_network_df(chasings_df)
-#     plot_ranking_data = prep_ranking(ranking_ordinal_df)
-#     match_df = pd.read_hdf(store, key='match_df')
-    
-#     return {
-#         'main_df': main_df,
-#         'padded_df': padded_df,
-#         'ranking_in_time': ranking_in_time,
-#         'time_per_position_df': time_per_position_df,
-#         'visits_per_position_df': visits_per_position_df,
-#         'time_together': time_together,
-#         'pairwise_encounters': pairwise_encounters,
-#         'chasings_df': chasings_df,
-#         'incohort_sociability_df': incohort_sociability_df,
-#         'ranking_ordinal_df': ranking_ordinal_df,
-#         'plot_chasing_data': plot_chasing_data,
-#         'plot_ranking_data': plot_ranking_data,
-#         'ranking': ranking,
-#         'match_df': match_df,
-#     }    

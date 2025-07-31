@@ -12,16 +12,7 @@ def plot_sum_line_per_hour(
     colors: list[tuple[int, int, int]], 
     input_type: Literal['activity', 'chasings'],
 ) -> go.Figure:
-    """Create a line plot showing per hour activity grouped by phase_count - sum of phase_counts. 
-    Activity is defined as every antenna detection.
-
-    Args:
-        df: main_df of the dataset
-        colors: list of colors to be used for animals
-
-    Returns:
-        Line plot of sum of all antenna detections across selected phases
-    """
+    """Plots line graph for activity or chasings.""" 
     match input_type:
         case 'activity':
             plot_df = auxfun_plots.prep_activity_overtime_sum(df)
@@ -52,17 +43,7 @@ def plot_mean_line_per_hour(
     colors: list[str],
     input_type: Literal['activity', 'chasings'],
 ) -> go.Figure:
-    """Create a line plot showing per hour activity grouped by phase_count - mean per phase_count. 
-    Activity is defined as every antenna detection.
-
-    Args:
-        df: mean_df of antenna detections per hour
-        animals: animal_ids
-        colors: list of colors to be used for animals
-
-    Returns:
-        Line plot of mean N detections in phase_counts with shaded region for SEM
-    """
+    """Plots line graph for activity or chasings with SEM shading."""
     match input_type:
         case 'activity':
             plot_df = auxfun_plots.prep_activity_overtime_mean(df)
@@ -122,22 +103,21 @@ def plot_sum_bar_activity(
     colors, 
     type_switch: Literal['visits', 'time'],
 ) -> go.Figure:
+    """Plots bar graph of sum of cage and tunnel visits or time spent."""
     match type_switch:
         case 'visits':
             position_title = f'<b>Visits to each position</u></b>'
-            position_y_title = '<b>Number of visits</b>'
-            position_y = 'Visits[#]'     
+            position_y_title = '<b>Number of visits</b>'   
         case 'time':
             position_title = f'<b>Time spent in each position</u></b>'
             position_y_title = '<b>Time spent [s]</b>'
-            position_y = 'Time[s]'
 
     plot_df = auxfun_plots.prep_sum_per_position_df(df)
 
     fig = px.bar(
         plot_df,
         x='animal_id',
-        y='y_val',
+        y='y_val', # TODO: Maybe change the name to something that's more meaningful
         color='position',
         color_discrete_sequence=colors,
         barmode='group',
@@ -154,6 +134,7 @@ def plot_mean_box_activity(
     colors, 
     type_switch: Literal['visits', 'time'],
 ) -> go.Figure:
+    """Plots box graph of mean of cage and tunnel visits or time spent."""
     match type_switch:
         case 'visits':
             position_title = f'<b>Visits to each position</u></b>'
@@ -184,7 +165,7 @@ def plot_ranking_distribution(
     df: pd.DataFrame, 
     colors: list[tuple[int, int, int, float]],
 ) -> go.Figure:
-    
+    """Plots line graph of ranking distribution with shaded area."""
     distribution_df = auxfun_plots.prep_ranking_distribution(df)
     
     fig = px.line(
@@ -206,16 +187,20 @@ def plot_ranking_distribution(
     return fig
 
 def plot_ranking_line(
-    df: pd.DataFrame, 
+    ranking_in_time: pd.DataFrame, 
+    main_df: pd.DataFrame,
     colors, 
     animals,
 ) -> go.Figure:
+    """Plots line graph of ranking over time."""   
+    plot_df = auxfun_plots.prep_ranking_in_time_df(ranking_in_time, main_df, per_hour=True)
+
     fig = go.Figure()
     for i, animal in enumerate(animals):
         fig.add_trace(
             go.Scatter(
-                x=df.index, 
-                y=df[animal], 
+                x=plot_df.index, 
+                y=plot_df[animal], 
                 name=animal, 
                 marker=dict(color=colors[i]),
             ),
@@ -239,6 +224,7 @@ def plot_sociability_heatmap(
     type_switch: Literal['visits', 'time'], 
     agg_switch: Literal['mean', 'sum'],
 ) -> go.Figure:
+    """Plots heatmaps for pairwise encounters or time spent together."""
     match type_switch:
         case 'visits':
             pairwise_title = f'<b>Number of pairwise encounters</b>'
@@ -281,6 +267,7 @@ def plot_chasings_heatmap(
     df: pd.DataFrame,
     agg_switch: Literal['mean', 'sum'],
 ) -> go.Figure:
+    """Plots heatmap for number of chasings."""
     plot_df = auxfun_plots.prep_chasings_plot_df(df, agg_switch)
 
     z_label = 'Number: %{z}'
@@ -307,6 +294,7 @@ def plot_chasings_heatmap(
 def plot_within_cohort_heatmap(
     df: pd.DataFrame,
 ) -> go.Figure:
+    """Plots heatmap for within-cohort sociability."""
     plot_df = auxfun_plots.prep_within_cohort_plot_df(df)
 
     z_label = 'Sociability: %{z}'
@@ -336,8 +324,7 @@ def plot_network_graph(
     phase_range: list[int, int],
     colors,
 ) -> go.Figure:
-    """Auxfun to plot network graph
-    """
+    """Plots network graph of social structure."""
     chasings_df = auxfun_plots.prep_network_df(chasings_df)
     ranking_ser = auxfun_plots.prep_ranking(ranking_df, phase_range)
 

@@ -13,9 +13,19 @@ def activity_line(
     phase_range: list[int, int], 
     agg_switch: Literal['sum', 'mean']
 ) -> go.Figure:
-    """Outputs a lineplot of cage visits per hour to the dashboard
-    """    
-    
+    """Generates a line plot of cage visits per hour.
+
+    This function filters data based on the specified phase range and generates a line plot
+    showing the activity (antenna reads) per hour. The aggregation can be either the sum or the mean.
+
+    Args:
+        store: The HDFStore object containing the data.
+        phase_range: A list specifying the start and end of the phase range.
+        agg_switch: Determines whether to aggregate data by sum or mean.
+
+    Returns:
+        A Plotly Figure object representing the line plot.
+    """
     df = store['padded_df']
     df = df[
         (df['phase_count'] >= phase_range[0]) & 
@@ -35,9 +45,19 @@ def chasings_line(
     phase_range: list[int, int], 
     agg_switch: Literal['sum', 'mean']
 ) -> go.Figure:
-    """Outputs a lineplot of chasings per hour to the dashboard
-    """    
-    
+    """Generates a line plot of chasings per hour.
+
+    This function filters data based on the specified phase range and generates a line plot
+    showing the number of chasings per hour. The aggregation can be either the sum or the mean.
+
+    Args:
+        store: The HDFStore object containing the data.
+        phase_range: A list specifying the start and end of the phase range.
+        agg_switch: Determines whether to aggregate data by sum or mean.
+
+    Returns:
+        A Plotly Figure object representing the line plot.
+    """
     df = store['main_df']
     match_df = store['match_df']
 
@@ -59,15 +79,25 @@ def chasings_line(
         
 def activity_bar( # TODO: Add choice to show tunnels or no
     store: pd.HDFStore,
-    data_slice,
+    data_slice: tuple[str | None, slice[int, int]],
     type_switch: Literal['visits', 'time'],
     agg_switch: Literal['sum', 'mean'],
 ) -> go.Figure:
-    """Outputs a bar plot or box plot of activity to the dashboard.
-    For 'mean' boxplot is created showing mean number of entries or mean time spent per position.
-    For 'sum' a barplot is created showing sum of entries or time spent per position.
-    """ 
-    
+    """Generates a bar plot or box plot of activity.
+
+    This function generates either a bar plot or a box plot of activity based on the specified data slice (phase type and range).
+    For 'mean', a box plot is created showing the mean number of entries or mean time spent per position.
+    For 'sum', a bar plot is created showing the sum of entries or time spent per position.
+
+    Args:
+        store: The HDFStore object containing the data.
+        data_slice: A tuple specifying the data slice to use.
+        type_switch: Determines whether to plot visits or time.
+        agg_switch: Determines whether to aggregate data by sum or mean.
+
+    Returns:
+        A Plotly Figure object representing the bar plot or box plot.
+    """
     match type_switch:
         case 'visits':
             df = store['visits_per_position'].loc[data_slice]
@@ -85,11 +115,19 @@ def activity_bar( # TODO: Add choice to show tunnels or no
 
 def ranking_distribution(
     store: pd.HDFStore,
-    data_slice, # TODO: For future use - requires rewrite of ranking calculation but we could show dsitribution change over time
+    data_slice: tuple[str | None, slice[int, int]], # TODO: For future use - requires rewrite of ranking calculation but we could show dsitribution change over time
 ) -> go.Figure:
-    """Outputs a line plot of the ranking distribution to the dashboard.
-    """ 
+    """Generates a line plot of the ranking distribution.
 
+    This function generates a line plot showing the distribution of rankings based on the specified data slice (phase type and range).
+
+    Args:
+        store: The HDFStore object containing the data.
+        data_slice: A tuple specifying the data slice to use.
+
+    Returns:
+        A Plotly Figure object representing the line plot.
+    """
     df = store['ranking']
 
     animals = df.animal_id.cat.categories
@@ -100,26 +138,44 @@ def ranking_distribution(
 def ranking_over_time(
     store: pd.HDFStore,
 ) -> go.Figure:
-    """Outputs a line plot of the ranking distribution to the dashboard.
-    """ 
+    """Generates a line plot of the ranking distribution over time.
 
+    This function generates a line plot showing ranking change over time per animal.
+
+    Args:
+        store: The HDFStore object containing the data.
+
+    Returns:
+        A Plotly Figure object representing the line plot.
+    """
     ranking_in_time = store['ranking_in_time']
     main_df = store['main_df']
 
     animals = main_df.animal_id.cat.categories
     colors = auxfun_plots.color_sampling(animals)
 
-    plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time, per_hour=True)
-
-    return plot_factory.plot_ranking_line(plot_df, colors, animals)
+    return plot_factory.plot_ranking_line(ranking_in_time, main_df, colors, animals)
 
 def pairwise_sociability(
     store: pd.HDFStore,
-    data_slice,
+    data_slice: tuple[str | None, slice[int, int]],
     type_switch: Literal['visits', 'time'],
     agg_switch: Literal['sum', 'mean'],
 ) -> go.Figure:
-    
+    """Generates a plot with heatmaps corresponding to the number of cages.
+
+    This function generates a plot with multiple heatmaps, each corresponding to a cage,
+    showing pairwise sociability based on visits or time spent together.
+
+    Args:
+        store: The HDFStore object containing the data.
+        data_slice: A tuple specifying the data slice to use.
+        type_switch: Determines whether to plot visits or time.
+        agg_switch: Determines whether to aggregate data by sum or mean.
+
+    Returns:
+        A Plotly Figure object representing the heatmaps.
+    """
     match type_switch:
         case 'visits':
             df = store['pairwise_encounters'].loc[data_slice]
@@ -130,29 +186,63 @@ def pairwise_sociability(
 
 def chasings(
     store: pd.HDFStore,
-    data_slice,
+    data_slice: tuple[str | None, slice[int, int]],
     agg_switch: Literal['sum', 'mean'],
 ) -> go.Figure:
-    
+    """Generates a heatmap of chasings.
+
+    This function generates a heatmap showing the number of chasings based on the specified data slice.
+
+    Args:
+        store: The HDFStore object containing the data.
+        data_slice: A tuple specifying the data slice to use.
+        agg_switch: Determines whether to aggregate data by sum or mean.
+
+    Returns:
+        A Plotly Figure object representing the heatmap.
+    """   
     df = store['chasings'].loc[data_slice]
 
     return plot_factory.plot_chasings_heatmap(df, agg_switch)
 
 def within_cohort_sociability(
     store: pd.HDFStore,
-    data_slice,
+    data_slice: tuple[str | None, slice[int, int]],
 ) -> go.Figure:
-    
+    """Generates a heatmap of within-cohort sociability.
+
+    This function generates a heatmap showing normalized pairwise sociability within a cohort based on the specified data slice.
+
+    Args:
+        store: The HDFStore object containing the data.
+        data_slice: A tuple specifying the data slice to use.
+
+    Returns:
+        A Plotly Figure object representing the heatmap.
+    """
     df = store['incohort_sociability'].loc[data_slice]
 
     return plot_factory.plot_within_cohort_heatmap(df)
 
 def network_graph(
     store: pd.HDFStore,
-    mode,
-    data_slice,
-    phase_range,
+    mode: str,
+    phase_range: list[int, int],
 ) -> go.Figure:
+    """Generates a network graph.
+
+    This function generates a network graph where nodes are sized by ranking and edges are normalized
+    based on chasings. It outputs a graph for the last ranking in the phase range and the sum of all chasings up to this phase.
+    NOTE: Done for dark_phase now, hardcoded. To be fixed.
+    
+    Args:
+        store: The HDFStore object containing the data.
+        mode: The mode to use for filtering data.
+        phase_range: A list specifying the start and end of the phase range.
+
+    Returns:
+        A Plotly Figure object representing the network graph.
+    """
     if mode == 'all': # TODO: ugly 🤢, better solution? 
         mode = slice(None)
     chasings_df = store['chasings'].loc[(mode)]
@@ -163,7 +253,22 @@ def network_graph(
 
     return plot_factory.plot_network_graph(chasings_df, ranking_df, phase_range, colors)
 
-def get_single_plot(store, plot_type, data_slice, phase_range, agg_switch):
+def get_single_plot(store, mode, plot_type, data_slice, phase_range, agg_switch):
+    """Retrieves a single plot based on the specified parameters.
+
+    This function acts as a factory to generate different types of plots based on the provided parameters.
+
+    Args:
+        store: The data store object containing the data.
+        mode: The mode to use for filtering data.
+        plot_type: The type of plot to generate.
+        data_slice: A tuple specifying the data slice to use.
+        phase_range: A list specifying the start and end of the phase range.
+        agg_switch: Determines whether to aggregate data by sum or mean.
+
+    Returns:
+        A Plotly Figure object representing the requested plot or an empty dictionary if the plot type is not recognized.
+    """
     match plot_type:
         case 'position_visits':
             return activity_bar(store, data_slice, 'visits', agg_switch)
@@ -182,7 +287,7 @@ def get_single_plot(store, plot_type, data_slice, phase_range, agg_switch):
         case 'sociability':
             return within_cohort_sociability(store, data_slice)
         case 'network':
-            return network_graph(store, data_slice, phase_range)
+            return network_graph(store, mode, phase_range)
         case 'ranking_distribution':
             return ranking_distribution(store, data_slice)
         case 'ranking_line':
