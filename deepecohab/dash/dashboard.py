@@ -2,17 +2,17 @@ import argparse
 import sys
 import webbrowser
 from pathlib import Path
-import io
 import json
 
 import dash
 import pandas as pd
 from dash import dcc, html, ctx
 from dash.dependencies import Input, Output, State, MATCH, ALL
-import dash_bootstrap_components as dbc
 
 from deepecohab.dash import dash_plotting
+from deepecohab.dash import dash_layouts
 
+import dash_bootstrap_components as dbc
 
 def open_browser():
     webbrowser.open_new('http://127.0.0.1:8050/')
@@ -28,7 +28,9 @@ def parse_arguments():
     return parser.parse_args()
 
 # Initialize the Dash app
-app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=["/assets/styles.css",dbc.icons.FONT_AWESOME])
+app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=["/assets/styles.css",
+                                                                                   dbc.icons.FONT_AWESOME, 
+                                                                                   dbc.themes.BOOTSTRAP])
 
 import plotly.graph_objects as go
 import plotly.io as pio
@@ -49,142 +51,7 @@ pio.templates["dash_dark"] = dark_dash_template
 pio.templates.default = "dash_dark"
 
 
-def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider_range):
-    return html.Div([
-        html.Div([
-            html.Div([
-                html.Div([
-                    dcc.RadioItems(
-                        id=phase_type_id,
-                        options=[
-                            {'label': 'Dark', 'value': 'dark_phase'},
-                            {'label': 'Light', 'value': 'light_phase'},
-                            {'label': 'All', 'value': 'all'},
-                        ],
-                        value='dark_phase',
-                        labelStyle={'display': 'block', 'marginBottom': '5px'},
-                        inputStyle={'marginRight': '6px'},
-                    )
-                ], style={
-                    'marginRight': '20px',
-                    'minWidth': '70px',
-                    'textAlign': 'left',
-                }),
-                html.Div(style={
-                    'width': '1px',
-                    'backgroundColor': '#5a6b8c',
-                    'height': '40px',
-                    'margin': '0 20px'
-                }),
-                html.Div([
-                    dcc.RadioItems(
-                        id=aggregate_stats_id,
-                        options=[
-                            {'label': 'Sum', 'value': 'sum'},
-                            {'label': 'Mean', 'value': 'mean'},
-                        ],
-                        value='sum',
-                        labelStyle={'display': 'block', 'marginBottom': '5px'},
-                        inputStyle={'marginRight': '6px'},
-                    )
-                ], style={
-                    'marginRight': '20px',
-                    'minWidth': '70px',
-                    'textAlign': 'left',
-                }),
-                html.Div(style={
-                    'width': '1px',
-                    'backgroundColor': '#5a6b8c',
-                    'height': '40px',
-                    'margin': '0 20px'
-                }),
-                html.Div([
-                    html.Label('Phases', style={
-                        'fontWeight': 'bold',
-                        'textAlign': 'left',
-                        'marginRight': '10px',
-                        'whiteSpace': 'nowrap'
-                    }),
-                    dcc.RangeSlider(
-                        id=slider_id,
-                        min=slider_range[0],
-                        max=slider_range[1],
-                        value=[1,1],
-                        count=1,
-                        step=1,
-                        tooltip={'placement': 'bottom', 'always_visible': True},
-                        updatemode='drag',
-                        included=True,
-                        vertical=False,
-                        persistence=True,
-                        className='slider',
-                    )
-                ], style={'flex': '1'})
-            ],
-            style={
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'center',
-                'width': '100%',
-                'gap': '20px',
-            })
-        ],
-        style={
-            'padding': '10px',
-            'textAlign': 'center',
-            'backgroundColor': "#1f2c44",
-            'position': 'sticky',
-            'top': '0',
-            'zIndex': '1000',
-            'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
-        })
-        ], style={
-        'position': 'sticky',
-        'top': '0',
-        'padding': '10px',
-        'z-index': '1000',
-        'textAlign': 'center',
-        'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
-        'background-color': "#1f2c44",
-    })
-            
-def generate_comparison_block(side: str, slider_range: list[int]):
-    return html.Div([
-        html.Label('Select Plot', style={'fontWeight': 'bold'}),
-        dcc.Dropdown(
-            id={'type': 'plot-dropdown', 'side': side},
-            options=[
-                {'label': 'Visits to compartments', 'value': 'position_visits'},
-                {'label': 'Time spent in compartments', 'value': 'position_time'},
-                {'label': 'Pairwise encounters', 'value': 'pairwise_encounters'},
-                {'label': 'Pairwise time', 'value': 'pairwise_time'},
-                {'label': 'Chasings', 'value': 'chasings'},
-                {'label': 'In cohort sociability', 'value': 'sociability'},
-                {'label': 'Network graph', 'value': 'network'},
-            ],
-            value='position_visits',
-        ),
-        html.Div([
-            dcc.Graph(id={'type': 'comparison-plot', 'side': side}),
-            ]),
-        generate_settings_block(
-            {'type': 'mode-switch', 'side': side},
-            {'type': 'aggregate-switch', 'side': side},
-            {'type': 'phase-slider', 'side': side},
-            slider_range
-        )
-    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '0 10px'})
 
-def generate_download_block(graph_id):
-    
-    return html.Div([
-        dcc.Store(id={'type': 'dropdown-visible', 'graph': graph_id}, data=False),
-        dbc.Button(id={'type': 'download-icon-button', 'graph': graph_id}, className="fa-solid fa-file-export icon-button-dark", 
-                   style={"fontSize": "30px", "marginRight": "10px"}),
-        html.Div(id={'type': 'dropdown-container', 'graph': graph_id}, style={"position": "relative"}),
-        dcc.Download(id={'type': 'download-component', 'graph': graph_id})
-    ])
-    
 
 
 app.title = 'EcoHAB Dashboard'
@@ -196,91 +63,19 @@ if __name__ == '__main__':
         FileNotFoundError(f'{results_path} not found.')
         sys.exit(1)
     store = pd.HDFStore(results_path, mode='r')
+    
     _data = store['/chasings']
-    n_phases_dark = _data.loc['dark_phase', :].index.get_level_values(0).unique().max()
-    n_phases_light = _data.loc['light_phase', :].index.get_level_values(0).unique().max()
-    n_phases = min(n_phases_dark, n_phases_light)
-    phases = list(range(1, n_phases + 1))
+    
+    #TODO for now - because default value for mode switch is dark
+    n_phases = _data.loc['dark_phase', :].index.get_level_values(0).unique().max()
+    phases_range = [1, n_phases + 1]
 
 
     # Dashboard layout
-    dashboard_layout = html.Div([
-        generate_settings_block('mode-switch', 'aggregate-stats-switch', 'phase-slider', [min(phases), max(phases)]),    
-            
-        html.Div([
-            # Ranking, network graph, chasings
-            html.H2('Social hierarchy', style={'textAlign': 'left', 'margin-bottom': '40px'}),
-            html.Div([
-                html.Div([
-                    dcc.Graph(id='ranking-time-plot'),
-                    dcc.Graph(id='ranking-distribution'),
-                    html.Div([
-                        html.Button("Download SVG", id="btn-ranking-time-plot-svg"),
-                        dcc.Download(id="download-ranking-time-plot-svg")
-                        ]),
-                ], style={'width': '59%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-                html.Div([
-                    dcc.Graph(id={'graph':'network'}),
-                    generate_download_block('network'),
-                ], style={'width': '39%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-            ]),
-            html.Div([
-                html.Div([
-                    dcc.Graph(id='chasings-heatmap')
-                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-                html.Div([
-                    dcc.Graph(id='chasings-plot')
-                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-            ]),
-            # Activity per hour line and per position bar
-            html.H2('Activity', style={'textAlign': 'left', 'margin-bottom': '40px'}),
-            html.Div([
-                dcc.RadioItems(
-                    id='position-switch',
-                    options=[
-                        {'label': 'Visits', 'value': 'visits'},
-                        {'label': 'Time', 'value': 'time'}
-                        ],
-                    value='visits',
-                    labelStyle={'display': 'inline-block'},
-                    ),
-                html.Div([
-                    dcc.Graph(id='position-plot', style={'height': '500px'}),
-                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'bot'}),
-                html.Div([
-                    dcc.Graph(id='activity-plot', style={'height': '500px'})
-                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'bot'}),
-            ]),
-            # Pairwise and incohort heatmaps
-            html.H2('Sociability', style={'textAlign': 'left', 'margin-bottom': '40px'}),
-            html.Div([
-                dcc.RadioItems(
-                id='pairwise-switch',
-                options=[{'label': 'Visits', 'value': 'visits'}, {'label': 'Time', 'value': 'time'}],
-                value='visits',
-                labelStyle={'display': 'inline-block'}
-                ),
-                html.Div([
-                    dcc.Graph(id='pairwise-heatmap')
-                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-                html.Div([
-                    dcc.Graph(id='sociability-heatmap')
-                ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-                    ], style={'width': '90%', 'margin': 'auto'}),
-            ], style={'padding': '20px'})
-    ])
+    dashboard_layout = dash_layouts.generate_graphs_layout(phases_range)
 
-    comparison_tab = html.Div([
-        html.H2('Plots Comparison', style={'textAlign': 'center', 'margin-bottom': '40px'}),
-
-        html.Div([
-            # Left panel
-            generate_comparison_block('left', [min(phases), max(phases)]),
-
-            # Right panel  
-            generate_comparison_block('right', [min(phases), max(phases)]),
-        ])
-    ])
+    comparison_tab = dash_layouts.generate_comparison_layout(phases_range)
+    
     app.layout = html.Div([
                 dcc.Tabs(
                 id='tabs',
@@ -471,5 +266,5 @@ if __name__ == '__main__':
     
     # Run the app
     open_browser()
-    app.run(debug=True, port=8050)
+    app.run(debug=False, port=8050)
     

@@ -226,3 +226,69 @@ a:hover {
     border: none;
     box-shadow: none;
 }
+
+/* Settings controls styling */
+
+.header-bar {
+    padding: 10px;
+    text-align: center;
+    background-color: #1f2c44;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.control-row {
+    width: 100%;
+    gap: 20px;
+}
+
+.control-radio-btns {
+    margin-right: 20px;
+    min-width: 70px;
+    text-align: left;
+}
+
+.vertical-radio .form-check {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.vertical-radio input[type="radio"] {
+    margin-right: 6px;
+}
+
+.divider {
+    width: 1px;
+    background-color: #5a6b8c;
+    height: 40px;
+    margin: 0 20px;
+}
+
+.slider-label {
+    font-weight: bold;
+    text-align: left;
+    margin-right: 10px;
+    white-space: nowrap;
+}
+
+.centered-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    gap: 20px;
+}
+
+.flex-container {
+    flex: 1;
+}
+/* Graph sizing */
+.plot-500 { 
+    height: 500px !important;
+}
+
+.plot-450 { 
+    height: 450px !important;
+}
