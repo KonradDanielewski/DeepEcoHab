@@ -32,7 +32,7 @@ def generate_graphs_layout(phase_range):
             
             dbc.Row([
                 dbc.Col(dcc.Graph(id='chasings-heatmap', className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id='chasings-plot', className='plot-500'), width=6),
+                dbc.Col(dcc.Graph(id='chasings-plot', className='plot-500', animate=True), width=6),
             ], className="g-3"),
             # Activity per hour line and per position bar
             dbc.Row([
@@ -53,7 +53,7 @@ def generate_graphs_layout(phase_range):
     
             dbc.Row([
                 dbc.Col(dcc.Graph(id='position-plot', className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id='activity-plot', className='plot-500'), width=6)
+                dbc.Col(dcc.Graph(id='activity-plot', className='plot-500', animate=True), width=6)
             ], className="g-3"),
             # Pairwise and incohort heatmaps
             dbc.Row([

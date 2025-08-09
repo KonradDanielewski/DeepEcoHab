@@ -11,7 +11,8 @@ from deepecohab.dash import plot_factory
 def activity_line(
     store: pd.HDFStore,
     phase_range: list[int, int], 
-    agg_switch: Literal['sum', 'mean']
+    agg_switch: Literal['sum', 'mean'],
+    animals, colors
 ) -> go.Figure:
     """Generates a line plot of cage visits per hour.
 
@@ -31,19 +32,18 @@ def activity_line(
         (df['phase_count'] >= phase_range[0]) & 
         (df['phase_count'] <= phase_range[-1])
     ]
-    animals = df.animal_id.cat.categories
-    colors = auxfun_plots.color_sampling(animals)
 
     match agg_switch:
         case 'sum':
-            return plot_factory.plot_sum_line_per_hour(df, colors, 'activity')
+            return plot_factory.plot_sum_line_per_hour(df, animals, colors, 'activity')
         case 'mean':
             return plot_factory.plot_mean_line_per_hour(df, animals, colors, 'activity')
         
 def chasings_line(
     store: pd.HDFStore,
     phase_range: list[int, int], 
-    agg_switch: Literal['sum', 'mean']
+    agg_switch: Literal['sum', 'mean'],
+    animals, colors
 ) -> go.Figure:
     """Generates a line plot of chasings per hour.
 
@@ -68,12 +68,9 @@ def chasings_line(
         (match_df['phase_count'] <= phase_range[-1])
     ]
 
-    animals = df.animal_id.cat.categories
-    colors = auxfun_plots.color_sampling(animals)
-
     match agg_switch:
         case 'sum':
-            return plot_factory.plot_sum_line_per_hour(match_df, colors, 'chasings')
+            return plot_factory.plot_sum_line_per_hour(match_df, animals, colors, 'chasings')
         case 'mean':
             return plot_factory.plot_mean_line_per_hour(match_df, animals, colors, 'chasings')
         
@@ -116,6 +113,7 @@ def activity_bar( # TODO: Add choice to show tunnels or no
 def ranking_distribution(
     store: pd.HDFStore,
     data_slice: tuple[str | None, slice], # TODO: For future use - requires rewrite of ranking calculation but we could show dsitribution change over time
+    animals, colors
 ) -> go.Figure:
     """Generates a line plot of the ranking distribution.
 
@@ -130,13 +128,11 @@ def ranking_distribution(
     """
     df = store['ranking']
 
-    animals = df.animal_id.cat.categories
-    colors = auxfun_plots.color_sampling(animals)
-
-    return plot_factory.plot_ranking_distribution(df, colors)
+    return plot_factory.plot_ranking_distribution(df, animals, colors)
 
 def ranking_over_time(
     store: pd.HDFStore,
+    animals, colors
 ) -> go.Figure:
     """Generates a line plot of the ranking distribution over time.
 
@@ -150,9 +146,6 @@ def ranking_over_time(
     """
     ranking_in_time = store['ranking_in_time']
     main_df = store['main_df']
-
-    animals = main_df.animal_id.cat.categories
-    colors = auxfun_plots.color_sampling(animals)
 
     return plot_factory.plot_ranking_line(ranking_in_time, main_df, colors, animals)
 
@@ -228,6 +221,7 @@ def network_graph(
     store: pd.HDFStore,
     mode: str,
     phase_range: list[int, int],
+    animals, colors,
 ) -> go.Figure:
     """Generates a network graph.
 
@@ -248,12 +242,9 @@ def network_graph(
     chasings_df = store['chasings'].loc[(mode)]
     ranking_df = store['ranking_ordinal']
 
-    animals = chasings_df.columns
-    colors = auxfun_plots.color_sampling(animals)
-
     return plot_factory.plot_network_graph(chasings_df, ranking_df, phase_range, colors)
 
-def get_single_plot(store, mode, plot_type, data_slice, phase_range, agg_switch):
+def get_single_plot(store, mode, plot_type, data_slice, phase_range, agg_switch, animals, colors):
     """Retrieves a single plot based on the specified parameters.
 
     This function acts as a factory to generate different types of plots based on the provided parameters.
@@ -275,9 +266,9 @@ def get_single_plot(store, mode, plot_type, data_slice, phase_range, agg_switch)
         case 'position_time':
             return activity_bar(store, data_slice, 'time', agg_switch)
         case 'chasings_line':
-            return chasings_line(store, phase_range, agg_switch)
+            return chasings_line(store, phase_range, agg_switch, animals, colors)
         case 'activity_line':
-            return activity_line(store, data_slice, agg_switch)
+            return activity_line(store, data_slice, agg_switch, animals, colors)
         case 'pairwise_encounters':
             return pairwise_sociability(store, data_slice, 'visits', agg_switch)
         case 'pairwise_time': 
@@ -287,10 +278,10 @@ def get_single_plot(store, mode, plot_type, data_slice, phase_range, agg_switch)
         case 'sociability':
             return within_cohort_sociability(store, data_slice)
         case 'network':
-            return network_graph(store, mode, phase_range)
+            return network_graph(store, mode, phase_range, animals, colors)
         case 'ranking_distribution':
-            return ranking_distribution(store, data_slice)
+            return ranking_distribution(store, data_slice, animals, colors)
         case 'ranking_line':
-            return ranking_over_time(store)
+            return ranking_over_time(store, animals, colors)
         case _:
             return {}

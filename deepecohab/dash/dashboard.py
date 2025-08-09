@@ -14,6 +14,8 @@ from deepecohab.dash import dash_layouts
 
 import dash_bootstrap_components as dbc
 
+from deepecohab.utils import auxfun_plots
+
 def open_browser():
     webbrowser.open_new('http://127.0.0.1:8050/')
     
@@ -63,12 +65,13 @@ if __name__ == '__main__':
         FileNotFoundError(f'{results_path} not found.')
         sys.exit(1)
     store = pd.HDFStore(results_path, mode='r')
+    store = {key.replace('/', ''): store[key] for key in store.keys() if 'meta' not in key}
     
-    _data = store['/chasings']
+    _data = store['chasings']
     
     #TODO for now - because default value for mode switch is dark
     n_phases = _data.loc['dark_phase', :].index.get_level_values(0).unique().max()
-    phases_range = [1, n_phases + 1]
+    phases_range = [1, n_phases]
 
 
     # Dashboard layout
@@ -160,16 +163,19 @@ if __name__ == '__main__':
             data_slice = idx[(slice(None), slice(phase_range[0], phase_range[-1])), :]
         else:
             data_slice = idx[(mode, slice(phase_range[0], phase_range[-1])), :]
+            
+        animals = store['main_df'].animal_id.cat.categories
+        colors = auxfun_plots.color_sampling(animals)
 
         position_fig = dash_plotting.activity_bar(store, data_slice, position_switch, aggregate_stats_switch)
-        activity_fig = dash_plotting.activity_line(store, phase_range, aggregate_stats_switch)
+        activity_fig = dash_plotting.activity_line(store, phase_range, aggregate_stats_switch, animals, colors)
         pairwise_plot = dash_plotting.pairwise_sociability(store, data_slice,  pairwise_switch, aggregate_stats_switch)
         chasings_plot = dash_plotting.chasings(store, data_slice, aggregate_stats_switch)
         incohort_soc_plot = dash_plotting.within_cohort_sociability(store, data_slice)
-        network_plot = dash_plotting.network_graph(store, mode, phase_range)
-        chasing_line_plot = dash_plotting.chasings_line(store, phase_range, aggregate_stats_switch)
-        ranking_line = dash_plotting.ranking_over_time(store)
-        ranking_distribution = dash_plotting.ranking_distribution(store, data_slice)
+        network_plot = dash_plotting.network_graph(store, mode, phase_range, animals, colors)
+        chasing_line_plot = dash_plotting.chasings_line(store, phase_range, aggregate_stats_switch, animals, colors)
+        ranking_line = dash_plotting.ranking_over_time(store, animals, colors)
+        ranking_distribution = dash_plotting.ranking_distribution(store, data_slice, animals, colors)
 
         return [
             position_fig, 
@@ -199,7 +205,10 @@ if __name__ == '__main__':
             data_slice = idx[(slice(None), slice(phase_range[0], phase_range[-1])), :]
         else:
             data_slice = idx[(mode, slice(phase_range[0], phase_range[-1])), :]
-        return dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch)
+            
+        animals = store['main_df'].animal_id.cat.categories
+        colors = auxfun_plots.color_sampling(animals)
+        return dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch, animals, colors)
     
     @app.callback(
         Output({'type': 'dropdown-visible', 'graph':MATCH}, "data"),

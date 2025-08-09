@@ -8,7 +8,8 @@ import plotly.graph_objects as go
 from deepecohab.utils import auxfun_plots
 
 def plot_sum_line_per_hour(
-    df: pd.DataFrame, 
+    df: pd.DataFrame,
+    animals: list[str], 
     colors: list[tuple[int, int, int]], 
     input_type: Literal['activity', 'chasings'],
 ) -> go.Figure:
@@ -28,7 +29,8 @@ def plot_sum_line_per_hour(
         x="hour", 
         y="count", 
         color="animal_id", 
-        color_discrete_sequence=colors, 
+        color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+        category_orders={"animal_id": animals}, 
         line_shape='spline', 
         title=title, 
     )
@@ -92,7 +94,13 @@ def plot_mean_line_per_hour(
             )
         ))
 
-    fig.update_layout(title=title)
+    fig.update_layout(
+        title=title,
+        legend=dict(
+            title='animal_id',
+            tracegroupgap=0,
+            )
+        )
     fig.update_yaxes(title=y_axes_label)
     fig.update_xaxes(title="<b>Hours</b>")
 
@@ -162,7 +170,8 @@ def plot_mean_box_activity(
     return fig
 
 def plot_ranking_distribution(
-    df: pd.DataFrame, 
+    df: pd.DataFrame,
+    animals: list[str],
     colors: list[tuple[int, int, int, float]],
 ) -> go.Figure:
     """Plots line graph of ranking distribution with shaded area."""
@@ -170,7 +179,7 @@ def plot_ranking_distribution(
     
     fig = px.line(
         distribution_df,
-        color_discrete_sequence=colors,
+        color_discrete_map={animal: color for animal, color in zip(animals, colors)},
     )
     fig.update_traces(fill='tozeroy')
 
@@ -182,6 +191,10 @@ def plot_ranking_distribution(
         yaxis=dict(
             title='Probability density',
         ),
+        legend=dict(
+            title='animal_id',
+            tracegroupgap=0,
+            )
     )
 
     return fig
@@ -208,6 +221,10 @@ def plot_ranking_line(
 
     fig.update_layout(
         title='<b>Social dominance ranking in time</b>',
+        legend=dict(
+            title='animal_id',
+            tracegroupgap=0,
+            ),
         xaxis=dict(
             rangeslider=dict(visible=True, thickness=0.1),
             title='Timeline'
