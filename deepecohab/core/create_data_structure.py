@@ -224,6 +224,9 @@ def get_ecohab_data_structure(
     
     cfg = auxfun.read_config(cfp) # reload config potential animal_id changes due to sanitation
     df = _prepare_columns(cfg, df, positions, timezone)
+    
+    if not isinstance(timezone, str):
+        timezone = get_localzone().key
 
     # Slice to start and end date
     try:
