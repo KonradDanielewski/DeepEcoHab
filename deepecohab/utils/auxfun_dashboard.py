@@ -1,5 +1,9 @@
+from typing import Literal
+
 from dash import dcc, html
 import dash_bootstrap_components as dbc
+import pandas as pd
+
 
 def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider_range):
     return html.Div([
@@ -90,3 +94,12 @@ def generate_download_block(graph_id):
         html.Div(id={'type': 'dropdown-container', 'graph': graph_id}, style={"position": "relative"}),
         dcc.Download(id={'type': 'download-component', 'graph': graph_id})
     ])
+    
+def get_data_slice(mode: str, phase_range: list):
+    """Sets data slice to be taken from data used for dashboard.
+    """        
+    idx = pd.IndexSlice
+    if mode == 'all':
+        return idx[(slice(None), slice(phase_range[0], phase_range[-1])), :]
+    else:
+        return idx[(mode, slice(phase_range[0], phase_range[-1])), :]

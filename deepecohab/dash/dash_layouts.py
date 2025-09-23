@@ -1,9 +1,7 @@
-from dash import dcc, html
 import dash_bootstrap_components as dbc
-
+from dash import dcc, html
 
 from deepecohab.utils import auxfun_dashboard
-
 
 def generate_graphs_layout(phase_range):
     return html.Div([
@@ -21,18 +19,18 @@ def generate_graphs_layout(phase_range):
             dbc.Row([
                 dbc.Col([
                     dcc.Graph(id='ranking-time-plot', className='plot-500'),
-                    dcc.Graph(id='ranking-distribution', className='plot-450')
-                ], width=7),
-            
+                    dcc.Graph(id='ranking-distribution', className='plot-450'),
+                ], width=6),
                 dbc.Col([
-                    dcc.Graph(id={'graph': 'network'}, className='plot-500'),
-                    auxfun_dashboard.generate_download_block('network')
-                ], width=5), 
+                    html.Div([
+                        dcc.Graph(id={'graph': 'network'}, style={"width": "100%", "height": "100%"}),
+                    ], style={'display': 'flex', 'height': '100%'}),
+                ], width=6),
             ], className="g-3"),
             
             dbc.Row([
                 dbc.Col(dcc.Graph(id='chasings-heatmap', className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id='chasings-plot', className='plot-500', animate=True), width=6),
+                dbc.Col(dcc.Graph(id='chasings-plot', className='plot-500'), width=6),
             ], className="g-3"),
             # Activity per hour line and per position bar
             dbc.Row([
@@ -53,7 +51,7 @@ def generate_graphs_layout(phase_range):
     
             dbc.Row([
                 dbc.Col(dcc.Graph(id='position-plot', className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id='activity-plot', className='plot-500', animate=True), width=6)
+                dbc.Col(dcc.Graph(id='activity-plot', className='plot-500'), width=6)
             ], className="g-3"),
             # Pairwise and incohort heatmaps
             dbc.Row([

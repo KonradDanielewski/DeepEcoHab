@@ -1,6 +1,5 @@
 import argparse
 import sys
-import webbrowser
 from pathlib import Path
 import json
 
@@ -14,10 +13,10 @@ from deepecohab.dash import dash_layouts
 
 import dash_bootstrap_components as dbc
 
-from deepecohab.utils import auxfun_plots
-
-def open_browser():
-    webbrowser.open_new('http://127.0.0.1:8050/')
+from deepecohab.utils import (
+    auxfun_plots,
+    auxfun_dashboard,
+)
     
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Run DeepEcoHab Dashboard')
@@ -34,28 +33,6 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheet
                                                                                    dbc.icons.FONT_AWESOME, 
                                                                                    dbc.themes.BOOTSTRAP])
 
-import plotly.graph_objects as go
-import plotly.io as pio
-
-dark_dash_template = go.layout.Template(
-    layout=go.Layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#e0e6f0"),
-        xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
-        yaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
-        legend=dict(bgcolor="rgba(0,0,0,0)")
-    )
-)
-
-# register & set as default
-pio.templates["dash_dark"] = dark_dash_template
-pio.templates.default = "dash_dark"
-
-
-
-
-
 app.title = 'EcoHAB Dashboard'
 if __name__ == '__main__':
     args = parse_arguments()
@@ -64,20 +41,17 @@ if __name__ == '__main__':
     if not Path(results_path).is_file():
         FileNotFoundError(f'{results_path} not found.')
         sys.exit(1)
+    
     store = pd.HDFStore(results_path, mode='r')
-    store = {key.replace('/', ''): store[key] for key in store.keys() if 'meta' not in key}
+    store = {key.replace('/', ''): store[key] for key in store.keys() if 'meta' not in key and 'binary' not in key} # Avoid reading binary as not used
     
     _data = store['chasings']
-    
-    #TODO for now - because default value for mode switch is dark
-    n_phases = _data.loc['dark_phase', :].index.get_level_values(0).unique().max()
-    phases_range = [1, n_phases]
-
+    n_phases = _data.index.get_level_values(1).max()
+    phase_range = [1, n_phases]
 
     # Dashboard layout
-    dashboard_layout = dash_layouts.generate_graphs_layout(phases_range)
-
-    comparison_tab = dash_layouts.generate_comparison_layout(phases_range)
+    dashboard_layout = dash_layouts.generate_graphs_layout(phase_range)
+    comparison_tab = dash_layouts.generate_comparison_layout(phase_range)
     
     app.layout = html.Div([
                 dcc.Tabs(
@@ -126,6 +100,7 @@ if __name__ == '__main__':
                 }
             )
         ])
+    
     # Tabs callback
     @app.callback(Output('tabs-content', 'children'), [Input('tabs', 'value')])
     def render_content(tab):
@@ -156,13 +131,7 @@ if __name__ == '__main__':
         ]  
     )
     def update_plots(phase_range, mode, aggregate_stats_switch, position_switch, pairwise_switch):
-        
-        # TODO: to be moved to auxfun_dashboard.py
-        idx = pd.IndexSlice
-        if mode == 'all':
-            data_slice = idx[(slice(None), slice(phase_range[0], phase_range[-1])), :]
-        else:
-            data_slice = idx[(mode, slice(phase_range[0], phase_range[-1])), :]
+        data_slice = auxfun_dashboard.get_data_slice(mode, phase_range)
             
         animals = store['main_df'].animal_id.cat.categories
         colors = auxfun_plots.color_sampling(animals)
@@ -200,11 +169,7 @@ if __name__ == '__main__':
         ]
     )
     def update_comparison_plot(plot_type, mode, aggregate_stats_switch, phase_range):
-        idx = pd.IndexSlice
-        if mode == 'all':
-            data_slice = idx[(slice(None), slice(phase_range[0], phase_range[-1])), :]
-        else:
-            data_slice = idx[(mode, slice(phase_range[0], phase_range[-1])), :]
+        data_slice = auxfun_dashboard.get_data_slice(mode, phase_range)
             
         animals = store['main_df'].animal_id.cat.categories
         colors = auxfun_plots.color_sampling(animals)
@@ -228,8 +193,6 @@ if __name__ == '__main__':
         elif isinstance(triggered_id, dict) and triggered_id['type'] == 'download-option':
             return False
         raise dash.exceptions.PreventUpdate
-
-    
     
     @app.callback(
         Output({'type': 'dropdown-container', 'graph': MATCH}, "children"),
@@ -248,7 +211,6 @@ if __name__ == '__main__':
                 ], className="dropdown-menu show", style={"position": "absolute", "zIndex": 1000}),
             ])
         return None
-
     
     @app.callback(
         Output({'type': 'download-component', 'graph': MATCH}, 'data'),
@@ -274,6 +236,6 @@ if __name__ == '__main__':
     
     
     # Run the app
-    open_browser()
+    auxfun_plots.open_browser()
     app.run(debug=False, port=8050)
     

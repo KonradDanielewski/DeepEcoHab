@@ -1,12 +1,14 @@
+from typing import Literal
+
 import pandas as pd
 import networkx as nx
 import numpy as np
-import plotly.graph_objects as go
-
-from typing import Literal
 import plotly.express as px
-from scipy.stats import norm
+import plotly.graph_objects as go
+import plotly.io as pio
+import webbrowser
 
+from scipy.stats import norm
 
 def create_edges_trace(
     G: nx.Graph, 
@@ -285,3 +287,26 @@ def prep_chasing_overtime_sum(match_df) -> pd.DataFrame:
     )
 
     return plot_df
+
+def set_default_theme():
+    """Sets default plotly theme. TODO: to be updated as we go.
+    """    
+    dark_dash_template = go.layout.Template(
+        layout=go.Layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#e0e6f0"),
+            xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
+            yaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
+            legend=dict(bgcolor="rgba(0,0,0,0)")
+        )
+    )
+
+    # register & set as default
+    pio.templates["dash_dark"] = dark_dash_template
+    pio.templates.default = "dash_dark"
+    
+def open_browser():
+    """Opens browser with dashboard.
+    """    
+    webbrowser.open_new('http://127.0.0.1:8050/')

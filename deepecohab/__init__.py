@@ -22,3 +22,7 @@ from deepecohab.utils.auxfun import (
     load_ecohab_data,
     run_dashboard,
 )
+
+from deepecohab.utils.auxfun_plots import set_default_theme
+
+set_default_theme()
