@@ -281,6 +281,18 @@ a:hover {
     gap: 20px;
 }
 
+.download-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;  
+    gap: 10px;            
+}
+
+.download-dropdown {
+    min-width: 300px;     
+    flex-grow: 1;        
+}
+
 .flex-container {
     flex: 1;
 }

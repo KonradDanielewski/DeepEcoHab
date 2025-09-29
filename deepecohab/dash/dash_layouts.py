@@ -1,4 +1,5 @@
 import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
 from dash import dcc, html
 
 from deepecohab.utils import auxfun_dashboard
@@ -8,29 +9,41 @@ def generate_graphs_layout(phase_range):
         auxfun_dashboard.generate_settings_block('mode-switch', 
                                                  'aggregate-stats-switch', 
                                                  'phase-slider', 
-                                                 phase_range),    
+                                                 phase_range,
+                                                 include_download=True),    
             
         dbc.Container([
             # Ranking, network graph, chasings
             dbc.Row([
                 dbc.Col(html.H2('Social hierarchy'), className="text-left my-4")
             ]),
-            
+            dbc.Row([
+                
+                
+            ]),
             dbc.Row([
                 dbc.Col([
-                    dcc.Graph(id='ranking-time-plot', className='plot-500'),
-                    dcc.Graph(id='ranking-distribution', className='plot-450'),
-                ], width=6),
+                    auxfun_dashboard.generate_download_block('ranking-time-plot'),
+                    dcc.Graph(id={'graph': 'ranking-time-plot'}, className='plot-500'),
+                    auxfun_dashboard.generate_download_block('ranking-distribution'),
+                    dcc.Graph(id={'graph': 'ranking-distribution'}, className='plot-450'),
+                ], width=5),
                 dbc.Col([
                     html.Div([
+                        auxfun_dashboard.generate_download_block('network'),
                         dcc.Graph(id={'graph': 'network'}, style={"width": "100%", "height": "100%"}),
                     ], style={'display': 'flex', 'height': '100%'}),
-                ], width=6),
+                ], width=7),
             ], className="g-3"),
             
             dbc.Row([
-                dbc.Col(dcc.Graph(id='chasings-heatmap', className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id='chasings-plot', className='plot-500'), width=6),
+                dbc.Col(auxfun_dashboard.generate_download_block('chasings-heatmap'), width=6),
+                dbc.Col(auxfun_dashboard.generate_download_block('chasings-plot'), width=6),
+            ]),
+            
+            dbc.Row([
+                dbc.Col(dcc.Graph(id={'graph': 'chasings-heatmap'}, className='plot-500'), width=6),
+                dbc.Col(dcc.Graph(id={'graph': 'chasings-plot'}, className='plot-500'), width=6),
             ], className="g-3"),
             # Activity per hour line and per position bar
             dbc.Row([
@@ -45,18 +58,20 @@ def generate_graphs_layout(phase_range):
                         {'label': 'Time', 'value': 'time'}
                     ],
                     value='visits',
-                    labelStyle={'display': 'inline-block'}
-                ), width=12)
+                    # labelStyle={'display': 'inline-block'}
+                ), width=1),
+                dbc.Col(auxfun_dashboard.generate_download_block('position-plot'), width=5),
+                dbc.Col(auxfun_dashboard.generate_download_block('activity-plot'), width=6),
             ]),
-    
+            
             dbc.Row([
-                dbc.Col(dcc.Graph(id='position-plot', className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id='activity-plot', className='plot-500'), width=6)
+                dbc.Col(dcc.Graph(id={'graph': 'position-plot'}, className='plot-500'), width=6),
+                dbc.Col(dcc.Graph(id={'graph': 'activity-plot'}, className='plot-500'), width=6),
             ], className="g-3"),
             # Pairwise and incohort heatmaps
             dbc.Row([
                 dbc.Col(html.H2('Sociability'), className="text-left my-4")
-            ]),
+            ]), 
             
             dbc.Row([
                 dbc.Col(dcc.RadioItems(
@@ -66,13 +81,15 @@ def generate_graphs_layout(phase_range):
                         {'label': 'Time', 'value': 'time'}
                     ],
                     value='visits',
-                    labelStyle={'display': 'inline-block'}
-                ), width=12)
+                    # labelStyle={'display': 'inline-block'}
+                ), width=1),
+                dbc.Col(auxfun_dashboard.generate_download_block('pairwise-heatmap'), width=5),
+                dbc.Col(auxfun_dashboard.generate_download_block('sociability-heatmap'), width=6),
             ]),
             
-            dbc.Row([
-                dbc.Col(dcc.Graph(id='pairwise-heatmap', className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id='sociability-heatmap', className='plot-500'), width=6),
+            dbc.Row([                
+                dbc.Col(dcc.Graph(id={'graph': 'pairwise-heatmap'}, className='plot-500'), width=6),
+                dbc.Col(dcc.Graph(id={'graph': 'sociability-heatmap'}, className='plot-500'), width=6),
             ], className="g-3"),
             ], fluid=True, style={'padding': '20px'})
     ])

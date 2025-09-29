@@ -5,6 +5,7 @@ import json
 
 import dash
 import pandas as pd
+import plotly.graph_objects as go
 from dash import dcc, html, ctx
 from dash.dependencies import Input, Output, State, MATCH, ALL
 
@@ -31,7 +32,8 @@ def parse_arguments():
 # Initialize the Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=["/assets/styles.css",
                                                                                    dbc.icons.FONT_AWESOME, 
-                                                                                   dbc.themes.BOOTSTRAP])
+                                                                                   dbc.themes.BOOTSTRAP,
+                                                                                   "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css",])
 
 app.title = 'EcoHAB Dashboard'
 if __name__ == '__main__':
@@ -112,15 +114,15 @@ if __name__ == '__main__':
     # Plots update callback
     @app.callback(
         [
-            Output('position-plot', 'figure'),
-            Output('activity-plot', 'figure'),
-            Output('pairwise-heatmap', 'figure'),
-            Output('chasings-heatmap', 'figure'),
-            Output('sociability-heatmap', 'figure'),
+            Output({'graph':'position-plot'}, 'figure'),
+            Output({'graph':'activity-plot'}, 'figure'),
+            Output({'graph':'pairwise-heatmap'}, 'figure'),
+            Output({'graph':'chasings-heatmap'}, 'figure'),
+            Output({'graph':'sociability-heatmap'}, 'figure'),
             Output({'graph':'network'}, 'figure'),
-            Output('chasings-plot', 'figure'),
-            Output('ranking-time-plot', 'figure'),
-            Output('ranking-distribution', 'figure'),
+            Output({'graph':'chasings-plot'}, 'figure'),
+            Output({'graph':'ranking-time-plot'}, 'figure'),
+            Output({'graph':'ranking-distribution'}, 'figure'),
         ],
         [
             Input('phase-slider', 'value'),
@@ -179,7 +181,7 @@ if __name__ == '__main__':
         Output({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
         [
             Input({'type': 'download-icon-button', 'graph': MATCH}, "n_clicks"),
-            Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks')
+            Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
         ],
         State({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
         prevent_initial_call=True
@@ -188,7 +190,7 @@ if __name__ == '__main__':
             
         triggered_id = ctx.triggered_id
 
-        if triggered_id['type']== 'download-icon-button' and icon_clicks is not None:
+        if triggered_id['type'] == 'download-icon-button' and icon_clicks is not None:
             return not visible
         elif isinstance(triggered_id, dict) and triggered_id['type'] == 'download-option':
             return False
@@ -202,28 +204,77 @@ if __name__ == '__main__':
         if visible:
             triggered_id = ctx.triggered_id
             graph_id = triggered_id['graph']
+            
+            dropdown_items = [
+                html.Div("Download SVG", id={'type': 'download-option', 'format': 'svg', 'graph': graph_id},
+                         n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),
+                html.Div("Download JSON", id={'type': 'download-option', 'format': 'json', 'graph': graph_id},
+                         n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),
+            ]
+            
+            if not graph_id == 'network':
+                dropdown_items.append(html.Div("Download CSV", id={'type': 'download-option', 'format': 'csv', 'graph': graph_id},
+                         n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),)
+            
+            
             return html.Div([
-                html.Div([
-                    html.Div("Download SVG", id={'type': 'download-option', 'format': 'svg', 'graph': graph_id},
-                             n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),
-                    html.Div("Download JSON", id={'type': 'download-option', 'format': 'json', 'graph': graph_id},
-                             n_clicks=0, className="dropdown-item", style={"cursor": "pointer"})
-                ], className="dropdown-menu show", style={"position": "absolute", "zIndex": 1000}),
+                html.Div(dropdown_items, className="dropdown-menu show", style={"position": "absolute", "zIndex": 1000}),
             ])
         return None
-    
+        
+    import io, zipfile
+
+    @app.callback(
+        Output("download-dataframe", "data"),
+        Input("download-data", "n_clicks"),
+        State("data-keys-dropdown", "value"),
+        State('mode-switch', "value"),
+        State('phase-slider', "value"),
+        prevent_initial_call=True,
+    )
+    def download_selected_data(n_clicks, selected_names, mode, phase_range,):
+        if not selected_names:
+            return None
+        
+        if len(selected_names) == 1:
+            name = selected_names[0]
+            data_slice = auxfun_dashboard.check_if_slice_applicable(name, mode, phase_range)
+            if name in store:
+                df = store[name].loc[data_slice]
+                return dcc.send_data_frame(df.to_csv, f"{name}.csv")
+            return None
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            for name in selected_names:
+                if name in store:
+                    data_slice = auxfun_dashboard.check_if_slice_applicable(name, mode, phase_range)
+                    df = store[name].loc[data_slice]
+                    csv_bytes = df.to_csv(index=False).encode("utf-8")
+                    zf.writestr(f"{name}.csv", csv_bytes)
+
+        zip_buffer.seek(0)
+        
+        return dcc.send_bytes(
+            lambda b: b.write(zip_buffer.getvalue()),
+            filename="selected_dataframes.zip"
+        )
+            
     @app.callback(
         Output({'type': 'download-component', 'graph': MATCH}, 'data'),
         Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
-        State({'graph':MATCH}, 'figure'),
-        prevent_initial_call=True
+        State({'graph': MATCH}, 'figure'),
+        prevent_initial_call=True,
     )
     def download_figure(n_clicks, figure):
         triggered_id = ctx.triggered_id
-    
+
+        if not isinstance(triggered_id, dict) or not any(n_clicks):
+            raise dash.exceptions.PreventUpdate
+
         plot_type = triggered_id['graph']
         fmt = triggered_id['format']
-        
+
         figure = go.Figure(figure)
 
         if fmt == 'svg':
@@ -231,11 +282,12 @@ if __name__ == '__main__':
             return dcc.send_bytes(svg_bytes, filename=f"{plot_type}.svg")
         elif fmt == 'json':
             return dcc.send_string(json.dumps(figure.to_plotly_json()), filename=f"{plot_type}.json")
+        elif fmt == 'csv':
+            pass # TODO: implement logic that run data transformation and outputs the df used for the plot creation
         else:
             raise dash.exceptions.PreventUpdate
     
-    
     # Run the app
     auxfun_plots.open_browser()
-    app.run(debug=False, port=8050)
+    app.run(debug=True, port=8050)
     

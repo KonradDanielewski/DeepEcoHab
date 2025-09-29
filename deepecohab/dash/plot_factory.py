@@ -161,7 +161,8 @@ def plot_mean_box_activity(
         color_discrete_sequence=colors,
         points='all',
         title=position_title,
-        hover_data=['position', 'phase_count', 'y_val']
+        hover_data=['position', 'phase_count', 'y_val'],
+        boxmode='group',
     )
     
     fig.update_xaxes(title_text='<b>Animal ID</b>')
@@ -226,7 +227,8 @@ def plot_ranking_line(
             tracegroupgap=0,
             ),
         xaxis=dict(
-            rangeslider=dict(visible=True, thickness=0.1),
+            # Breakes download from the dash - maybe a bug in dash? works outside. TODO: report it?
+            # rangeslider=dict(visible=True, thickness=0.1), 
             title='Timeline'
         ),
         yaxis=dict(
