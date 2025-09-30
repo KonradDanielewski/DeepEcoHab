@@ -1,5 +1,7 @@
 import argparse
 import sys
+import io
+import zipfile
 from pathlib import Path
 import json
 
@@ -177,53 +179,189 @@ if __name__ == '__main__':
         colors = auxfun_plots.color_sampling(animals)
         return dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch, animals, colors)
     
-    @app.callback(
-        Output({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
-        [
-            Input({'type': 'download-icon-button', 'graph': MATCH}, "n_clicks"),
-            Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
-        ],
-        State({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
-        prevent_initial_call=True
-    )
-    def toggle_dropdown(icon_clicks, download_clicks, visible):
+    # @app.callback(
+    #     Output({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
+    #     [
+    #         Input({'type': 'download-icon-button', 'graph': MATCH}, "n_clicks"),
+    #         Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
+    #     ],
+    #     State({'type': 'dropdown-visible', 'graph':MATCH}, "data"),
+    #     prevent_initial_call=True
+    # )
+    # def toggle_dropdown(icon_clicks, download_clicks, visible):
             
-        triggered_id = ctx.triggered_id
+    #     triggered_id = ctx.triggered_id
 
-        if triggered_id['type'] == 'download-icon-button' and icon_clicks is not None:
-            return not visible
-        elif isinstance(triggered_id, dict) and triggered_id['type'] == 'download-option':
+    #     if triggered_id['type'] == 'download-icon-button' and icon_clicks is not None:
+    #         return not visible
+    #     elif isinstance(triggered_id, dict) and triggered_id['type'] == 'download-option':
+    #         return False
+    #     raise dash.exceptions.PreventUpdate
+    
+    # @app.callback(
+    #     Output({'type': 'dropdown-container', 'graph': MATCH}, "children"),
+    #     Input({'type': 'dropdown-visible', 'graph': MATCH}, "data"),
+    # )
+    # def render_dropdown(visible):
+    #     if visible:
+    #         triggered_id = ctx.triggered_id
+    #         graph_id = triggered_id['graph']
+            
+    #         dropdown_items = [
+    #             html.Div("Download SVG", id={'type': 'download-option', 'format': 'svg', 'graph': graph_id},
+    #                      n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),
+    #             html.Div("Download JSON", id={'type': 'download-option', 'format': 'json', 'graph': graph_id},
+    #                      n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),
+    #         ]
+            
+    #         if not graph_id == 'network':
+    #             dropdown_items.append(html.Div("Download CSV", id={'type': 'download-option', 'format': 'csv', 'graph': graph_id},
+    #                      n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),)
+            
+            
+    #         return html.Div([
+    #             html.Div(dropdown_items, className="dropdown-menu show", style={"position": "absolute", "zIndex": 1000}),
+    #         ])
+    #     return None
+            
+    # @app.callback(
+    #     Output({'type': 'download-component', 'graph': MATCH}, 'data'),
+    #     Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
+    #     State({'graph': MATCH}, 'figure'),
+    #     prevent_initial_call=True,
+    # )
+    # def download_figure(n_clicks, figure):
+    #     triggered_id = ctx.triggered_id
+
+    #     if not isinstance(triggered_id, dict) or not any(n_clicks):
+    #         raise dash.exceptions.PreventUpdate
+
+    #     plot_type = triggered_id['graph']
+    #     fmt = triggered_id['format']
+
+    #     figure = go.Figure(figure)
+
+    #     if fmt == 'svg':
+    #         svg_bytes = figure.to_image(format='svg')
+    #         return dcc.send_bytes(svg_bytes, filename=f"{plot_type}.svg")
+    #     elif fmt == 'json':
+    #         return dcc.send_string(json.dumps(figure.to_plotly_json()), filename=f"{plot_type}.json")
+    #     elif fmt == 'csv':
+    #         pass # TODO: implement logic that run data transformation and outputs the df used for the plot creation
+    #     else:
+    #         raise dash.exceptions.PreventUpdate
+
+# import dash_bootstrap_components as dbc
+# from dash import html, dcc, Input, Output, State, ctx
+
+    @app.callback(
+        Output({'type': 'modal-container', 'graph': MATCH}, "children"),
+        Input({'type': 'download-icon-button', 'graph': MATCH}, "n_clicks"),
+        State({'type': 'modal-container', 'graph': MATCH}, "children"),
+        prevent_initial_call=True,
+    )
+    def toggle_modal(n_clicks, current_children):
+        triggered_id = ctx.triggered_id
+        graph_id = triggered_id["graph"]
+
+        if n_clicks is None:
+            raise dash.exceptions.PreventUpdate
+
+        buttons = [
+            dbc.Button(
+                "Download SVG",
+                id={'type': 'download-option', 'format': 'svg', 'graph': graph_id},
+                color="primary", className="me-2"
+            ),
+            dbc.Button(
+                "Download JSON",
+                id={'type': 'download-option', 'format': 'json', 'graph': graph_id},
+                color="secondary", className="me-2"
+            ),
+        ]
+
+        if "network" not in str(graph_id).lower():
+            buttons.append(
+                dbc.Button(
+                    "Download CSV",
+                    id={'type': 'download-option', 'format': 'csv', 'graph': graph_id},
+                    color="success"
+                )
+            )
+
+        modal = dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Download Options")),
+                dbc.ModalBody([
+                    dbc.Input(
+                        id={'type': 'yaxis-input', 'graph': graph_id},
+                        placeholder="Y-axis"
+                    ),
+                    html.Br(),
+                    *buttons,
+                ]),
+                dbc.ModalFooter(
+                    dbc.Button(
+                        "Close",
+                        id={'type': 'close-modal', 'graph': graph_id},
+                        className="ms-auto"
+                    )
+                ),
+            ],
+            id={'type': 'download-modal', 'graph': graph_id},
+            is_open=True,
+            backdrop=True,
+            centered=True,
+        )
+
+        return modal
+        
+    @app.callback(
+        Output({'type': 'download-modal', 'graph': MATCH}, "is_open"),
+        Input({'type': 'close-modal', 'graph': MATCH}, "n_clicks"),
+        State({'type': 'download-modal', 'graph': MATCH}, "is_open"),
+        prevent_initial_call=True,
+    )
+    def close_modal(close_click, is_open):
+        if close_click:
             return False
         raise dash.exceptions.PreventUpdate
     
     @app.callback(
-        Output({'type': 'dropdown-container', 'graph': MATCH}, "children"),
-        Input({'type': 'dropdown-visible', 'graph': MATCH}, "data"),
+        Output({'type': 'download-component', 'graph': MATCH}, 'data'),
+        Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
+        State({'graph': MATCH}, 'figure'),
+        State({'type': 'yaxis-input', 'graph': MATCH}, 'value'),
+        prevent_initial_call=True,
     )
-    def render_dropdown(visible):
-        if visible:
-            triggered_id = ctx.triggered_id
-            graph_id = triggered_id['graph']
-            
-            dropdown_items = [
-                html.Div("Download SVG", id={'type': 'download-option', 'format': 'svg', 'graph': graph_id},
-                         n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),
-                html.Div("Download JSON", id={'type': 'download-option', 'format': 'json', 'graph': graph_id},
-                         n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),
-            ]
-            
-            if not graph_id == 'network':
-                dropdown_items.append(html.Div("Download CSV", id={'type': 'download-option', 'format': 'csv', 'graph': graph_id},
-                         n_clicks=0, className="dropdown-item", style={"cursor": "pointer"}),)
-            
-            
-            return html.Div([
-                html.Div(dropdown_items, className="dropdown-menu show", style={"position": "absolute", "zIndex": 1000}),
-            ])
-        return None
-        
-    import io, zipfile
+    def download_figure(n_clicks, figure, yaxis_value):
+        triggered_id = ctx.triggered_id
 
+        if not isinstance(triggered_id, dict) or not any(n_clicks):
+            raise dash.exceptions.PreventUpdate
+
+        plot_type = triggered_id['graph']
+        fmt = triggered_id['format']
+
+        figure = go.Figure(figure)
+
+        if fmt == 'svg':
+            svg_bytes = figure.to_image(format='svg')
+            return dcc.send_bytes(lambda b: b.write(svg_bytes), filename=f"{plot_type}.svg")
+
+        elif fmt == 'json':
+            return dcc.send_string(json.dumps(figure.to_plotly_json()), filename=f"{plot_type}.json")
+
+        elif fmt == 'csv':
+            # Example: export data from figure
+            df = pd.DataFrame(figure.data[0])  # adapt for your figure structure
+            if yaxis_value:
+                df = df[[yaxis_value]] if yaxis_value in df.columns else df
+            return dcc.send_data_frame(df.to_csv, f"{plot_type}.csv", index=False)
+
+        else:
+            raise dash.exceptions.PreventUpdate
+        
     @app.callback(
         Output("download-dataframe", "data"),
         Input("download-data", "n_clicks"),
@@ -259,33 +397,6 @@ if __name__ == '__main__':
             lambda b: b.write(zip_buffer.getvalue()),
             filename="selected_dataframes.zip"
         )
-            
-    @app.callback(
-        Output({'type': 'download-component', 'graph': MATCH}, 'data'),
-        Input({'type': 'download-option', 'format': ALL, 'graph': MATCH}, 'n_clicks'),
-        State({'graph': MATCH}, 'figure'),
-        prevent_initial_call=True,
-    )
-    def download_figure(n_clicks, figure):
-        triggered_id = ctx.triggered_id
-
-        if not isinstance(triggered_id, dict) or not any(n_clicks):
-            raise dash.exceptions.PreventUpdate
-
-        plot_type = triggered_id['graph']
-        fmt = triggered_id['format']
-
-        figure = go.Figure(figure)
-
-        if fmt == 'svg':
-            svg_bytes = figure.to_image(format='svg')
-            return dcc.send_bytes(svg_bytes, filename=f"{plot_type}.svg")
-        elif fmt == 'json':
-            return dcc.send_string(json.dumps(figure.to_plotly_json()), filename=f"{plot_type}.json")
-        elif fmt == 'csv':
-            pass # TODO: implement logic that run data transformation and outputs the df used for the plot creation
-        else:
-            raise dash.exceptions.PreventUpdate
     
     # Run the app
     auxfun_plots.open_browser()

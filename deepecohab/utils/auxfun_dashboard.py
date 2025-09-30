@@ -117,13 +117,29 @@ def generate_comparison_block(side: str, slider_range: list[int]):
         )
     ], className="h-100 p-2")
 
+# def generate_download_block(graph_id):
+#     return html.Div([
+#         dcc.Store(id={'type': 'dropdown-visible', 'graph': graph_id}, data=False),
+#         dbc.Button(id={'type': 'download-icon-button', 'graph': graph_id}, className="fa-solid fa-file-export icon-button-dark", 
+#                    style={"fontSize": "30px", "marginRight": "10px"}),
+#         html.Div(id={'type': 'dropdown-container', 'graph': graph_id}, style={"position": "relative"}),
+#         dcc.Download(id={'type': 'download-component', 'graph': graph_id})
+#     ])
+
 def generate_download_block(graph_id):
     return html.Div([
-        dcc.Store(id={'type': 'dropdown-visible', 'graph': graph_id}, data=False),
-        dbc.Button(id={'type': 'download-icon-button', 'graph': graph_id}, className="fa-solid fa-file-export icon-button-dark", 
-                   style={"fontSize": "30px", "marginRight": "10px"}),
-        html.Div(id={'type': 'dropdown-container', 'graph': graph_id}, style={"position": "relative"}),
-        dcc.Download(id={'type': 'download-component', 'graph': graph_id})
+        # The download icon button
+        dbc.Button(
+            id={'type': 'download-icon-button', 'graph': graph_id},
+            className="fa-solid fa-file-export icon-button-dark",
+            style={"fontSize": "30px", "marginRight": "10px"}
+        ),
+
+        # Container where the modal will be dynamically rendered
+        html.Div(id={'type': 'modal-container', 'graph': graph_id}),
+
+        # Download component (used by dcc.send_xxx)
+        dcc.Download(id={'type': 'download-component', 'graph': graph_id}),
     ])
     
 def get_data_slice(mode: str, phase_range: list):
