@@ -1,3 +1,5 @@
+from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 import networkx as nx
@@ -5,6 +7,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from deepecohab.utils import auxfun
 from deepecohab.utils import auxfun_plots
 
 def plot_sum_line_per_hour(
@@ -13,7 +16,8 @@ def plot_sum_line_per_hour(
     colors: list[tuple[int, int, int]], 
     input_type: Literal['activity', 'chasings'],
 ) -> go.Figure:
-    """Plots line graph for activity or chasings.""" 
+    """Plots line graph for activity or chasings."""
+    
     match input_type:
         case 'activity':
             plot_df = auxfun_plots.prep_activity_overtime_sum(df)
@@ -46,6 +50,7 @@ def plot_mean_line_per_hour(
     input_type: Literal['activity', 'chasings'],
 ) -> go.Figure:
     """Plots line graph for activity or chasings with SEM shading."""
+
     match input_type:
         case 'activity':
             plot_df = auxfun_plots.prep_activity_overtime_mean(df)
@@ -367,6 +372,33 @@ def plot_network_graph(
     fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False,)
     fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False,)
     
+    return fig
+
+def time_per_cage_line(
+        binary_df: pd.DataFrame, 
+        phase_range: list[int, int], 
+        animals, colors, 
+    ) -> go.Figure:
+
+    plot_df = auxfun_plots.prep_time_per_cage_sum(binary_df, phase_range)
+
+    cages = sorted(plot_df['cage'].unique())
+
+    fig = px.line(
+        plot_df, 
+        x='hour', 
+        y='time', 
+        color='animal_id', 
+        facet_col='cage', 
+        facet_col_wrap=2,
+        line_shape='spline', 
+        color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+        category_orders={'animal_id': animals, 'cage': cages},
+        title="<b>Time spent per cage</b>" 
+    )
+
+    fig.for_each_annotation(lambda x: x.update(text=' '.join((x.text.split("=")[-1]).capitalize().split('_'))))
+
     return fig
     
 

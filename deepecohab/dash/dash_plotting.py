@@ -12,7 +12,7 @@ def activity_line(
     store: pd.HDFStore,
     phase_range: list[int, int], 
     agg_switch: Literal['sum', 'mean'],
-    animals, colors
+    animals, colors,
 ) -> go.Figure:
     """Generates a line plot of cage visits per hour.
 
@@ -37,13 +37,13 @@ def activity_line(
         case 'sum':
             return plot_factory.plot_sum_line_per_hour(df, animals, colors, 'activity')
         case 'mean':
-            return plot_factory.plot_mean_line_per_hour(df, animals, colors, 'activity')
+            return plot_factory.plot_mean_line_per_hour(df, animals, colors, 'activity',)
         
 def chasings_line(
     store: pd.HDFStore,
     phase_range: list[int, int], 
     agg_switch: Literal['sum', 'mean'],
-    animals, colors
+    animals, colors,
 ) -> go.Figure:
     """Generates a line plot of chasings per hour.
 
@@ -227,7 +227,7 @@ def network_graph(
 
     This function generates a network graph where nodes are sized by ranking and edges are normalized
     based on chasings. It outputs a graph for the last ranking in the phase range and the sum of all chasings up to this phase.
-    NOTE: Done for dark_phase now, hardcoded. To be fixed.
+    TODO: Done for dark_phase now, hardcoded. To be fixed.
     
     Args:
         store: The HDFStore object containing the data.
@@ -243,6 +243,17 @@ def network_graph(
     ranking_df = store['ranking_ordinal']
 
     return plot_factory.plot_network_graph(chasings_df, ranking_df, phase_range, colors)
+
+def time_per_cage(
+        store: pd.HDFStore,
+        phase_range: list[int, int],
+        animals, colors,
+) -> go.Figure:
+    
+    binary_df = store['binary_df'].copy()
+    binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
+
+    return plot_factory.time_per_cage_line(binary_df, phase_range, animals, colors)
 
 def get_single_plot(store, mode, plot_type, data_slice, phase_range, agg_switch, animals, colors):
     """Retrieves a single plot based on the specified parameters.
@@ -283,5 +294,7 @@ def get_single_plot(store, mode, plot_type, data_slice, phase_range, agg_switch,
             return ranking_distribution(store, data_slice, animals, colors)
         case 'ranking_line':
             return ranking_over_time(store, animals, colors)
+        case 'time_per_cage':
+            return time_per_cage(store, phase_range, animals, colors)
         case _:
             return {}

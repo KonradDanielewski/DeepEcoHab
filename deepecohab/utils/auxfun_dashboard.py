@@ -84,6 +84,10 @@ def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider
                     ),
                     html.Button('Download', id='download-data', n_clicks=0),
                     dcc.Download(id="download-dataframe"),
+                    dbc.Container([
+                        html.Button('Plot downloads...', id='open-modal', n_clicks=0),
+                        generate_download_block(),
+                    ]),
                 ], className='download-row'),
             ], className='download-container')
         )
@@ -117,30 +121,101 @@ def generate_comparison_block(side: str, slider_range: list[int]):
         )
     ], className="h-100 p-2")
 
-# def generate_download_block(graph_id):
-#     return html.Div([
-#         dcc.Store(id={'type': 'dropdown-visible', 'graph': graph_id}, data=False),
-#         dbc.Button(id={'type': 'download-icon-button', 'graph': graph_id}, className="fa-solid fa-file-export icon-button-dark", 
-#                    style={"fontSize": "30px", "marginRight": "10px"}),
-#         html.Div(id={'type': 'dropdown-container', 'graph': graph_id}, style={"position": "relative"}),
-#         dcc.Download(id={'type': 'download-component', 'graph': graph_id})
-#     ])
-
-def generate_download_block(graph_id):
-    return html.Div([
-        # The download icon button
-        dbc.Button(
-            id={'type': 'download-icon-button', 'graph': graph_id},
-            className="fa-solid fa-file-export icon-button-dark",
-            style={"fontSize": "30px", "marginRight": "10px"}
+def generate_download_block():
+    plot_options = [
+        {'label': 'Position Plot', 'value': {'graph': 'position-plot'}},
+        {'label': 'Activity Plot', 'value': {'graph': 'activity-plot'}},
+        {'label': 'Pairwise Heatmap', 'value': {'graph': 'pairwise-heatmap'}},
+        {'label': 'Chasings Heatmap', 'value': {'graph': 'chasings-heatmap'}},
+        {'label': 'Sociability Heatmap', 'value': {'graph': 'sociability-heatmap'}},
+        {'label': 'Network', 'value': {'graph': 'network'}},
+        {'label': 'Chasings Plot', 'value': {'graph': 'chasings-plot'}},
+        {'label': 'Ranking Time Plot', 'value': {'graph': 'ranking-time-plot'}},
+        {'label': 'Ranking Distribution', 'value': {'graph': 'ranking-distribution'}},
+        {'label': 'Time per Cage', 'value': {'graph': 'time-per-cage'}},
+    ]
+    modal = dbc.Modal(
+    [
+        dbc.ModalHeader(dbc.ModalTitle("Select Plots to Download")),
+        dbc.ModalBody(
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Checklist(
+                            id="plot-checklist",
+                            options=plot_options,
+                            value=[],
+                            inline=False,
+                        ),
+                        width=8
+                    ),
+                    dbc.Col(
+                        [
+                            dbc.Button("Download SVG", id="download-svg", n_clicks=0, color="primary", className="mb-2 w-100"),
+                            dbc.Button("Download JSON", id="download-json", n_clicks=0, color="secondary", className="mb-2 w-100"),
+                            dbc.Button("Download CSV", id="download-csv", n_clicks=0, color="success", className="w-100"),
+                        ],
+                        width=4,
+                        className="d-flex flex-column align-items-start"
+                    )
+                ]
+            )
         ),
+        dbc.ModalFooter([
+            dbc.Button("Close", id="close-modal", className="ms-auto", n_clicks=0),
+            dcc.Download(id="download-component"),
+        ]),
+    ],
+    id="modal",
+    is_open=False,
+)
 
-        # Container where the modal will be dynamically rendered
-        html.Div(id={'type': 'modal-container', 'graph': graph_id}),
+    return modal
 
-        # Download component (used by dcc.send_xxx)
-        dcc.Download(id={'type': 'download-component', 'graph': graph_id}),
-    ])
+
+    # return html.Div([
+    #     dbc.Button(
+    #         id={'type': 'download-icon-button', 'graph': graph_id},
+    #         className="fa-solid fa-file-export icon-button-dark",
+    #         style={"fontSize": "30px", "marginRight": "10px"}
+    #     ),
+
+    #     dbc.Popover(
+    #         [
+    #             dbc.PopoverHeader("Download Options"),
+    #             dbc.PopoverBody([
+    #                 dbc.Input(
+    #                     id={'type': 'yaxis-input', 'graph': graph_id},
+    #                     placeholder="Y-axis"
+    #                 ),
+    #                 html.Br(),
+    #                 dbc.Button(
+    #                     "Download SVG",
+    #                     id={'type': 'download-option', 'format': 'svg', 'graph': graph_id},
+    #                     color="primary", className="me-2"
+    #                 ),
+    #                 dbc.Button(
+    #                     "Download JSON",
+    #                     id={'type': 'download-option', 'format': 'json', 'graph': graph_id},
+    #                     color="secondary", className="me-2"
+    #                 ),
+    #                 *( [] if "network" in str(graph_id).lower() else [
+    #                     dbc.Button(
+    #                         "Download CSV",
+    #                         id={'type': 'download-option', 'format': 'csv', 'graph': graph_id},
+    #                         color="success"
+    #                     )
+    #                 ])
+    #             ])
+    #         ],
+    #         id={'type': 'download-popover', 'graph': graph_id},
+    #         target={'type': 'download-icon-button', 'graph': graph_id},  # anchor to the button
+    #         is_open=False,
+    #         placement="bottom",
+    #     ),
+
+    #     dcc.Download(id={'type': 'download-component', 'graph': graph_id}),
+    # ])
     
 def get_data_slice(mode: str, phase_range: list):
     """Sets data slice to be taken from data used for dashboard."""        

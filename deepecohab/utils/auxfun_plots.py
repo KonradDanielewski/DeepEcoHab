@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 import pandas as pd
@@ -15,8 +16,7 @@ def create_edges_trace(
     pos: dict, 
     cmap: str = 'Viridis'
 ) -> list:
-    """Auxfun to create edges trace with color mapping based on edge width
-    """
+    """Auxfun to create edges trace with color mapping based on edge width"""
     edge_trace = []
     
     edge_widths = [G.edges[edge]['chasings'] for edge in G.edges()]
@@ -60,8 +60,7 @@ def create_node_trace(
     ranking_ordinal: pd.Series, 
     colors: list,
 ) -> go.Scatter:
-    """Auxfun to create node trace
-    """
+    """Auxfun to create node trace"""
     node_trace = go.Scatter(
         x=[],
         y=[],
@@ -95,8 +94,7 @@ def create_node_trace(
     return node_trace
 
 def prep_network_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prepare network data for plotting
-    """
+    """Auxfun to prepare network data for plotting"""
     graph_data = (
         df
         .groupby(level='animal_ids')
@@ -112,8 +110,7 @@ def prep_network_df(df: pd.DataFrame) -> pd.DataFrame:
     return graph_data
 
 def prep_sum_per_position_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prepare visits_per_position data for plotting
-    """
+    """Auxfun to prepare visits_per_position data for plotting"""
     plot_df = (
         df
         .melt(ignore_index=False, var_name='animal_id', value_name='y_val')
@@ -125,8 +122,7 @@ def prep_sum_per_position_df(df: pd.DataFrame) -> pd.DataFrame:
     return plot_df
 
 def prep_mean_per_position_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prepare visits_per_position data for plotting
-    """        
+    """Auxfun to prepare visits_per_position data for plotting"""        
     plot_df = (
         df
         .melt(ignore_index=False, var_name='animal_id', value_name='y_val')
@@ -135,8 +131,7 @@ def prep_mean_per_position_df(df: pd.DataFrame) -> pd.DataFrame:
     return plot_df
 
 def prep_ranking(ranking_df: pd.DataFrame, phase_range: list[int, int]) -> pd.Series:
-    """Auxfun to prepare ranking data for plotting.
-    """
+    """Auxfun to prepare ranking data for plotting."""
     ranking = (
         ranking_df
         .loc[('dark_phase', phase_range[-1]), :] # TODO: think of a good way to handle it. Pass mode? check which phase was last if all chosen?
@@ -144,8 +139,7 @@ def prep_ranking(ranking_df: pd.DataFrame, phase_range: list[int, int]) -> pd.Se
     return ranking
 
 def prep_ranking_distribution(ranking_df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prepare df for ranking distribution plotting.
-    """
+    """Auxfun to prepare df for ranking distribution plotting."""
     df = pd.DataFrame()
     df.index = np.arange(-25, 75, 0.1) # Index that should handle most possible rankings
     for ind, row in ranking_df.iterrows():
@@ -154,8 +148,7 @@ def prep_ranking_distribution(ranking_df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame, per_hour: bool) -> pd.DataFrame:
-    """Auxfun to prep the axes and data for ranking through time plot.
-    """    
+    """Auxfun to prep the axes and data for ranking through time plot."""    
     # Create sampling every 5 minutes (makes plotting prettier and reduces memory footprint)
     if per_hour:
         multiplier = 0.0002778
@@ -198,8 +191,7 @@ def prep_within_cohort_plot_df(df: pd.DataFrame) -> pd.DataFrame:
     return df.groupby(level='animal_ids').mean()
 
 def prep_activity_overtime_sum(df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prep data for a line plot of activity over hours
-    """    
+    """Auxfun to prep data for a line plot of activity over hours"""    
     plot_df = (
         df
         .loc[:, ['animal_id', 'hour']]
@@ -213,8 +205,7 @@ def prep_activity_overtime_sum(df: pd.DataFrame) -> pd.DataFrame:
     return plot_df
 
 def prep_activity_overtime_mean(df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prep data for a line plot of activity over hours
-    """   
+    """Auxfun to prep data for a line plot of activity over hours"""   
     plot_df = (
         df
         .loc[:, ['animal_id', 'phase_count', 'hour']]
@@ -256,8 +247,7 @@ def prep_match_df_line(df: pd.DataFrame, match_df: pd.DataFrame) -> pd.DataFrame
     return match_df
 
 def prep_chasing_overtime_mean(match_df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to prep data for a line plot of chasing over hours - mean
-    """   
+    """Auxfun to prep data for a line plot of chasing over hours - mean"""   
     plot_df = (
         match_df
         .loc[:, ['winner', 'phase_count', 'hour']]
@@ -275,8 +265,7 @@ def prep_chasing_overtime_mean(match_df: pd.DataFrame) -> pd.DataFrame:
     return mean_df
 
 def prep_chasing_overtime_sum(match_df) -> pd.DataFrame:
-    """Auxfun to prep data for a line plot of chasing over hours - sum
-    """       
+    """Auxfun to prep data for a line plot of chasing over hours - sum"""       
     plot_df = (
         match_df
         .loc[:, ['winner', 'hour']]
@@ -288,12 +277,28 @@ def prep_chasing_overtime_sum(match_df) -> pd.DataFrame:
 
     return plot_df
 
+def prep_time_per_cage_sum(binary_df: pd.DataFrame, phase_range: list[int, int]) -> pd.DataFrame:
+    """Auxfun to create a plot_df for time_per_cage lineplot"""
+    days = ((binary_df.index.get_level_values(2) - binary_df.index.get_level_values(2)[0]) + pd.Timedelta(str(binary_df.index.get_level_values(2).time[0]))).days + 1
+    hours = binary_df.index.get_level_values(2).hour
+    binary_df.index = pd.MultiIndex.from_arrays([days, hours], names=['days', 'hours'])
+    binary_df = binary_df.loc[(slice(phase_range[0], phase_range[-1]))]
+    output = (
+        binary_df
+        .groupby(level='hours')
+        .sum()
+        .stack(level=[0,1], future_stack=True)
+        .reset_index()
+    )
+    output.columns = ['hour', 'cage', 'animal_id', 'time']
+
+    return output
+
 def set_default_theme():
-    """Sets default plotly theme. TODO: to be updated as we go.
-    """    
+    """Sets default plotly theme. TODO: to be updated as we go."""    
     dark_dash_template = go.layout.Template(
         layout=go.Layout(
-            paper_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="#161f34",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color="#e0e6f0"),
             xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
@@ -307,6 +312,5 @@ def set_default_theme():
     pio.templates.default = "dash_dark"
     
 def open_browser():
-    """Opens browser with dashboard.
-    """    
+    """Opens browser with dashboard."""    
     webbrowser.open_new('http://127.0.0.1:8050/')
