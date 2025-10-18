@@ -191,10 +191,11 @@ def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
 def run_dashboard(cfp: str | dict):
     cfg = auxfun.read_config(cfp)
     data_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    cfg_path = Path(cfg['project_location']) / 'config.toml'
     
     path_to_dashboard = importlib.util.find_spec('deepecohab.dash.dashboard').origin
 
-    process = subprocess.Popen([sys.executable, path_to_dashboard, '--results-path', data_path])
+    process = subprocess.Popen([sys.executable, path_to_dashboard, '--results-path', data_path, '--config-path' , cfg_path])
     
     return process
 

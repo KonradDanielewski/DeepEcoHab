@@ -13,7 +13,7 @@ def activity_line(
     phase_range: list[int, int], 
     agg_switch: Literal['sum', 'mean'],
     animals, colors,
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Generates a line plot of cage visits per hour.
 
     This function filters data based on the specified phase range and generates a line plot
@@ -44,7 +44,7 @@ def chasings_line(
     phase_range: list[int, int], 
     agg_switch: Literal['sum', 'mean'],
     animals, colors,
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Generates a line plot of chasings per hour.
 
     This function filters data based on the specified phase range and generates a line plot
@@ -79,7 +79,7 @@ def activity_bar( # TODO: Add choice to show tunnels or no
     data_slice: tuple[str | None, slice],
     type_switch: Literal['visits', 'time'],
     agg_switch: Literal['sum', 'mean'],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Generates a bar plot or box plot of activity.
 
     This function generates either a bar plot or a box plot of activity based on the specified data slice (phase type and range).
@@ -114,7 +114,7 @@ def ranking_distribution(
     store: pd.HDFStore,
     data_slice: tuple[str | None, slice], # TODO: For future use - requires rewrite of ranking calculation but we could show dsitribution change over time
     animals, colors
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Generates a line plot of the ranking distribution.
 
     This function generates a line plot showing the distribution of rankings based on the specified data slice (phase type and range).
@@ -133,7 +133,7 @@ def ranking_distribution(
 def ranking_over_time(
     store: pd.HDFStore,
     animals, colors
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Generates a line plot of the ranking distribution over time.
 
     This function generates a line plot showing ranking change over time per animal.
@@ -154,7 +154,7 @@ def pairwise_sociability(
     data_slice: tuple[str | None, slice],
     type_switch: Literal['visits', 'time'],
     agg_switch: Literal['sum', 'mean'],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Generates a plot with heatmaps corresponding to the number of cages.
 
     This function generates a plot with multiple heatmaps, each corresponding to a cage,
@@ -181,7 +181,7 @@ def chasings(
     store: pd.HDFStore,
     data_slice: tuple[str | None, slice],
     agg_switch: Literal['sum', 'mean'],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Generates a heatmap of chasings.
 
     This function generates a heatmap showing the number of chasings based on the specified data slice.
@@ -201,7 +201,7 @@ def chasings(
 def within_cohort_sociability(
     store: pd.HDFStore,
     data_slice: tuple[str | None, slice],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Generates a heatmap of within-cohort sociability.
 
     This function generates a heatmap showing normalized pairwise sociability within a cohort based on the specified data slice.
@@ -222,7 +222,7 @@ def network_graph(
     mode: str,
     phase_range: list[int, int],
     animals, colors,
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Generates a network graph.
 
     This function generates a network graph where nodes are sized by ranking and edges are normalized
@@ -248,7 +248,7 @@ def time_per_cage(
         store: pd.HDFStore,
         phase_range: list[int, int],
         animals, colors,
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     
     binary_df = store['binary_df'].copy()
     binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])

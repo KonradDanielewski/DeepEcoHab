@@ -314,3 +314,8 @@ def set_default_theme():
 def open_browser():
     """Opens browser with dashboard."""    
     webbrowser.open_new('http://127.0.0.1:8050/')
+
+def to_store_json(df: pd.DataFrame | None) -> dict | None:
+    if df is None:
+        return None
+    return df.to_json(orient="split", date_format="iso")

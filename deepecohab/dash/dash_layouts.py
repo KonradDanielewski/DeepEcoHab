@@ -3,6 +3,7 @@ from dash import dcc, html
 
 from deepecohab.utils import auxfun_dashboard
 
+
 def generate_graphs_layout(phase_range):
     return html.Div([
         auxfun_dashboard.generate_settings_block('mode-switch', 
@@ -10,7 +11,7 @@ def generate_graphs_layout(phase_range):
                                                  'phase-slider', 
                                                  phase_range,
                                                  include_download=True),    
-            
+        
         dbc.Container([
             # Ranking, network graph, chasings
             dbc.Row([
@@ -22,20 +23,19 @@ def generate_graphs_layout(phase_range):
             ]),
             dbc.Row([
                 dbc.Col([
-                    dcc.Graph(id={'graph': 'ranking-time-plot'}, className='plot-500'),
-                    dcc.Graph(id={'graph': 'ranking-distribution'}, className='plot-450'),
+                    auxfun_dashboard.generate_standard_graph('ranking-time-plot'),
+                    auxfun_dashboard.generate_standard_graph('ranking-distribution', css_class='plot-450'),
                 ], width=5),
                 dbc.Col([
                     html.Div([
-                        # auxfun_dashboard.generate_download_block('network'),
-                        dcc.Graph(id={'graph': 'network'}, style={"width": "100%", "height": "100%"}),
+                        auxfun_dashboard.generate_standard_graph('network', css_class='fullsize'),
                     ], style={'display': 'flex', 'height': '100%'}),
                 ], width=7),
             ], className="g-3"),
             
             dbc.Row([
-                dbc.Col(dcc.Graph(id={'graph': 'chasings-heatmap'}, className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id={'graph': 'chasings-plot'}, className='plot-500'), width=6),
+                dbc.Col(auxfun_dashboard.generate_standard_graph('chasings-heatmap'), width=6),
+                dbc.Col(auxfun_dashboard.generate_standard_graph('chasings-plot'), width=6),
             ], className="g-3"),
             # Activity per hour line and per position bar
             dbc.Row([
@@ -55,12 +55,12 @@ def generate_graphs_layout(phase_range):
             ]),
             
             dbc.Row([
-                dbc.Col(dcc.Graph(id={'graph': 'position-plot'}, className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id={'graph': 'activity-plot'}, className='plot-500'), width=6),
+                dbc.Col(auxfun_dashboard.generate_standard_graph('position-plot'), width=6),
+                dbc.Col(auxfun_dashboard.generate_standard_graph('activity-plot'), width=6),
             ], className="g-3"),
 
             dbc.Row([
-                dbc.Col(dcc.Graph(id={'graph': 'time-per-cage'}, className='plot-800'), width=12),
+                dbc.Col(auxfun_dashboard.generate_standard_graph('time-per-cage', css_class='plot-800'), width=12),
             ], className="g-3"),
             # Pairwise and incohort heatmaps
             dbc.Row([
@@ -80,8 +80,8 @@ def generate_graphs_layout(phase_range):
             ]),
             
             dbc.Row([                
-                dbc.Col(dcc.Graph(id={'graph': 'pairwise-heatmap'}, className='plot-500'), width=6),
-                dbc.Col(dcc.Graph(id={'graph': 'sociability-heatmap'}, className='plot-500'), width=6),
+                dbc.Col(auxfun_dashboard.generate_standard_graph('pairwise-heatmap'), width=6),
+                dbc.Col(auxfun_dashboard.generate_standard_graph('sociability-heatmap'), width=6),
             ], className="g-3"),
             ], fluid=True, style={'padding': '20px'})
     ])

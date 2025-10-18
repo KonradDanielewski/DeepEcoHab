@@ -5,6 +5,8 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 
 
+COMMON_CFG = {"displayModeBar": False}
+
 def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider_range, include_download=False):
     block = html.Div([
         html.Div([
@@ -171,51 +173,6 @@ def generate_download_block():
 )
 
     return modal
-
-
-    # return html.Div([
-    #     dbc.Button(
-    #         id={'type': 'download-icon-button', 'graph': graph_id},
-    #         className="fa-solid fa-file-export icon-button-dark",
-    #         style={"fontSize": "30px", "marginRight": "10px"}
-    #     ),
-
-    #     dbc.Popover(
-    #         [
-    #             dbc.PopoverHeader("Download Options"),
-    #             dbc.PopoverBody([
-    #                 dbc.Input(
-    #                     id={'type': 'yaxis-input', 'graph': graph_id},
-    #                     placeholder="Y-axis"
-    #                 ),
-    #                 html.Br(),
-    #                 dbc.Button(
-    #                     "Download SVG",
-    #                     id={'type': 'download-option', 'format': 'svg', 'graph': graph_id},
-    #                     color="primary", className="me-2"
-    #                 ),
-    #                 dbc.Button(
-    #                     "Download JSON",
-    #                     id={'type': 'download-option', 'format': 'json', 'graph': graph_id},
-    #                     color="secondary", className="me-2"
-    #                 ),
-    #                 *( [] if "network" in str(graph_id).lower() else [
-    #                     dbc.Button(
-    #                         "Download CSV",
-    #                         id={'type': 'download-option', 'format': 'csv', 'graph': graph_id},
-    #                         color="success"
-    #                     )
-    #                 ])
-    #             ])
-    #         ],
-    #         id={'type': 'download-popover', 'graph': graph_id},
-    #         target={'type': 'download-icon-button', 'graph': graph_id},  # anchor to the button
-    #         is_open=False,
-    #         placement="bottom",
-    #     ),
-
-    #     dcc.Download(id={'type': 'download-component', 'graph': graph_id}),
-    # ])
     
 def get_data_slice(mode: str, phase_range: list):
     """Sets data slice to be taken from data used for dashboard."""        
@@ -230,3 +187,7 @@ def check_if_slice_applicable(name: str, mode: str, phase_range: list):
         return get_data_slice(mode, phase_range)
     else:
         return slice(None)
+    
+def generate_standard_graph(graph_id: str, css_class: str = "plot-450"):
+    return html.Div([dcc.Graph(id={'graph': graph_id}, className=css_class, config=COMMON_CFG), 
+            dcc.Store(id={'store': graph_id})])

@@ -16,6 +16,7 @@ from deepecohab.dash import dash_layouts
 
 import dash_bootstrap_components as dbc
 
+
 from deepecohab.utils import (
     auxfun_plots,
     auxfun_dashboard,
@@ -133,15 +134,25 @@ if __name__ == '__main__':
     @app.callback(
         [
             Output({'graph':'position-plot'}, 'figure'),
+            Output({'store':'position-plot'}, 'data'),
             Output({'graph':'activity-plot'}, 'figure'),
+            Output({'store':'activity-plot'}, 'data'),
             Output({'graph':'pairwise-heatmap'}, 'figure'),
+            Output({'store':'pairwise-heatmap'}, 'data'),
             Output({'graph':'chasings-heatmap'}, 'figure'),
+            Output({'store':'chasings-heatmap'}, 'data'),
             Output({'graph':'sociability-heatmap'}, 'figure'),
+            Output({'store':'sociability-heatmap'}, 'data'),
             Output({'graph':'network'}, 'figure'),
+            Output({'store':'network'}, 'data'),
             Output({'graph':'chasings-plot'}, 'figure'),
+            Output({'store':'chasings-plot'}, 'data'),
             Output({'graph':'ranking-time-plot'}, 'figure'),
+            Output({'store':'ranking-time-plot'}, 'data'),
             Output({'graph':'ranking-distribution'}, 'figure'),
+            Output({'store':'ranking-distribution'}, 'data'),
             Output({'graph':'time-per-cage'}, 'figure'),
+            Output({'store':'time-per-cage'}, 'data'),
         ],
         [
             Input('phase-slider', 'value'),
@@ -157,28 +168,28 @@ if __name__ == '__main__':
         animals = store['main_df'].animal_id.cat.categories
         colors = auxfun_plots.color_sampling(animals)
 
-        position_fig = dash_plotting.activity_bar(store, data_slice, position_switch, aggregate_stats_switch)
-        activity_fig = dash_plotting.activity_line(store, phase_range, aggregate_stats_switch, animals, colors)
-        pairwise_plot = dash_plotting.pairwise_sociability(store, data_slice,  pairwise_switch, aggregate_stats_switch)
-        chasings_plot = dash_plotting.chasings(store, data_slice, aggregate_stats_switch)
-        incohort_soc_plot = dash_plotting.within_cohort_sociability(store, data_slice)
-        network_plot = dash_plotting.network_graph(store, mode, phase_range, animals, colors)
-        chasing_line_plot = dash_plotting.chasings_line(store, phase_range, aggregate_stats_switch, animals, colors)
-        ranking_line = dash_plotting.ranking_over_time(store, animals, colors)
-        ranking_distribution = dash_plotting.ranking_distribution(store, data_slice, animals, colors)
-        time_per_cage = dash_plotting.time_per_cage(store, phase_range, animals, colors)
+        position_fig, position_data = dash_plotting.activity_bar(store, data_slice, position_switch, aggregate_stats_switch)
+        activity_fig, activity_data = dash_plotting.activity_line(store, phase_range, aggregate_stats_switch, animals, colors)
+        pairwise_plot, pairwise_data = dash_plotting.pairwise_sociability(store, data_slice,  pairwise_switch, aggregate_stats_switch)
+        chasings_plot, chasings_data = dash_plotting.chasings(store, data_slice, aggregate_stats_switch)
+        incohort_soc_plot, incohort_soc_data = dash_plotting.within_cohort_sociability(store, data_slice)
+        network_plot, network_plot_data = dash_plotting.network_graph(store, mode, phase_range, animals, colors)
+        chasing_line_plot, chasing_line_data = dash_plotting.chasings_line(store, phase_range, aggregate_stats_switch, animals, colors)
+        ranking_line, ranking_data = dash_plotting.ranking_over_time(store, animals, colors)
+        ranking_distribution, ranking_distribution_data = dash_plotting.ranking_distribution(store, data_slice, animals, colors)
+        time_per_cage, time_per_cage_data = dash_plotting.time_per_cage(store, phase_range, animals, colors)
 
         return [
-            position_fig, 
-            activity_fig, 
-            pairwise_plot, 
-            chasings_plot, 
-            incohort_soc_plot, 
-            network_plot, 
-            chasing_line_plot, 
-            ranking_line, 
-            ranking_distribution,
-            time_per_cage
+            position_fig, auxfun_plots.to_store_json(position_data),
+            activity_fig, auxfun_plots.to_store_json(activity_data),
+            pairwise_plot, auxfun_plots.to_store_json(pd.DataFrame()),
+            chasings_plot, auxfun_plots.to_store_json(chasings_data),
+            incohort_soc_plot, auxfun_plots.to_store_json(incohort_soc_data),
+            network_plot, auxfun_plots.to_store_json(network_plot_data),
+            chasing_line_plot, auxfun_plots.to_store_json(chasing_line_data),
+            ranking_line, auxfun_plots.to_store_json(ranking_data),
+            ranking_distribution, auxfun_plots.to_store_json(ranking_distribution_data),
+            time_per_cage, auxfun_plots.to_store_json(time_per_cage_data)
         ]
 
     @app.callback(
@@ -195,7 +206,7 @@ if __name__ == '__main__':
             
         animals = store['main_df'].animal_id.cat.categories
         colors = auxfun_plots.color_sampling(animals)
-        return dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch, animals, colors)
+        return dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch, animals, colors)[0]
 
     @app.callback(
     Output("download-component", "data"),
@@ -205,10 +216,13 @@ if __name__ == '__main__':
         Input("download-csv", "n_clicks"),
     ],
     State("plot-checklist", "value"),
-    [State({"type": "graph", "id": ALL}, "figure")],
+    [State({"graph" : ALL}, "figure"),
+    State({"graph" : ALL}, "id"),
+    State({"store" : ALL}, "data"),
+    State({"store" : ALL}, "id")],
     prevent_initial_call=True,
     )
-    def download_selected(svg_click, json_click, csv_click, selected_plots, all_figures):
+    def download_selected(svg_click, json_click, csv_click, selected_plots, all_figures, all_ids, all_stores, store_ids):
         triggered = ctx.triggered_id
         if not triggered or not selected_plots:
             raise dash.exceptions.PreventUpdate
@@ -222,28 +236,30 @@ if __name__ == '__main__':
         if not fmt:
             raise dash.exceptions.PreventUpdate
 
+        fig_dict = {id_dict["graph"]: fig for id_dict, fig in zip(all_ids, all_figures)}
+        state_dict = {id_dict["store"]: data for id_dict, data in zip(store_ids, all_stores)}
+
         files = []
         for plot_id_dict in selected_plots:
-            plot_id = 'plot'
-            figure = plot_id_dict['graph']
+            plot_id = plot_id_dict['graph']
+            plot_name = f'plot_{plot_id}'
+            figure = go.Figure(fig_dict[plot_id])
             if figure is None:
                 continue
 
             if fmt == "svg":
                 content = figure.to_image(format="svg")
-                files.append((f"{plot_id}.svg", content))
+                files.append((f"{plot_name}.svg", content))
             elif fmt == "json":
                 content = json.dumps(figure.to_plotly_json()).encode("utf-8")
-                files.append((f"{plot_id}.json", content))
+                files.append((f"{plot_name}.json", content))
             elif fmt == "csv":
-                if figure.data:
-                    dfs = [pd.DataFrame(trace) for trace in figure.data]
-                    df = pd.concat(dfs, axis=1)
-                else:
-                    df = pd.DataFrame()
-                csv_buf = io.StringIO()
-                df.to_csv(csv_buf, index=False)
-                files.append((f"{plot_id}.csv", csv_buf.getvalue().encode("utf-8")))
+                df_data = state_dict[plot_id]
+                if df_data is None:
+                    continue
+                df = pd.read_json(df_data, orient="split")
+                csv_bytes = df.to_csv(index=False).encode("utf-8")
+                files.append((f"{plot_name}.csv", csv_bytes))
 
         if len(files) == 1:
             fname, content = files[0]
@@ -305,8 +321,7 @@ if __name__ == '__main__':
             lambda b: b.write(zip_buffer.getvalue()),
             filename="selected_dataframes.zip"
         )
-    
-    # Run the app
+
     auxfun_plots.open_browser()
     app.run(debug=True, port=8050)
     

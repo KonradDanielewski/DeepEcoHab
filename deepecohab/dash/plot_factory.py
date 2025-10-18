@@ -15,7 +15,7 @@ def plot_sum_line_per_hour(
     animals: list[str], 
     colors: list[tuple[int, int, int]], 
     input_type: Literal['activity', 'chasings'],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots line graph for activity or chasings."""
     
     match input_type:
@@ -41,14 +41,14 @@ def plot_sum_line_per_hour(
     fig.update_yaxes(title=y_axes_label)
     fig.update_xaxes(title="<b>Hours</b>")
     
-    return fig
+    return fig, plot_df
 
 def plot_mean_line_per_hour(
     df: pd.DataFrame, 
     animals: list[str], 
     colors: list[str],
     input_type: Literal['activity', 'chasings'],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots line graph for activity or chasings with SEM shading."""
 
     match input_type:
@@ -109,13 +109,13 @@ def plot_mean_line_per_hour(
     fig.update_yaxes(title=y_axes_label)
     fig.update_xaxes(title="<b>Hours</b>")
 
-    return fig
+    return fig, plot_df
 
 def plot_sum_bar_activity(
     df: pd.DataFrame, 
     colors, 
     type_switch: Literal['visits', 'time'],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots bar graph of sum of cage and tunnel visits or time spent."""
     match type_switch:
         case 'visits':
@@ -140,13 +140,13 @@ def plot_sum_bar_activity(
     fig.update_xaxes(title_text='<b>Animal ID</b>')
     fig.update_yaxes(title_text=position_y_title)
 
-    return fig
+    return fig, plot_df
 
 def plot_mean_box_activity(
     df, 
     colors, 
     type_switch: Literal['visits', 'time'],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots box graph of mean of cage and tunnel visits or time spent."""
     match type_switch:
         case 'visits':
@@ -173,13 +173,13 @@ def plot_mean_box_activity(
     fig.update_xaxes(title_text='<b>Animal ID</b>')
     fig.update_yaxes(title_text=position_y_title)
 
-    return fig
+    return fig, plot_df
 
 def plot_ranking_distribution(
     df: pd.DataFrame,
     animals: list[str],
     colors: list[tuple[int, int, int, float]],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots line graph of ranking distribution with shaded area."""
     distribution_df = auxfun_plots.prep_ranking_distribution(df)
     
@@ -203,14 +203,14 @@ def plot_ranking_distribution(
             )
     )
 
-    return fig
+    return fig, distribution_df
 
 def plot_ranking_line(
     ranking_in_time: pd.DataFrame, 
     main_df: pd.DataFrame,
     colors, 
     animals,
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots line graph of ranking over time."""   
     plot_df = auxfun_plots.prep_ranking_in_time_df(main_df, ranking_in_time, per_hour=True)
 
@@ -241,13 +241,13 @@ def plot_ranking_line(
         ),
     )
 
-    return fig
+    return fig, plot_df
 
 def plot_sociability_heatmap(
     df: pd.DataFrame, 
     type_switch: Literal['visits', 'time'], 
     agg_switch: Literal['mean', 'sum'],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots heatmaps for pairwise encounters or time spent together."""
     match type_switch:
         case 'visits':
@@ -285,12 +285,12 @@ def plot_sociability_heatmap(
         ])
     )
 
-    return fig
+    return fig, plot_arr
 
 def plot_chasings_heatmap(
     df: pd.DataFrame,
     agg_switch: Literal['mean', 'sum'],
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots heatmap for number of chasings."""
     plot_df = auxfun_plots.prep_chasings_plot_df(df, agg_switch)
 
@@ -313,11 +313,11 @@ def plot_chasings_heatmap(
         ])
     )
 
-    return fig
+    return fig, plot_df
 
 def plot_within_cohort_heatmap(
     df: pd.DataFrame,
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots heatmap for within-cohort sociability."""
     plot_df = auxfun_plots.prep_within_cohort_plot_df(df)
 
@@ -340,14 +340,14 @@ def plot_within_cohort_heatmap(
         ])
     )
 
-    return fig
+    return fig, plot_df
 
 def plot_network_graph(
     chasings_df: pd.DataFrame,
     ranking_df: pd.DataFrame,
     phase_range: list[int, int],
     colors,
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """Plots network graph of social structure."""
     chasings_df = auxfun_plots.prep_network_df(chasings_df)
     ranking_ser = auxfun_plots.prep_ranking(ranking_df, phase_range)
@@ -372,14 +372,13 @@ def plot_network_graph(
     fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False,)
     fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False,)
     
-    return fig
+    return fig, chasings_df
 
 def time_per_cage_line(
         binary_df: pd.DataFrame, 
         phase_range: list[int, int], 
         animals, colors, 
-    ) -> go.Figure:
-
+    ) -> tuple[go.Figure, pd.DataFrame]:
     plot_df = auxfun_plots.prep_time_per_cage_sum(binary_df, phase_range)
 
     cages = sorted(plot_df['cage'].unique())
@@ -399,7 +398,7 @@ def time_per_cage_line(
 
     fig.for_each_annotation(lambda x: x.update(text=' '.join((x.text.split("=")[-1]).capitalize().split('_'))))
 
-    return fig
+    return fig, plot_df
     
 
 
