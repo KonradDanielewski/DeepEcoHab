@@ -233,7 +233,7 @@ def create_binary_df(
     cfp: str | Path | dict, 
     save_data: bool = True, 
     overwrite: bool = False,
-    precision: int = 10,
+    precision: int = 1,
     ) -> pd.DataFrame:
     """Creates a binary DataFrame of the position of the animals. Multiindexed on the columns, for each position, each animal. 
        Indexed with datetime for easy time-based slicing.
