@@ -23,14 +23,13 @@ def generate_graphs_layout(phase_range):
             ]),
             dbc.Row([
                 dbc.Col([
-                    auxfun_dashboard.generate_standard_graph('ranking-time-plot'),
-                    auxfun_dashboard.generate_standard_graph('ranking-distribution', css_class='plot-450'),
-                ], width=5),
+                    auxfun_dashboard.generate_standard_graph('ranking-time-plot', css_class='plot-500'),
+                    auxfun_dashboard.generate_standard_graph('ranking-distribution'),
+                ], width=6),
                 dbc.Col([
-                    html.Div([
-                        auxfun_dashboard.generate_standard_graph('network', css_class='fullsize'),
-                    ], style={'display': 'flex', 'height': '100%'}),
-                ], width=7),
+                    auxfun_dashboard.generate_standard_graph('network', css_class='plot-500'),
+                    auxfun_dashboard.generate_standard_graph('metrics'),
+                ], width=6),
             ], className="g-3"),
             
             dbc.Row([
@@ -80,8 +79,8 @@ def generate_graphs_layout(phase_range):
             ]),
             
             dbc.Row([                
-                dbc.Col(auxfun_dashboard.generate_standard_graph('pairwise-heatmap'), width=6),
-                dbc.Col(auxfun_dashboard.generate_standard_graph('sociability-heatmap'), width=6),
+                dbc.Col(auxfun_dashboard.generate_standard_graph('pairwise-heatmap', css_class='plot-600'), width=6),
+                dbc.Col(auxfun_dashboard.generate_standard_graph('sociability-heatmap', css_class='plot-600'), width=6),
             ], className="g-3"),
             ], fluid=True, style={'padding': '20px'})
     ])

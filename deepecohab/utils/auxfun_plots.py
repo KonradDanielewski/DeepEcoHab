@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import webbrowser
 
-from scipy.stats import norm
+from scipy.stats import norm, zscore
 
 def create_edges_trace(
     G: nx.Graph, 
@@ -293,6 +293,56 @@ def prep_time_per_cage_sum(binary_df: pd.DataFrame, phase_range: list[int, int])
     output.columns = ['hour', 'cage', 'animal_id', 'time']
 
     return output
+
+def prep_polar_df(
+    binary_df: pd.DataFrame, 
+    chasings_df: pd.DataFrame, 
+    pairwise_encounters: pd.DataFrame, 
+    activity: pd.DataFrame, 
+    animals: list[str],
+) -> pd.DataFrame:
+    # time alone
+    temp_df = binary_df.stack(level=0, future_stack=True).reorder_levels([0,1,3,2]).sort_index()
+
+    time_alone = pd.Series(index=animals)
+
+    for animal in animals:
+        rest = [a for a in animals if a != animal]
+        time_alone.loc[animal] = (temp_df.loc[:, animal] & ~(temp_df.loc[:, rest]).all(axis=1)).sum()
+
+    time_alone = zscore(time_alone)
+    
+    # chased
+    chased = chasings_df.sum(axis=1).groupby(level='animal_ids').sum()
+    chased = zscore(chased)
+    
+    # chasing
+    chasing = chasings_df.sum()
+    chasing = zscore(chasing)
+    
+    # activity
+    activity = activity.sum()
+    activity = zscore(activity)
+    
+    # meetings
+    temp1 = pairwise_encounters.sum(axis=0)
+    temp2 = pairwise_encounters.groupby(level='animal_ids').sum().sum(axis=1)
+
+    meetings = temp1 + temp2
+    meetings = zscore(meetings)
+    
+    plot_df = (
+    pd.DataFrame(
+        np.vstack((time_alone, chasing, chased, activity, meetings)).T, 
+        index=animals,
+        columns=['Time Alone', 'Chasing', 'Chased', 'Activity', 'Sociability']
+    )
+    .unstack()
+    .reset_index()
+    )
+    plot_df.columns = ['metric', 'animal_id', 'value']
+    
+    return plot_df
 
 def set_default_theme():
     """Sets default plotly theme. TODO: to be updated as we go."""    

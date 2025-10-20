@@ -77,6 +77,7 @@ def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider
                                     {'label': 'Ranking' ,'value': 'ranking'},
                                     {'label': 'Ranking ordinal' ,'value': 'ranking_ordinal'},
                                     {'label': 'Match DF' ,'value': 'match_df'},
+                                    {'label': 'Binary DF' ,'value': 'binary_df'},
                                 ],
                                 value=[],
                                 id='data-keys-dropdown',
@@ -135,6 +136,7 @@ def generate_download_block():
         {'label': 'Ranking Time Plot', 'value': {'graph': 'ranking-time-plot'}},
         {'label': 'Ranking Distribution', 'value': {'graph': 'ranking-distribution'}},
         {'label': 'Time per Cage', 'value': {'graph': 'time-per-cage'}},
+        {'label': 'Metrics Polar', 'value': {'graph': 'metrics'}},
     ]
     modal = dbc.Modal(
     [

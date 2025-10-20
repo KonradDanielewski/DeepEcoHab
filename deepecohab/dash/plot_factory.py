@@ -47,7 +47,7 @@ def plot_mean_line_per_hour(
     df: pd.DataFrame, 
     animals: list[str], 
     colors: list[str],
-    input_type: Literal['activity', 'chasings'],
+    input_type: Literal['activity', 'chasings'],    
 ) -> tuple[go.Figure, pd.DataFrame]:
     """Plots line graph for activity or chasings with SEM shading."""
 
@@ -397,6 +397,31 @@ def time_per_cage_line(
     )
 
     fig.for_each_annotation(lambda x: x.update(text=' '.join((x.text.split("=")[-1]).capitalize().split('_'))))
+
+    return fig, plot_df
+
+def plot_metrics_polar(
+    binary_df: pd.DataFrame,
+    chasings_df: pd.DataFrame,
+    pairwise_encounters: pd.DataFrame,
+    activity: pd.DataFrame,
+    animals, colors, 
+    ) -> tuple[go.Figure, pd.DataFrame]:
+    plot_df = auxfun_plots.prep_polar_df(binary_df, chasings_df, pairwise_encounters, activity, animals)
+
+    fig = px.line_polar(
+        plot_df, 
+        r='value', 
+        theta='metric', 
+        color='animal_id', 
+        line_close=True,
+        line_shape='spline', 
+        color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+        title='<b>Social dominance metrics</b>'
+    )
+
+    fig.update_polars(bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(title_y=0.95, title_x=0.45)
 
     return fig, plot_df
     

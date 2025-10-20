@@ -305,6 +305,14 @@ a:hover {
     height: 450px !important;
 }
 
+.plot-600 { 
+    height: 600px !important;
+}
+
+.plot-800 { 
+    height: 800px !important;
+}
+
 .fullsize { 
     height: 100%;
     width: 100%;

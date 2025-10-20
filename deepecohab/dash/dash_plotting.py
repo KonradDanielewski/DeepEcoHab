@@ -198,6 +198,33 @@ def chasings(
 
     return plot_factory.plot_chasings_heatmap(df, agg_switch)
 
+def metrics(
+    store: pd.HDFStore,
+    data_slice: tuple[str | None, slice],
+    animals, colors,
+) -> tuple[go.Figure, pd.DataFrame]:
+    """Generates a polar plot of different social dominance related metrics.
+
+    This function generates a polar plot showing a z-scored value correspondings to specific metrics,
+    like chasings, being chased, activity etc. Each line represents a different animal
+
+    Args:
+        store: The HDFStore object containing the data.
+        data_slice: A tuple specifying the data slice to use.
+
+    Returns:
+        A Plotly Figure object representing the metrics.
+    """   
+    binary_df = store['binary_df'].copy()
+    if not isinstance(binary_df.columns, pd.MultiIndex):
+        binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
+    binary_df = binary_df.sort_index().loc[data_slice]
+    chasings_df = store['chasings'].loc[data_slice]
+    pairwise_encounters = store['pairwise_encounters'].loc[data_slice]
+    activity = store['visits_per_position'].loc[data_slice]
+
+    return plot_factory.plot_metrics_polar(binary_df, chasings_df, pairwise_encounters, activity, animals, colors)
+
 def within_cohort_sociability(
     store: pd.HDFStore,
     data_slice: tuple[str | None, slice],
@@ -251,7 +278,8 @@ def time_per_cage(
 ) -> tuple[go.Figure, pd.DataFrame]:
     
     binary_df = store['binary_df'].copy()
-    binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
+    if not isinstance(binary_df.columns, pd.MultiIndex):
+        binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
 
     return plot_factory.time_per_cage_line(binary_df, phase_range, animals, colors)
 

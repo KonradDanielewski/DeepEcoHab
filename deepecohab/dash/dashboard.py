@@ -153,6 +153,8 @@ if __name__ == '__main__':
             Output({'store':'ranking-distribution'}, 'data'),
             Output({'graph':'time-per-cage'}, 'figure'),
             Output({'store':'time-per-cage'}, 'data'),
+            Output({'graph':'metrics'}, 'figure'),
+            Output({'store':'metrics'}, 'data'),
         ],
         [
             Input('phase-slider', 'value'),
@@ -178,6 +180,7 @@ if __name__ == '__main__':
         ranking_line, ranking_data = dash_plotting.ranking_over_time(store, animals, colors)
         ranking_distribution, ranking_distribution_data = dash_plotting.ranking_distribution(store, data_slice, animals, colors)
         time_per_cage, time_per_cage_data = dash_plotting.time_per_cage(store, phase_range, animals, colors)
+        metrics_fig, metrics_data = dash_plotting.metrics(store, data_slice, animals, colors)
 
         return [
             position_fig, auxfun_plots.to_store_json(position_data),
@@ -189,7 +192,8 @@ if __name__ == '__main__':
             chasing_line_plot, auxfun_plots.to_store_json(chasing_line_data),
             ranking_line, auxfun_plots.to_store_json(ranking_data),
             ranking_distribution, auxfun_plots.to_store_json(ranking_distribution_data),
-            time_per_cage, auxfun_plots.to_store_json(time_per_cage_data)
+            time_per_cage, auxfun_plots.to_store_json(time_per_cage_data),
+            metrics_fig, auxfun_plots.to_store_json(metrics_data)
         ]
 
     @app.callback(
