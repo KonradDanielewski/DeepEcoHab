@@ -179,7 +179,7 @@ if __name__ == '__main__':
         chasing_line_plot, chasing_line_data = dash_plotting.chasings_line(store, phase_range, aggregate_stats_switch, animals, colors)
         ranking_line, ranking_data = dash_plotting.ranking_over_time(store, animals, colors)
         ranking_distribution, ranking_distribution_data = dash_plotting.ranking_distribution(store, data_slice, animals, colors)
-        time_per_cage, time_per_cage_data = dash_plotting.time_per_cage(store, phase_range, animals, colors)
+        time_per_cage, time_per_cage_data = dash_plotting.time_per_cage(store=store, phase_range=phase_range, agg_switch=aggregate_stats_switch, animals=animals, colors=colors)
         metrics_fig, metrics_data = dash_plotting.metrics(store, data_slice, animals, colors)
 
         return [

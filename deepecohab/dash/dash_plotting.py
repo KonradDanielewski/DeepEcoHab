@@ -274,14 +274,18 @@ def network_graph(
 def time_per_cage(
         store: pd.HDFStore,
         phase_range: list[int, int],
+        agg_switch: Literal['sum', 'mean'],
         animals, colors,
 ) -> tuple[go.Figure, pd.DataFrame]:
     
     binary_df = store['binary_df'].copy()
     if not isinstance(binary_df.columns, pd.MultiIndex):
         binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
-
-    return plot_factory.time_per_cage_line(binary_df, phase_range, animals, colors)
+    match agg_switch:
+        case 'sum':
+            return plot_factory.time_per_cage_line_sum(binary_df, phase_range, animals, colors)
+        case 'mean':
+            return plot_factory.time_per_cage_line_mean(binary_df, phase_range, animals, colors)
 
 def get_single_plot(store, mode, plot_type, data_slice, phase_range, agg_switch, animals, colors):
     """Retrieves a single plot based on the specified parameters.
