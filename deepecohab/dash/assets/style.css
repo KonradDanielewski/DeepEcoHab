@@ -317,3 +317,21 @@ a:hover {
     height: 100%;
     width: 100%;
 }
+
+/* tabs styles */
+.dash-tab {
+    background-color: #5a6b8c !important;
+    color: white !important;
+    padding: 10px !important;
+    font-weight: bold !important;
+    border: none !important;
+}
+
+/* Style for selected tab */
+.dash-tab--selected {
+    background-color: #2a3f5f !important;
+    color: white !important;
+    padding: 10px !important;
+    font-weight: bold !important;
+    border-top: 3px solid #5a6b8c !important;
+}

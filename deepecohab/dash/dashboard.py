@@ -3,7 +3,6 @@ import sys
 import io
 import zipfile
 from pathlib import Path
-import json
 
 import dash
 import pandas as pd
@@ -82,38 +81,16 @@ if __name__ == '__main__':
                     dcc.Tab(
                         label='Dashboard',
                         value='tab-dashboard',
+                        className='dash-tab',
+                        selected_className='dash-tab--selected',
                         children=dashboard_layout,
-                        style={
-                            'backgroundColor': '#5a6b8c',
-                            'color': 'white',
-                            'padding': '10px',
-                            'fontWeight': 'bold',
-                        },
-                        selected_style={
-                            'backgroundColor': '#2a3f5f',
-                            'color': 'white',
-                            'padding': '10px',
-                            'fontWeight': 'bold',
-                            'borderTop': '3px solid #5a6b8c'
-                        }
                     ),
                     dcc.Tab(
                         label='Plots Comparison',
                         value='tab-other',
+                        className='dash-tab',
+                        selected_className='dash-tab--selected',
                         children=comparison_tab,
-                        style={
-                            'backgroundColor': '#5a6b8c',
-                            'color': 'white',
-                            'padding': '10px',
-                            'fontWeight': 'bold',
-                        },
-                        selected_style={
-                            'backgroundColor': '#2a3f5f',
-                            'color': 'white',
-                            'padding': '10px',
-                            'fontWeight': 'bold',
-                            'borderTop': '3px solid #5a6b8c'
-                        }
                     ),
                 ],
                 style={
@@ -213,118 +190,64 @@ if __name__ == '__main__':
         return dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch, animals, colors)[0]
 
     @app.callback(
-    Output("download-component", "data"),
-    [
-        Input("download-svg", "n_clicks"),
-        Input("download-json", "n_clicks"),
-        Input("download-csv", "n_clicks"),
-    ],
-    State("plot-checklist", "value"),
-    [State({"graph" : ALL}, "figure"),
-    State({"graph" : ALL}, "id"),
-    State({"store" : ALL}, "data"),
-    State({"store" : ALL}, "id")],
-    prevent_initial_call=True,
-    )
-    def download_selected(svg_click, json_click, csv_click, selected_plots, all_figures, all_ids, all_stores, store_ids):
-        triggered = ctx.triggered_id
-        if not triggered or not selected_plots:
-            raise dash.exceptions.PreventUpdate
-
-        fmt_map = {
-            "download-svg": "svg",
-            "download-json": "json",
-            "download-csv": "csv",
-        }
-        fmt = fmt_map.get(triggered)
-        if not fmt:
-            raise dash.exceptions.PreventUpdate
-
-        fig_dict = {id_dict["graph"]: fig for id_dict, fig in zip(all_ids, all_figures)}
-        state_dict = {id_dict["store"]: data for id_dict, data in zip(store_ids, all_stores)}
-
-        files = []
-        for plot_id_dict in selected_plots:
-            plot_id = plot_id_dict['graph']
-            plot_name = f'plot_{plot_id}'
-            figure = go.Figure(fig_dict[plot_id])
-            if figure is None:
-                continue
-
-            if fmt == "svg":
-                content = figure.to_image(format="svg")
-                files.append((f"{plot_name}.svg", content))
-            elif fmt == "json":
-                content = json.dumps(figure.to_plotly_json()).encode("utf-8")
-                files.append((f"{plot_name}.json", content))
-            elif fmt == "csv":
-                df_data = state_dict[plot_id]
-                if df_data is None:
-                    continue
-                df = pd.read_json(df_data, orient="split")
-                csv_bytes = df.to_csv(index=False).encode("utf-8")
-                files.append((f"{plot_name}.csv", csv_bytes))
-
-        if len(files) == 1:
-            fname, content = files[0]
-            return dcc.send_bytes(lambda b: b.write(content), filename=fname)
-
-        elif len(files) > 1:
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w") as zf:
-                for fname, content in files:
-                    zf.writestr(fname, content)
-            zip_buffer.seek(0)
-            return dcc.send_bytes(lambda b: b.write(zip_buffer.read()), filename=f"plots_{fmt}.zip")
-
-        else:
-            raise dash.exceptions.PreventUpdate
-
-    @app.callback(
-        Output("modal", "is_open"),
+        [Output("modal", "is_open"), Output("plot-checklist", "options")],
         [Input("open-modal", "n_clicks"), Input("close-modal", "n_clicks")],
-        [State("modal", "is_open")],
+        [State("modal", "is_open"),
+         State({"graph" : ALL}, "id")],
     )
-    def toggle_modal(open_click, close_click, is_open):
+    def toggle_modal(open_click, close_click, is_open, graph_ids):
         if open_click or close_click:
-            return not is_open
-        return is_open
+            return not is_open, auxfun_dashboard.get_options_from_ids([g["graph"] for g in graph_ids])
+        return is_open, []
         
     @app.callback(
-        Output("download-dataframe", "data"),
-        Input("download-data", "n_clicks"),
-        State("data-keys-dropdown", "value"),
-        State('mode-switch', "value"),
-        State('phase-slider', "value"),
+        Output("download-component", "data"),
+        [
+            Input({"type":"download-btn", "fmt": ALL, "tab":ALL}, "n_clicks"),
+        ],
+        [
+            State("data-keys-checklist", "value"),
+            State("plot-checklist", "value"),
+            State('mode-switch', "value"),
+            State('phase-slider', "value"),
+            State({"graph" : ALL}, "figure"),
+            State({"graph" : ALL}, "id"),
+            State({"store" : ALL}, "data"),
+            State({"store" : ALL}, "id")
+        ],
         prevent_initial_call=True,
     )
-    def download_selected_data(n_clicks, selected_names, mode, phase_range,):
-        if not selected_names:
-            return None
+    def download_selected_data(btn_clicks, 
+                               selected_dfs, 
+                               selected_plots,
+                               mode, 
+                               phase_range,
+                               all_figures, 
+                               all_ids, 
+                               all_stores, 
+                               store_ids
+                               ):
         
-        if len(selected_names) == 1:
-            name = selected_names[0]
-            data_slice = auxfun_dashboard.check_if_slice_applicable(name, mode, phase_range)
-            if name in store:
-                df = store[name].loc[data_slice]
-                return dcc.send_data_frame(df.to_csv, f"{name}.csv")
-            return None
-
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w") as zf:
-            for name in selected_names:
-                if name in store:
-                    data_slice = auxfun_dashboard.check_if_slice_applicable(name, mode, phase_range)
-                    df = store[name].loc[data_slice]
-                    csv_bytes = df.to_csv(index=False).encode("utf-8")
-                    zf.writestr(f"{name}.csv", csv_bytes)
-
-        zip_buffer.seek(0)
+        triggered = ctx.triggered_id
+        if not triggered:
+            raise dash.exceptions.PreventUpdate
         
-        return dcc.send_bytes(
-            lambda b: b.write(zip_buffer.getvalue()),
-            filename="selected_dataframes.zip"
-        )
+        if triggered["tab"] == "dfs":
+            return auxfun_dashboard.download_dataframes(selected_dfs,
+                                                        mode,
+                                                        phase_range,
+                                                        store)
+        elif triggered["tab"] == "plots":
+            return auxfun_dashboard.download_plots(selected_plots,
+                                            triggered["fmt"],
+                                            all_figures, 
+                                            all_ids, 
+                                            all_stores, 
+                                            store_ids
+                                            )
+        else:
+            raise dash.exceptions.PreventUpdate
+        
 
     auxfun_plots.open_browser()
     app.run(debug=True, port=8050)

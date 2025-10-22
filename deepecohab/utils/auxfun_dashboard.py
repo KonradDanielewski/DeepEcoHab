@@ -1,7 +1,11 @@
-from typing import Literal
+import io
+import zipfile
+import json
 
-from dash import dcc, html
+from dash import dcc, html, exceptions
 import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+
 import pandas as pd
 
 
@@ -61,32 +65,6 @@ def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider
         block.children.append(
             html.Div([
                 html.Div([
-                    dbc.DropdownMenu(
-                        label='Choose DataFrame/s:',
-                        children=[
-                            dbc.Checklist(
-                                options=[
-                                    {'label': 'Main DF' ,'value': 'main_df'},
-                                    {'label': 'Chasing' ,'value': 'chasings'},
-                                    {'label': 'Time per position' ,'value': 'time_per_position'},
-                                    {'label': 'Visits per position' ,'value': 'visits_per_position'},
-                                    {'label': 'Time together' ,'value': 'time_together'},
-                                    {'label': 'Pairwise encounters' ,'value': 'pairwise_encounters'},
-                                    {'label': 'Incohort sociability' ,'value': 'incohort_sociability'},
-                                    {'label': 'Ranking in time' ,'value': 'ranking_in_time'},
-                                    {'label': 'Ranking' ,'value': 'ranking'},
-                                    {'label': 'Ranking ordinal' ,'value': 'ranking_ordinal'},
-                                    {'label': 'Match DF' ,'value': 'match_df'},
-                                    {'label': 'Binary DF' ,'value': 'binary_df'},
-                                ],
-                                value=[],
-                                id='data-keys-dropdown',
-                                inline=False,
-                                className='download-dropdown',
-                            ),]
-                    ),
-                    html.Button('Download', id='download-data', n_clicks=0),
-                    dcc.Download(id="download-dataframe"),
                     dbc.Container([
                         html.Button('Plot downloads...', id='open-modal', n_clicks=0),
                         generate_download_block(),
@@ -124,45 +102,92 @@ def generate_comparison_block(side: str, slider_range: list[int]):
         )
     ], className="h-100 p-2")
 
-def generate_download_block():
-    plot_options = [
-        {'label': 'Position Plot', 'value': {'graph': 'position-plot'}},
-        {'label': 'Activity Plot', 'value': {'graph': 'activity-plot'}},
-        {'label': 'Pairwise Heatmap', 'value': {'graph': 'pairwise-heatmap'}},
-        {'label': 'Chasings Heatmap', 'value': {'graph': 'chasings-heatmap'}},
-        {'label': 'Sociability Heatmap', 'value': {'graph': 'sociability-heatmap'}},
-        {'label': 'Network', 'value': {'graph': 'network'}},
-        {'label': 'Chasings Plot', 'value': {'graph': 'chasings-plot'}},
-        {'label': 'Ranking Time Plot', 'value': {'graph': 'ranking-time-plot'}},
-        {'label': 'Ranking Distribution', 'value': {'graph': 'ranking-distribution'}},
-        {'label': 'Time per Cage', 'value': {'graph': 'time-per-cage'}},
-        {'label': 'Metrics Polar', 'value': {'graph': 'metrics'}},
+def generate_plot_download_tab():
+    return dcc.Tab(
+        label='Plots',
+        value='tab-plots',
+        className='dash-tab',
+        selected_className='dash-tab--selected',
+        children = [dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Checklist(
+                        id="plot-checklist",
+                        options=[],
+                        value=[],
+                        inline=False,
+                    ),
+                    width=8
+                ),
+                dbc.Col(
+                    get_fmt_download_buttons(["svg", "json", "csv"], "plots"),
+                    width=4,
+                    className="d-flex flex-column align-items-start"
+                )
+            ]
+        )],
+    )
+    
+
+def generate_csv_download_tab():
+    options=[
+        {'label': 'Main DF' ,'value': 'main_df'},
+        {'label': 'Chasing' ,'value': 'chasings'},
+        {'label': 'Time per position' ,'value': 'time_per_position'},
+        {'label': 'Visits per position' ,'value': 'visits_per_position'},
+        {'label': 'Time together' ,'value': 'time_together'},
+        {'label': 'Pairwise encounters' ,'value': 'pairwise_encounters'},
+        {'label': 'Incohort sociability' ,'value': 'incohort_sociability'},
+        {'label': 'Ranking in time' ,'value': 'ranking_in_time'},
+        {'label': 'Ranking' ,'value': 'ranking'},
+        {'label': 'Ranking ordinal' ,'value': 'ranking_ordinal'},
+        {'label': 'Match DF' ,'value': 'match_df'},
+        {'label': 'Binary DF' ,'value': 'binary_df'},
     ]
+
+    return dcc.Tab(
+        label='DataFrames',
+        value='tab-dataframes',
+        className='dash-tab',
+        selected_className='dash-tab--selected',
+        children = [dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Checklist(
+                        id='data-keys-checklist',
+                        options=options,
+                        value=[],
+                        inline=False,
+                        className='download-dropdown',
+                    ),
+                    width=8
+                ),
+                dbc.Col(
+                    [
+                        dbc.Button("Download", id={"type":"download-btn", "fmt":"csv", "tab": "dfs"}, n_clicks=0, color="primary", className="mb-2 w-100")
+                    ],
+                    width=4,
+                    className="d-flex flex-column align-items-start"
+                )
+            ]
+        )],
+    )
+
+def generate_download_block():
     modal = dbc.Modal(
     [
-        dbc.ModalHeader(dbc.ModalTitle("Select Plots to Download")),
+        dbc.ModalHeader(),#dbc.ModalTitle("Select Plots to Download")),
         dbc.ModalBody(
-            dbc.Row(
-                [
-                    dbc.Col(
-                        dbc.Checklist(
-                            id="plot-checklist",
-                            options=plot_options,
-                            value=[],
-                            inline=False,
-                        ),
-                        width=8
-                    ),
-                    dbc.Col(
-                        [
-                            dbc.Button("Download SVG", id="download-svg", n_clicks=0, color="primary", className="mb-2 w-100"),
-                            dbc.Button("Download JSON", id="download-json", n_clicks=0, color="secondary", className="mb-2 w-100"),
-                            dbc.Button("Download CSV", id="download-csv", n_clicks=0, color="success", className="w-100"),
-                        ],
-                        width=4,
-                        className="d-flex flex-column align-items-start"
-                    )
-                ]
+            dcc.Tabs(
+                id='download-tabs',
+                value='tab-plots',
+                children=[
+                    generate_plot_download_tab(),
+                    generate_csv_download_tab()
+                ],
+                style={
+                    'backgroundColor': '#1f2c44',
+                }
             )
         ),
         dbc.ModalFooter([
@@ -193,3 +218,104 @@ def check_if_slice_applicable(name: str, mode: str, phase_range: list):
 def generate_standard_graph(graph_id: str, css_class: str = "plot-450"):
     return html.Div([dcc.Graph(id={'graph': graph_id}, className=css_class, config=COMMON_CFG), 
             dcc.Store(id={'store': graph_id})])
+
+def get_options_from_ids(obj_ids: list):
+    return [{"label": get_display_name(obj_id), "value": obj_id} for obj_id in obj_ids]
+
+def get_display_name(name: str, sep: str = "-"):
+    return " ".join(word.capitalize() for word in name.split(sep))
+
+def get_fmt_download_buttons(fmts: list, tab: str):
+    buttons = []
+    for fmt in fmts:
+        btn = dbc.Button(f"Download {fmt.upper()}", 
+                   id={"type":"download-btn", "fmt":fmt, "tab": tab}, 
+                   n_clicks=0, 
+                   color="primary", 
+                   className="mb-2 w-100")
+        buttons.append(btn)
+    return buttons
+
+def download_plots(selected_plots: list, 
+                   fmt: str, 
+                   all_figures: list, 
+                   all_ids: list, 
+                   all_stores: list, 
+                   store_ids: list):
+
+    if not selected_plots or not fmt:
+            raise exceptions.PreventUpdate
+    
+    fig_dict = {id_dict["graph"]: fig for id_dict, fig in zip(all_ids, all_figures)}
+    state_dict = {id_dict["store"]: data for id_dict, data in zip(store_ids, all_stores)}
+
+    files = []
+    for plot_id in selected_plots:
+        plot_name = f'plot_{plot_id}'
+        figure = go.Figure(fig_dict[plot_id])
+        if figure is None:
+            continue
+
+        if fmt == "svg":
+            content = figure.to_image(format="svg")
+            files.append((f"{plot_name}.svg", content))
+        elif fmt == "json":
+            content = json.dumps(figure.to_plotly_json()).encode("utf-8")
+            files.append((f"{plot_name}.json", content))
+        elif fmt == "csv":
+            df_data = state_dict[plot_id]
+            if df_data is None:
+                continue
+            df = pd.read_json(df_data, orient="split")
+            csv_bytes = df.to_csv(index=False).encode("utf-8")
+            files.append((f"{plot_name}.csv", csv_bytes))
+
+    if len(files) == 1:
+        fname, content = files[0]
+        return dcc.send_bytes(lambda b: b.write(content), filename=fname)
+
+    elif len(files) > 1:
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            for fname, content in files:
+                zf.writestr(fname, content)
+        zip_buffer.seek(0)
+        return dcc.send_bytes(lambda b: b.write(zip_buffer.read()), filename=f"plots_{fmt}.zip")
+
+    else:
+        raise exceptions.PreventUpdate
+    
+def download_dataframes(selected_dfs: list,
+                        mode: str, 
+                        phase_range: list,
+                        store: pd.HDFStore):
+    
+    if not selected_dfs:
+        raise exceptions.PreventUpdate
+    
+    if len(selected_dfs) == 1:
+        name = selected_dfs[0]
+        data_slice = check_if_slice_applicable(name, mode, phase_range)
+        if name in store:
+            df = store[name].loc[data_slice]
+            return dcc.send_data_frame(df.to_csv, f"{name}.csv")
+        return None
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        for name in selected_dfs:
+            if name in store:
+                data_slice = check_if_slice_applicable(name, mode, phase_range)
+                df = store[name].loc[data_slice]
+                csv_bytes = df.to_csv(index=False).encode("utf-8")
+                zf.writestr(f"{name}.csv", csv_bytes)
+
+    zip_buffer.seek(0)
+    
+    return dcc.send_bytes(
+        lambda b: b.write(zip_buffer.getvalue()),
+        filename="selected_dataframes.zip"
+    )
+
+    
+
