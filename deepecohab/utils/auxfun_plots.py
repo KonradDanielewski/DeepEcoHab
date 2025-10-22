@@ -294,6 +294,31 @@ def prep_time_per_cage_sum(binary_df: pd.DataFrame, phase_range: list[int, int])
 
     return output
 
+def prep_time_per_cage_mean(binary_df: pd.DataFrame, phase_range: list[int, int]) -> pd.DataFrame:
+    """Auxfun to create a plot_df for time_per_cage lineplot with SEM"""
+    days = ((binary_df.index.get_level_values(2) - binary_df.index.get_level_values(2)[0]) + pd.Timedelta(str(binary_df.index.get_level_values(2).time[0]))).days + 1
+    hours = binary_df.index.get_level_values(2).hour
+    binary_df.index = pd.MultiIndex.from_arrays([days, hours], names=['days', 'hours'])
+    binary_df = binary_df.loc[(slice(0, 6))]
+    output = (
+        binary_df
+        .groupby(level=['hours'])
+        .mean() * 3600
+    ).stack(level=[0,1], future_stack=True).reset_index()
+
+    output_sem = (
+        binary_df
+        .groupby(level=['hours'])
+        .sem() * 3600
+    ).stack(level=[0,1], future_stack=True).reset_index()
+
+    output.columns = ['hour', 'cage', 'animal_id', 'time']
+
+    output['lower'] = output.time - output_sem.iloc[:, -1]
+    output['higher'] = output.time + output_sem.iloc[:, -1]
+
+    return output
+
 def prep_polar_df(
     binary_df: pd.DataFrame, 
     chasings_df: pd.DataFrame, 

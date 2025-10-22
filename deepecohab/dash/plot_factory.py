@@ -1,11 +1,14 @@
 from datetime import datetime
+from itertools import product
 from pathlib import Path
 from typing import Literal
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from deepecohab.utils import auxfun
 from deepecohab.utils import auxfun_plots
@@ -374,7 +377,7 @@ def plot_network_graph(
     
     return fig, chasings_df
 
-def time_per_cage_line(
+def time_per_cage_line_sum(
         binary_df: pd.DataFrame, 
         phase_range: list[int, int], 
         animals, colors, 
@@ -395,8 +398,88 @@ def time_per_cage_line(
         category_orders={'animal_id': animals, 'cage': cages},
         title="<b>Time spent per cage</b>" 
     )
+    
+    fig.for_each_annotation(lambda x: x.update(text=f"<b>{' '.join((x.text.split('=')[-1]).capitalize().split('_'))}</b>"))
 
-    fig.for_each_annotation(lambda x: x.update(text=' '.join((x.text.split("=")[-1]).capitalize().split('_'))))
+    return fig, plot_df
+
+def time_per_cage_line_mean(
+        binary_df: pd.DataFrame, 
+        phase_range: list[int, int], 
+        animals, colors, 
+    ) -> tuple[go.Figure, pd.DataFrame]:
+    plot_df = auxfun_plots.prep_time_per_cage_mean(binary_df, phase_range)
+
+    cages = sorted(plot_df['cage'].unique())
+
+    fig = make_subplots(
+        rows=2, cols=int(np.ceil(len(cages)/2)),
+        subplot_titles=[f'<b>{" ".join([cage.split("_")[0].capitalize(), cage.split("_")[1]])}</b>' for cage in cages],
+        shared_yaxes='all', shared_xaxes='all',
+        horizontal_spacing = 0.05,
+        vertical_spacing = 0.05,
+        x_title='<b>Hours</b>',
+        y_title='<b>Time (seconds)</b>'
+    )
+
+    x = list(range(24))  # N hours in a day
+    x_rev = x[::-1]
+
+    location = list(product(range(1, len(cages)//2+1), 
+                            range(1, len(cages)//2+1)))
+
+    for cage, loc in zip(cages, location):
+        row, col = loc
+        for animal, color in zip(animals, colors):
+            animal_df = plot_df.query("animal_id == @animal and cage == @cage")
+
+            if animal_df.empty:
+                continue
+
+            y = list(animal_df["time"].values)
+            y_upper = list(animal_df["higher"].values)
+            y_lower = list(animal_df["lower"].values)
+
+            shade_color = color.replace('rgb', 'rgba').replace(')', ', 0.2)')
+
+            fig.add_trace(
+                go.Scatter(
+                    x=x + x_rev,
+                    y=y_upper + y_lower[::-1],
+                    fill='toself',
+                    fillcolor=shade_color,
+                    line_color='rgba(255,255,255,0)',
+                    line=dict(shape='spline'),
+                    showlegend=False,
+                    hoverinfo='skip',
+                    name=f"{animal} SEM",
+                    legendgroup=animal
+                ),
+                row=row, col=col
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=y,
+                    line_color=color,
+                    name=animal,
+                    legendgroup=animal,
+                    line=dict(shape='spline'),
+                    showlegend=(row == 1 and col == 1) 
+                ),
+                row=row, col=col
+            )
+
+    fig.update_layout(
+        title="<b>Time Spent per Cage</b>",
+        legend=dict(
+            title='Animal ID',
+            tracegroupgap=0
+        ),
+    )
+
+    fig.update_yaxes(range=[0, 3600])
 
     return fig, plot_df
 
