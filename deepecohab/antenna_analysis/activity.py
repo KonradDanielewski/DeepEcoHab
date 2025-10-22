@@ -44,11 +44,44 @@ def _correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame
     
     return animal_df
 
+def _calculate_pos_per_hour(
+    cfp: str | Path | dict, 
+    save_data: bool = True,
+    overwrite: bool = False, 
+) -> pd.DataFrame:
+    cfg = auxfun.read_config(cfp)
+    
+    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    key = 'position_per_hour'
+    
+    position_per_hour = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
+    
+    if isinstance(position_per_hour, pd.DataFrame):
+        return position_per_hour
+    
+    binary_df = create_binary_df(cfp, save_data, overwrite)
+    
+    print('Calculating per hour cage time...')
+    days = ((binary_df.index.get_level_values('datetime') 
+             - binary_df.index.get_level_values('datetime')[0]) + pd.Timedelta(str(binary_df.index.get_level_values('datetime').time[0]))).days + 1
+    hours = binary_df.index.get_level_values('datetime').hour
+    
+    binary_df.index = pd.MultiIndex.from_arrays([days, hours], names=['days', 'hours'])
+    binary_df = binary_df.stack(0, future_stack=True)
+    binary_df.index = binary_df.index.set_names(['days', 'hours', 'cage'])
+    binary_df.columns = binary_df.columns.set_names(['animal_id'])
+
+    position_per_hour = binary_df.stack().groupby(level=['days', 'hours', 'cage', 'animal_id']).sum().reset_index()
+    position_per_hour.columns = ['days', 'hours', 'cage', 'animal_id', 'time_sum']
+    
+    if save_data:
+        position_per_hour.to_hdf(results_path, key=key, mode='a', format='table')
+
 def create_padded_df(
-    cfp: dict,
+    cfp: Path | str | dict,
     df: pd.DataFrame,
     save_data: bool = True, 
-    overwrite: bool = False
+    overwrite: bool = False,
     ) ->  pd.DataFrame:
     """Creates a padded DataFrame based on the original main_df. Duplicates indices where the lenght of the detection crosses between phases.
        Timedeltas for those are changed such that that the detection ends at the very end of the phase and starts again in the next phase as a new detection.
@@ -62,7 +95,7 @@ def create_padded_df(
     Returns:
         Padded DataFrame of the main_df.
     """
-    cfg = toml.load(cfp)
+    cfg = auxfun.read_config(cfp)
     results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     key='padded_df'
     
@@ -163,16 +196,12 @@ def calculate_time_spent_per_position(
     # Calculate time spent per position per phase
     time_per_position = (
         padded_df
-        .loc[:, ['animal_id', 'position', 'phase', 'phase_count', 'timedelta']]
-        .groupby(['animal_id', 'phase', 'phase_count', 'position'], observed=False)
+        .groupby(['phase', 'phase_count', 'position', 'animal_id'], observed=True)['timedelta']
         .sum()
-        .unstack(level=0)
-        .droplevel(0, axis=1)
-        .fillna(0)
-        .round(3)
+        .unstack('animal_id')
     )
     
-    time_per_position = auxfun._drop_empty_phase_counts(cfp, time_per_position)
+    _calculate_pos_per_hour(cfp, overwrite, save_data)
     
     if save_data:
         time_per_position.to_hdf(results_path, key=key, mode='a', format='table')
@@ -272,7 +301,7 @@ def create_binary_df(
     binary_df = pd.DataFrame(False, index=idx, columns=cols, dtype=bool)
     df_cages = df.query('position in @positions')
 
-    print('Filling the DataFrame for each animal...')
+    print('Creating binary DataFrame...')
     for animal in tqdm(animals):
         data_slice = df_cages.query('animal_id == @animal').iloc[1:]
         starts = data_slice.datetime - pd.to_timedelta(data_slice.timedelta, 's') 

@@ -86,7 +86,7 @@ def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = Fa
     animal_ids = list(cfg['animal_ids'])
     positions = list(set(cfg['antenna_combinations'].values()))
     cage_list = [position for position in positions if 'cage' in position]
-    phase_Ns = list(df.phase_count.unique())
+    phase_Ns = list(df.day.unique())
     phases = list(cfg['phase'].keys())
 
     if not any([position, cages, animals]):

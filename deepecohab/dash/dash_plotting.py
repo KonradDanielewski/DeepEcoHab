@@ -215,15 +215,12 @@ def metrics(
     Returns:
         A Plotly Figure object representing the metrics.
     """   
-    binary_df = store['binary_df'].copy()
-    if not isinstance(binary_df.columns, pd.MultiIndex):
-        binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
-    binary_df = binary_df.sort_index().loc[data_slice]
+    time_alone = store['time_alone']
     chasings_df = store['chasings'].loc[data_slice]
     pairwise_encounters = store['pairwise_encounters'].loc[data_slice]
     activity = store['visits_per_position'].loc[data_slice]
 
-    return plot_factory.plot_metrics_polar(binary_df, chasings_df, pairwise_encounters, activity, animals, colors)
+    return plot_factory.plot_metrics_polar(time_alone, chasings_df, pairwise_encounters, activity, animals, colors)
 
 def within_cohort_sociability(
     store: pd.HDFStore,
@@ -278,14 +275,13 @@ def time_per_cage(
         animals, colors,
 ) -> tuple[go.Figure, pd.DataFrame]:
     
-    binary_df = store['binary_df'].copy()
-    if not isinstance(binary_df.columns, pd.MultiIndex):
-        binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
-    match agg_switch:
-        case 'sum':
-            return plot_factory.time_per_cage_line_sum(binary_df, phase_range, animals, colors)
-        case 'mean':
-            return plot_factory.time_per_cage_line_mean(binary_df, phase_range, animals, colors)
+    df = store['position_per_hour']
+    df = df[
+        (df['days'] >= phase_range[0]) & 
+        (df['days'] <= phase_range[-1])
+    ]
+
+    return plot_factory.time_per_cage_line(df, agg_switch, animals, colors)
 
 def get_single_plot(store, mode, plot_type, data_slice, phase_range, agg_switch, animals, colors):
     """Retrieves a single plot based on the specified parameters.

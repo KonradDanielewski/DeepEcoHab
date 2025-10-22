@@ -166,13 +166,13 @@ def prep_ranking_in_time_df(main_df: pd.DataFrame, ranking_in_time: pd.DataFrame
 
 def prep_pairwise_arr(df: pd.DataFrame, agg_switch: Literal['sum', 'mean']) -> tuple[np.ndarray, pd.Index]:
     """Prepares a pairwise array from DataFrame based on aggregation type."""
-    cages = df.index.get_level_values('cages').unique()
-    animals = df.index.get_level_values('animal_ids').unique()
+    cages = df.index.get_level_values('cage').unique()
+    animals = df.index.get_level_values('animal_2').unique()
     match agg_switch:
         case 'sum':
-            plot_df = df.groupby(level=['cages', 'animal_ids']).sum(min_count=1)
+            plot_df = df.groupby(level=['cage', 'animal_2']).sum(min_count=1)
         case 'mean':
-            plot_df = df.groupby(level=['cages', 'animal_ids']).mean()
+            plot_df = df.groupby(level=['cage', 'animal_2']).mean()
     
     plot_arr = plot_df.values.reshape(len(cages), len(animals), len(animals))
 
@@ -188,7 +188,7 @@ def prep_chasings_plot_df(df: pd.DataFrame, agg_switch: Literal['sum', 'mean']) 
         
 def prep_within_cohort_plot_df(df: pd.DataFrame) -> pd.DataFrame:
     """Prepares within-cohort plot DataFrame using mean aggregation."""
-    return df.groupby(level='animal_ids').mean()
+    return df.groupby(level='animal_2').mean()
 
 def prep_activity_overtime_sum(df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prep data for a line plot of activity over hours"""    
@@ -277,81 +277,34 @@ def prep_chasing_overtime_sum(match_df) -> pd.DataFrame:
 
     return plot_df
 
-def prep_time_per_cage_sum(binary_df: pd.DataFrame, phase_range: list[int, int]) -> pd.DataFrame:
+def prep_time_per_cage(position_per_hour: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to create a plot_df for time_per_cage lineplot"""
-    days = ((binary_df.index.get_level_values(2) - binary_df.index.get_level_values(2)[0]) + pd.Timedelta(str(binary_df.index.get_level_values(2).time[0]))).days + 1
-    hours = binary_df.index.get_level_values(2).hour
-    binary_df.index = pd.MultiIndex.from_arrays([days, hours], names=['days', 'hours'])
-    binary_df = binary_df.loc[(slice(phase_range[0], phase_range[-1]))]
-    output = (
-        binary_df
-        .groupby(level='hours')
-        .sum()
-        .stack(level=[0,1], future_stack=True)
-        .reset_index()
-    )
-    output.columns = ['hour', 'cage', 'animal_id', 'time']
+    sem = position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].sem()
 
-    return output
-
-def prep_time_per_cage_mean(binary_df: pd.DataFrame, phase_range: list[int, int]) -> pd.DataFrame:
-    """Auxfun to create a plot_df for time_per_cage lineplot with SEM"""
-    days = ((binary_df.index.get_level_values(2) - binary_df.index.get_level_values(2)[0]) + pd.Timedelta(str(binary_df.index.get_level_values(2).time[0]))).days + 1
-    hours = binary_df.index.get_level_values(2).hour
-    binary_df.index = pd.MultiIndex.from_arrays([days, hours], names=['days', 'hours'])
-    binary_df = binary_df.loc[(slice(0, 6))]
-    output = (
-        binary_df
-        .groupby(level=['hours'])
-        .mean() * 3600
-    ).stack(level=[0,1], future_stack=True).reset_index()
-
-    output_sem = (
-        binary_df
-        .groupby(level=['hours'])
-        .sem() * 3600
-    ).stack(level=[0,1], future_stack=True).reset_index()
-
-    output.columns = ['hour', 'cage', 'animal_id', 'time']
-
-    output['lower'] = output.time - output_sem.iloc[:, -1]
-    output['higher'] = output.time + output_sem.iloc[:, -1]
-
-    return output
+    plot_df = pd.concat([
+        position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].sum(),
+        position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].mean(),
+        position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].mean() + sem,
+        position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].mean() - sem,
+        ], axis=1, keys=['time_sum', 'time_mean', 'lower', 'upper']
+    ).reset_index()
+    
+    return plot_df
 
 def prep_polar_df(
-    binary_df: pd.DataFrame, 
+    time_alone: pd.DataFrame, 
     chasings_df: pd.DataFrame, 
     pairwise_encounters: pd.DataFrame, 
     activity: pd.DataFrame, 
     animals: list[str],
 ) -> pd.DataFrame:
-    # time alone
-    temp_df = binary_df.stack(level=0, future_stack=True).reorder_levels([0,1,3,2]).sort_index()
-
-    time_alone = pd.Series(index=animals)
-
-    for animal in animals:
-        rest = [a for a in animals if a != animal]
-        time_alone.loc[animal] = (temp_df.loc[:, animal] & ~(temp_df.loc[:, rest]).all(axis=1)).sum()
-
-    time_alone = zscore(time_alone)
-    
-    # chased
-    chased = chasings_df.sum(axis=1).groupby(level='animal_ids').sum()
-    chased = zscore(chased)
-    
-    # chasing
-    chasing = chasings_df.sum()
-    chasing = zscore(chasing)
-    
-    # activity
-    activity = activity.sum()
-    activity = zscore(activity)
-    
+    time_alone = zscore(time_alone.sum())
+    chased = zscore(chasings_df.sum(axis=1).groupby(level='animal_ids').sum())
+    chasing = zscore(chasings_df.sum())
+    activity = zscore(activity.sum())
     # meetings
     temp1 = pairwise_encounters.sum(axis=0)
-    temp2 = pairwise_encounters.groupby(level='animal_ids').sum().sum(axis=1)
+    temp2 = pairwise_encounters.groupby(level='animal_2').sum().sum(axis=1)
 
     meetings = temp1 + temp2
     meetings = zscore(meetings)

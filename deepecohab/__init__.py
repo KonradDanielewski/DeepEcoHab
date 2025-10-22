@@ -7,8 +7,8 @@ from deepecohab.antenna_analysis.activity import (
 )
 from deepecohab.antenna_analysis.incohort_sociability import (
     calculate_incohort_sociability,
-    calculate_time_together,
-    calculate_pairwise_encounters,
+    calculate_pairwise_meetings,
+    calculate_time_alone,
 )
 from deepecohab.antenna_analysis.chasings import (
     calculate_chasings,

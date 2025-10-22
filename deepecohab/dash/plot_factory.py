@@ -377,47 +377,21 @@ def plot_network_graph(
     
     return fig, chasings_df
 
-def time_per_cage_line_sum(
-        binary_df: pd.DataFrame, 
-        phase_range: list[int, int], 
-        animals, colors, 
-    ) -> tuple[go.Figure, pd.DataFrame]:
-    plot_df = auxfun_plots.prep_time_per_cage_sum(binary_df, phase_range)
-
-    cages = sorted(plot_df['cage'].unique())
-
-    fig = px.line(
-        plot_df, 
-        x='hour', 
-        y='time', 
-        color='animal_id', 
-        facet_col='cage', 
-        facet_col_wrap=2,
-        line_shape='spline', 
-        color_discrete_map={animal: color for animal, color in zip(animals, colors)},
-        category_orders={'animal_id': animals, 'cage': cages},
-        title="<b>Time spent per cage</b>" 
-    )
+def time_per_cage_line(
+    pos_per_hour: pd.DataFrame,
+    agg_switch: Literal['sum', 'mean'], 
+    animals, colors, 
+) -> tuple[go.Figure, pd.DataFrame]:
     
-    fig.for_each_annotation(lambda x: x.update(text=f"<b>{' '.join((x.text.split('=')[-1]).capitalize().split('_'))}</b>"))
-
-    return fig, plot_df
-
-def time_per_cage_line_mean(
-        binary_df: pd.DataFrame, 
-        phase_range: list[int, int], 
-        animals, colors, 
-    ) -> tuple[go.Figure, pd.DataFrame]:
-    plot_df = auxfun_plots.prep_time_per_cage_mean(binary_df, phase_range)
-
+    plot_df = auxfun_plots.prep_time_per_cage(pos_per_hour)
     cages = sorted(plot_df['cage'].unique())
 
     fig = make_subplots(
         rows=2, cols=int(np.ceil(len(cages)/2)),
-        subplot_titles=[f'<b>{" ".join([cage.split("_")[0].capitalize(), cage.split("_")[1]])}</b>' for cage in cages],
+        subplot_titles=[f'{" ".join([cage.split("_")[0].capitalize(), cage.split("_")[1]])}' for cage in cages],
         shared_yaxes='all', shared_xaxes='all',
         horizontal_spacing = 0.05,
-        vertical_spacing = 0.05,
+        vertical_spacing = 0.12,
         x_title='<b>Hours</b>',
         y_title='<b>Time (seconds)</b>'
     )
@@ -435,41 +409,55 @@ def time_per_cage_line_mean(
 
             if animal_df.empty:
                 continue
+            match agg_switch:
+                case 'mean':
+                    y = list(animal_df["time_mean"].values)
+                    y_upper = list(animal_df["upper"].values)
+                    y_lower = list(animal_df["lower"].values)
 
-            y = list(animal_df["time"].values)
-            y_upper = list(animal_df["higher"].values)
-            y_lower = list(animal_df["lower"].values)
+                    shade_color = color.replace('rgb', 'rgba').replace(')', ', 0.2)')
 
-            shade_color = color.replace('rgb', 'rgba').replace(')', ', 0.2)')
-
-            fig.add_trace(
-                go.Scatter(
-                    x=x + x_rev,
-                    y=y_upper + y_lower[::-1],
-                    fill='toself',
-                    fillcolor=shade_color,
-                    line_color='rgba(255,255,255,0)',
-                    line=dict(shape='spline'),
-                    showlegend=False,
-                    hoverinfo='skip',
-                    name=f"{animal} SEM",
-                    legendgroup=animal
-                ),
-                row=row, col=col
-            )
-
-            fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=y,
-                    line_color=color,
-                    name=animal,
-                    legendgroup=animal,
-                    line=dict(shape='spline'),
-                    showlegend=(row == 1 and col == 1) 
-                ),
-                row=row, col=col
-            )
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x + x_rev,
+                            y=y_upper + y_lower[::-1],
+                            fill='toself',
+                            fillcolor=shade_color,
+                            line_color='rgba(255,255,255,0)',
+                            line=dict(shape='spline'),
+                            showlegend=False,
+                            hoverinfo='skip',
+                            name=f"{animal} SEM",
+                            legendgroup=animal
+                        ),
+                        row=row, col=col
+                    )
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x,
+                            y=y,
+                            line_color=color,
+                            name=animal,
+                            legendgroup=animal,
+                            line=dict(shape='spline'),
+                            showlegend=(row == 1 and col == 1) 
+                        ),
+                        row=row, col=col
+                    )
+                case 'sum':
+                    y = list(animal_df["time_sum"].values)
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x,
+                            y=y,
+                            line_color=color,
+                            name=animal,
+                            legendgroup=animal,
+                            line=dict(shape='spline'),
+                            showlegend=(row == 1 and col == 1) 
+                        ),
+                        row=row, col=col
+                    )
 
     fig.update_layout(
         title="<b>Time Spent per Cage</b>",
@@ -479,18 +467,17 @@ def time_per_cage_line_mean(
         ),
     )
 
-    fig.update_yaxes(range=[0, 3600])
-
+    
     return fig, plot_df
 
 def plot_metrics_polar(
-    binary_df: pd.DataFrame,
+    time_alone: pd.DataFrame,
     chasings_df: pd.DataFrame,
     pairwise_encounters: pd.DataFrame,
     activity: pd.DataFrame,
     animals, colors, 
     ) -> tuple[go.Figure, pd.DataFrame]:
-    plot_df = auxfun_plots.prep_polar_df(binary_df, chasings_df, pairwise_encounters, activity, animals)
+    plot_df = auxfun_plots.prep_polar_df(time_alone, chasings_df, pairwise_encounters, activity, animals)
 
     fig = px.line_polar(
         plot_df, 
