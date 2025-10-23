@@ -44,7 +44,7 @@ def _correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame
     
     return animal_df
 
-def _calculate_pos_per_hour(
+def calculate_cage_occupancy(
     cfp: str | Path | dict, 
     save_data: bool = True,
     overwrite: bool = False, 
@@ -59,7 +59,7 @@ def _calculate_pos_per_hour(
     if isinstance(position_per_hour, pd.DataFrame):
         return position_per_hour
     
-    binary_df = create_binary_df(cfp, save_data, overwrite)
+    binary_df = create_binary_df(cfp, save_data, overwrite, return_df=True)
     
     print('Calculating per hour cage time...')
     days = ((binary_df.index.get_level_values('datetime') 
@@ -76,6 +76,8 @@ def _calculate_pos_per_hour(
     
     if save_data:
         position_per_hour.to_hdf(results_path, key=key, mode='a', format='table')
+        
+    return position_per_hour
 
 def create_padded_df(
     cfp: Path | str | dict,
@@ -201,8 +203,6 @@ def calculate_time_spent_per_position(
         .unstack('animal_id')
     )
     
-    _calculate_pos_per_hour(cfp, overwrite, save_data)
-    
     if save_data:
         time_per_position.to_hdf(results_path, key=key, mode='a', format='table')
     
@@ -262,6 +262,7 @@ def create_binary_df(
     cfp: str | Path | dict, 
     save_data: bool = True, 
     overwrite: bool = False,
+    return_df: bool = False,
     precision: int = 1,
     ) -> pd.DataFrame:
     """Creates a binary DataFrame of the position of the animals. Multiindexed on the columns, for each position, each animal. 
@@ -323,4 +324,5 @@ def create_binary_df(
     
     binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
     
-    return binary_df
+    if return_df:
+        return binary_df

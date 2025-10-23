@@ -92,7 +92,7 @@ def calculate_time_alone(
         return time_alone
 
     animals = cfg['animal_ids']
-    binary_df = activity.create_binary_df(cfp, save_data, overwrite)
+    binary_df = activity.create_binary_df(cfp, save_data, overwrite, return_df=True)
 
     temp_df = binary_df.stack(level=0, future_stack=True).reorder_levels([0,1,3,2]).sort_index()
     temp_df.index = temp_df.index.set_names(['phase', 'phase_count', 'cage', 'datetime'])
