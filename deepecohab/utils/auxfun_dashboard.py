@@ -42,7 +42,7 @@ def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider
             ], className="control-radio-btns"),
             html.Div(className="divider"),
             html.Div([
-                html.Label('Phases', className="slider-label"),
+                html.Label('Days of experiment', className="slider-label"),
                 dcc.RangeSlider(
                     id=slider_id,
                     min=slider_range[0],

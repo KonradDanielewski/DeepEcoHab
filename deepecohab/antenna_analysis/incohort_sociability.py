@@ -94,14 +94,21 @@ def calculate_time_alone(
     animals = cfg['animal_ids']
     binary_df = activity.create_binary_df(cfp, save_data, overwrite, return_df=True)
 
-    temp_df = binary_df.stack(level=0, future_stack=True).reorder_levels([0,1,3,2]).sort_index()
-    temp_df.index = temp_df.index.set_names(['phase', 'phase_count', 'cage', 'datetime'])
+    temp_df = (
+        binary_df
+        .stack(level=0, future_stack=True)
+        .reorder_levels(['phase', 'day', 'phase_count', 'cage', 'datetime'])
+        .sort_index()
+    )
 
     time_alone = pd.DataFrame(columns=animals, index=temp_df.droplevel('datetime').index.drop_duplicates())
 
     print('Calculating time spent alone...')
     for animal in tqdm(animals):
-        time_alone[animal] = temp_df.loc[(temp_df.sum(axis=1) == 1) & (temp_df.loc[:, animal]), animal].groupby(level=['phase', 'phase_count', 'cage'], observed=False).sum()
+        time_alone[animal] = temp_df.loc[
+                                        (temp_df.sum(axis=1) == 1) 
+                                        & (temp_df.loc[:, animal]), animal
+                                        ].groupby(level=['phase', 'day', 'phase_count', 'cage'], observed=False).sum()
         
     if save_data:
         time_alone.to_hdf(results_path, key=key, mode='a', format='table')
@@ -228,7 +235,7 @@ def calculate_incohort_sociability(
 
     # Get time per position
     time_per_position = activity.calculate_time_spent_per_position(cfg, save_data, overwrite)
-    time_per_cage = time_per_position.loc[slice(None), slice(None), cages]
+    time_per_cage = time_per_position.loc[slice(None), slice(None), slice(None), cages]
 
     # Normalize times as proportion of the phase duration
     spent_proportion = time_per_cage.div(phase_durations, axis=0)
@@ -240,17 +247,17 @@ def calculate_incohort_sociability(
     for col1, col2 in col_pairs:
         pairwise[f'{col1}_{col2}'] = spent_proportion[col1] * spent_proportion[col2]
         
-    pairwise_time_overall = pairwise.groupby(level=['phase', 'phase_count'], observed=True).sum()
+    pairwise_time_overall = pairwise.groupby(level=['phase', 'day', 'phase_count'], observed=True).sum()
 
     # sum of time spent together across all cages
     time_together_df = time_together_df.unstack()
     time_together_df.columns = [f'{a}_{b}' for a, b in time_together_df.columns.to_flat_index()]
-    proportion_together = time_together_df.groupby(level=['phase', 'phase_count'], observed=True).sum(min_count=1).div(phase_durations, axis=0)
+    proportion_together = time_together_df.groupby(level=['phase', 'day', 'phase_count'], observed=True).sum(min_count=1).div(phase_durations, axis=0)
 
     incohort_sociability = (proportion_together - pairwise_time_overall).round(3)
     incohort_sociability.columns = incohort_sociability.columns.str.split("_", expand=True)
     incohort_sociability = incohort_sociability.stack(future_stack=True)
-    incohort_sociability.index = incohort_sociability.index.set_names(['phase', 'phase_count', 'animal_2'])
+    incohort_sociability.index = incohort_sociability.index.set_names(['phase', 'day', 'phase_count', 'animal_2'])
     
     if save_data:
         incohort_sociability.to_hdf(results_path, key=key, mode='a', format='table')

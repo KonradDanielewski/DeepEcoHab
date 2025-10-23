@@ -29,8 +29,8 @@ def activity_line(
     """
     df = store['padded_df']
     df = df[
-        (df['phase_count'] >= phase_range[0]) & 
-        (df['phase_count'] <= phase_range[-1])
+        (df['day'] >= phase_range[0]) & 
+        (df['day'] <= phase_range[-1])
     ]
 
     match agg_switch:
@@ -41,7 +41,7 @@ def activity_line(
         
 def chasings_line(
     store: pd.HDFStore,
-    phase_range: list[int, int], 
+    phase_range: list[int, int],
     agg_switch: Literal['sum', 'mean'],
     animals, colors,
 ) -> tuple[go.Figure, pd.DataFrame]:
@@ -58,21 +58,14 @@ def chasings_line(
     Returns:
         A Plotly Figure object representing the line plot.
     """
-    df = store['main_df']
-    match_df = store['match_df']
-
-    match_df = auxfun_plots.prep_match_df_line(df, match_df)
-
-    match_df = match_df[
-        (match_df['phase_count'] >= phase_range[0]) & 
-        (match_df['phase_count'] <= phase_range[-1])
-    ]
+    chasings_df = store['chasings'].loc[(slice(None), slice(phase_range[0], phase_range[1])), :]
+    chasings_df.columns.name = 'chaser'
 
     match agg_switch:
         case 'sum':
-            return plot_factory.plot_sum_line_per_hour(match_df, animals, colors, 'chasings')
+            return plot_factory.plot_sum_line_per_hour(chasings_df, animals, colors, 'chasings')
         case 'mean':
-            return plot_factory.plot_mean_line_per_hour(match_df, animals, colors, 'chasings')
+            return plot_factory.plot_mean_line_per_hour(chasings_df, animals, colors, 'chasings')
         
 def activity_bar( # TODO: Add choice to show tunnels or no
     store: pd.HDFStore,
@@ -195,6 +188,7 @@ def chasings(
         A Plotly Figure object representing the heatmap.
     """   
     df = store['chasings'].loc[data_slice]
+    df.columns.name = 'chaser'
 
     return plot_factory.plot_chasings_heatmap(df, agg_switch)
 
@@ -217,6 +211,7 @@ def metrics(
     """   
     time_alone = store['time_alone']
     chasings_df = store['chasings'].loc[data_slice]
+    chasings_df.columns.name = 'chaser'
     pairwise_encounters = store['pairwise_encounters'].loc[data_slice]
     activity = store['visits_per_position'].loc[data_slice]
 
@@ -264,9 +259,10 @@ def network_graph(
     if mode == 'all': # TODO: ugly 🤢, better solution? 
         mode = slice(None)
     chasings_df = store['chasings'].loc[(mode)]
+    chasings_df.columns.name = 'chaser'
     ranking_df = store['ranking_ordinal']
 
-    return plot_factory.plot_network_graph(chasings_df, ranking_df, phase_range, colors)
+    return plot_factory.plot_network_graph(chasings_df, ranking_df, phase_range, animals, colors)
 
 def time_per_cage(
         store: pd.HDFStore,
@@ -275,10 +271,10 @@ def time_per_cage(
         animals, colors,
 ) -> tuple[go.Figure, pd.DataFrame]:
     
-    df = store['position_per_hour']
+    df = store['cage_occupancy']
     df = df[
-        (df['days'] >= phase_range[0]) & 
-        (df['days'] <= phase_range[-1])
+        (df['day'] >= phase_range[0]) & 
+        (df['day'] <= phase_range[-1])
     ]
 
     return plot_factory.time_per_cage_line(df, agg_switch, animals, colors)

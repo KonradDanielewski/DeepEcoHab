@@ -99,66 +99,58 @@ def calculate_chasings(
     
     df = auxfun.load_ecohab_data(cfg, key='main_df')
     
-    positions = list(set(cfg['antenna_combinations'].values()))
-    tunnel_combinations = [comb for comb in positions if 'cage' not in comb]
-    cage_combinations = [comb for comb in positions if 'cage' in comb]
+    cages = [val for val in set(cfg['antenna_combinations'].values()) if 'cage' in val]
+    tunnels = [val for val in set(cfg['antenna_combinations'].values()) if 'cage' not in val]
     results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    phases = list(cfg['phase'].keys())
-    phase_N = df.phase_count.unique()
     animals = cfg['animal_ids']
-
-    idx = auxfun._create_phase_multiindex(cfg, animals=True)
-
-    chasings = pd.DataFrame(columns=animals, index=idx, dtype=float).sort_index()
 
     mouse_pairs = list(combinations(animals, 2))
     matches = []
-    iterator = list(product(phases, phase_N, mouse_pairs))
+    dfs = []
     
     print('Calculating chasings...')
-    for phase, N, (mouse1, mouse2) in tqdm(iterator): # TODO: Think about parallelization - output a df then concat a list of dfs
-        # Calculates time spent in the tube together
-        temp = df.query('phase == @phase and phase_count == @N and (animal_id == @mouse1 or animal_id == @mouse2)').sort_values('datetime').reset_index(drop=True)
-
-        condition1 = np.sort(np.concatenate([temp.loc[temp.position_keys.diff() == 0].index, 
-                                            temp.loc[temp.position_keys.diff() == 0].index - 1]))
-        temp2 = temp.loc[condition1]
-        condition2 = np.sort(np.concatenate([temp2.loc[temp2.position.isin(tunnel_combinations)].index, 
-                                            temp2.loc[temp2.position.isin(tunnel_combinations)].index[::2] - 1]))
-        # Ensure no negative indices
-        condition2 = condition2[condition2 >= 0]  
-        temp2 = temp.loc[condition2].reset_index(drop=True)
-
-        chasing = temp2[::3].reset_index(drop=True)
-        chased = temp2[1::3].reset_index(drop=True)
+    for animal1, animal2 in tqdm(mouse_pairs):
+        animal_pair_df = df[df.animal_id.isin([animal1, animal2])].reset_index(drop=True)
+        chasing_position = animal_pair_df[
+            (animal_pair_df.position == animal_pair_df.position.shift(1)) 
+            & animal_pair_df.position.isin(tunnels)
+        ]
         
-        # Chasing one has to be in the tunnel
-        if len(chasing.loc[chasing.position.isin(tunnel_combinations)]) > 0:
-            indices_to_drop = chasing.loc[chasing.position.isin(tunnel_combinations)].index
-            chasing = chasing.drop(indices_to_drop).reset_index(drop=True)
-            chased = chased.drop(indices_to_drop).reset_index(drop=True)
-        # Chased one has to be in the cage
-        if len(chased.loc[chased.position.isin(cage_combinations)]) > 0:
-            indices_to_drop = chasing.loc[chasing.position.isin(cage_combinations)].index
-            chasing = chasing.drop(indices_to_drop).reset_index(drop=True)
-            chased = chased.drop(indices_to_drop).reset_index(drop=True)
+        chased = animal_pair_df.loc[chasing_position.index - 1].reset_index(drop=True)
+        chasing = animal_pair_df.loc[chasing_position.index - 2].reset_index(drop=True)
+        
+        # Chaser comes from cage, chased leaves the tunnel
+        pos_condition = chasing.position.isin(cages) & chased.position.isin(tunnels)
+        chasing_pos_filt = chasing[pos_condition].reset_index(drop=True)
+        chased_pos_filt = chased[pos_condition].reset_index(drop=True)
 
         # Ensures that the chased one was the first to exit the tube
-        chased_mouse = chased.loc[chased.animal_id != chasing.animal_id]
-        chasing_mouse = chasing.loc[chasing.animal_id != chased.animal_id]
+        chased_mouse = chased_pos_filt.loc[chased_pos_filt.animal_id != chasing_pos_filt.animal_id]
+        chasing_mouse = chasing_pos_filt.loc[chasing_pos_filt.animal_id != chased_pos_filt.animal_id]
 
-        times = (chased_mouse.datetime - chasing_mouse.datetime).dt.total_seconds()
-
-        # Add filtering by length of the event
-        filtered_chased = chased_mouse[(times < 1) & (times > 0.1)]
-        filtered_chasing = chasing_mouse[(times < 1) & (times > 0.1)]
-
+        # Add filtering by duration of the event
+        chasing_len = (chased_mouse.datetime - chasing_mouse.datetime).dt.total_seconds()
+        chasing_len_condition = (chasing_len < 1.2) & (chasing_len > 0.1)
+        
+        filtered_chased = chased_mouse[chasing_len_condition].copy()
+        filtered_chasing = chasing_mouse[chasing_len_condition].copy()
+        
         matches.append(_get_chasing_matches(filtered_chasing, filtered_chased))
+        
+        filtered_chasing['chased'] = filtered_chased.loc[:, 'animal_id'].values
 
-        chasings.loc[(phase, N, mouse1), mouse2] = sum(filtered_chasing.animal_id == mouse2)
-        chasings.loc[(phase, N, mouse2), mouse1] = sum(filtered_chasing.animal_id == mouse1)
-    
-    chasings = auxfun._drop_empty_phase_counts(cfp, chasings)
+        dfs.append(filtered_chasing)
+        
+    chasings = (
+        pd.concat(dfs)
+        .groupby(by=['phase', 'day', 'phase_count', 'hour', 'chased', 'animal_id'], observed=False)['animal_id']
+        .size()
+        .unstack('animal_id')
+    )
+    chasings.columns.rename('chaser', inplace=True)
+    chasings = chasings.apply(lambda col: col.mask(
+        (col.name == col.index.get_level_values('chased')), np.nan
+    ))
     
     if save_data:
         chasings.to_hdf(results_path, key='chasings', mode='a', format='table')
@@ -178,7 +170,7 @@ def calculate_ranking(
     overwrite: bool = False, 
     save_data: bool = True,
     ranking: dict | None = None,
-    ) -> pd.Series:
+    ) -> tuple[pd.DataFrame, dict]:
     """Calculate ranking using Plackett Luce algortihm. Each chasing event is a match
         TODO: handling of previous rankings
     Args:
@@ -204,6 +196,7 @@ def calculate_ranking(
     df = auxfun.load_ecohab_data(cfp, 'main_df')
     phases = cfg['phase'].keys()
     phase_count = df.phase_count.unique()
+    days = df.day.unique()
             
     # Get the ranking and calculate ranking ordinal
     ranking, ranking_in_time = _rank_mice_openskill(cfg, animals, ranking)
@@ -216,8 +209,8 @@ def calculate_ranking(
     phase_end_marks = df[df.datetime.isin(ranking_in_time.index)].sort_values('datetime')
     phase_end_marks = (
         phase_end_marks
-        .loc[:, ['datetime', 'phase', 'phase_count']]
-        .groupby(['phase', 'phase_count'], observed=False)
+        .loc[:, ['datetime', 'phase', 'day', 'phase_count']]
+        .groupby(['phase', 'day', 'phase_count'], observed=True)
         .max()
         .dropna()
     )
@@ -225,10 +218,10 @@ def calculate_ranking(
     ranking_in_time = ranking_in_time[~ranking_in_time.index.duplicated(keep='last')] # handle possible duplicate indices
     ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns, dtype=float)
 
-    for phase, count in product(phases, phase_count):
+    for phase, day, count in product(phases, days, phase_count):
         try:
-            datetime = phase_end_marks.loc[(phase,  count)].iloc[0]
-            ranking_ordinal.loc[(phase, count), :] = ranking_in_time.loc[datetime, :]
+            datetime = phase_end_marks.loc[(phase, day, count)].iloc[0]
+            ranking_ordinal.loc[(phase, day, count), :] = ranking_in_time.loc[datetime, :]
         except KeyError: # Account for one phase happening less times
             pass
     
@@ -237,4 +230,4 @@ def calculate_ranking(
         ranking_in_time.to_hdf(results_path, key='ranking_in_time', mode='a', format='table')
         ranking_df.to_hdf(results_path, key='ranking', mode='a', format='table')
     
-    return ranking_ordinal, ranking
+    return ranking_ordinal

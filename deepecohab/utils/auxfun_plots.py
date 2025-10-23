@@ -59,6 +59,7 @@ def create_node_trace(
     pos: dict, 
     ranking_ordinal: pd.Series, 
     colors: list,
+    animals: list[str],
 ) -> go.Scatter:
     """Auxfun to create node trace"""
     node_trace = go.Scatter(
@@ -78,12 +79,12 @@ def create_node_trace(
     )
     
     ranking_score_list = []
-    for node in G.nodes():
+    for node in animals:
         x, y = pos[node]
         node_trace['x'] += (x,)
         node_trace['y'] += (y,)
         node_trace['text'] += ('<b>' + node + '</b>',)
-        ranking_score = round(ranking_ordinal.loc[node], 3) if ranking_ordinal.loc[node] > 0 else 0.1
+        ranking_score = ranking_ordinal.loc[node] if ranking_ordinal.loc[node] > 0 else 0.1
         ranking_score_list.append(ranking_score)
         node_trace['hovertext'] += (
             f'Mouse ID: {node}<br>Ranking: {ranking_score}',
@@ -97,13 +98,13 @@ def prep_network_df(df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prepare network data for plotting"""
     graph_data = (
         df
-        .groupby(level='animal_ids')
+        .groupby(level='chased', observed=False)
         .sum(min_count=1)
         .melt(ignore_index=False, value_name='chasings', var_name='source')
         .dropna()
-        .reset_index(level=['animal_ids'])
-        .rename(columns={'animal_ids': 'target'})
-        .groupby(['target', 'source'])
+        .reset_index(level=['chased'])
+        .rename(columns={'chased': 'target'})
+        .groupby(['target', 'source'], observed=False)
         .sum()
         .reset_index()
     )
@@ -126,7 +127,7 @@ def prep_mean_per_position_df(df: pd.DataFrame) -> pd.DataFrame:
     plot_df = (
         df
         .melt(ignore_index=False, var_name='animal_id', value_name='y_val')
-        .reset_index(level=['position', 'phase_count'])
+        .reset_index(level=['position', 'day'])
     )
     return plot_df
 
@@ -135,6 +136,7 @@ def prep_ranking(ranking_df: pd.DataFrame, phase_range: list[int, int]) -> pd.Se
     ranking = (
         ranking_df
         .loc[('dark_phase', phase_range[-1]), :] # TODO: think of a good way to handle it. Pass mode? check which phase was last if all chosen?
+        .iloc[0]
         )
     return ranking
 
@@ -182,9 +184,9 @@ def prep_chasings_plot_df(df: pd.DataFrame, agg_switch: Literal['sum', 'mean']) 
     """Prepares chasings plot DataFrame based on aggregation type."""
     match agg_switch:
         case 'sum':
-            return df.groupby(level='animal_ids').sum(min_count=1)
+            return df.groupby(level='chased').sum(min_count=1)
         case 'mean':
-            return df.groupby(level='animal_ids').mean()
+            return df.groupby(level='chased').mean()
         
 def prep_within_cohort_plot_df(df: pd.DataFrame) -> pd.DataFrame:
     """Prepares within-cohort plot DataFrame using mean aggregation."""
@@ -194,10 +196,9 @@ def prep_activity_overtime_sum(df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prep data for a line plot of activity over hours"""    
     plot_df = (
         df
-        .loc[:, ['animal_id', 'hour']]
-        .groupby('hour', observed=True)
-        .value_counts()
-        .reset_index()
+        .groupby(['animal_id', 'hour'], observed=False)
+        .size()
+        .reset_index(name='count')
     )
 
     plot_df = plot_df.groupby(['animal_id', 'hour'], observed=False).sum().reset_index()
@@ -208,16 +209,15 @@ def prep_activity_overtime_mean(df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prep data for a line plot of activity over hours"""   
     plot_df = (
         df
-        .loc[:, ['animal_id', 'phase_count', 'hour']]
-        .groupby(['phase_count', 'hour'], observed=True)
-        .value_counts()
-        .reset_index()
+        .groupby(['day', 'hour', 'animal_id'], observed=False)
+        .size()
+        .reset_index(name='count')
     )
 
     mean_df = plot_df.groupby(['animal_id', 'hour'], observed=False).mean().reset_index()
     sem_df = plot_df.groupby(['animal_id', 'hour'], observed=False).sem().reset_index()
     mean_df['lower'] = mean_df['count'].values - sem_df['count'].values
-    mean_df['higher'] = mean_df['count'].values + sem_df['count'].values
+    mean_df['upper'] = mean_df['count'].values + sem_df['count'].values
 
     return mean_df
 
@@ -228,64 +228,52 @@ def color_sampling(values: list[str], cmap: str = 'Phase') -> list[str]:
 
     return colors
 
-def prep_match_df_line(df: pd.DataFrame, match_df: pd.DataFrame) -> pd.DataFrame:
-    """Prepares match DataFrame for line plotting by concatenating and updating indices."""
-    temp_df = df.loc[:, ['animal_id', 'datetime']].copy()
-    match_df_temp = match_df.loc[:, ['winner', 'datetime']].copy()
-    match_df_temp.columns = ['animal_id', 'datetime']
-
-    temp_df = pd.concat([temp_df, match_df_temp])
-    indices = temp_df[temp_df.duplicated(keep='last')].sort_index().index
-
-    match_df.loc[:, ['phase_count', 'hour']] = df.loc[indices, ['phase_count', 'hour']].values
-
-    match_df = match_df.astype({
-        'phase_count': int,
-        'hour': int,
-    })
-
-    return match_df
-
-def prep_chasing_overtime_mean(match_df: pd.DataFrame) -> pd.DataFrame:
+def prep_chasing_overtime_mean(chasings_df: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to prep data for a line plot of chasing over hours - mean"""   
+    plot_df = chasings_df.stack()
+    plot_df.name = 'count'
+
     plot_df = (
-        match_df
-        .loc[:, ['winner', 'phase_count', 'hour']]
-        .groupby(['phase_count', 'hour'], observed=True)
-        .value_counts()
+        plot_df
         .reset_index()
-        .rename({'winner': 'animal_id'}, axis=1)
+        .groupby(['day', 'hour', 'chaser'], observed=False)['count']
+        .sum(min_count=1)
+        .reset_index()
+        .rename({'chaser': 'animal_id'}, axis=1)
     )   
 
     mean_df = plot_df.groupby(['animal_id', 'hour'], observed=False)['count'].mean().reset_index()
     sem_df = plot_df.groupby(['animal_id', 'hour'], observed=False)['count'].sem().reset_index()
     mean_df['lower'] = mean_df['count'].values - sem_df['count'].values
-    mean_df['higher'] = mean_df['count'].values + sem_df['count'].values
+    mean_df['upper'] = mean_df['count'].values + sem_df['count'].values
 
     return mean_df
 
-def prep_chasing_overtime_sum(match_df) -> pd.DataFrame:
-    """Auxfun to prep data for a line plot of chasing over hours - sum"""       
+def prep_chasing_overtime_sum(chasings_df: pd.DataFrame) -> pd.DataFrame:
+    """Auxfun to prep data for a line plot of chasing over hours - sum""" 
+    plot_df = chasings_df.stack()
+    plot_df.name = 'count'
+     
     plot_df = (
-        match_df
-        .loc[:, ['winner', 'hour']]
-        .groupby('hour', observed=True)
-        .value_counts()
+        plot_df
         .reset_index()
-        .rename({'winner': 'animal_id'}, axis=1)
+        .groupby(['hour', 'chaser'], observed=False)['count']
+        .sum()  
+        .reset_index()   
+        .rename({'chaser': 'animal_id'}, axis=1)
     )
 
     return plot_df
 
-def prep_time_per_cage(position_per_hour: pd.DataFrame) -> pd.DataFrame:
+def prep_time_per_cage(cage_occupancy: pd.DataFrame) -> pd.DataFrame:
     """Auxfun to create a plot_df for time_per_cage lineplot"""
-    sem = position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].sem()
+    sem = cage_occupancy.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].sem()
 
     plot_df = pd.concat([
-        position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].sum(),
-        position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].mean(),
-        position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].mean() + sem,
-        position_per_hour.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].mean() - sem,
+        cage_occupancy.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].sum(),
+        cage_occupancy.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].mean(),
+        cage_occupancy.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].mean() + sem,
+        cage_occupancy.groupby(by=['hours', 'cage', 'animal_id'])['time_sum'].mean() - sem,
         ], axis=1, keys=['time_sum', 'time_mean', 'lower', 'upper']
     ).reset_index()
     
@@ -299,7 +287,7 @@ def prep_polar_df(
     animals: list[str],
 ) -> pd.DataFrame:
     time_alone = zscore(time_alone.sum())
-    chased = zscore(chasings_df.sum(axis=1).groupby(level='animal_ids').sum())
+    chased = zscore(chasings_df.sum(axis=1).groupby(level='chased').sum())
     chasing = zscore(chasings_df.sum())
     activity = zscore(activity.sum())
     # meetings
@@ -310,13 +298,11 @@ def prep_polar_df(
     meetings = zscore(meetings)
     
     plot_df = (
-    pd.DataFrame(
-        np.vstack((time_alone, chasing, chased, activity, meetings)).T, 
-        index=animals,
-        columns=['Time Alone', 'Chasing', 'Chased', 'Activity', 'Sociability']
-    )
-    .unstack()
-    .reset_index()
+        pd.DataFrame(
+            np.vstack((time_alone, chasing, chased, activity, meetings)).T, 
+            index=animals,
+            columns=['Time Alone', 'Chasing', 'Chased', 'Activity', 'Sociability']
+        ).unstack().reset_index()
     )
     plot_df.columns = ['metric', 'animal_id', 'value']
     
@@ -326,7 +312,7 @@ def set_default_theme():
     """Sets default plotly theme. TODO: to be updated as we go."""    
     dark_dash_template = go.layout.Template(
         layout=go.Layout(
-            paper_bgcolor="#161f34",
+            paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color="#e0e6f0"),
             xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),

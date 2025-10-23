@@ -27,8 +27,8 @@ def generate_graphs_layout(phase_range):
                     auxfun_dashboard.generate_standard_graph('ranking-distribution'),
                 ], width=6),
                 dbc.Col([
-                    auxfun_dashboard.generate_standard_graph('network', css_class='plot-500'),
                     auxfun_dashboard.generate_standard_graph('metrics'),
+                    auxfun_dashboard.generate_standard_graph('network', css_class='plot-500'),
                 ], width=6),
             ], className="g-3"),
             

@@ -54,6 +54,7 @@ def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pd.DataFrame:
             df = pd.read_hdf(results_path, key=key)
             if key == 'binary_df': # restore index
                 df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in df.columns])
+                df.columns.names = ['cage', 'animal_id']
             return df
         except KeyError:
             if verbose:

@@ -52,32 +52,32 @@ def calculate_cage_occupancy(
     cfg = auxfun.read_config(cfp)
     
     results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    key = 'position_per_hour'
+    key = 'cage_occupancy'
     
-    position_per_hour = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
+    cage_occupancy = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
-    if isinstance(position_per_hour, pd.DataFrame):
-        return position_per_hour
+    if isinstance(cage_occupancy, pd.DataFrame):
+        return cage_occupancy
     
     binary_df = create_binary_df(cfp, save_data, overwrite, return_df=True)
     
     print('Calculating per hour cage time...')
-    days = ((binary_df.index.get_level_values('datetime') 
+    day = ((binary_df.index.get_level_values('datetime') 
              - binary_df.index.get_level_values('datetime')[0]) + pd.Timedelta(str(binary_df.index.get_level_values('datetime').time[0]))).days + 1
     hours = binary_df.index.get_level_values('datetime').hour
     
-    binary_df.index = pd.MultiIndex.from_arrays([days, hours], names=['days', 'hours'])
+    binary_df.index = pd.MultiIndex.from_arrays([day, hours], names=['day', 'hours'])
     binary_df = binary_df.stack(0, future_stack=True)
-    binary_df.index = binary_df.index.set_names(['days', 'hours', 'cage'])
+    binary_df.index = binary_df.index.set_names(['day', 'hours', 'cage'])
     binary_df.columns = binary_df.columns.set_names(['animal_id'])
 
-    position_per_hour = binary_df.stack().groupby(level=['days', 'hours', 'cage', 'animal_id']).sum().reset_index()
-    position_per_hour.columns = ['days', 'hours', 'cage', 'animal_id', 'time_sum']
+    cage_occupancy = binary_df.stack().groupby(level=['day', 'hours', 'cage', 'animal_id']).sum().reset_index()
+    cage_occupancy.columns = ['day', 'hours', 'cage', 'animal_id', 'time_sum']
     
     if save_data:
-        position_per_hour.to_hdf(results_path, key=key, mode='a', format='table')
+        cage_occupancy.to_hdf(results_path, key=key, mode='a', format='table')
         
-    return position_per_hour
+    return cage_occupancy
 
 def create_padded_df(
     cfp: Path | str | dict,
@@ -198,7 +198,7 @@ def calculate_time_spent_per_position(
     # Calculate time spent per position per phase
     time_per_position = (
         padded_df
-        .groupby(['phase', 'phase_count', 'position', 'animal_id'], observed=True)['timedelta']
+        .groupby(['phase', 'day', 'phase_count', 'position', 'animal_id'], observed=True)['timedelta']
         .sum()
         .unstack('animal_id')
     )
@@ -245,13 +245,12 @@ def calculate_visits_per_position(
     # Calculate visits to each position
     visits_per_position = (
         padded_df
-        .loc[:, ['animal_id', 'position', 'phase', 'phase_count']]
-        .groupby(['phase', 'phase_count', 'position'], observed=False)
-        .value_counts()
-        .unstack()
+        .groupby(['phase', 'day', 'phase_count', 'hour', 'position', 'animal_id'], observed=True)['animal_id']
+        .agg('count')
+        .unstack('animal_id')
+        .fillna(0)
+        .astype(int)
     )
-    
-    visits_per_position = auxfun._drop_empty_phase_counts(cfp, visits_per_position)
     
     if save_data:
         visits_per_position.to_hdf(results_path, key=key, mode='a', format='table')
@@ -275,7 +274,7 @@ def create_binary_df(
         precision: Multiplier of the time. Time is in seconds, multiplied by 10 gives index per 100ms, 5 per 200 ms etc. 
 
     Returns:
-        _description_
+        Binary dataframe (True/False) of position of each animal per second (by default) per cage. 
     """
     cfg = auxfun.read_config(cfp)
     results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
@@ -307,16 +306,17 @@ def create_binary_df(
         data_slice = df_cages.query('animal_id == @animal').iloc[1:]
         starts = data_slice.datetime - pd.to_timedelta(data_slice.timedelta, 's') 
         stops = data_slice.datetime
-        ending_pos = df_cages.query('animal_id == @animal').position.iloc[1:]
+        ending_pos = data_slice.position
         
         for i in range(len(starts)):
             binary_df.loc[starts.iloc[i]:stops.iloc[i], (ending_pos.iloc[i], animal)] = True
 
     indices = np.searchsorted(df.datetime.to_numpy(), binary_df.index.to_numpy())
-    new_index = df.loc[indices, ['phase', 'phase_count']]
+    new_index = df.loc[indices, ['phase', 'day', 'phase_count']]
     new_index['datetime'] = idx
     new_index = pd.MultiIndex.from_frame(new_index)
     binary_df.index = new_index
+    binary_df.columns.names = ['cage', 'animal_id']
     binary_df.columns = ['.'.join(map(str, col)).strip() for col in binary_df.columns.values]
 
     if save_data:

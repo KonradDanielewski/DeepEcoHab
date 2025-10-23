@@ -42,7 +42,7 @@ def plot_sum_line_per_hour(
         title=title, 
     )
     fig.update_yaxes(title=y_axes_label)
-    fig.update_xaxes(title="<b>Hours</b>")
+    fig.update_xaxes(title="<b>Hours</b>", range=[0, 23])
     
     return fig, plot_df
 
@@ -66,14 +66,13 @@ def plot_mean_line_per_hour(
 
     fig = go.Figure()
 
-    x = list(range(24)) # N hours in a day
-    x_rev = x[::-1]
-
     for animal, color in zip(animals, colors):
         animal_df = plot_df.query("animal_id == @animal")
         
+        x = list(animal_df['hour'].values) 
+        x_rev = x[::-1]
         y = list(animal_df["count"].values)
-        y_upper = list(animal_df["higher"].values) 
+        y_upper = list(animal_df["upper"].values) 
         y_lower = list(animal_df["lower"].values)[::-1]
 
         shade_color = color.replace('rgb', 'rgba').replace(')', ', 0.2)') # shaded region is SEM
@@ -169,7 +168,7 @@ def plot_mean_box_activity(
         color_discrete_sequence=colors,
         points='all',
         title=position_title,
-        hover_data=['position', 'phase_count', 'y_val'],
+        hover_data=['position', 'day', 'y_val'],
         boxmode='group',
     )
     
@@ -349,18 +348,15 @@ def plot_network_graph(
     chasings_df: pd.DataFrame,
     ranking_df: pd.DataFrame,
     phase_range: list[int, int],
-    colors,
+    animals, colors,
 ) -> tuple[go.Figure, pd.DataFrame]:
     """Plots network graph of social structure."""
     chasings_df = auxfun_plots.prep_network_df(chasings_df)
     ranking_ser = auxfun_plots.prep_ranking(ranking_df, phase_range)
-
-    animals = ranking_ser.index
-    colors = auxfun_plots.color_sampling(animals)
     
     G = nx.from_pandas_edgelist(chasings_df, create_using=nx.DiGraph, edge_attr='chasings')
     pos = nx.spring_layout(G, k=None, iterations=300, seed=42, weight='chasings', method='energy')
-    node_trace = auxfun_plots.create_node_trace(G, pos, ranking_ser, colors)
+    node_trace = auxfun_plots.create_node_trace(G, pos, ranking_ser, colors, animals)
     edge_trace = auxfun_plots.create_edges_trace(G, pos)
     
     fig = go.Figure(
@@ -378,12 +374,12 @@ def plot_network_graph(
     return fig, chasings_df
 
 def time_per_cage_line(
-    pos_per_hour: pd.DataFrame,
+    cage_occupancy: pd.DataFrame,
     agg_switch: Literal['sum', 'mean'], 
     animals, colors, 
 ) -> tuple[go.Figure, pd.DataFrame]:
     
-    plot_df = auxfun_plots.prep_time_per_cage(pos_per_hour)
+    plot_df = auxfun_plots.prep_time_per_cage(cage_occupancy)
     cages = sorted(plot_df['cage'].unique())
 
     fig = make_subplots(
@@ -396,9 +392,6 @@ def time_per_cage_line(
         y_title='<b>Time (seconds)</b>'
     )
 
-    x = list(range(24))  # N hours in a day
-    x_rev = x[::-1]
-
     location = list(product(range(1, len(cages)//2+1), 
                             range(1, len(cages)//2+1)))
 
@@ -409,6 +402,10 @@ def time_per_cage_line(
 
             if animal_df.empty:
                 continue
+            
+            x = list(animal_df["hours"].values)
+            x_rev = x[::-1]
+            
             match agg_switch:
                 case 'mean':
                     y = list(animal_df["time_mean"].values)
@@ -466,7 +463,6 @@ def time_per_cage_line(
             tracegroupgap=0
         ),
     )
-
     
     return fig, plot_df
 
