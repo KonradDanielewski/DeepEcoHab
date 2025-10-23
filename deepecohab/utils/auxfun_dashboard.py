@@ -93,13 +93,17 @@ def generate_comparison_block(side: str, slider_range: list[int]):
         ),
         html.Div([
             dcc.Graph(id={'type': 'comparison-plot', 'side': side}),
+            dcc.Store(id={'store': 'comparison-plot', 'side': side})
             ]),
         generate_settings_block(
             {'type': 'mode-switch', 'side': side},
             {'type': 'aggregate-switch', 'side': side},
             {'type': 'phase-slider', 'side': side},
             slider_range,
-        )
+        ),
+        get_fmt_download_buttons("download-btn-comparison", ["svg", "json", "csv"], side, 20),
+        dcc.Download(id={"type": "download-component-comparison", "side": side}),
+
     ], className="h-100 p-2")
 
 def generate_plot_download_tab():
@@ -120,7 +124,7 @@ def generate_plot_download_tab():
                     width=8
                 ),
                 dbc.Col(
-                    get_fmt_download_buttons(["svg", "json", "csv"], "plots"),
+                    get_fmt_download_buttons("download-btn", ["svg", "json", "csv"], "plots"),
                     width=4,
                     className="d-flex flex-column align-items-start"
                 )
@@ -164,7 +168,7 @@ def generate_csv_download_tab():
                 ),
                 dbc.Col(
                     [
-                        dbc.Button("Download", id={"type":"download-btn", "fmt":"csv", "tab": "dfs"}, n_clicks=0, color="primary", className="mb-2 w-100")
+                        dbc.Button("Download", id={"type":"download-btn", "fmt":"csv", "side": "dfs"}, n_clicks=0, color="primary", className="mb-2 w-100")
                     ],
                     width=4,
                     className="d-flex flex-column align-items-start"
@@ -225,16 +229,30 @@ def get_options_from_ids(obj_ids: list):
 def get_display_name(name: str, sep: str = "-"):
     return " ".join(word.capitalize() for word in name.split(sep))
 
-def get_fmt_download_buttons(fmts: list, tab: str):
+def get_fmt_download_buttons(type: str, fmts: list, side: str, width: int = 100):
     buttons = []
     for fmt in fmts:
         btn = dbc.Button(f"Download {fmt.upper()}", 
-                   id={"type":"download-btn", "fmt":fmt, "tab": tab}, 
+                   id={"type":type, "fmt":fmt, "side": side}, 
                    n_clicks=0, 
                    color="primary", 
-                   className="mb-2 w-100")
+                   className=f"mb-2 w-{width}")
         buttons.append(btn)
-    return buttons
+    return html.Div(buttons)
+
+def get_plot_file(df_data: pd.DataFrame, figure: go.Figure, fmt: str, plot_name: str):
+    if fmt == "svg":
+        content = figure.to_image(format="svg")
+        return (f"{plot_name}.svg", content)
+    elif fmt == "json":
+        content = json.dumps(figure.to_plotly_json()).encode("utf-8")
+        return (f"{plot_name}.json", content)
+    elif fmt == "csv":
+        df = pd.read_json(df_data, orient="split")
+        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        return (f"{plot_name}.csv", csv_bytes)
+    else:
+        raise exceptions.PreventUpdate
 
 def download_plots(selected_plots: list, 
                    fmt: str, 
@@ -256,19 +274,12 @@ def download_plots(selected_plots: list,
         if figure is None:
             continue
 
-        if fmt == "svg":
-            content = figure.to_image(format="svg")
-            files.append((f"{plot_name}.svg", content))
-        elif fmt == "json":
-            content = json.dumps(figure.to_plotly_json()).encode("utf-8")
-            files.append((f"{plot_name}.json", content))
-        elif fmt == "csv":
-            df_data = state_dict[plot_id]
-            if df_data is None:
-                continue
-            df = pd.read_json(df_data, orient="split")
-            csv_bytes = df.to_csv(index=False).encode("utf-8")
-            files.append((f"{plot_name}.csv", csv_bytes))
+        df_data = state_dict[plot_id]
+        if df_data is None:
+            continue
+        
+        plt_file = get_plot_file(df_data, figure, fmt, plot_name)
+        files.append(plt_file)
 
     if len(files) == 1:
         fname, content = files[0]

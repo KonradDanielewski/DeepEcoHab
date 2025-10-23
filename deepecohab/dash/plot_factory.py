@@ -287,7 +287,7 @@ def plot_sociability_heatmap(
         ])
     )
 
-    return fig, plot_arr
+    return fig, df#plot_arr
 
 def plot_chasings_heatmap(
     df: pd.DataFrame,

@@ -64,7 +64,6 @@ if __name__ == '__main__':
     
     store = pd.HDFStore(results_path, mode='r')
     store = {key.replace('/', ''): store[key] for key in store.keys() if 'meta' not in key or 'binary' not in key} # and 'binary' not in key -- Avoid reading binary as not used  
-    
     _data = store['chasings']
     n_phases = _data.index.get_level_values(1).max()
     phase_range = [1, n_phases]
@@ -162,7 +161,7 @@ if __name__ == '__main__':
         return [
             position_fig, auxfun_plots.to_store_json(position_data),
             activity_fig, auxfun_plots.to_store_json(activity_data),
-            pairwise_plot, auxfun_plots.to_store_json(pd.DataFrame()),
+            pairwise_plot, auxfun_plots.to_store_json(pairwise_data),
             chasings_plot, auxfun_plots.to_store_json(chasings_data),
             incohort_soc_plot, auxfun_plots.to_store_json(incohort_soc_data),
             network_plot, auxfun_plots.to_store_json(network_plot_data),
@@ -174,7 +173,10 @@ if __name__ == '__main__':
         ]
 
     @app.callback(
-        Output({'type': 'comparison-plot', 'side': MATCH}, 'figure'),
+        [
+            Output({'type': 'comparison-plot', 'side': MATCH}, 'figure'),
+            Output({'store': 'comparison-plot', 'side': MATCH}, 'data'),
+        ],
         [
             Input({'type': 'plot-dropdown', 'side': MATCH}, 'value'),
             Input({'type': 'mode-switch', 'side': MATCH}, 'value'),
@@ -187,7 +189,8 @@ if __name__ == '__main__':
             
         animals = store['main_df'].animal_id.cat.categories
         colors = auxfun_plots.color_sampling(animals)
-        return dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch, animals, colors)[0]
+        plt, df = dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch, animals, colors)
+        return plt, auxfun_plots.to_store_json(df)
 
     @app.callback(
         [Output("modal", "is_open"), Output("plot-checklist", "options")],
@@ -203,7 +206,7 @@ if __name__ == '__main__':
     @app.callback(
         Output("download-component", "data"),
         [
-            Input({"type":"download-btn", "fmt": ALL, "tab":ALL}, "n_clicks"),
+            Input({"type":"download-btn", "fmt": ALL, "side":ALL}, "n_clicks"),
         ],
         [
             State("data-keys-checklist", "value"),
@@ -232,12 +235,12 @@ if __name__ == '__main__':
         if not triggered:
             raise dash.exceptions.PreventUpdate
         
-        if triggered["tab"] == "dfs":
+        if triggered["side"] == "dfs":
             return auxfun_dashboard.download_dataframes(selected_dfs,
                                                         mode,
                                                         phase_range,
                                                         store)
-        elif triggered["tab"] == "plots":
+        elif triggered["side"] == "plots":
             return auxfun_dashboard.download_plots(selected_plots,
                                             triggered["fmt"],
                                             all_figures, 
@@ -248,6 +251,38 @@ if __name__ == '__main__':
         else:
             raise dash.exceptions.PreventUpdate
         
+    @app.callback(
+    Output({"type": "download-component-comparison", "side": MATCH}, "data"),
+    Input({"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"),
+    State({"type": "comparison-plot", "side": MATCH}, "figure"),
+    State({"type": "comparison-plot", "side": MATCH}, "id"), 
+    State({"store": "comparison-plot", "side": MATCH}, "data"),
+    State({'type': 'plot-dropdown', 'side': MATCH}, 'value'),
+
+    prevent_initial_call=True,
+    )
+    def download_comparison_data(btn_click, 
+                                figure,
+                                fig_id, 
+                                data_store,
+                                plot_type
+                                ):
+        
+        triggered = ctx.triggered_id
+        if not triggered:
+            raise dash.exceptions.PreventUpdate
+
+        
+        figure = go.Figure(figure)
+
+        if (figure is None) or (data_store is None):
+            raise dash.exceptions.PreventUpdate
+
+        plot_name = f"comparison_{plot_type}"
+        fname, content = auxfun_dashboard.get_plot_file(data_store, figure, triggered["fmt"], plot_name)
+        return dcc.send_bytes(lambda b: b.write(content), filename=fname)
+
+
 
     auxfun_plots.open_browser()
     app.run(debug=True, port=8050)
