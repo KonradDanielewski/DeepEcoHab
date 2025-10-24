@@ -332,4 +332,4 @@ def open_browser():
 def to_store_json(df: pd.DataFrame | None) -> dict | None:
     if df is None:
         return None
-    return df.to_json(orient="split", date_format="iso")
+    return df.reset_index().to_json(orient="split", date_format="iso")
