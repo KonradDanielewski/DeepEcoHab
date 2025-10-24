@@ -4,7 +4,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'deepecohab'
-version = '0.2'
+version = '0.3'
 requires-python = '>=3.13'
 dependencies = [
     'numpy',
@@ -21,4 +21,6 @@ dependencies = [
     'joblib',
     'tqdm',
     'tzlocal',
+    'dash',
+    'dash-bootstrap-components',
 ]

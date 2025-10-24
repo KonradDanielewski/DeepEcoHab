@@ -5,7 +5,7 @@ with open('README.md', 'r') as f:
 
 setuptools.setup(
     name='deepecohab',
-    version='0.2',
+    version='0.3',
     author='Konrad Danielewski',
     author_email='kdanielewski@gmail.com',
     description='EcoHab with some machine learning',
@@ -31,6 +31,8 @@ setuptools.setup(
         'joblib',
         'tqdm',
         'tzlocal',
+        'dash',
+        'dash-bootstrap-components',
     ], 
     url='https://github.com/KonradDanielewski/DeepEcoHab'
 )

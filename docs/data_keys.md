@@ -46,3 +46,9 @@ is the ecohab data structure - each antenna read assigned to an animal, position
 
 ### `match_df`:
  DataFrame with datetime of every chasing event separeted into winner/loser columns (chaser/chased)
+
+ ### `time_alone`
+ DataFrame of time spent alone per phase and day for each cage
+
+ ### 'cage_occupancy`
+ DataFrame of time spent per hour in each cage by each animal across phases and days

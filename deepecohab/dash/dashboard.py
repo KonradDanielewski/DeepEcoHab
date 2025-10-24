@@ -194,12 +194,12 @@ if __name__ == '__main__':
 
     @app.callback(
         [Output("modal", "is_open"), Output("plot-checklist", "options")],
-        [Input("open-modal", "n_clicks"), Input("close-modal", "n_clicks")],
+        [Input("open-modal", "n_clicks")],
         [State("modal", "is_open"),
          State({"graph" : ALL}, "id")],
     )
-    def toggle_modal(open_click, close_click, is_open, graph_ids):
-        if open_click or close_click:
+    def toggle_modal(open_click, is_open, graph_ids):
+        if open_click:
             return not is_open, auxfun_dashboard.get_options_from_ids([g["graph"] for g in graph_ids])
         return is_open, []
         
@@ -285,5 +285,5 @@ if __name__ == '__main__':
 
 
     auxfun_plots.open_browser()
-    app.run(debug=True, port=8050)
+    app.run(debug=False, port=8050)
     

@@ -212,7 +212,7 @@ def metrics(
     time_alone = store['time_alone']
     chasings_df = store['chasings'].loc[data_slice]
     chasings_df.columns.name = 'chaser'
-    pairwise_encounters = store['pairwise_encounters'].loc[data_slice]
+    pairwise_encounters = store['time_together'].loc[data_slice]
     activity = store['visits_per_position'].loc[data_slice]
 
     return plot_factory.plot_metrics_polar(time_alone, chasings_df, pairwise_encounters, activity, animals, colors)

@@ -1,5 +1,7 @@
 from deepecohab.version import __version__, VERSION
 
+print(f"Loading DeepEcoHab version: {VERSION}...")
+
 from deepecohab.antenna_analysis.activity import (
     calculate_time_spent_per_position,
     calculate_visits_per_position,
@@ -16,6 +18,7 @@ from deepecohab.antenna_analysis.chasings import (
     calculate_ranking,
 )
 from deepecohab.antenna_analysis import auxiliary_analysis
+
 from deepecohab.core.create_project import create_ecohab_project
 from deepecohab.core.create_data_structure import get_ecohab_data_structure
 

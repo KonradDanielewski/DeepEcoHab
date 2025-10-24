@@ -13,65 +13,63 @@ COMMON_CFG = {"displayModeBar": False}
 
 def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider_range, include_download=False):
     block = html.Div([
-        html.Div([
-            html.Div([
-                dcc.RadioItems(
-                    id=phase_type_id,
-                    options=[
-                        {'label': 'Dark', 'value': 'dark_phase'},
-                        {'label': 'Light', 'value': 'light_phase'},
-                        {'label': 'All', 'value': 'all'},
-                    ],
-                    value='dark_phase',
-                    labelStyle={'display': 'block', 'marginBottom': '5px'},
-                    inputStyle={'marginRight': '6px'},
-                )
-            ], className="control-radio-btns"),
-            html.Div(className="divider"),
-            html.Div([
-                dcc.RadioItems(
-                    id=aggregate_stats_id,
-                    options=[
-                        {'label': 'Sum', 'value': 'sum'},
-                        {'label': 'Mean', 'value': 'mean'},
-                    ],
-                    value='sum',
-                    labelStyle={'display': 'block', 'marginBottom': '5px'},
-                    inputStyle={'marginRight': '6px'},
-                )
-            ], className="control-radio-btns"),
-            html.Div(className="divider"),
-            html.Div([
-                html.Label('Days of experiment', className="slider-label"),
-                dcc.RangeSlider(
-                    id=slider_id,
-                    min=slider_range[0],
-                    max=slider_range[1],
-                    value=[1, 1],
-                    count=1,
-                    step=1,
-                    tooltip={'placement': 'bottom', 'always_visible': True},
-                    updatemode='drag',
-                    included=True,
-                    vertical=False,
-                    persistence=True,
-                    className='slider',
-                )
-            ], className="flex-container"),
-        ], className="centered-container"),
-    ], className="header-bar")
-
-    if include_download:
-        block.children.append(
-            html.Div([
                 html.Div([
-                    dbc.Container([
-                        html.Button('Plot downloads...', id='open-modal', n_clicks=0),
-                        generate_download_block(),
-                    ]),
-                ], className='download-row'),
-            ], className='download-container')
-        )
+                    html.Div([
+                        dcc.RadioItems(
+                            id=phase_type_id,
+                            options=[
+                                {'label': 'Dark', 'value': 'dark_phase'},
+                                {'label': 'Light', 'value': 'light_phase'},
+                                {'label': 'All', 'value': 'all'},
+                            ],
+                            value='dark_phase',
+                            labelStyle={'display': 'block', 'marginBottom': '5px'},
+                            inputStyle={'marginRight': '6px'},
+                        )
+                    ], className="control-radio-btns"),
+                    html.Div(className="divider"),
+                    html.Div([
+                        dcc.RadioItems(
+                            id=aggregate_stats_id,
+                            options=[
+                                {'label': 'Sum', 'value': 'sum'},
+                                {'label': 'Mean', 'value': 'mean'},
+                            ],
+                            value='sum',
+                            labelStyle={'display': 'block', 'marginBottom': '5px'},
+                            inputStyle={'marginRight': '6px'},
+                        )
+                    ], className="control-radio-btns"),
+                    html.Div(className="divider"),
+                    html.Div([
+                        html.Label('Days of experiment', className="slider-label"),
+                        dcc.RangeSlider(
+                            id=slider_id,
+                            min=slider_range[0],
+                            max=slider_range[1],
+                            value=[1, 1],
+                            count=1,
+                            step=1,
+                            tooltip={'placement': 'bottom', 'always_visible': True},
+                            updatemode='drag',
+                            included=True,
+                            vertical=False,
+                            persistence=True,
+                            className='slider',
+                        )
+                    ], className="flex-container"),
+                    # Conditional block
+                            *([
+                                html.Div(className="divider"),
+                                html.Div([
+                                    dbc.Container([
+                                        html.Button('Downloads', id='open-modal', n_clicks=0, className='DownloadButton'),
+                                        generate_download_block(),
+                                    ]),
+                                ], className='download-row'),
+                            ] if include_download else []),
+                        ], className="centered-container"),
+                    ], className="header-bar")
 
     return block       
             
@@ -120,6 +118,7 @@ def generate_plot_download_tab():
                         options=[],
                         value=[],
                         inline=False,
+                        className='download-dropdown',
                     ),
                     width=8
                 ),
@@ -164,13 +163,15 @@ def generate_csv_download_tab():
                         inline=False,
                         className='download-dropdown',
                     ),
+                    align='center',
                     width=8
                 ),
                 dbc.Col(
                     [
-                        dbc.Button("Download", id={"type":"download-btn", "fmt":"csv", "side": "dfs"}, n_clicks=0, color="primary", className="mb-2 w-100")
+                        dbc.Button("Download DataFrame/s", id={"type":"download-btn", "fmt":"csv", "side": "dfs"}, n_clicks=0, color="primary", className="ModalButton")
                     ],
                     width=4,
+                    align='center',
                     className="d-flex flex-column align-items-start"
                 )
             ]
@@ -180,7 +181,7 @@ def generate_csv_download_tab():
 def generate_download_block():
     modal = dbc.Modal(
     [
-        dbc.ModalHeader(),#dbc.ModalTitle("Select Plots to Download")),
+        dbc.ModalHeader([dbc.ModalTitle('Downloads')]),
         dbc.ModalBody(
             dcc.Tabs(
                 id='download-tabs',
@@ -194,10 +195,7 @@ def generate_download_block():
                 }
             )
         ),
-        dbc.ModalFooter([
-            dbc.Button("Close", id="close-modal", className="ms-auto", n_clicks=0),
-            dcc.Download(id="download-component"),
-        ]),
+        dcc.Download(id="download-component"),
     ],
     id="modal",
     is_open=False,
@@ -233,13 +231,13 @@ def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical=True)
     buttons = []
     width_col = 12
     if not is_vertical:
-        width_col = 12//len(fmts)-1
+        width_col = 12//len(fmts)
     for fmt in fmts:
         btn = dbc.Button(f"Download {fmt.upper()}", 
                    id={"type":type, "fmt":fmt, "side": side}, 
                    n_clicks=0, 
                    color="primary", 
-                   className=f"mb-2")
+                   className=f"ModalButton")
         buttons.append(dbc.Col(btn, width=width_col))
     return dbc.Row(buttons)
 

@@ -8,15 +8,10 @@ git clone https://github.com/KonradDanielewski/DeepEcoHab.git
 cd DeepEcoHab
 conda env create -f environment/env.yaml
 conda activate deepecohab
-pip install -e .
+pip install .
 ```
 
 To check out the package please run the example_notebook provided in the examples directory of this repository.
-
-<b><u>BIG TODO:</b></u>
-1. Pose estimation model training
-2. Animal reid with antenna reads
-3. Custom tracklet stitching based on more features (our own simplified fork of DLC?)
 
 ### Data structure:
 

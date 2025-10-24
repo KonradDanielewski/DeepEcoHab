@@ -8,6 +8,81 @@ body {
   line-height: 1.6;
 }
 
+.DownloadButton {
+	background-color:#5a6b8c;
+	border-radius:14px;
+	border:1px solid #5a6b8c;
+	display:inline-block;
+	cursor:pointer;
+	color:#ffffff;
+	font-family:Arial;
+	font-size:1rem;
+  font-weight:bold;
+	padding:10px 20px;
+	text-decoration:none;
+	text-shadow:0px 1px 0px #5a6b8c;
+}
+.DownloadButton:hover {
+	background-color:#618febd2;
+}
+.DownloadButton:active {
+	position:relative;
+	top:1px;
+}
+
+.ModalButton {
+	background-color:#5a6b8c;
+	border-radius:12px;
+	border:1px solid #5a6b8c;
+	display:inline-block;
+	cursor:pointer;
+	color:#ffffff;
+	font-family:Arial;
+	font-size:0.9rem;
+  font-weight:bold;
+  margin:10px;
+	padding:5px 10px;
+	text-decoration:none;
+	text-shadow:0px 1px 0px #5a6b8c;
+}
+.ModalButton:hover {
+	background-color:#618febd2;
+}
+.ModalButton:active {
+	position:relative;
+	top:1px;
+}
+
+.modal-content {
+	background-color:#1f2c44;
+	border-radius:12px;
+	border:1px solid #1f2c44;
+	display:inline-block;
+	cursor:pointer;
+	color:#ffffff;
+	font-family:Arial;
+	font-size:0.9rem;
+  font-weight:bold;
+  margin:10px;
+	padding:5px 10px;
+	text-decoration:none;
+	text-shadow:0px 1px 0px #1f2c44;
+}
+
+.btn-close {
+  filter: invert(1);
+}
+
+.modal-body .tab-content {
+  background-color: #2a3f5f; 
+}
+
+.HrDiv {
+  opacity: 1;
+  size: 10;
+
+}
+
 /* Typography */
 h1, .h1 {
   font-size: 2.5rem;
@@ -20,6 +95,10 @@ h2, .h2 {
   font-weight: 600;
   color: #f0f4fa;
   margin-bottom: 0.5em;
+  border-top: 2px solid #c3dbff;
+  border-bottom: 2px solid #c3dbff;
+  padding: 3px;
+
 }
 h3, .h3 {
   font-size: 1.5rem;
@@ -124,29 +203,6 @@ p, .dash-description {
 .dash-slider .rc-slider-handle:hover,
 .dash-slider .rc-slider-handle:focus {
   border-color: #7dd1ff;
-}
-
-/* Tabs */
-.dash-tabs {
-  background-color: #1f2c44;
-  border-radius: 8px;
-  padding: 5px;
-}
-.dash-tabs .tab {
-  display: inline-block;
-  padding: 10px 20px;
-  margin-right: 5px;
-  font-weight: 500;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: background-color 0.2s;
-}
-.dash-tabs .tab--selected {
-  background-color: #3a77f2;
-  color: #ffffff;
-}
-.dash-tabs .tab:not(.tab--selected):hover {
-  background-color: #2e3b53;
 }
 
 /* Dropdowns and Inputs */
@@ -289,6 +345,7 @@ a:hover {
 }
 
 .download-dropdown {
+    padding-left: 10px;
     min-width: 300px;     
     flex-grow: 1;        
 }
@@ -321,6 +378,8 @@ a:hover {
 /* tabs styles */
 .dash-tab {
     background-color: #5a6b8c !important;
+    border-radius:12px 12px 0px 0px;
+	  border:1px solid #3a77f2;
     color: white !important;
     padding: 10px !important;
     font-weight: bold !important;
@@ -330,8 +389,9 @@ a:hover {
 /* Style for selected tab */
 .dash-tab--selected {
     background-color: #2a3f5f !important;
+    border-radius:12px 12px 0px 0px;
+	  border:1px solid #3a77f2;
     color: white !important;
     padding: 10px !important;
     font-weight: bold !important;
-    border-top: 3px solid #5a6b8c !important;
 }
