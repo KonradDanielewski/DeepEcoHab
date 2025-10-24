@@ -101,7 +101,7 @@ def generate_comparison_block(side: str, slider_range: list[int]):
             {'type': 'phase-slider', 'side': side},
             slider_range,
         ),
-        get_fmt_download_buttons("download-btn-comparison", ["svg", "json", "csv"], side, 20),
+        get_fmt_download_buttons("download-btn-comparison", ["svg","png", "json", "csv"], side, is_vertical=False),
         dcc.Download(id={"type": "download-component-comparison", "side": side}),
 
     ], className="h-100 p-2")
@@ -124,7 +124,7 @@ def generate_plot_download_tab():
                     width=8
                 ),
                 dbc.Col(
-                    get_fmt_download_buttons("download-btn", ["svg", "json", "csv"], "plots"),
+                    get_fmt_download_buttons("download-btn", ["svg","png", "json", "csv"], "plots"),
                     width=4,
                     className="d-flex flex-column align-items-start"
                 )
@@ -229,21 +229,27 @@ def get_options_from_ids(obj_ids: list):
 def get_display_name(name: str, sep: str = "-"):
     return " ".join(word.capitalize() for word in name.split(sep))
 
-def get_fmt_download_buttons(type: str, fmts: list, side: str, width: int = 100):
+def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical=True):
     buttons = []
+    width_col = 12
+    if not is_vertical:
+        width_col = 12//len(fmts)-1
     for fmt in fmts:
         btn = dbc.Button(f"Download {fmt.upper()}", 
                    id={"type":type, "fmt":fmt, "side": side}, 
                    n_clicks=0, 
                    color="primary", 
-                   className=f"mb-2 w-{width}")
-        buttons.append(btn)
-    return html.Div(buttons)
+                   className=f"mb-2")
+        buttons.append(dbc.Col(btn, width=width_col))
+    return dbc.Row(buttons)
 
 def get_plot_file(df_data: pd.DataFrame, figure: go.Figure, fmt: str, plot_name: str):
     if fmt == "svg":
         content = figure.to_image(format="svg")
         return (f"{plot_name}.svg", content)
+    elif fmt == "png":
+        content = figure.to_image(format="png")
+        return (f"{plot_name}.png", content)
     elif fmt == "json":
         content = json.dumps(figure.to_plotly_json()).encode("utf-8")
         return (f"{plot_name}.json", content)
