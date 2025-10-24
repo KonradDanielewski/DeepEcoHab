@@ -317,8 +317,8 @@ def download_dataframes(selected_dfs: list,
         for name in selected_dfs:
             if name in store:
                 data_slice = check_if_slice_applicable(name, mode, phase_range)
-                df = store[name].loc[data_slice].reset_index()
-                csv_bytes = df.to_csv(index=False).encode("utf-8")
+                df = store[name].loc[data_slice]
+                csv_bytes = df.to_csv().encode("utf-8")
                 zf.writestr(f"{name}.csv", csv_bytes)
 
     zip_buffer.seek(0)
