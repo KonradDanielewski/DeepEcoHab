@@ -174,10 +174,13 @@ def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list, timezone: str
 
     df['animal_id'] = df['animal_id'].astype('category').cat.set_categories(cfg['animal_ids'])
     df['datetime'] = df['date'] + ' ' + df['time']
+    
     if not isinstance(timezone, str):
         df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(get_localzone().key, ambiguous='infer')
     else:
         df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(timezone, ambiguous='infer')
+
+    df["hour"] = df.datetime.dt.hour.astype("category")
     df['antenna'] = df.antenna.astype(int)
     df = df.drop(['date', 'time'], axis=1)
     df = df.drop_duplicates(['datetime', 'animal_id'])

@@ -1,26 +1,25 @@
 import argparse
 import sys
-import webbrowser
+import io
+import zipfile
 from pathlib import Path
 
 import dash
 import pandas as pd
-from dash import dcc, html
-from dash.dependencies import Input, Output
+import plotly.graph_objects as go
+from dash import dcc, html, ctx
+from dash.dependencies import Input, Output, State, MATCH, ALL
 
-from deepecohab.utils import auxfun_plots
-from deepecohab.dash.plots import (
-    plot_ranking_in_time,
-    plot_position_fig,
-    plot_pairwise_plot,
-    plot_chasings,
-    plot_in_cohort_sociability,
-    plot_network_grah
+from deepecohab.dash import dash_plotting
+from deepecohab.dash import dash_layouts
+
+import dash_bootstrap_components as dbc
+
+
+from deepecohab.utils import (
+    auxfun_plots,
+    auxfun_dashboard,
 )
-
-
-def open_browser():
-    webbrowser.open_new('http://127.0.0.1:8050/')
     
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Run DeepEcoHab Dashboard')
@@ -30,220 +29,75 @@ def parse_arguments():
         required=True,
         help='h5 file path extracted from the config (examples/test_name2_2025-04-18/results/test_name2_data.h5)'
     )
+    parser.add_argument(
+        '--config-path',
+        type=str,
+        required=True,
+        help='path to the config file of the project'
+    )
     return parser.parse_args()
 
 # Initialize the Dash app
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
+app = dash.Dash(
+    __name__, 
+    suppress_callback_exceptions=True, 
+    external_stylesheets=[
+        "/assets/styles.css",
+        dbc.icons.FONT_AWESOME, 
+        dbc.themes.BOOTSTRAP,
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css",
+        ]
+    )
+
 app.title = 'EcoHAB Dashboard'
 if __name__ == '__main__':
     args = parse_arguments()
     results_path = args.results_path
+    config_path = args.config_path
 
     if not Path(results_path).is_file():
         FileNotFoundError(f'{results_path} not found.')
         sys.exit(1)
+    if not Path(config_path).is_file():
+        FileNotFoundError(f'{config_path} not found.')
+        sys.exit(1)
+    
     store = pd.HDFStore(results_path, mode='r')
-    dash_data = auxfun_plots.load_dashboard_data(store)
-    _data = dash_data['time_per_position_df']
-    n_phases_dark = _data['phase_count'][_data['phase'] == 'dark_phase'].max()
-    n_phases_light = _data['phase_count'][_data['phase'] == 'light_phase'].max()
-    n_phases = min(n_phases_dark, n_phases_light)
-    phases = list(range(1, n_phases + 1))
+    store = {key.replace('/', ''): store[key] for key in store.keys() if 'meta' not in key or 'binary' not in key} # and 'binary' not in key -- Avoid reading binary as not used  
+    _data = store['chasings']
+    n_phases = _data.index.get_level_values(1).max()
+    phase_range = [1, n_phases]
 
     # Dashboard layout
-    dashboard_layout = html.Div([
-    html.Div([
-        html.H2('EcoHAB Results', style={'textAlign': 'center', 'margin-bottom': '10px'}),
-        html.Div([
-            html.Label('Phases', style={'margin-right': '10px'}),
-            dcc.Slider(
-                id='phase-slider',
-                min=min(phases),
-                max=max(phases),
-                value=min(phases),
-                marks={str(phase): str(phase) for phase in phases},
-                step=None,
-                tooltip={'placement': 'bottom', 'always_visible': True},
-                updatemode='drag',
-                included=True,
-                vertical=False,
-                persistence=True,
-                className='slider',
-            ),
-            dcc.RadioItems(
-                id='mode-switch',
-                options=[{'label': 'Dark', 'value': 'dark'}, {'label': 'Light', 'value': 'light'}],
-                value='dark',
-                labelStyle={'display': 'inline-block', 'margin-left': '10px'}
-            ),
-            ], style={
-                    'width': '100%', 
-                    'textAlign': 'center',
+    dashboard_layout = dash_layouts.generate_graphs_layout(phase_range)
+    comparison_tab = dash_layouts.generate_comparison_layout(phase_range)
+    
+    app.layout = html.Div([
+                dcc.Tabs(
+                id='tabs',
+                value='tab-dashboard',
+                children=[
+                    dcc.Tab(
+                        label='Dashboard',
+                        value='tab-dashboard',
+                        className='dash-tab',
+                        selected_className='dash-tab--selected',
+                        children=dashboard_layout,
+                    ),
+                    dcc.Tab(
+                        label='Plots Comparison',
+                        value='tab-other',
+                        className='dash-tab',
+                        selected_className='dash-tab--selected',
+                        children=comparison_tab,
+                    ),
+                ],
+                style={
+                    'backgroundColor': '#1f2c44',  # Tab bar background
                 }
             )
-        ], style={
-        'position': 'sticky',
-        'top': '0',
-        'background-color': 'white', 
-        'padding': '10px',
-        'background-color': '#FFFFFF',
-        'z-index': '1000',
-        'textAlign': 'center',
-        'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
-    }),
-            
-        html.Div([
-            dcc.Graph(id='ranking-time-plot', figure=plot_ranking_in_time(dash_data)),
-            dcc.RadioItems(
-                id='position-switch',
-                options=[
-                    {'label': 'Visits', 'value': 'visits'},
-                    {'label': 'Time', 'value': 'time'}
-                    ],
-                value='visits',
-                labelStyle={'display': 'inline-block'}
-            ),
-            dcc.RadioItems(
-                id='summary-postion-switch',
-                options=[
-                    {'label': 'Phases', 'value': 'phases'},
-                    {'label': 'Sum', 'value': 'sum'},
-                    {'label': 'Mean', 'value': 'mean'},
-                    ],
-                value='phases',
-                labelStyle={'display': 'inline-block'}
-            ),
-            dcc.Graph(id='position-plot'),
-            dcc.RadioItems(
-                id='pairwise-switch',
-                options=[{'label': 'Visits', 'value': 'visits'}, {'label': 'Time', 'value': 'time'}],
-                value='visits',
-                labelStyle={'display': 'inline-block'}
-            ),
-            dcc.RadioItems(
-                id='summary-pairwise-switch',
-                options=[
-                    {'label': 'Phases', 'value': 'phases'},
-                    {'label': 'Sum', 'value': 'sum'},
-                    {'label': 'Mean', 'value': 'mean'},
-                    ],
-                value='phases',
-                labelStyle={'display': 'inline-block'}
-            ),
-            dcc.Graph(id='pairwise-heatmap'),
-            html.Div([
-        html.Div([
-            dcc.RadioItems(
-                id='chasings-summary-switch',
-                options=[
-                    {'label': 'Phases', 'value': 'phases'},
-                    {'label': 'Sum', 'value': 'sum'},
-                    {'label': 'Mean', 'value': 'mean'},
-                ],
-                value='phases',
-                labelStyle={'display': 'inline-block'}
-            ),
-            dcc.Graph(id='chasings-heatmap')
-        ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-
-        html.Div([
-            dcc.RadioItems(
-                id='sociability-summary-switch',
-                options=[
-                    {'label': 'Phases', 'value': 'phases'},
-                    {'label': 'Mean', 'value': 'mean'},
-                ],
-                value='phases',
-                labelStyle={'display': 'inline-block'}
-            ),
-            dcc.Graph(id='sociability-heatmap')
-        ], style={'width': '49%', 'display': 'inline-block', 'verticalAlign': 'top'})
-            ], style={'width': '80%', 'margin': 'auto'}),
-                    dcc.Graph(id='network-graph')
-                ], style={'padding': '20px'})
-    ])
-
-    comparison_tab = html.Div([
-        html.H2('Plots Comparison', style={'textAlign': 'center', 'margin-bottom': '40px'}),
-
-        html.Div([
-            # Left panel
-            html.Div([
-                html.Label('Select Plot', style={'fontWeight': 'bold'}),
-                dcc.Dropdown(
-                    id='dropdown-plot-left',
-                    options=[
-                        {'label': 'Visits to compartments Dark', 'value': 'position_dark_visits'},
-                        {'label': 'Visits to compartments Light', 'value': 'position_light_visits'},
-                        {'label': 'Time spent in compartments Dark', 'value': 'position_dark_time'},
-                        {'label': 'Time spent in compartments Light', 'value': 'position_light_time'},
-                        {'label': 'Pairwise Encounters Dark', 'value': 'pairwise_encounters_dark'},
-                        {'label': 'Pairwise Encounters Light', 'value': 'pairwise_encounters_light'},
-                        {'label': 'Pairwise Time Dark', 'value': 'pairwise_time_dark'},
-                        {'label': 'Pairwise Time Light', 'value': 'pairwise_time_light'},
-                        {'label': 'Chasings Dark', 'value': 'chasings_dark'},
-                        {'label': 'Chasings Light', 'value': 'chasings_light'},
-                        {'label': 'In cohort sociability Dark', 'value': 'sociability_dark'},
-                        {'label': 'In cohort sociability Light', 'value': 'sociability_light'},
-                        {'label': 'Network Graph Dark', 'value': 'network_dark'},
-                        {'label': 'Network Graph Light', 'value': 'network_light'}
-                    ],
-                    value='position_dark'
-                ),
-                dcc.Graph(id='comparison-plot-left'),
-                html.Label('Phase', style={'margin-top': '20px'}),
-                dcc.Slider(
-                    id='slider-phase-left',
-                    min=min(phases),
-                    max=max(phases),
-                    value=min(phases),
-                    marks={str(phase): str(phase) for phase in phases},
-                    step=None
-                ),
-            ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '0 10px'}),
-
-            # Right panel
-            html.Div([
-                html.Label('Select Plot', style={'fontWeight': 'bold'}),
-                dcc.Dropdown(
-                    id='dropdown-plot-right',
-                    options=[
-                        {'label': 'Visits to compartments Dark', 'value': 'position_dark_visits'},
-                        {'label': 'Visits to compartments Light', 'value': 'position_light_visits'},
-                        {'label': 'Time spent in compartments Dark', 'value': 'position_dark_time'},
-                        {'label': 'Time spent in compartments Light', 'value': 'position_light_time'},
-                        {'label': 'Pairwise Encounters Dark', 'value': 'pairwise_encounters_dark'},
-                        {'label': 'Pairwise Encounters Light', 'value': 'pairwise_encounters_light'},
-                        {'label': 'Pairwise Time Dark', 'value': 'pairwise_time_dark'},
-                        {'label': 'Pairwise Time Light', 'value': 'pairwise_time_light'},
-                        {'label': 'Chasings Dark', 'value': 'chasings_dark'},
-                        {'label': 'Chasings Light', 'value': 'chasings_light'},
-                        {'label': 'In cohort sociability Dark', 'value': 'sociability_dark'},
-                        {'label': 'In cohort sociability Light', 'value': 'sociability_light'},
-                        {'label': 'Network Graph Dark', 'value': 'network_dark'},
-                        {'label': 'Network Graph Light', 'value': 'network_light'}
-                    ],
-                    value='position_dark'
-                ),
-                dcc.Graph(id='comparison-plot-right'),
-                html.Label('Phase', style={'margin-top': '20px'}),
-                dcc.Slider(
-                    id='slider-phase-right',
-                    min=min(phases),
-                    max=max(phases),
-                    value=min(phases),
-                    marks={str(phase): str(phase) for phase in phases},
-                    step=None
-                ),
-            ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '0 10px'}),
         ])
-    ])
-    app.layout = html.Div([
-        dcc.Tabs(id='tabs', value='tab-dashboard', children=[
-            dcc.Tab(label='Dashboard', value='tab-dashboard', children=dashboard_layout),
-            dcc.Tab(label='Plots Comparison', value='tab-other', children=comparison_tab),
-        ])
-    ])
+    
     # Tabs callback
     @app.callback(Output('tabs-content', 'children'), [Input('tabs', 'value')])
     def render_content(tab):
@@ -255,84 +109,181 @@ if __name__ == '__main__':
     # Plots update callback
     @app.callback(
         [
-            Output('position-plot', 'figure'),
-            Output('pairwise-heatmap', 'figure'),
-            Output('chasings-heatmap', 'figure'),
-            Output('sociability-heatmap', 'figure'),
-            Output('network-graph', 'figure'),
+            Output({'graph':'position-plot'}, 'figure'),
+            Output({'store':'position-plot'}, 'data'),
+            Output({'graph':'activity-plot'}, 'figure'),
+            Output({'store':'activity-plot'}, 'data'),
+            Output({'graph':'pairwise-heatmap'}, 'figure'),
+            Output({'store':'pairwise-heatmap'}, 'data'),
+            Output({'graph':'chasings-heatmap'}, 'figure'),
+            Output({'store':'chasings-heatmap'}, 'data'),
+            Output({'graph':'sociability-heatmap'}, 'figure'),
+            Output({'store':'sociability-heatmap'}, 'data'),
+            Output({'graph':'network'}, 'figure'),
+            Output({'store':'network'}, 'data'),
+            Output({'graph':'chasings-plot'}, 'figure'),
+            Output({'store':'chasings-plot'}, 'data'),
+            Output({'graph':'ranking-time-plot'}, 'figure'),
+            Output({'store':'ranking-time-plot'}, 'data'),
+            Output({'graph':'ranking-distribution'}, 'figure'),
+            Output({'store':'ranking-distribution'}, 'data'),
+            Output({'graph':'time-per-cage'}, 'figure'),
+            Output({'store':'time-per-cage'}, 'data'),
+            Output({'graph':'metrics'}, 'figure'),
+            Output({'store':'metrics'}, 'data'),
         ],
         [
             Input('phase-slider', 'value'),
             Input('mode-switch', 'value'),
+            Input('aggregate-stats-switch', 'value'),
             Input('position-switch', 'value'),
-            Input('summary-postion-switch', 'value'),
             Input('pairwise-switch', 'value'),
-            Input('summary-pairwise-switch', 'value'),
-            Input('chasings-summary-switch', 'value'),
-            Input('sociability-summary-switch', 'value'),
         ]  
     )
-    def update_plots(selected_phase, mode, position_switch, summary_postion_switch , pairwise_switch, summary_pairwise_switch, chasings_summary_switch, sociability_summary_switch):
-        position_fig = plot_position_fig(dash_data, mode, selected_phase, position_switch, summary_postion_switch)
-        pairwise_plot = plot_pairwise_plot(dash_data, mode, selected_phase, pairwise_switch, summary_pairwise_switch)
-        chasings_plot = plot_chasings(dash_data, mode, selected_phase, chasings_summary_switch)
-        incohort_soc_plot = plot_in_cohort_sociability(dash_data, mode, selected_phase, sociability_summary_switch)
-        network_plot = plot_network_grah(dash_data, mode, selected_phase)
+    def update_plots(phase_range, mode, aggregate_stats_switch, position_switch, pairwise_switch):
+        data_slice = auxfun_dashboard.get_data_slice(mode, phase_range)
+            
+        animals = store['main_df'].animal_id.cat.categories
+        colors = auxfun_plots.color_sampling(animals)
 
-        return [position_fig, pairwise_plot, chasings_plot, incohort_soc_plot, network_plot]
+        position_fig, position_data = dash_plotting.activity_bar(store, data_slice, position_switch, aggregate_stats_switch)
+        activity_fig, activity_data = dash_plotting.activity_line(store, phase_range, aggregate_stats_switch, animals, colors)
+        pairwise_plot, pairwise_data = dash_plotting.pairwise_sociability(store, data_slice,  pairwise_switch, aggregate_stats_switch)
+        chasings_plot, chasings_data = dash_plotting.chasings(store, data_slice, aggregate_stats_switch)
+        incohort_soc_plot, incohort_soc_data = dash_plotting.within_cohort_sociability(store, data_slice)
+        network_plot, network_plot_data = dash_plotting.network_graph(store, mode, phase_range, animals, colors)
+        chasing_line_plot, chasing_line_data = dash_plotting.chasings_line(store, phase_range, aggregate_stats_switch, animals, colors)
+        ranking_line, ranking_data = dash_plotting.ranking_over_time(store, animals, colors)
+        ranking_distribution, ranking_distribution_data = dash_plotting.ranking_distribution(store, data_slice, animals, colors)
+        time_per_cage, time_per_cage_data = dash_plotting.time_per_cage(store, phase_range, aggregate_stats_switch, animals, colors)
+        metrics_fig, metrics_data = dash_plotting.metrics(store, data_slice, animals, colors)
+
+        return [
+            position_fig, auxfun_plots.to_store_json(position_data),
+            activity_fig, auxfun_plots.to_store_json(activity_data),
+            pairwise_plot, auxfun_plots.to_store_json(pairwise_data),
+            chasings_plot, auxfun_plots.to_store_json(chasings_data),
+            incohort_soc_plot, auxfun_plots.to_store_json(incohort_soc_data),
+            network_plot, auxfun_plots.to_store_json(network_plot_data),
+            chasing_line_plot, auxfun_plots.to_store_json(chasing_line_data),
+            ranking_line, auxfun_plots.to_store_json(ranking_data),
+            ranking_distribution, auxfun_plots.to_store_json(ranking_distribution_data),
+            time_per_cage, auxfun_plots.to_store_json(time_per_cage_data),
+            metrics_fig, auxfun_plots.to_store_json(metrics_data)
+        ]
 
     @app.callback(
         [
-            Output('comparison-plot-left', 'figure'),
-            Output('comparison-plot-right', 'figure'),
+            Output({'type': 'comparison-plot', 'side': MATCH}, 'figure'),
+            Output({'store': 'comparison-plot', 'side': MATCH}, 'data'),
         ],
         [
-            Input('dropdown-plot-left', 'value'),
-            Input('slider-phase-left', 'value'),
-            Input('dropdown-plot-right', 'value'),
-            Input('slider-phase-right', 'value'),
+            Input({'type': 'plot-dropdown', 'side': MATCH}, 'value'),
+            Input({'type': 'mode-switch', 'side': MATCH}, 'value'),
+            Input({'type': 'aggregate-switch', 'side': MATCH}, 'value'),
+            Input({'type': 'phase-slider', 'side': MATCH}, 'value'),
         ]
     )
-    def update_independent_plots(plot_left, phase_left, plot_right, phase_right,):
-        def get_plot(plot_type, phase):
-            match plot_type:
-                case 'position_dark_visits':
-                    return plot_position_fig(dash_data, 'dark', phase, 'visits')
-                case 'position_light_visits':
-                    return plot_position_fig(dash_data, 'light', phase, 'visits')
-                case 'position_dark_time':
-                    return plot_position_fig(dash_data, 'dark', phase, 'time')
-                case 'position_light_time':
-                    return plot_position_fig(dash_data, 'light', phase, 'time')
-                case 'pairwise_encounters_dark':
-                    return plot_pairwise_plot(dash_data, 'dark', phase, 'visits')
-                case 'pairwise_encounters_light':
-                    return plot_pairwise_plot(dash_data, 'light', phase, 'visits')
-                case 'pairwise_time_dark': 
-                    return plot_pairwise_plot(dash_data, 'dark', phase, 'time')
-                case 'pairwise_time_light':
-                    return plot_pairwise_plot(dash_data, 'light', phase, 'time')
-                case 'chasings_dark':
-                    return plot_chasings(dash_data, 'dark', phase, 'phases')
-                case 'chasings_light': 
-                    return plot_chasings(dash_data, 'light', phase, 'phases')
-                case 'sociability_dark':
-                    return plot_in_cohort_sociability(dash_data, 'dark', phase, 'phases')
-                case 'sociability_light':
-                    return plot_in_cohort_sociability(dash_data, 'light', phase, 'phases')
-                case 'network_dark':
-                    return plot_network_grah(dash_data, 'dark', phase)
-                case 'network_light':
-                    return plot_network_grah(dash_data, 'light', phase)
-                case _:
-                    return {}
+    def update_comparison_plot(plot_type, mode, aggregate_stats_switch, phase_range):
+        data_slice = auxfun_dashboard.get_data_slice(mode, phase_range)
+            
+        animals = store['main_df'].animal_id.cat.categories
+        colors = auxfun_plots.color_sampling(animals)
+        plt, df = dash_plotting.get_single_plot(store, mode, plot_type, data_slice, phase_range, aggregate_stats_switch, animals, colors)
+        return plt, auxfun_plots.to_store_json(df)
 
-        fig_left = get_plot(plot_left, phase_left)
-        fig_right = get_plot(plot_right, phase_right)
+    @app.callback(
+        [Output("modal", "is_open"), Output("plot-checklist", "options")],
+        [Input("open-modal", "n_clicks")],
+        [State("modal", "is_open"),
+         State({"graph" : ALL}, "id")],
+    )
+    def toggle_modal(open_click, is_open, graph_ids):
+        if open_click:
+            return not is_open, auxfun_dashboard.get_options_from_ids([g["graph"] for g in graph_ids])
+        return is_open, []
+        
+    @app.callback(
+        Output("download-component", "data"),
+        [
+            Input({"type":"download-btn", "fmt": ALL, "side":ALL}, "n_clicks"),
+        ],
+        [
+            State("data-keys-checklist", "value"),
+            State("plot-checklist", "value"),
+            State('mode-switch', "value"),
+            State('phase-slider', "value"),
+            State({"graph" : ALL}, "figure"),
+            State({"graph" : ALL}, "id"),
+            State({"store" : ALL}, "data"),
+            State({"store" : ALL}, "id")
+        ],
+        prevent_initial_call=True,
+    )
+    def download_selected_data(btn_clicks, 
+                               selected_dfs, 
+                               selected_plots,
+                               mode, 
+                               phase_range,
+                               all_figures, 
+                               all_ids, 
+                               all_stores, 
+                               store_ids
+                               ):
+        
+        triggered = ctx.triggered_id
+        if not triggered:
+            raise dash.exceptions.PreventUpdate
+        
+        if triggered["side"] == "dfs":
+            return auxfun_dashboard.download_dataframes(selected_dfs,
+                                                        mode,
+                                                        phase_range,
+                                                        store)
+        elif triggered["side"] == "plots":
+            return auxfun_dashboard.download_plots(selected_plots,
+                                            triggered["fmt"],
+                                            all_figures, 
+                                            all_ids, 
+                                            all_stores, 
+                                            store_ids
+                                            )
+        else:
+            raise dash.exceptions.PreventUpdate
+        
+    @app.callback(
+    Output({"type": "download-component-comparison", "side": MATCH}, "data"),
+    Input({"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"),
+    State({"type": "comparison-plot", "side": MATCH}, "figure"),
+    State({"type": "comparison-plot", "side": MATCH}, "id"), 
+    State({"store": "comparison-plot", "side": MATCH}, "data"),
+    State({'type': 'plot-dropdown', 'side': MATCH}, 'value'),
 
-        return fig_left, fig_right
+    prevent_initial_call=True,
+    )
+    def download_comparison_data(btn_click, 
+                                figure,
+                                fig_id, 
+                                data_store,
+                                plot_type
+                                ):
+        
+        triggered = ctx.triggered_id
+        if not triggered:
+            raise dash.exceptions.PreventUpdate
 
-    # Run the app
-    open_browser()
+        
+        figure = go.Figure(figure)
+
+        if (figure is None) or (data_store is None):
+            raise dash.exceptions.PreventUpdate
+
+        plot_name = f"comparison_{plot_type}"
+        fname, content = auxfun_dashboard.get_plot_file(data_store, figure, triggered["fmt"], plot_name)
+        return dcc.send_bytes(lambda b: b.write(content), filename=fname)
+
+
+
+    auxfun_plots.open_browser()
     app.run(debug=False, port=8050)
     

@@ -54,6 +54,7 @@ def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pd.DataFrame:
             df = pd.read_hdf(results_path, key=key)
             if key == 'binary_df': # restore index
                 df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in df.columns])
+                df.columns.names = ['cage', 'animal_id']
             return df
         except KeyError:
             if verbose:
@@ -86,7 +87,7 @@ def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = Fa
     animal_ids = list(cfg['animal_ids'])
     positions = list(set(cfg['antenna_combinations'].values()))
     cage_list = [position for position in positions if 'cage' in position]
-    phase_Ns = list(df.phase_count.unique())
+    phase_Ns = list(df.day.unique())
     phases = list(cfg['phase'].keys())
 
     if not any([position, cages, animals]):
@@ -191,9 +192,27 @@ def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
 def run_dashboard(cfp: str | dict):
     cfg = auxfun.read_config(cfp)
     data_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    cfg_path = Path(cfg['project_location']) / 'config.toml'
     
     path_to_dashboard = importlib.util.find_spec('deepecohab.dash.dashboard').origin
 
-    process = subprocess.Popen([sys.executable, path_to_dashboard, '--results-path', data_path])
+    process = subprocess.Popen([sys.executable, path_to_dashboard, '--results-path', data_path, '--config-path' , cfg_path])
     
     return process
+
+def _drop_empty_phase_counts(cfp: str | dict, df: pd.DataFrame):
+    """Auxfun to drop parts of DataFrame where no data was recorded.
+    """    
+    main_df = load_ecohab_data(cfp, 'main_df')
+    possible_dark_phases = main_df.query('phase == "dark_phase"').phase_count.unique()
+    possible_light_phases = main_df.query('phase == "light_phase"').phase_count.unique()
+    
+    filtered_df = df[
+        (df.index.get_level_values(0) == 'dark_phase') & 
+        (df.index.get_level_values(1).isin(possible_dark_phases)) |
+        
+        (df.index.get_level_values(0) == 'light_phase') & 
+        (df.index.get_level_values(1).isin(possible_light_phases))
+    ]
+
+    return filtered_df
