@@ -8,7 +8,6 @@ git clone https://github.com/KonradDanielewski/DeepEcoHab.git
 cd DeepEcoHab
 conda env create -f environment/env.yaml
 conda activate deepecohab
-pip install .
 ```
 
 To check out the package please run the example_notebook provided in the examples directory of this repository.
