@@ -1,7 +1,5 @@
 from deepecohab.version import __version__, VERSION
 
-print(f"Loading DeepEcoHab version: {VERSION}...")
-
 from deepecohab.antenna_analysis.activity import (
     calculate_time_spent_per_position,
     calculate_visits_per_position,

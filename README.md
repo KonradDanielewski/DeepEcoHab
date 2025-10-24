@@ -1,6 +1,6 @@
 ### Installation
 
-To install DeepEcoHab in editable mode you can use the provided yaml file and then pip install:
+To install DeepEcoHab you can use the provided yaml file:
 
 ```
 cd location/to_clone_to
@@ -8,6 +8,7 @@ git clone https://github.com/KonradDanielewski/DeepEcoHab.git
 cd DeepEcoHab
 conda env create -f environment/env.yaml
 conda activate deepecohab
+python -m ipykernel install --user --name=deepecohab
 ```
 
 To check out the package please run the example_notebook provided in the examples directory of this repository.
