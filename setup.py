@@ -21,7 +21,7 @@ setuptools.setup(
         'plotly',
         'matplotlib',
         'scipy',
-        'pandas',
+        'pandas==2.2.3',
         'tables',
         'toml',
         'openskill',
