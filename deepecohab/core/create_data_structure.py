@@ -7,7 +7,7 @@ from tzlocal import get_localzone
 
 from deepecohab.utils import auxfun
 
-def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, min_antenna_crossings: int = 100) -> pd.DataFrame:
+def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, min_antenna_crossings: int = 100, animal_ids: list | None = None) -> pd.DataFrame:
     """Auxfum to load and combine text files into a pandas dataframe
     """    
     cfg = auxfun.read_config(cfp)   
@@ -26,6 +26,9 @@ def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, m
     
     if sanitize_animal_ids:
         df = auxfun._sanitize_animal_ids(cfp, df, min_antenna_crossings)
+        
+    if isinstance(animal_ids, list):
+        df = df[df.animal_id.isin(animal_ids)].reset_index(drop=True)
     
     if custom_layout:
         rename_dicts = cfg['antenna_rename_scheme']
@@ -176,9 +179,9 @@ def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list, timezone: str
     df['datetime'] = df['date'] + ' ' + df['time']
     
     if not isinstance(timezone, str):
-        df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(get_localzone().key, ambiguous='infer')
+        df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(get_localzone().key, ambiguous='infer', nonexistent='shift_backward')
     else:
-        df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(timezone, ambiguous='infer')
+        df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(timezone, ambiguous='infer', nonexistent='shift_backward')
 
     df["hour"] = df.datetime.dt.hour.astype("category")
     df['antenna'] = df.antenna.astype(int)
@@ -194,6 +197,7 @@ def get_ecohab_data_structure(
     custom_layout: bool = False,
     overwrite: bool = False,
     timezone: str | None = None,
+    animal_ids: list | None = None,
 ) -> pd.DataFrame:
     """Prepares EcoHab data for further analysis
 
@@ -215,14 +219,15 @@ def get_ecohab_data_structure(
     if isinstance(df, pd.DataFrame):
         return df
     
-    remapping_dict = cfg['antenna_combinations']
-    positions = list(set(remapping_dict.values()))
+    antenna_pairs = cfg['antenna_combinations']
+    positions = list(set(antenna_pairs.values()))
     
     df = load_data(
         cfp=cfp,
         custom_layout=custom_layout,
         sanitize_animal_ids=sanitize_animal_ids,
         min_antenna_crossings=min_antenna_crossings,
+        animal_ids=animal_ids,
     )
     
     cfg = auxfun.read_config(cfp) # reload config potential animal_id changes due to sanitation
@@ -250,7 +255,7 @@ def get_ecohab_data_structure(
     
     df = calculate_timedelta(df)
     df = get_day(df)
-    df = get_animal_position(df, remapping_dict)
+    df = get_animal_position(df, antenna_pairs)
     df = get_phase(cfg, df)
 
     time_change, time_change_ind = check_for_dst(df)

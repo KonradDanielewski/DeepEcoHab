@@ -51,7 +51,7 @@ def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider
                             count=1,
                             step=1,
                             tooltip={'placement': 'bottom', 'always_visible': True},
-                            updatemode='drag',
+                            updatemode='mouseup',
                             included=True,
                             vertical=False,
                             persistence=True,

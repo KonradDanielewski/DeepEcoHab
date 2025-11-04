@@ -5,7 +5,7 @@ If you do not have anaconda/miniconda installed please follow the instructions [
 After it's installed open the Anaconda Prompt and run `conda install git`. Then follow the instructions below by copy-pasting them into the terminal. 
 The provided instructions create a new directory on your `C` drive where the downloaded repository will be stored.
 
-To install DeepEcoHab you can use the provided yaml file:
+To install DeepEcoHab you can use the provided yaml file. Please run the following commands line by line in the terminal:
 
 ```
 cd C:\

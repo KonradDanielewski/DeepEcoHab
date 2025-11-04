@@ -392,8 +392,8 @@ def time_per_cage_line(
         y_title='<b>Time (seconds)</b>'
     )
 
-    location = list(product(range(1, len(cages)//2+1), 
-                            range(1, len(cages)//2+1)))
+    location = list(product(range(1, int(np.ceil(len(cages)/2+1))), 
+                            range(1, int(np.ceil(len(cages)/2+1)))))
 
     for cage, loc in zip(cages, location):
         row, col = loc
