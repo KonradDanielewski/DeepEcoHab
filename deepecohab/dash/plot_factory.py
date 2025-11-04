@@ -1,6 +1,4 @@
-from datetime import datetime
 from itertools import product
-from pathlib import Path
 from typing import Literal
 
 import networkx as nx
@@ -10,7 +8,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from deepecohab.utils import auxfun
 from deepecohab.utils import auxfun_plots
 
 def plot_sum_line_per_hour(

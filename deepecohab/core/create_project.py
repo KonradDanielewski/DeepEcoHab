@@ -1,7 +1,7 @@
+from datetime import datetime
 from pathlib import Path
 
 import toml
-from datetime import datetime
 
 from deepecohab.utils import config_templates
 from deepecohab.utils import auxfun

@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
-import toml
 from tqdm import tqdm
 
 from deepecohab.utils import auxfun

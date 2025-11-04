@@ -1,7 +1,5 @@
 import argparse
 import sys
-import io
-import zipfile
 from pathlib import Path
 
 import dash
@@ -14,7 +12,6 @@ from deepecohab.dash import dash_plotting
 from deepecohab.dash import dash_layouts
 
 import dash_bootstrap_components as dbc
-
 
 from deepecohab.utils import (
     auxfun_plots,

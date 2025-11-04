@@ -5,7 +5,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from deepecohab.utils import auxfun_plots
 from deepecohab.dash import plot_factory
 
 def activity_line(
