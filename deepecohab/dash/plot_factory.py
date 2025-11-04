@@ -381,9 +381,11 @@ def time_per_cage_line(
     
     plot_df = auxfun_plots.prep_time_per_cage(cage_occupancy)
     cages = sorted(plot_df['cage'].unique())
+    
+    n_cols = int(np.ceil(len(cages)/2))
 
     fig = make_subplots(
-        rows=2, cols=int(np.ceil(len(cages)/2)),
+        rows=2, cols=n_cols,
         subplot_titles=[f'{" ".join([cage.split("_")[0].capitalize(), cage.split("_")[1]])}' for cage in cages],
         shared_yaxes='all', shared_xaxes='all',
         horizontal_spacing = 0.05,
@@ -392,8 +394,8 @@ def time_per_cage_line(
         y_title='<b>Time (seconds)</b>'
     )
 
-    location = list(product(range(1, int(np.ceil(len(cages)/2+1))), 
-                            range(1, int(np.ceil(len(cages)/2+1)))))
+    location = list(product(range(1, n_cols+1), 
+                            range(1, n_cols+1)))
 
     for cage, loc in zip(cages, location):
         row, col = loc
