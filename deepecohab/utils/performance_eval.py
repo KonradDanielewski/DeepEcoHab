@@ -36,7 +36,7 @@ def _run_and_measure(target, args, kwargs, conn):
         try:
             import polars as pl
             if bytes_out is None and isinstance(out, pl.DataFrame):
-                bytes_out = int(out.estimated_size())
+                bytes_out = int(out.rechunk().estimated_size())
                 df_type = "polars"
         except Exception:
             pass
@@ -58,7 +58,6 @@ def measure_call(func, *args, **kwargs):
     p = mp.Process(target=_run_and_measure, args=(func, args, kwargs, child))
     p.start()
     result = parent.recv()
-    p.join()
     p.join()
     if not result.get("ok"):
         raise RuntimeError(f"Child failed:\n{result.get('error')}")
@@ -114,7 +113,7 @@ if __name__ == "__main__":
 
     funcs = [
         ("main_df", deepecohab.get_ecohab_data_structure, {"cfp": cfg, "overwrite":True}),
-        ("binary_df", deepecohab.create_binary_df, {"cfp": cfg, "return_df":True, "overwrite":True}),
+        #("binary_df", deepecohab.create_binary_df, {"cfp": cfg, "return_df":True, "overwrite":True}),
         # ("chasings", deepecohab.calculate_chasings, {"cfp": cfg}),
         # ("ranking", deepecohab.calculate_ranking, {"cfp": cfg}),
         # ("time_per_position", deepecohab.calculate_time_spent_per_position, {"cfp": cfg}),
@@ -126,7 +125,7 @@ if __name__ == "__main__":
 
     results = []
     for name, fn, kw in funcs:
-        fn_stats = measure_many(fn, repeats=100, **kw)
+        fn_stats = measure_many(fn, repeats=10, **kw)
         fn_stats["name"] = name
         results.append(fn_stats)
         print(name, fn_stats)
