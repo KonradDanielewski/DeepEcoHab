@@ -55,8 +55,13 @@ def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, m
 
     return lf
 
-def check_for_dst(df: pd.DataFrame) -> tuple[int, int]:
-    zone_offset = df.datetime.dt.strftime('%z').map(lambda x: x[1:3]).astype(int)
+def check_for_dst(lf: pl.LazyFrame) -> tuple[int, int]:
+
+    
+    lf = lf.with_columns(
+        pl.col("datetime").dt.strftime('%z')
+    ).alias("zone")
+
     time_change_happened = len(np.where((zone_offset != zone_offset[0]))[0]) > 0
     if time_change_happened:
         time_change_ind = np.where((zone_offset != zone_offset[0]))[0][0]

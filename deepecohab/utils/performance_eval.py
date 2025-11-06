@@ -125,7 +125,7 @@ if __name__ == "__main__":
 
     results = []
     for name, fn, kw in funcs:
-        fn_stats = measure_many(fn, repeats=10, **kw)
+        fn_stats = measure_many(fn, repeats=1, **kw)
         fn_stats["name"] = name
         results.append(fn_stats)
         print(name, fn_stats)
