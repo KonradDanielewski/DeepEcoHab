@@ -114,34 +114,12 @@ def get_day(lf: pl.LazyFrame) -> pl.LazyFrame:
         (pl.col("datetime") - start_midnight)
         .dt.total_days()
         .floor()
-        .cast(pl.Int64)
+        .cast(pl.Int32)
         .add(1)
         .alias("day")
     )
     return lf
 
-def get_hour(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """Auxfun for getting the hour
-    """    
-    base = pl.col("datetime").first()
-
-    hours_expr = (
-        (pl.col("datetime") - base)
-        .dt.total_seconds() / 3600.0
-    )
-
-    return (
-        lf.with_row_index("row_nr")
-          .with_columns(
-              pl.when(pl.col("row_nr") == 0)
-                .then(0.01)
-                .otherwise(hours_expr)
-                .ceil()
-                .cast(pl.Int64)
-                .alias("hour")
-          )
-          .drop("row_nr")
-    )
 
 def get_phase(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
     """Auxfun for getting the phase
@@ -167,7 +145,7 @@ def get_phase_count(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
         (
             (pl.col("phase") != pl.col("phase").shift(1))
             .fill_null(True)
-            .cast(pl.Int64)
+            .cast(pl.Int8)
             .cum_sum()
             .alias("run_id")
         )
@@ -179,7 +157,7 @@ def get_phase_count(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
         .unique()
         .sort("run_id")
         .with_columns(
-            pl.col("run_id").rank(method="dense").over("phase").alias("phase_count")
+            pl.col("run_id").rank(method="dense").over("phase").cast(pl.Int16).alias("phase_count")
         )
     )
 
@@ -272,18 +250,18 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame, positions: list, timezone: str
 
     return (
         lf.with_columns(
-            pl.lit(None, dtype=pl.Float64).alias("timedelta"),#TODO check if using duration would be better
-            pl.lit(None, dtype=pl.Float64).alias("day"),
+            pl.lit(None, dtype=pl.Float32).alias("timedelta"),#TODO check if using duration would be better
+            pl.lit(None, dtype=pl.Int16).alias("day"),
 
             pl.lit(None).cast(pl.Enum(positions)).alias("position"),
             pl.lit(None, dtype=pl.Enum(phases)).alias("phase"),
             pl.col("animal_id").cast(pl.Enum(animal_ids)).alias("animal_id"),
 
             datetime_df.alias("datetime"),
-            pl.col("antenna").cast(pl.Int64).alias("antenna"),
+            pl.col("antenna").cast(pl.Int8).alias("antenna"),
         )
         .with_columns(
-            pl.col("datetime").dt.hour().cast(pl.Categorical).alias("hour") #TODO why categorical
+            pl.col("datetime").dt.hour().cast(pl.Int8).alias("hour") #TODO why categorical
         )
         .drop(["date", "time"])
         .unique(subset=["datetime", "animal_id"], keep="first")
@@ -375,12 +353,11 @@ def get_ecohab_data_structure(
     
     condition_map = {key: i+1 for i, key in enumerate(positions)}
 
-    lf = lf.with_columns(
-    pl.col("position")
-      .replace(condition_map, default=0)
-      .cast(pl.Int64)
-      .alias("position_keys")
-    )
+    # lf = lf.with_columns(
+    # pl.col("position")
+    #   .replace(condition_map, default=0)
+    #   .alias("position_keys")#TODO categorial
+    # )
 
     lf = lf.drop("COM")
     df_pl = lf.collect()
@@ -390,5 +367,6 @@ def get_ecohab_data_structure(
 
     df_pl.write_parquet(results_path / f"{key}.parquet")
     phase_durations.write_parquet(results_path / "phase_durations.parquet")
-    
+
+    print(df_pl.head())
     return df_pl
