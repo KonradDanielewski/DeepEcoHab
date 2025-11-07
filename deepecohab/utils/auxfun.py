@@ -33,7 +33,7 @@ def read_config(cfp: str | Path | dict) -> dict:
         return print(f'cfp should be either a dict, Path or str, but {type(cfp)} provided.')
     return cfg
 
-def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pd.DataFrame:
+def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pl.LazyFrame:
     """Loads already analyzed main data structure
 
     Args:
@@ -48,15 +48,11 @@ def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pd.DataFrame:
     """
     cfg = read_config(cfp)
     
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    
+    results_path = Path(cfg['project_location']) / 'results'
     if results_path.is_file():
         try:
-            df = pd.read_hdf(results_path, key=key)
-            if key == 'binary_df': # restore index
-                df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in df.columns])
-                df.columns.names = ['cage', 'animal_id']
-            return df
+            lf = pl.scan_parquet(results_path / f"{key}.parquet")
+            return lf
         except KeyError:
             if verbose:
                 print(f'{key} not found in the specified location: {results_path}. Perhaps not analyzed yet!')

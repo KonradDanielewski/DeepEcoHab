@@ -112,7 +112,7 @@ if __name__ == "__main__":
     save_dir.mkdir(exist_ok=True)
 
     funcs = [
-        ("main_df", deepecohab.get_ecohab_data_structure, {"cfp": cfg, "overwrite":True}),
+        ("main_df", deepecohab.get_ecohab_data_structure, {'cfp': cfg,'fname_prefix':"20", 'overwrite':True}),
         #("binary_df", deepecohab.create_binary_df, {"cfp": cfg, "return_df":True, "overwrite":True}),
         # ("chasings", deepecohab.calculate_chasings, {"cfp": cfg}),
         # ("ranking", deepecohab.calculate_ranking, {"cfp": cfg}),
