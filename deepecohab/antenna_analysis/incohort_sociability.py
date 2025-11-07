@@ -7,6 +7,7 @@ from itertools import (
 )
 
 import pandas as pd
+import polars as pl
 from tqdm import tqdm
 from joblib import (
     Parallel,
@@ -15,57 +16,6 @@ from joblib import (
 
 from deepecohab.antenna_analysis import activity
 from deepecohab.utils import auxfun
-
-def _generate_sociability_combinations(cfg: dict) -> list:
-    """Auxfun to generate a product of phases, phase_count, cages and mouse pairs for in-cohort sociability calculation."""    
-    mouse_pairs = combinations(cfg['animal_ids'], 2)
-    positions = list(set(cfg['antenna_combinations'].values()))
-    
-    cages = [position for position in positions if 'cage' in position]
-    
-    sociability_combinations = list(product(mouse_pairs, cages))
-    
-    return sociability_combinations
-
-def _pairwise_time_together(
-    padded_df: pd.DataFrame, 
-    animal_1: str, 
-    animal_2: str, 
-    cage: str, 
-    minimum_time: int | float | None = None,
-) -> pd.DataFrame:
-    """Helper to paralelize calculation of time together"""
-    animal1 = padded_df.query('animal_id == @animal_1 and position == @cage')
-    animal2 = padded_df.query('animal_id == @animal_2 and position == @cage')
-
-    df1 = pd.DataFrame({
-        'event1_start': animal1.datetime - pd.to_timedelta(animal1.timedelta, 's'),
-        'event1_end': animal1.datetime,
-        'key': 1,
-    })
-
-    df2 = pd.DataFrame({
-        'event2_start': animal2.datetime - pd.to_timedelta(animal2.timedelta, 's'),
-        'event2_end': animal2.datetime,
-        'key': 1,
-    })
-
-    merged = df1.merge(df2, on='key').drop(columns='key')
-
-    merged['overlap_start'] = merged[['event1_start', 'event2_start']].max(axis=1)
-    merged['overlap_end'] = merged[['event1_end', 'event2_end']].min(axis=1)
-    merged['overlap_duration'] = (merged['overlap_end'] - merged['overlap_start']).dt.total_seconds()
-
-    overlaps = merged[merged['overlap_duration'] > minimum_time].reset_index(drop=True)
-
-    output = padded_df.loc[padded_df.datetime.searchsorted(overlaps.overlap_end), ['phase', 'day', 'phase_count']].reset_index(drop=True)
-
-    output['animal_1'] = animal_1
-    output['animal_2'] = animal_2
-    output['cage'] = cage
-    output['time_together'] = overlaps.overlap_duration.values
-    
-    return output
 
 def calculate_time_alone(
     cfp: Path | str | dict,
@@ -118,17 +68,15 @@ def calculate_time_alone(
 def calculate_pairwise_meetings(
     cfp: str | Path | dict, 
     minimum_time: int | float | None = 2, 
-    n_workers: int | None = None, 
     save_data: bool = True, 
     overwrite: bool = False,
-    ) -> pd.DataFrame:
+    ) -> pl.DataFrame:
     """Calculates time spent together and number of meetings by animals on a per phase, day and cage basis. Slow due to the nature of datetime overlap calculation.
 
     Args:
         cfg: dictionary with the project config.
         minimum_time: sets minimum time together to be considered an interaction - in seconds i.e., if set to 2 any time spent in the cage together
                    that is shorter than 2 seconds will be omited. 
-        n_workers: number of CPU threads used to paralelize the calculation, by defualt half of the threads are allocated.
         save_data: toogles whether to save data.
         overwrite: toggles whether to overwrite the data.
         
@@ -136,64 +84,61 @@ def calculate_pairwise_meetings(
         Multiindex DataFrame of time spent together per phase, per cage.
     """    
     cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    key1='time_together'
-    key2='pairwise_encounters'
+    results_path = Path(cfg['project_location']) / 'results' / 'pairwise_meetings.parquet'
+    padded_path = Path(cfg['project_location']) / 'results' / 'padded_df.parquet' # TODO: padded df should be created at the end of creating the main_df as it is the same data structure just with phase split of events so no reason to check for it's existance here
+    days = range(cfg['days']) # TODO: add days of experiment to config as [first, last]
+    cages = cfg['cages'] # TODO: add cages to the config similarily to tunnels being there
     
-    time_together_df = None if overwrite else auxfun.load_ecohab_data(cfp, key1, verbose=False)
-    pairwise_encounters_df = None if overwrite else auxfun.load_ecohab_data(cfp, key2, verbose=False)
+    pairwise_meetings = None if overwrite else auxfun.load_ecohab_data(cfp, 'pairwise_meetings', verbose=False)
     
-    if isinstance(time_together_df, pd.DataFrame) and isinstance(pairwise_encounters_df, pd.DataFrame):
-        return time_together_df, pairwise_encounters_df
+    if isinstance(pairwise_meetings, pl.DataFrame):
+        return pairwise_meetings
     
-    df = auxfun.load_ecohab_data(cfg, key='main_df')
-    padded_df = activity.create_padded_df(cfp, df, save_data, overwrite)
-    animals = cfg['animal_ids']
-    
-    # By default use half of the available cpu threads
-    if not isinstance(n_workers, int):
-        n_workers = os.cpu_count() // 2 
-    
-    print('Calculating pairwise time spent together...')
-    # Calc time spent together per cage for each phase
-    results = Parallel(n_jobs=8, prefer='processes')(
-        delayed(_pairwise_time_together)(padded_df=padded_df, animal_1=animal_1, animal_2=animal_2, cage=cage, minimum_time=minimum_time) 
-        for (animal_1, animal_2), cage in tqdm(_generate_sociability_combinations(cfg))
-    )   
-    pickle_path = results_path.parent / 'time_together.pickle' # TODO: does it have to be a pickle? Would be better to store it with other data in h5 and avoid pickle overall
-    with open(pickle_path, 'wb') as output_file:
-        pickle.dump(results, output_file)
-    
-    output = pd.concat(results)
-
-    index = padded_df.loc[:, ['phase', 'day', 'phase_count', 'position', 'animal_id']]
-    index = sorted(pd.MultiIndex.from_frame(index[index.position.str.contains('cage')].drop_duplicates()))
-
-    pairwise_encounters_df = (
-        output
-        .iloc[:, :-1] # don't use time together for encounter counting
-        .value_counts()
-        .unstack('animal_1')
-        .reorder_levels(['phase', 'day', 'phase_count', 'cage', 'animal_2'])
-        .reindex(index)
-        .reindex(animals, axis=1)
+    lf = (
+        pl.scan_parquet(padded_path)
+        .filter(pl.col("day").is_in(days))
+        .filter(pl.col("position").is_in(cages))
+        .with_columns([
+            (pl.col("datetime") - pl.duration(seconds=pl.col("timedelta"))).alias("event_start"),
+            pl.col("datetime").alias("event_end"),
+        ])
     )
 
-    time_together_df = (
-        output
-        .groupby(['phase', 'day', 'phase_count', 'cage', 'animal_2', 'animal_1'], observed=True)
-        .agg('sum', min_count=1)
-        .unstack('animal_1')
-        .reindex(index)
-        .droplevel(0, axis=1)
-        .reindex(animals, axis=1)
+    joined = (
+        lf.join(
+            lf,
+            on=["position", "phase", "day", "phase_count"],
+            how="inner",
+            suffix="_2",
+        )
+        .filter(pl.col("animal_id") < pl.col("animal_id_2"))
+        .with_columns([
+            pl.max_horizontal(["event_start", "event_start_2"]).alias("overlap_start"),
+            pl.min_horizontal(["event_end", "event_end_2"]).alias("overlap_end"),
+        ])
+        .with_columns([
+            (pl.col("overlap_end") - pl.col("overlap_start"))
+            .dt.total_seconds(fractional=True).round(3)
+            .alias("overlap_duration")
+        ])
+        .filter(pl.col("overlap_duration") > minimum_time)
     )
 
+    pairwise_meetings = (
+        joined.group_by([
+            "phase", "day", "phase_count", "position", "animal_id", "animal_id_2"
+        ])
+        .agg([
+            pl.sum("overlap_duration").alias("time_together"),
+            pl.len().alias("pairwise_encounters"),
+        ])
+        .collect(engine='streaming')
+    )
+    
     if save_data:
-        time_together_df.to_hdf(results_path, key=key1, mode='a', format='table')
-        pairwise_encounters_df.to_hdf(results_path, key=key2, mode='a', format='table')
+        pairwise_meetings.write_parquet(results_path, compression='lz4', )
     
-    return time_together_df, pairwise_encounters_df
+    return pairwise_meetings
 
 def calculate_incohort_sociability(
     cfp: dict, 
