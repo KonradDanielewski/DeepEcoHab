@@ -86,7 +86,6 @@ def calculate_pairwise_meetings(
     cfg = auxfun.read_config(cfp)
     results_path = Path(cfg['project_location']) / 'results' / 'pairwise_meetings.parquet'
     padded_path = Path(cfg['project_location']) / 'results' / 'padded_df.parquet' # TODO: padded df should be created at the end of creating the main_df as it is the same data structure just with phase split of events so no reason to check for it's existance here
-    days = range(cfg['days']) # TODO: add days of experiment to config as [first, last]
     cages = cfg['cages'] # TODO: add cages to the config similarily to tunnels being there
     
     pairwise_meetings = None if overwrite else auxfun.load_ecohab_data(cfp, 'pairwise_meetings', verbose=False)
@@ -96,7 +95,6 @@ def calculate_pairwise_meetings(
     
     lf = (
         pl.scan_parquet(padded_path)
-        .filter(pl.col("day").is_in(days))
         .filter(pl.col("position").is_in(cages))
         .with_columns([
             (pl.col("datetime") - pl.duration(seconds=pl.col("timedelta"))).alias("event_start"),
@@ -113,13 +111,11 @@ def calculate_pairwise_meetings(
         )
         .filter(pl.col("animal_id") < pl.col("animal_id_2"))
         .with_columns([
-            pl.max_horizontal(["event_start", "event_start_2"]).alias("overlap_start"),
-            pl.min_horizontal(["event_end", "event_end_2"]).alias("overlap_end"),
-        ])
-        .with_columns([
-            (pl.col("overlap_end") - pl.col("overlap_start"))
-            .dt.total_seconds(fractional=True).round(3)
-            .alias("overlap_duration")
+            (
+                pl.min_horizontal(["event_end", "event_end_2"]) - 
+                pl.max_horizontal(["event_start", "event_start_2"])
+            ).dt.total_seconds(fractional=True).round(3).alias("overlap_duration")
+            ,
         ])
         .filter(pl.col("overlap_duration") > minimum_time)
     )
@@ -132,11 +128,11 @@ def calculate_pairwise_meetings(
             pl.sum("overlap_duration").alias("time_together"),
             pl.len().alias("pairwise_encounters"),
         ])
-        .collect(engine='streaming')
-    )
+        
+    ).collect(engine='streaming').sort(['phase', 'day', 'phase_count', 'position', 'animal_id', 'animal_id_2'])
     
     if save_data:
-        pairwise_meetings.write_parquet(results_path, compression='lz4', )
+        pairwise_meetings.write_parquet(results_path, compression='lz4')
     
     return pairwise_meetings
 

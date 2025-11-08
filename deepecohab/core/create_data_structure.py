@@ -99,7 +99,7 @@ def calculate_timedelta(lf: pl.LazyFrame) -> pl.LazyFrame:
         .over("animal_id") 
         .dt.total_seconds(fractional=True)
         .fill_null(0)
-        .cast(pl.Float32)
+        .cast(pl.Float64)
         .round(2)
         .alias("timedelta")
     )
