@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pandas as pd
+import polars as pl
+
 import numpy as np
 from tqdm import tqdm
 
@@ -262,7 +264,7 @@ def create_binary_df(
     overwrite: bool = False,
     return_df: bool = False,
     precision: int = 1,
-    ) -> pd.DataFrame:
+    ) -> pl.DataFrame:
     """Creates a binary DataFrame of the position of the animals. Multiindexed on the columns, for each position, each animal. 
        Indexed with datetime for easy time-based slicing.
 
@@ -276,52 +278,62 @@ def create_binary_df(
         Binary dataframe (True/False) of position of each animal per second (by default) per cage. 
     """
     cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    results_path = Path(cfg['project_location']) / 'results' 
     key='binary_df'
     
-    binary_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
-    if isinstance(binary_df, pd.DataFrame):
-        return binary_df
+    binary_lf = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
+    if isinstance(binary_lf, pl.LazyFrame) and return_df:
+        return binary_lf.collect(engine='streaming')
+
     if precision > 20:
         print('Warning! High precision may result in a very large DataFrame and potential python kernel crash!')
-    
-    df = auxfun.load_ecohab_data(cfg, key='main_df')
-    animals = cfg['animal_ids']
+
     positions = list(set(cfg['antenna_combinations'].values()))
     positions = [pos for pos in positions if 'cage' in pos]
+    animal_ids = list(cfg['animal_ids'])
 
-    # Prepare empty DF
-    index_len = np.ceil((df.datetime.iloc[-1] - df.datetime.iloc[0]).total_seconds()*precision).astype(int)
-    cols = pd.MultiIndex.from_product([positions, animals])
-    idx = pd.date_range(df.datetime.iloc[0], df.datetime.iloc[-1], index_len).round('ms')
+    lf = auxfun.load_ecohab_data(cfg, key='main_df')
 
-    binary_df = pd.DataFrame(False, index=idx, columns=cols, dtype=bool)
-    df_cages = df.query('position in @positions')
+    animals_lf = pl.DataFrame({'animal_id': animal_ids}).lazy().with_columns(
+        pl.col('animal_id').cast(pl.Enum(animal_ids))
+        )
 
-    print('Creating binary DataFrame...')
-    for animal in tqdm(animals):
-        data_slice = df_cages.query('animal_id == @animal').iloc[1:]
-        starts = data_slice.datetime - pd.to_timedelta(data_slice.timedelta, 's') 
-        stops = data_slice.datetime
-        ending_pos = data_slice.position
-        
-        for i in range(len(starts)):
-            binary_df.loc[starts.iloc[i]:stops.iloc[i], (ending_pos.iloc[i], animal)] = True
+    lf_filtered = (
+        lf
+        .select(['datetime', 'animal_id', 'position'])
+        .filter(
+            pl.col('position') != pl.col('position').shift(-1).over('animal_id')
+        )
+    ).sort(['animal_id', 'datetime'])
 
-    indices = np.searchsorted(df.datetime.to_numpy(), binary_df.index.to_numpy())
-    new_index = df.loc[indices, ['phase', 'day', 'phase_count']]
-    new_index['datetime'] = idx
-    new_index = pd.MultiIndex.from_frame(new_index)
-    binary_df.index = new_index
-    binary_df.columns.names = ['cage', 'animal_id']
-    binary_df.columns = ['.'.join(map(str, col)).strip() for col in binary_df.columns.values]
+    time_step = f'{1000//precision}ms'
+
+    time_range = pl.datetime_range(
+        pl.col('datetime').min(),
+        pl.col('datetime').max(), 
+        time_step,
+    ).alias('datetime')
+
+    grid_lf = animals_lf.join(lf.select(time_range), how='cross').sort(['animal_id', 'datetime'])
+
+    binary_lf = grid_lf.join_asof(
+        lf_filtered,
+        on='datetime',
+        by='animal_id',
+        strategy='forward',
+
+    ).fill_null('forward')
+
+    binary_lf = binary_lf.with_columns(
+        [(pl.col('position')== x).alias(x) for x in positions]
+        ).drop('position')
+
+    binary_df = binary_lf.collect()
 
     if save_data:
-        binary_df.to_hdf(results_path, key=key, format='table', index=False)
-    
-    binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
+        binary_df.write_parquet(results_path / f"{key}.parquet", compression='lz4')
     
     if return_df:
         return binary_df

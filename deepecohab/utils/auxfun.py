@@ -48,10 +48,11 @@ def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pl.LazyFrame:
     """
     cfg = read_config(cfp)
     
-    results_path = Path(cfg['project_location']) / 'results'
+    results_path = Path(cfg['project_location']) / 'results' / f"{key}.parquet"
+ 
     if results_path.is_file():
         try:
-            lf = pl.scan_parquet(results_path / f"{key}.parquet")
+            lf = pl.scan_parquet(results_path) 
             return lf
         except KeyError:
             if verbose:
