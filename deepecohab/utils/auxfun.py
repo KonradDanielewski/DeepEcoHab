@@ -207,6 +207,22 @@ def run_dashboard(cfp: str | dict):
     
     return process
 
+def get_timedelta_expression(
+    time_col: str = "datetime",
+    group_col: str = "animal_id",
+    alias: str | None = "timedelta",
+) -> pl.Expr:
+    expr = (
+        (pl.col(time_col) - pl.col(time_col).shift(1))
+        .over(group_col)
+        .dt.total_seconds(fractional=True)
+        .fill_null(0)
+        .cast(pl.Float64)
+        .round(2)
+    )
+    return expr.alias(alias) if alias is not None else expr
+
+
 def _drop_empty_phase_counts(cfp: str | dict, df: pd.DataFrame):
     """Auxfun to drop parts of DataFrame where no data was recorded.
     """    

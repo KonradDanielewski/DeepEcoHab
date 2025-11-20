@@ -95,13 +95,7 @@ def calculate_timedelta(lf: pl.LazyFrame) -> pl.LazyFrame:
     """    
 
     lf = lf.with_columns(
-        (pl.col("datetime") - pl.col("datetime").shift(1))
-        .over("animal_id") 
-        .dt.total_seconds(fractional=True)
-        .fill_null(0)
-        .cast(pl.Float64)
-        .round(2)
-        .alias("timedelta")
+        auxfun.get_timedelta_expression()
     )
     return lf
 
@@ -264,7 +258,7 @@ def get_ecohab_data_structure(
     overwrite: bool = False,
     timezone: str | None = None,
     animal_ids: list | None = None,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Prepares EcoHab data for further analysis
 
     Args:
@@ -337,12 +331,15 @@ def get_ecohab_data_structure(
     lf = get_phase_count(lf)
 
     lf = lf.drop("COM")
-    df_pl = lf.collect()
-    df_pl = df_pl.select(sorted(df_pl.columns))
 
-    phase_durations = auxfun.get_phase_durations(lf).collect()
 
-    df_pl.write_parquet(results_path / f"{key}.parquet", compression='lz4')
-    phase_durations.write_parquet(results_path / "phase_durations.parquet")
+    sorted_cols = sorted(lf.collect_schema().keys())
+    lf_sorted = lf.select(sorted_cols)
 
-    return df_pl
+    phase_durations_lf = auxfun.get_phase_durations(lf)
+
+    lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
+    phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet")
+
+    return lf_sorted
+

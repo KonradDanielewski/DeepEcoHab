@@ -3,20 +3,16 @@ from pathlib import Path
 import pandas as pd
 import polars as pl
 
-import numpy as np
-from tqdm import tqdm
+from datetime import datetime
 
 from deepecohab.utils import auxfun
 from deepecohab.core import create_data_structure
 
-def _split_datetime(phase_start: str) -> tuple[str, ...]:
+def _split_datetime(phase_start: str) -> datetime:
     """Auxfun to split datetime string.
     """    
-    hour = int(phase_start.split(':')[0])
-    minute = int(phase_start.split(':')[1])
-    second = int(phase_start.split(':')[2].split('.')[0])
-    
-    return hour, minute, second
+    return datetime.strptime(phase_start, "%H:%M:%S")
+
 
 def _extract_phase_switch_indices(animal_df: pd.DataFrame):
     """Auxfun to find indices of phase switching.
@@ -82,10 +78,10 @@ def calculate_cage_occupancy(
 
 def create_padded_df(
     cfp: Path | str | dict,
-    df: pd.DataFrame,
+    df: pl.LazyFrame,
     save_data: bool = True, 
     overwrite: bool = False,
-    ) ->  pd.DataFrame:
+    ) ->  pl.LazyFrame:
     """Creates a padded DataFrame based on the original main_df. Duplicates indices where the lenght of the detection crosses between phases.
        Timedeltas for those are changed such that that the detection ends at the very end of the phase and starts again in the next phase as a new detection.
 
@@ -99,67 +95,75 @@ def create_padded_df(
         Padded DataFrame of the main_df.
     """
     cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    results_path = Path(cfg['project_location']) / 'results'
     key='padded_df'
     
     padded_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
-    if isinstance(padded_df, pd.DataFrame):
+    if isinstance(padded_df, pl.LazyFrame):
         return padded_df
     
-    animals = cfg['animal_ids']
-    phases = list(cfg['phase'].keys())
+    dark_start = _split_datetime(cfg['phase']['dark_phase'])
+    light_start = _split_datetime(cfg['phase']['light_phase'])
 
-    animal_dfs = []
-
-    for animal in animals:
-        animal_df = df.query('animal_id == @animal').copy()
-
-        indices = _extract_phase_switch_indices(animal_df)
-
-        light_phase_starts = indices[indices == 1].index
-        dark_phase_starts = indices[indices == -1].index
-
-        for phase in phases:
-            if phase == 'light_phase':
-                idx = light_phase_starts
-            else:
-                idx = dark_phase_starts
-            
-            # Duplicate indices where phase change is happening
-            animal_df = pd.concat([animal_df, animal_df.loc[idx]]).sort_index()
-            # Indices are duplicated so take every second value
-            times = animal_df.loc[idx].index[::2] 
-            
-            # Phase start time split
-            phase_start = cfg['phase'][phase]
-            hour, minute, second = _split_datetime(phase_start)
-
-            for i in times: 
-                location = animal_df.index.get_loc(animal_df.loc[i, 'datetime'].index[0]).start # iloc of the duplicated index for data assignement purposes
-                # Get timedelta between the start of phase and first datetime. Subtract this time + 1 microsecond to create a datetime in the previuous phase
-                phase_start_diff = animal_df.iloc[location, 2] - animal_df.iloc[location, 2].replace(hour=hour, minute=minute, second=second, microsecond=0) + pd.Timedelta(microseconds=1)
-                animal_df.iloc[location, 2] = animal_df.iloc[location, 2] - phase_start_diff
-                
-                # Correct also day, phase and phase_count
-                animal_df = _correct_padded_info(animal_df, location)
-        
-        animal_dfs.append(animal_df)
-
-    padded_df = (
-        pd.concat(animal_dfs)
-        .sort_values('datetime')
-        .reset_index(drop=True)
-        .drop('phase_map', axis=1)
+    dark_offset = pl.duration(
+        hours=dark_start.hour,
+        minutes=dark_start.minute,
+        seconds=dark_start.second,
+        microseconds=-1,
     )
 
-    # Overwrite with new timedelta
-    padded_df = create_data_structure.calculate_timedelta(padded_df)
-    
+    light_offset = pl.duration(
+        hours=24 if light_start.hour == 0 else light_start.hour,
+        minutes=light_start.minute,
+        seconds=light_start.second,
+        microseconds=-1,
+    )
+
+    tz = df.collect_schema()["datetime"].time_zone
+    base_midnight = pl.col("datetime").dt.date().cast(pl.Datetime("us")).dt.replace_time_zone(tz)
+
+
+    df = df.with_columns(
+        (pl.col('phase') != pl.col('phase').shift(-1).over('animal_id')).alias('mask')
+    )
+
+    extension_df = df.filter(pl.col('mask')).with_columns(
+        pl.when(pl.col('phase') == 'light_phase').then(
+            base_midnight + dark_offset
+        ).otherwise(
+            base_midnight + light_offset
+        ).alias("datetime")
+    )
+
+    padded_lf = pl.concat([
+        df,
+        extension_df    
+    ]).sort(['datetime'])
+
+    padded_lf = padded_lf.with_columns(
+        pl.when(
+            pl.col('mask')
+        ).then(
+            auxfun.get_timedelta_expression(alias = None)
+        ).otherwise(
+            pl.when(
+                pl.col('mask').shift(1).over('animal_id')
+            ).then(
+                auxfun.get_timedelta_expression(alias = None)
+            ).otherwise(
+                pl.col('timedelta')
+            )
+        ).alias('timedelta'),
+        pl.when(pl.col('mask')).then(
+            pl.col('position').shift(-1).over('animal_id')
+        ).otherwise(pl.col('position')).alias('position')
+    ).drop('mask')
+
     if save_data:
-        padded_df.to_hdf(results_path, key=key, mode='a', format='table')
+        padded_lf.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
     
-    return padded_df
+    return padded_lf
 
 def calculate_time_spent_per_position(
     cfp: str | Path | dict, 
@@ -330,10 +334,8 @@ def create_binary_df(
         [(pl.col('position')== x).alias(x) for x in positions]
         ).drop('position')
 
-    binary_df = binary_lf.collect()
-
     if save_data:
-        binary_df.write_parquet(results_path / f"{key}.parquet", compression='lz4')
+        binary_lf.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
     
     if return_df:
-        return binary_df
+        return binary_lf
