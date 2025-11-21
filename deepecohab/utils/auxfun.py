@@ -1,7 +1,7 @@
 import datetime as dt
 import importlib
-from itertools import product
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -239,3 +239,29 @@ def _drop_empty_phase_counts(cfp: str | dict, df: pd.DataFrame):
     ]
 
     return filtered_df
+
+def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict) -> pl.LazyFrame:
+    tunnels = cfg['tunnels']
+    positions = list(set(cfg['antenna_combinations'].values()))
+    positions = [pos for pos in positions if 'cage' in pos] + list(set(tunnels.values())) + ['undefined']
+
+    return lf.with_columns(
+        pl.col('position')
+        .cast(pl.Utf8)              
+        .replace(tunnels)           
+        .cast(pl.Enum(positions))
+        .alias('position')   
+    )
+
+def get_agg_expression(
+    value_col: str,
+    animal_ids: list,
+    agg_fn: Callable[[pl.Expr], pl.Expr],
+) -> list[pl.Expr]:
+
+    return [
+        agg_fn(
+            pl.col(value_col).filter(pl.col("animal_id") == aid)
+        ).alias(str(aid))
+        for aid in animal_ids
+    ]

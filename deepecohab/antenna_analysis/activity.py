@@ -190,32 +190,25 @@ def calculate_time_spent_per_position(
     if isinstance(time_per_position_lf, pl.LazyFrame):
         return time_per_position_lf
     
-    tunnels = cfg['tunnels']
-    positions = list(set(cfg['antenna_combinations'].values()))
-    positions = [pos for pos in positions if 'cage' in pos] + list(set(tunnels.values())) + ['undefined']
     animal_ids = list(cfg['animal_ids'])
 
     df = auxfun.load_ecohab_data(cfg, key='main_df')
     padded_lf = create_padded_df(cfp, df, overwrite=overwrite)
 
-    aggregate_function = lambda col: sum(col)
-
     # Map directional tunnel position to non-directional and calculate time spent per position per phase
-    time_per_position_lf = padded_lf.with_columns(
-            pl.col('position')
-            .cast(pl.Utf8)              
-            .replace(tunnels)           
-            .cast(pl.Enum(positions))
-            .alias('position')   
-        ).group_by(
-            ["phase", "day", "phase_count", "position"]
-        ).agg([
-            pl.col('timedelta')
-            .filter(pl.col('animal_id') == value)
-            .sum()
-            .alias(value)
-            for value in animal_ids
-        ]).sort(["phase", "day", "phase_count", "position"])
+    padded_lf = auxfun.remove_tunnel_directionality(padded_lf, cfg)
+
+    group_cols = ["phase", "day", "phase_count", "position"]
+
+    time_per_position_lf = padded_lf.group_by(
+            group_cols
+        ).agg(
+            auxfun.get_agg_expression(
+                value_col="timedelta",
+                animal_ids=animal_ids,
+                agg_fn=lambda e: e.sum(),
+            )
+        ).sort(group_cols)
 
     if save_data:
         time_per_position_lf.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
@@ -238,7 +231,7 @@ def calculate_visits_per_position(
         Multiindex DataFrame with number of visits per position.
     """
     cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    results_path = Path(cfg['project_location']) / 'results'
     key='visits_per_position'
     
     visits_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
@@ -246,28 +239,31 @@ def calculate_visits_per_position(
     if isinstance(visits_per_position, pd.DataFrame):
         return visits_per_position
     
-    tunnels = cfg['tunnels']
+    animal_ids = list(cfg['animal_ids'])
+
     
     df = auxfun.load_ecohab_data(cfg, key='main_df')
-    padded_df = create_padded_df(cfp, df)
+    padded_lf = create_padded_df(cfp, df)
     
-    # Map directional tunnel position to non-directional
-    padded_df.position = padded_df.position.astype(str)
-    mapper = padded_df.position.isin(tunnels.keys())
-    padded_df.loc[mapper, 'position'] = padded_df.loc[mapper, 'position'].map(tunnels).values
+    padded_lf = auxfun.remove_tunnel_directionality(padded_lf, cfg)
+
+    group_cols = ['phase', 'day', 'phase_count', 'hour', 'position']
     
     # Calculate visits to each position
     visits_per_position = (
-        padded_df
-        .groupby(['phase', 'day', 'phase_count', 'hour', 'position', 'animal_id'], observed=True)['animal_id']
-        .agg('count')
-        .unstack('animal_id')
-        .fillna(0)
-        .astype(int)
+        padded_lf.group_by(
+            group_cols
+        ).agg(
+            auxfun.get_agg_expression(
+                value_col="timedelta",
+                animal_ids=animal_ids,
+                agg_fn=lambda e: e.count(),
+            )
+        ).sort(group_cols).fill_null(0)
     )
     
     if save_data:
-        visits_per_position.to_hdf(results_path, key=key, mode='a', format='table')
+        visits_per_position.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
     
     return visits_per_position
 
