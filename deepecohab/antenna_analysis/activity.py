@@ -169,7 +169,7 @@ def calculate_time_spent_per_position(
     cfp: str | Path | dict, 
     save_data: bool = True, 
     overwrite: bool = False,
-    ) -> pd.DataFrame:
+    ) -> pl.LazyFrame:
     """Calculates time spent in each possible position per phase for every mouse.
 
     Args:
@@ -182,36 +182,45 @@ def calculate_time_spent_per_position(
     """
     cfg = auxfun.read_config(cfp)
     
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    results_path = Path(cfg['project_location']) / 'results'
     key='time_per_position'
     
-    time_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
+    time_per_position_lf = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
-    if isinstance(time_per_position, pd.DataFrame):
-        return time_per_position
+    if isinstance(time_per_position_lf, pl.LazyFrame):
+        return time_per_position_lf
     
     tunnels = cfg['tunnels']
-    
+    positions = list(set(cfg['antenna_combinations'].values()))
+    positions = [pos for pos in positions if 'cage' in pos] + list(set(tunnels.values())) + ['undefined']
+    animal_ids = list(cfg['animal_ids'])
+
     df = auxfun.load_ecohab_data(cfg, key='main_df')
-    padded_df = create_padded_df(cfp, df, overwrite=overwrite)
-    
-    # Map directional tunnel position to non-directional
-    mapper = padded_df.position.isin(tunnels.keys())
-    padded_df.position = padded_df.position.astype(str)
-    padded_df.loc[mapper, 'position'] = padded_df.loc[mapper, 'position'].map(tunnels).values
-    
-    # Calculate time spent per position per phase
-    time_per_position = (
-        padded_df
-        .groupby(['phase', 'day', 'phase_count', 'position', 'animal_id'], observed=True)['timedelta']
-        .sum()
-        .unstack('animal_id')
-    )
-    
+    padded_lf = create_padded_df(cfp, df, overwrite=overwrite)
+
+    aggregate_function = lambda col: sum(col)
+
+    # Map directional tunnel position to non-directional and calculate time spent per position per phase
+    time_per_position_lf = padded_lf.with_columns(
+            pl.col('position')
+            .cast(pl.Utf8)              
+            .replace(tunnels)           
+            .cast(pl.Enum(positions))
+            .alias('position')   
+        ).group_by(
+            ["phase", "day", "phase_count", "position"]
+        ).agg([
+            pl.col('timedelta')
+            .filter(pl.col('animal_id') == value)
+            .sum()
+            .alias(value)
+            for value in animal_ids
+        ]).sort(["phase", "day", "phase_count", "position"])
+
     if save_data:
-        time_per_position.to_hdf(results_path, key=key, mode='a', format='table')
+        time_per_position_lf.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
     
-    return time_per_position
+    return time_per_position_lf
 
 def calculate_visits_per_position(
     cfp: str | Path | dict, 
