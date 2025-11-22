@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 
 from datetime import datetime
 
@@ -45,34 +46,36 @@ def calculate_cage_occupancy(
     cfp: str | Path | dict, 
     save_data: bool = True,
     overwrite: bool = False, 
-) -> pd.DataFrame:
+) -> pl.LazyFrame:
     cfg = auxfun.read_config(cfp)
     
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    results_path = Path(cfg['project_location']) / 'results'
     key = 'cage_occupancy'
     
     cage_occupancy = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
-    if isinstance(cage_occupancy, pd.DataFrame):
+    if isinstance(cage_occupancy, pl.LazyFrame):
         return cage_occupancy
     
-    binary_df = create_binary_df(cfp, save_data, overwrite, return_df=True)
+    binary_lf = create_binary_df(cfp, save_data, overwrite, return_df=True)
     
-    print('Calculating per hour cage time...')
-    day = ((binary_df.index.get_level_values('datetime') 
-             - binary_df.index.get_level_values('datetime')[0]) + pd.Timedelta(str(binary_df.index.get_level_values('datetime').time[0]))).days + 1
-    hours = binary_df.index.get_level_values('datetime').hour
-    
-    binary_df.index = pd.MultiIndex.from_arrays([day, hours], names=['day', 'hours'])
-    binary_df = binary_df.stack(0, future_stack=True)
-    binary_df.index = binary_df.index.set_names(['day', 'hours', 'cage'])
-    binary_df.columns = binary_df.columns.set_names(['animal_id'])
+    binary_lf = binary_lf.group_by(['day', 'hour', 'animal_id']).agg(
+        cs.boolean().sum()
+    )
 
-    cage_occupancy = binary_df.stack().groupby(level=['day', 'hours', 'cage', 'animal_id']).sum().reset_index()
-    cage_occupancy.columns = ['day', 'hours', 'cage', 'animal_id', 'time_sum']
-    
+    cage_occupancy = (
+        binary_lf.unpivot(
+            cs.contains('cage'),
+            index=['day', 'hour', 'animal_id'],
+            variable_name='cage',
+            value_name='time_sum',
+        )
+        .sort(['day', 'hour', 'cage', 'animal_id'])  # drop if you don't need sorted
+    )
+
+
     if save_data:
-        cage_occupancy.to_hdf(results_path, key=key, mode='a', format='table')
+        cage_occupancy.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
         
     return cage_occupancy
 
@@ -273,7 +276,7 @@ def create_binary_df(
     overwrite: bool = False,
     return_df: bool = False,
     precision: int = 1,
-    ) -> pl.DataFrame:
+    ) -> pl.LazyFrame:
     """Creates a binary DataFrame of the position of the animals. Multiindexed on the columns, for each position, each animal. 
        Indexed with datetime for easy time-based slicing.
 
@@ -311,7 +314,7 @@ def create_binary_df(
 
     lf_filtered = (
         lf
-        .select(['datetime', 'animal_id', 'position'])
+        .select(['phase', 'day', 'hour', 'phase_count', 'datetime', 'animal_id', 'position'])
         .filter(
             pl.col('position') != pl.col('position').shift(-1).over('animal_id')
         )
@@ -333,7 +336,7 @@ def create_binary_df(
         by='animal_id',
         strategy='forward',
 
-    ).fill_null('forward')
+    ).fill_null(strategy='forward')
 
     binary_lf = binary_lf.with_columns(
         [(pl.col('position')== x).alias(x) for x in positions]
