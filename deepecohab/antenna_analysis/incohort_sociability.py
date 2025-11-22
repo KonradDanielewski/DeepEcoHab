@@ -33,35 +33,55 @@ def calculate_time_alone(
         DataFrame containing time spent alone in seconds.
     """
     cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    results_path = Path(cfg['project_location']) / 'results'
     key='time_alone'
 
     time_alone = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
 
-    if isinstance(time_alone, pd.DataFrame):
+    if isinstance(time_alone, pl.LazyFrame):
         return time_alone
 
     animals = cfg['animal_ids']
+    positions = list(set(cfg['antenna_combinations'].values()))
+    #TODO
+    cages = [pos for pos in positions if 'cage' in pos]
+
     binary_df = activity.create_binary_df(cfp, save_data, overwrite, return_df=True)
 
-    temp_df = (
-        binary_df
-        .stack(level=0, future_stack=True)
-        .reorder_levels(['phase', 'day', 'phase_count', 'cage', 'datetime'])
-        .sort_index()
+    animal_ids = list(cfg['animal_ids'])
+
+    binary_filtered = binary_df.filter(
+        pl.any_horizontal([pl.col(c) for c in cages])
     )
 
-    time_alone = pd.DataFrame(columns=animals, index=temp_df.droplevel('datetime').index.drop_duplicates())
+    binary_filtered = binary_filtered.with_columns(
+        pl.concat_list(cages).list.arg_max().alias("idx")
+    ).with_columns(
+        pl.lit(cages).list.get(pl.col("idx")).alias("cage")
+    ).drop(cages)
 
-    print('Calculating time spent alone...')
-    for animal in tqdm(animals):
-        time_alone[animal] = temp_df.loc[
-                                        (temp_df.sum(axis=1) == 1) 
-                                        & (temp_df.loc[:, animal]), animal
-                                        ].groupby(level=['phase', 'day', 'phase_count', 'cage'], observed=False).sum()
+    time_alone = ["datetime","cage", "phase", "day", "phase_count"]
+
+    res = binary_filtered.group_by(
+            group_cols
+        ).agg(
+            "animal_id"
+        ).filter(
+            pl.col("animal_id").list.len()==1
+        ).with_columns(
+            pl.col("animal_id").list.get(0)
+        ).group_by(
+            ["cage", "phase", "day", "phase_count"]
+        ).agg(
+            auxfun.get_agg_expression(
+                value_col="datetime",
+                animal_ids=animal_ids,
+                agg_fn=lambda e: e.count(),
+            )
+        ).sort(["phase", "day", "phase_count","cage"])
         
     if save_data:
-        time_alone.to_hdf(results_path, key=key, mode='a', format='table')
+        time_alone.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
         
     return time_alone
 
