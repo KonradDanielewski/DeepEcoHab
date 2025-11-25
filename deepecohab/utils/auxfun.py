@@ -77,41 +77,6 @@ def make_project_path(project_location: str, experiment_name: str) -> str:
 
     return str(project_location)
 
-def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = False, animals: bool = False) -> pd.MultiIndex:
-    """Auxfun to create multindices for various DataFrames
-    """
-    df = load_ecohab_data(cfg, key='main_df')
-    
-    animal_ids = list(cfg['animal_ids'])
-    positions = list(set(cfg['antenna_combinations'].values()))
-    cage_list = [position for position in positions if 'cage' in position]
-    phase_Ns = list(df.day.unique())
-    phases = list(cfg['phase'].keys())
-
-    if not any([position, cages, animals]):
-        idx = pd.MultiIndex.from_product(
-            [phases, phase_Ns], names=['phase', 'phase_count']
-        )
-        return idx
-    elif cages & animals:
-        idx = pd.MultiIndex.from_product(
-            [phases, phase_Ns, cage_list, animal_ids], names=['phase', 'phase_count', 'cages', 'animal_ids']
-        )
-        return idx
-    elif position:
-        positions.append('undefined')
-        idx = pd.MultiIndex.from_product([phases, phase_Ns, positions], names=['phase', 'phase_count', 'position']
-        )
-        return idx
-    elif cages:
-        idx = pd.MultiIndex.from_product([phases, phase_Ns, cage_list], names=['phase', 'phase_count', 'position']
-        )
-        return idx
-    elif animals:
-        idx = pd.MultiIndex.from_product(
-            [phases, phase_Ns, animal_ids], names=['phase', 'phase_count', 'animal_ids']
-        )
-        return idx
 
 def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Auxfun to calculate approximate phase durations.
@@ -170,7 +135,7 @@ def _sanitize_animal_ids(cfp: str, lf: pd.DataFrame, min_antenna_crossings: int 
     
     return lf
 
-def _append_start_end_to_config(cfp: str, lf: pd.DataFrame) -> None:
+def _append_start_end_to_config(cfp: str, lf: pl.LazyFrame) -> None:
     """Auxfun to append start and end datetimes of the experiment if not user provided.
     """    
     cfg = read_config(cfp)
@@ -195,6 +160,18 @@ def _append_start_end_to_config(cfp: str, lf: pd.DataFrame) -> None:
     f.close()
     
     print(f'Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True')
+
+def _set_cages(cfp: str) -> None:
+    cfg = read_config(cfp)
+    
+    positions = list(set(cfg['antenna_combinations'].values()))
+    cages = [pos for pos in positions if 'cage' in pos]
+
+    f = open(cfp,'w')
+    cfg['cages'] = cages
+    
+    toml.dump(cfg, f)
+    f.close()
 
 def run_dashboard(cfp: str | dict):
     cfg = auxfun.read_config(cfp)
@@ -242,8 +219,7 @@ def _drop_empty_phase_counts(cfp: str | dict, df: pd.DataFrame):
 
 def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict) -> pl.LazyFrame:
     tunnels = cfg['tunnels']
-    positions = list(set(cfg['antenna_combinations'].values()))
-    positions = [pos for pos in positions if 'cage' in pos] + list(set(tunnels.values())) + ['undefined']
+    positions = cfg['cages'] + list(set(tunnels.values())) + ['undefined']
 
     return lf.with_columns(
         pl.col('position')

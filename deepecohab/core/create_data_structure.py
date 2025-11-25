@@ -57,6 +57,9 @@ def load_data(cfp: str | Path,
         rename_dicts = cfg['antenna_rename_scheme']
         lf = _rename_antennas(lf, rename_dicts)
 
+    #TODO confirm
+    auxfun._set_cages(cfp)
+
     return lf
 
 def correct_phases_dst(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
@@ -276,7 +279,7 @@ def get_ecohab_data_structure(
     
     df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
-    if isinstance(df, pd.DataFrame):
+    if isinstance(df, pl.LazyFrame):
         return df
     
     antenna_pairs = cfg['antenna_combinations']
@@ -319,6 +322,8 @@ def get_ecohab_data_structure(
         print('Start and end dates not provided. Extracting from data...')
         auxfun._append_start_end_to_config(cfp, lf)
         
+    auxfun._add_cages_to_config(cfp)
+
     lf = lf.sort('datetime')
     lf = calculate_timedelta(lf)
     lf = get_day(lf)

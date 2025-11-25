@@ -66,13 +66,12 @@ def calculate_cage_occupancy(
     cage_occupancy = (
         binary_lf.unpivot(
             cs.contains('cage'),
-            index=['day', 'hour', 'animal_id'],
+            index = ['day', 'hour', 'animal_id'],
             variable_name='cage',
             value_name='time_sum',
         )
         .sort(['day', 'hour', 'cage', 'animal_id'])  # drop if you don't need sorted
     )
-
 
     if save_data:
         cage_occupancy.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
@@ -302,8 +301,7 @@ def create_binary_df(
     if precision > 20:
         print('Warning! High precision may result in a very large DataFrame and potential python kernel crash!')
 
-    positions = list(set(cfg['antenna_combinations'].values()))
-    positions = [pos for pos in positions if 'cage' in pos]
+    positions = cfg['cages']
     animal_ids = list(cfg['animal_ids'])
 
     lf = auxfun.load_ecohab_data(cfg, key='main_df')
@@ -344,6 +342,6 @@ def create_binary_df(
 
     if save_data:
         binary_lf.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
-    
+
     if return_df:
         return binary_lf
