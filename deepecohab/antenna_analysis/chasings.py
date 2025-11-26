@@ -6,6 +6,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
+import polars.selectors as cs
+
 from openskill.models import PlackettLuce
 from tqdm import tqdm
 
@@ -77,7 +80,7 @@ def calculate_chasings(
     cfp: str | Path | dict, 
     overwrite: bool = False,
     save_data: bool = True,
-    ) -> pd.DataFrame:
+    ) -> pl.LazyFrame:
     """Calculates chasing events per pair of mice for each phase
 
     Args:
@@ -89,79 +92,94 @@ def calculate_chasings(
         MultiIndex DataFrame of chasings per phase every animal vs every animal. Column chases the row
     """
     cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    results_path = Path(cfg['project_location']) / 'results'
     key='chasings'
     
     chasings = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
-    if isinstance(chasings, pd.DataFrame):
+    if isinstance(chasings, pl.LazyFrame):
         return chasings
     
     df = auxfun.load_ecohab_data(cfg, key='main_df')
     
-    cages = [val for val in set(cfg['antenna_combinations'].values()) if 'cage' in val]
-    tunnels = [val for val in set(cfg['antenna_combinations'].values()) if 'cage' not in val]
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    animals = cfg['animal_ids']
+    cages = cfg['cages']
+    tunnels = cfg['tunnels']
 
-    mouse_pairs = list(combinations(animals, 2))
-    matches = []
-    dfs = []
-    
-    print('Calculating chasings...')
-    for animal1, animal2 in tqdm(mouse_pairs):
-        animal_pair_df = df[df.animal_id.isin([animal1, animal2])].reset_index(drop=True)
-        chasing_position = animal_pair_df[
-            (animal_pair_df.position == animal_pair_df.position.shift(1)) 
-            & animal_pair_df.position.isin(tunnels)
-        ]
-        
-        chased = animal_pair_df.loc[chasing_position.index - 1].reset_index(drop=True)
-        chasing = animal_pair_df.loc[chasing_position.index - 2].reset_index(drop=True)
-        
-        # Chaser comes from cage, chased leaves the tunnel
-        pos_condition = chasing.position.isin(cages) & chased.position.isin(tunnels)
-        chasing_pos_filt = chasing[pos_condition].reset_index(drop=True)
-        chased_pos_filt = chased[pos_condition].reset_index(drop=True)
+    lf_filtered = (
+        df
+        .select(['datetime', 'animal_id', 'position', 'phase', 'day', 'hour', 'phase_count'])
+        .filter(
+            (pl.col('position') != pl.col('position').shift(1).over('animal_id'))
+        )
+    ).sort(['animal_id', 'datetime'])
 
-        # Ensures that the chased one was the first to exit the tube
-        chased_mouse = chased_pos_filt.loc[chased_pos_filt.animal_id != chasing_pos_filt.animal_id]
-        chasing_mouse = chasing_pos_filt.loc[chasing_pos_filt.animal_id != chased_pos_filt.animal_id]
-
-        # Add filtering by duration of the event
-        chasing_len = (chased_mouse.datetime - chasing_mouse.datetime).dt.total_seconds()
-        chasing_len_condition = (chasing_len < 1.2) & (chasing_len > 0.1)
-        
-        filtered_chased = chased_mouse[chasing_len_condition].copy()
-        filtered_chasing = chasing_mouse[chasing_len_condition].copy()
-        
-        matches.append(_get_chasing_matches(filtered_chasing, filtered_chased))
-        
-        filtered_chasing['chased'] = filtered_chased.loc[:, 'animal_id'].values
-
-        dfs.append(filtered_chasing)
-        
-    chasings = (
-        pd.concat(dfs)
-        .groupby(by=['phase', 'day', 'phase_count', 'hour', 'chased', 'animal_id'], observed=False)['animal_id']
-        .size()
-        .unstack('animal_id')
+    chased = lf_filtered.filter(
+        pl.col('position').is_in(tunnels),
     )
-    chasings.columns.rename('chaser', inplace=True)
-    chasings = chasings.apply(lambda col: col.mask(
-        (col.name == col.index.get_level_values('chased')), np.nan
-    ))
+
+    chasing = lf_filtered.with_columns(
+        pl.col('datetime').shift(-1).over('animal_id').alias('exit'),
+        pl.col('position').shift(-1).over('animal_id').alias('next_position'),
+    ).drop(
+        ['phase', 'day', 'hour', 'phase_count']
+    ).with_columns(
+        pl.all().name.suffix("_chasing")
+    ).drop(
+        ~cs.contains("_chasing")
+    )
+
+    chasing = chasing.with_columns(
+        (pl.col('datetime_chasing') + pl.duration(seconds=1, milliseconds=200)).alias('dt_upper'),
+        (pl.col('datetime_chasing') + pl.duration(milliseconds=100)).alias('dt_lower')
+    ).filter(
+        pl.col('position_chasing').is_in(cages)
+    ).drop(
+        'position_chasing'
+    )
+
+    chasings_list = chased.join_where(
+        chasing,
+        (pl.col('position') == pl.col("next_position_chasing")),
+        (pl.col("animal_id") != pl.col("animal_id_chasing")),
+        (pl.col("datetime") > pl.col("datetime_chasing")),
+        (pl.col("datetime") < (pl.col("dt_upper"))),
+        (pl.col("datetime") > (pl.col("dt_lower"))),
+        (pl.col('exit_chasing') > pl.col('datetime'))
+    ).drop(
+        ['dt_upper', 'dt_lower', 'next_position_chasing', 'exit_chasing']
+    ).sort(
+        'datetime'
+    ).unique(
+        subset = 'datetime',
+        keep = 'first'
+    )
+
+    matches = chasings_list.select(
+        'animal_id', 'animal_id_chasing', 'datetime_chasing'
+    ).rename(
+        {
+            'animal_id' : 'loser', 
+            'animal_id_chasing' : 'winner', 
+            'datetime_chasing' : 'datetime'
+        }
+    )
+
+    chasings = chasings_list.group_by(
+        ['phase', 'day', 'phase_count', 'hour', 'animal_id_chasing', 'animal_id']
+    ).len(
+        name='chasings'
+    ).rename(
+        {
+            'animal_id' : 'chased',
+            'animal_id_chasing' : 'chaser'
+        }
+    )
+   
     
     if save_data:
-        chasings.to_hdf(results_path, key='chasings', mode='a', format='table')
-        
-        matches_df = (
-            pd.concat(matches).
-                sort_values(by='datetime').
-                reset_index(drop=True)
-            )
-        
-        matches_df.to_hdf(results_path, key='match_df', mode='a', format='table')
+        chasings.sink_parquet(results_path / f'{key}.parquet', compression='lz4')
+        matches.sink_parquet(results_path / 'match_df.parquet', compression='lz4')
+
 
     return chasings
 

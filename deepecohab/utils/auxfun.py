@@ -161,7 +161,7 @@ def _append_start_end_to_config(cfp: str, lf: pl.LazyFrame) -> None:
     
     print(f'Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True')
 
-def _set_cages(cfp: str) -> None:
+def _add_cages_to_config(cfp: str) -> None:
     cfg = read_config(cfp)
     
     positions = list(set(cfg['antenna_combinations'].values()))

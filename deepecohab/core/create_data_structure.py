@@ -58,7 +58,7 @@ def load_data(cfp: str | Path,
         lf = _rename_antennas(lf, rename_dicts)
 
     #TODO confirm
-    auxfun._set_cages(cfp)
+    auxfun._add_cages_to_config(cfp)
 
     return lf
 
@@ -321,8 +321,7 @@ def get_ecohab_data_structure(
     except KeyError:
         print('Start and end dates not provided. Extracting from data...')
         auxfun._append_start_end_to_config(cfp, lf)
-        
-    auxfun._add_cages_to_config(cfp)
+    
 
     lf = lf.sort('datetime')
     lf = calculate_timedelta(lf)
