@@ -24,20 +24,25 @@ def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame
     })
     return matches
 
-def _combine_matches(cfg: dict) -> tuple[list, pd.Series]:
+def _combine_matches(cfg: dict) -> tuple[list, pl.Series]:
     """Auxfun to combine all the chasing events into one data structure
     """    
-    match_df = auxfun.load_ecohab_data(cfg, 'match_df', verbose=False)
-    datetimes = match_df.datetime
+    match_lf = auxfun.load_ecohab_data(cfg, 'match_df', verbose=False)
+    match_df = match_lf.collect()
 
-    matches = list(match_df.drop('datetime', axis=1).itertuples(index=False, name=None))
+    datetimes = match_df['datetime']
+
+    match_df  = match_df.drop('datetime')
+
+    matches = [tuple(row) for row in match_df.iter_rows()]
+
     return matches, datetimes
 
 def _rank_mice_openskill(
     cfg: dict,
     animal_ids: list[str], 
     ranking: dict | None = None,
-    ) -> tuple[dict, pd.DataFrame, pd.Series]:
+    ) -> tuple[dict, pl.DataFrame]:
     """Rank mice using PlackettLuce algorithm from openskill. More info: https://arxiv.org/pdf/2401.05451
 
     Args:
@@ -59,8 +64,9 @@ def _rank_mice_openskill(
 
     for player in animal_ids:
         ranking[player] = model.rating()
-    
+
     ranking_update = []
+
     for loser_name, winner_name in match_list:
         new_ratings = model.rate([[ranking[loser_name]], [ranking[winner_name]]], ranks=[1,0])
         
@@ -69,10 +75,12 @@ def _rank_mice_openskill(
         
         temp = {key: round(ranking[key].ordinal(), 3) for key in ranking.keys()} # alpha=200/ranking[key].sigma, target=1000 for ordinal if ELO like values
         ranking_update.append(temp)
+    
+    ranking_in_time = pl.LazyFrame(ranking_update)
 
-    ranking_in_time = pd.concat([pd.Series(match) for match in ranking_update], axis=1)
-    ranking_in_time = ranking_in_time.T
-    ranking_in_time.index = datetimes
+    ranking_in_time = ranking_in_time.with_columns(
+        datetimes.alias('datetime')
+    )
 
     return ranking, ranking_in_time
 
@@ -188,7 +196,7 @@ def calculate_ranking(
     overwrite: bool = False, 
     save_data: bool = True,
     ranking: dict | None = None,
-    ) -> tuple[pd.DataFrame, dict]:
+    ) -> pl.LazyFrame:
     """Calculate ranking using Plackett Luce algortihm. Each chasing event is a match
         TODO: handling of previous rankings
     Args:
@@ -202,50 +210,56 @@ def calculate_ranking(
         Series with ordinal of the rank calculated for each animal
     """    
     cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
+    results_path = Path(cfg['project_location']) / 'results'
     key='ranking_ordinal'
     
     ranking_ordinal = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
     
-    if isinstance(ranking_ordinal, pd.DataFrame):
+    if isinstance(ranking_ordinal, pl.LazyFrame):
         return ranking_ordinal
     
     animals = cfg['animal_ids']
     df = auxfun.load_ecohab_data(cfp, 'main_df')
     phases = cfg['phase'].keys()
-    phase_count = df.phase_count.unique()
-    days = df.day.unique()
+    # phase_count = df.phase_count.unique()
+    # days = df.day.unique()
             
     # Get the ranking and calculate ranking ordinal
     ranking, ranking_in_time = _rank_mice_openskill(cfg, animals, ranking)
 
-    ranking_df = pd.DataFrame([(key, val.mu, val.sigma) for key, val in ranking.items()])
-    ranking_df.columns = ['animal_id', 'mu', 'sigma']
-    ranking_df['animal_id'] = ranking_df['animal_id'].astype('category')
+    ranking_df = pl.LazyFrame(
+        {
+            'animal_id': list(ranking.keys()),
+            'mu': [v.mu for v in ranking.values()],
+            'sigma': [v.sigma for v in ranking.values()],
+        }
+    ).with_columns(pl.col('animal_id').cast(pl.Enum(animals)))
     
-    # Calculate ranking at the end of each phase
-    phase_end_marks = df[df.datetime.isin(ranking_in_time.index)].sort_values('datetime')
-    phase_end_marks = (
-        phase_end_marks
-        .loc[:, ['datetime', 'phase', 'day', 'phase_count']]
-        .groupby(['phase', 'day', 'phase_count'], observed=True)
-        .max()
-        .dropna()
+    ranking_in_time = (
+        ranking_in_time
+        .group_by('datetime', maintain_order=True)
+        .tail(1)
     )
 
-    ranking_in_time = ranking_in_time[~ranking_in_time.index.duplicated(keep='last')] # handle possible duplicate indices
-    ranking_ordinal = pd.DataFrame(index=phase_end_marks.index, columns=ranking_in_time.columns, dtype=float)
+    phase_end_marks = (
+        df
+        .filter(pl.col('datetime').is_in(ranking_in_time.select('datetime')))
+        .group_by(['phase', 'day', 'phase_count'])
+        .agg(pl.col('datetime').max().alias('datetime'))
+    )
 
-    for phase, day, count in product(phases, days, phase_count):
-        try:
-            datetime = phase_end_marks.loc[(phase, day, count)].iloc[0]
-            ranking_ordinal.loc[(phase, day, count), :] = ranking_in_time.loc[datetime, :]
-        except KeyError: # Account for one phase happening less times
-            pass
+    ranking_ordinal = (
+        phase_end_marks.join(
+            ranking_in_time, 
+            on='datetime', 
+            how='left'
+        )
+    )
     
     if save_data:
-        ranking_ordinal.to_hdf(results_path, key='ranking_ordinal', mode='a', format='table')
-        ranking_in_time.to_hdf(results_path, key='ranking_in_time', mode='a', format='table')
-        ranking_df.to_hdf(results_path, key='ranking', mode='a', format='table')
+        ranking_ordinal.sink_parquet(results_path / 'ranking_ordinal.parquet', compression='lz4')
+        ranking_in_time.sink_parquet(results_path / 'ranking_in_time.parquet', compression='lz4')
+        ranking_df.sink_parquet(results_path / 'ranking.parquet', compression='lz4')
+
     
     return ranking_ordinal
