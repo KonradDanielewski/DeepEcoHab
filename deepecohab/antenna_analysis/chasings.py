@@ -99,61 +99,32 @@ def calculate_chasings(
     if isinstance(chasings, pl.LazyFrame):
         return chasings
     
-    df = auxfun.load_ecohab_data(cfg, key='main_df')
+    lf = auxfun.load_ecohab_data(cfg, key='main_df')
     
     cages = cfg['cages']
     tunnels = cfg['tunnels']
-
-    lf_filtered = (
-        df
-        .select(['datetime', 'animal_id', 'position', 'phase', 'day', 'hour', 'phase_count'])
-        .filter(
-            (pl.col('position') != pl.col('position').shift(1).over('animal_id'))
-        )
-    ).sort(['animal_id', 'datetime'])
-
-    chased = lf_filtered.filter(
+    
+    chased = lf.filter(
         pl.col('position').is_in(tunnels),
     )
-
-    chasing = lf_filtered.with_columns(
-        pl.col('datetime').shift(-1).over('animal_id').alias('exit'),
-        pl.col('position').shift(-1).over('animal_id').alias('next_position'),
-    ).drop(
-        ['phase', 'day', 'hour', 'phase_count']
-    ).with_columns(
-        pl.all().name.suffix("_chasing")
-    ).drop(
-        ~cs.contains("_chasing")
+    chasing = lf.with_columns(
+        pl.col('datetime').shift(1).over('animal_id').alias('tunnel_entry'),
+        pl.col('position').shift(1).over('animal_id').alias('prev_position'),
     )
 
-    chasing = chasing.with_columns(
-        (pl.col('datetime_chasing') + pl.duration(seconds=1, milliseconds=200)).alias('dt_upper'),
-        (pl.col('datetime_chasing') + pl.duration(milliseconds=100)).alias('dt_lower')
-    ).filter(
-        pl.col('position_chasing').is_in(cages)
-    ).drop(
-        'position_chasing'
+    intermediate = (
+        chased
+        .join(chasing, on=['phase', 'day', 'hour', 'phase_count'], suffix='_chasing')
+        .filter(
+            pl.col('animal_id') != pl.col('animal_id_chasing'),
+            pl.col('position') == pl.col('position_chasing'),
+            pl.col('prev_position').is_in(cages),
+            (pl.col('datetime') - pl.col('tunnel_entry')).dt.total_seconds(fractional=True).is_between(0.1, 1.2, 'none'),
+            (pl.col('datetime') < pl.col('datetime_chasing')),
+        )
     )
 
-    chasings_list = chased.join_where(
-        chasing,
-        (pl.col('position') == pl.col("next_position_chasing")),
-        (pl.col("animal_id") != pl.col("animal_id_chasing")),
-        (pl.col("datetime") > pl.col("datetime_chasing")),
-        (pl.col("datetime") < (pl.col("dt_upper"))),
-        (pl.col("datetime") > (pl.col("dt_lower"))),
-        (pl.col('exit_chasing') > pl.col('datetime'))
-    ).drop(
-        ['dt_upper', 'dt_lower', 'next_position_chasing', 'exit_chasing']
-    ).sort(
-        'datetime'
-    ).unique(
-        subset = 'datetime',
-        keep = 'first'
-    )
-
-    matches = chasings_list.select(
+    matches = intermediate.select(
         'animal_id', 'animal_id_chasing', 'datetime_chasing'
     ).rename(
         {
@@ -163,7 +134,7 @@ def calculate_chasings(
         }
     )
 
-    chasings = chasings_list.group_by(
+    chasings = intermediate.group_by(
         ['phase', 'day', 'phase_count', 'hour', 'animal_id_chasing', 'animal_id']
     ).len(
         name='chasings'
@@ -172,13 +143,11 @@ def calculate_chasings(
             'animal_id' : 'chased',
             'animal_id_chasing' : 'chaser'
         }
-    )
-   
+    ) 
     
     if save_data:
         chasings.sink_parquet(results_path / f'{key}.parquet', compression='lz4')
         matches.sink_parquet(results_path / 'match_df.parquet', compression='lz4')
-
 
     return chasings
 
