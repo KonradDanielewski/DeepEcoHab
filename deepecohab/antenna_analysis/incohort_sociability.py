@@ -171,16 +171,15 @@ def calculate_incohort_sociability(
     if isinstance(incohort_sociability, pl.LazyFrame):
         return incohort_sociability
 
-    df = auxfun.load_ecohab_data(cfg, key='main_df')
-    padded_df = activity.create_padded_df(cfp, df)
+    padded_df = auxfun.load_ecohab_data(cfg, key='padded_df')
     
     cages = cfg['cages']
     animals = cfg['animal_ids']
 
-    phase_durations = auxfun.get_phase_durations(cfg, padded_df)
+    phase_durations = auxfun.get_phase_durations(padded_df)
 
     # Get time spent together in cages
-    time_together_df = calculate_pairwise_meetings(cfg, minimum_time, save_data, overwrite)[0]
+    time_together_df = calculate_pairwise_meetings(cfg, minimum_time, save_data, overwrite)
 
     # Get time per position
     time_per_position = activity.calculate_time_spent_per_position(cfg, save_data, overwrite)
