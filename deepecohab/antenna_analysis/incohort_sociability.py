@@ -30,9 +30,8 @@ def calculate_time_alone(
     if isinstance(time_alone, pl.LazyFrame):
         return time_alone
 
-    positions = list(set(cfg['antenna_combinations'].values()))
     #TODO enum
-    cages = [pos for pos in positions if 'cage' in pos]
+    cages = cfg['cages']
 
     binary_df = activity.create_binary_df(cfp, save_data, overwrite, return_df=True)
 
@@ -43,9 +42,9 @@ def calculate_time_alone(
     )
 
     binary_filtered = binary_filtered.with_columns(
-        pl.concat_list(cages).list.arg_max().alias("idx")
+        pl.concat_list(cages).list.arg_max().alias('idx')
     ).with_columns(
-        pl.lit(cages).list.get(pl.col("idx")).alias("cage")
+        pl.lit(cages).list.get(pl.col('idx')).alias("cage")
     ).drop(cages)
 
     group_cols = ["datetime","cage", "phase", "day", "phase_count"]
@@ -94,9 +93,8 @@ def calculate_pairwise_meetings(
     cfg = auxfun.read_config(cfp)
     results_path = Path(cfg['project_location']) / 'results' / 'pairwise_meetings.parquet'
     padded_path = Path(cfg['project_location']) / 'results' / 'padded_df.parquet' # TODO: padded df should be created at the end of creating the main_df as it is the same data structure just with phase split of events so no reason to check for it's existance here
-    #cages = cfg['cages'] # TODO: add cages to the config similarily to tunnels being there
-    positions = list(set(cfg['antenna_combinations'].values()))
-    cages = sorted([position for position in positions if 'cage' in position])
+
+    cages = cfg['cages']
 
     pairwise_meetings = None if overwrite else auxfun.load_ecohab_data(cfp, 'pairwise_meetings', verbose=False)
     

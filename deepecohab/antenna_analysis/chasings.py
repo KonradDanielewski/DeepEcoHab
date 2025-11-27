@@ -14,15 +14,6 @@ from tqdm import tqdm
 
 from deepecohab.utils import auxfun
 
-def _get_chasing_matches(chasing_mouse: pd.DataFrame, chased_mouse: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to get each chasing event as a match
-    """    
-    matches = pd.DataFrame({
-        'loser': chased_mouse.animal_id, 
-        'winner': chasing_mouse.animal_id,
-        'datetime': chasing_mouse.datetime,
-    })
-    return matches
 
 def _combine_matches(cfg: dict) -> tuple[list, pl.Series]:
     """Auxfun to combine all the chasing events into one data structure
@@ -220,11 +211,7 @@ def calculate_ranking(
     
     animals = cfg['animal_ids']
     df = auxfun.load_ecohab_data(cfp, 'main_df')
-    phases = cfg['phase'].keys()
-    # phase_count = df.phase_count.unique()
-    # days = df.day.unique()
-            
-    # Get the ranking and calculate ranking ordinal
+
     ranking, ranking_in_time = _rank_mice_openskill(cfg, animals, ranking)
 
     ranking_df = pl.LazyFrame(
@@ -241,9 +228,11 @@ def calculate_ranking(
         .tail(1)
     )
 
+    rit_datetimes = ranking_in_time.select('datetime').unique()
+
     phase_end_marks = (
         df
-        .filter(pl.col('datetime').is_in(ranking_in_time.select('datetime')))
+        .join(rit_datetimes, on='datetime', how='semi')
         .group_by(['phase', 'day', 'phase_count'])
         .agg(pl.col('datetime').max().alias('datetime'))
     )
