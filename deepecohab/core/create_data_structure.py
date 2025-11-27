@@ -112,7 +112,7 @@ def get_day(lf: pl.LazyFrame) -> pl.LazyFrame:
         (pl.col("datetime") - start_midnight)
         .dt.total_days()
         .floor()
-        .cast(pl.Int32)
+        .cast(pl.Int16)
         .add(1)
         .alias("day")
     )

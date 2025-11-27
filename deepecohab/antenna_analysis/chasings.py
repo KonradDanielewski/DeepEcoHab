@@ -1,16 +1,7 @@
-from itertools import (
-    combinations,
-    product,
-)
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
 import polars as pl
-import polars.selectors as cs
-
 from openskill.models import PlackettLuce
-from tqdm import tqdm
 
 from deepecohab.utils import auxfun
 
@@ -88,7 +79,7 @@ def calculate_chasings(
         overwrite: toggles whether to overwrite the data.
     
     Returns:
-        MultiIndex DataFrame of chasings per phase every animal vs every animal. Column chases the row
+        LazyFrame of chasings
     """
     cfg = auxfun.read_config(cfp)
     results_path = Path(cfg['project_location']) / 'results'
@@ -167,7 +158,7 @@ def calculate_ranking(
                  to start ranking from a certain point instead of 0
 
     Returns:
-        Series with ordinal of the rank calculated for each animal
+        LazyFrame of ranking
     """    
     cfg = auxfun.read_config(cfp)
     results_path = Path(cfg['project_location']) / 'results'

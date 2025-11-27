@@ -1,11 +1,9 @@
 from pathlib import Path
 
-import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
 from deepecohab.utils import auxfun
-
 
 def calculate_cage_occupancy(
     cfp: str | Path | dict, 
@@ -35,7 +33,6 @@ def calculate_cage_occupancy(
             variable_name='cage',
             value_name='time_sum',
         )
-        .sort(['day', 'hour', 'cage', 'animal_id'])  # drop if you don't need sorted
     )
 
     if save_data:
@@ -44,12 +41,12 @@ def calculate_cage_occupancy(
     return cage_occupancy
 
 
-def calculate_time_spent_per_position(
+def calculate_activity(
     cfp: str | Path | dict, 
     save_data: bool = True, 
     overwrite: bool = False,
     ) -> pl.LazyFrame:
-    """Calculates time spent in each possible position per phase for every mouse.
+    """Calculates time spent and visits to every possible position per phase for every mouse.
 
     Args:
         cfp: path to projects' config file or dict with the config.
@@ -57,7 +54,7 @@ def calculate_time_spent_per_position(
         overwrite: toggles whether to overwrite the data.
 
     Returns:
-        Multiindex DataFrame of time spent per position in seconds.
+        LazyFrame of time and visits
     """
     cfg = auxfun.read_config(cfp)
     
@@ -68,79 +65,24 @@ def calculate_time_spent_per_position(
     
     if isinstance(time_per_position_lf, pl.LazyFrame):
         return time_per_position_lf
-    
-    animal_ids = list(cfg['animal_ids'])
 
     padded_lf = auxfun.load_ecohab_data(cfg, key='padded_df')
 
-    # Map directional tunnel position to non-directional and calculate time spent per position per phase
     padded_lf = auxfun.remove_tunnel_directionality(padded_lf, cfg)
 
-    group_cols = ["phase", "day", "phase_count", "position"]
-
-    time_per_position_lf = padded_lf.group_by(
-            group_cols
-        ).agg(
-            auxfun.get_agg_expression(
-                value_col="timedelta",
-                animal_ids=animal_ids,
-                agg_fn=lambda e: e.sum(),
-            )
-        ).sort(group_cols)
-
-    if save_data:
-        time_per_position_lf.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
-    
-    return time_per_position_lf
-
-def calculate_visits_per_position(
-    cfp: str | Path | dict, 
-    save_data: bool = True, 
-    overwrite: bool = False
-    ) -> pd.DataFrame:
-    """Calculates number of visits to each possible position per phase for every mouse.
-
-    Args:
-        cfp: path to projects' config file or dict with the config.
-        save_data: toogles whether to save data.
-        overwrite: toggles whether to overwrite the data.
-
-    Returns:
-        Multiindex DataFrame with number of visits per position.
-    """
-    cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results'
-    key='visits_per_position'
-    
-    visits_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
-    
-    if isinstance(visits_per_position, pd.DataFrame):
-        return visits_per_position
-    
-    animal_ids = list(cfg['animal_ids'])
-
-    padded_lf = auxfun.load_ecohab_data(cfg, key='padded_df')    
-    padded_lf = auxfun.remove_tunnel_directionality(padded_lf, cfg)
-
-    group_cols = ['phase', 'day', 'phase_count', 'hour', 'position']
-    
-    # Calculate visits to each position
-    visits_per_position = (
-        padded_lf.group_by(
-            group_cols
-        ).agg(
-            auxfun.get_agg_expression(
-                value_col="timedelta",
-                animal_ids=animal_ids,
-                agg_fn=lambda e: e.count(),
-            )
-        ).sort(group_cols).fill_null(0)
+    per_position_lf = (
+        padded_lf
+        .group_by(["phase", "day", "phase_count", "position", 'animal_id'])
+        .agg(
+            pl.sum('timedelta').alias('time_in_position'),
+            pl.len().alias('visits_to_position'),
+        )
     )
-    
+
     if save_data:
-        visits_per_position.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
+        per_position_lf.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
     
-    return visits_per_position
+    return per_position_lf
 
 def create_binary_df(
     cfp: str | Path | dict, 
