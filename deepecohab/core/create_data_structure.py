@@ -252,6 +252,101 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str | None = None) -
         .unique(subset=["datetime", "animal_id"], keep="first")
     )
 
+
+def _split_datetime(phase_start: str) -> datetime:
+    """Auxfun to split datetime string.
+    """    
+    return datetime.strptime(phase_start, "%H:%M:%S")
+
+def create_padded_df(
+    cfp: Path | str | dict,
+    df: pl.LazyFrame,
+    save_data: bool = True, 
+    overwrite: bool = False,
+    ) ->  pl.LazyFrame:
+    """Creates a padded DataFrame based on the original main_df. Duplicates indices where the lenght of the detection crosses between phases.
+       Timedeltas for those are changed such that that the detection ends at the very end of the phase and starts again in the next phase as a new detection.
+
+    Args:
+        cfg: dictionary with the project config.
+        df: main_df calculated by get_ecohab_data_structure.
+        save_data: toogles whether to save data.
+        overwrite: toggles whether to overwrite the data.
+
+    Returns:
+        Padded DataFrame of the main_df.
+    """
+    cfg = auxfun.read_config(cfp)
+    results_path = Path(cfg['project_location']) / 'results'
+    key='padded_df'
+    
+    padded_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
+    
+    if isinstance(padded_df, pl.LazyFrame):
+        return padded_df
+    
+    dark_start = _split_datetime(cfg['phase']['dark_phase'])
+    light_start = _split_datetime(cfg['phase']['light_phase'])
+
+    dark_offset = pl.duration(
+        hours=dark_start.hour,
+        minutes=dark_start.minute,
+        seconds=dark_start.second,
+        microseconds=-1,
+    )
+
+    light_offset = pl.duration(
+        hours=24 if light_start.hour == 0 else light_start.hour,
+        minutes=light_start.minute,
+        seconds=light_start.second,
+        microseconds=-1,
+    )
+
+    tz = df.collect_schema()["datetime"].time_zone
+    base_midnight = pl.col("datetime").dt.date().cast(pl.Datetime("us")).dt.replace_time_zone(tz)
+
+
+    df = df.with_columns(
+        (pl.col('phase') != pl.col('phase').shift(-1).over('animal_id')).alias('mask')
+    )
+
+    extension_df = df.filter(pl.col('mask')).with_columns(
+        pl.when(pl.col('phase') == 'light_phase').then(
+            base_midnight + dark_offset
+        ).otherwise(
+            base_midnight + light_offset
+        ).alias("datetime")
+    )
+
+    padded_lf = pl.concat([
+        df,
+        extension_df    
+    ]).sort(['datetime'])
+
+    padded_lf = padded_lf.with_columns(
+        pl.when(
+            pl.col('mask')
+        ).then(
+            auxfun.get_timedelta_expression(alias = None)
+        ).otherwise(
+            pl.when(
+                pl.col('mask').shift(1).over('animal_id')
+            ).then(
+                auxfun.get_timedelta_expression(alias = None)
+            ).otherwise(
+                pl.col('timedelta')
+            )
+        ).alias('timedelta'),
+        pl.when(pl.col('mask')).then(
+            pl.col('position').shift(-1).over('animal_id')
+        ).otherwise(pl.col('position')).alias('position')
+    ).drop('mask')
+
+    if save_data:
+        padded_lf.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
+    
+    return padded_lf
+
 def get_ecohab_data_structure(
     cfp: str,
     sanitize_animal_ids: bool = True,
@@ -341,6 +436,8 @@ def get_ecohab_data_structure(
     lf_sorted = lf.select(sorted_cols)
 
     phase_durations_lf = auxfun.get_phase_durations(lf)
+
+    create_padded_df(cfp, lf_sorted)
 
     lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
     phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet")
