@@ -1,8 +1,7 @@
 from deepecohab.version import __version__, VERSION
 
 from deepecohab.antenna_analysis.activity import (
-    calculate_time_spent_per_position,
-    calculate_visits_per_position,
+    calculate_activity,
     calculate_cage_occupancy,
     create_binary_df,
 )

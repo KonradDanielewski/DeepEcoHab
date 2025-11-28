@@ -1,16 +1,18 @@
 import datetime as dt
 import importlib
-from itertools import product
 from pathlib import Path
+from typing import Callable
 
-import numpy as np
 import pandas as pd
+import polars as pl
 import toml
 
 import subprocess
 import sys
 
-from deepecohab.utils import auxfun
+from datetime import (
+    time,
+)
 
 
 def get_data_paths(data_path: Path) -> list:
@@ -32,12 +34,12 @@ def read_config(cfp: str | Path | dict) -> dict:
         return print(f'cfp should be either a dict, Path or str, but {type(cfp)} provided.')
     return cfg
 
-def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pd.DataFrame:
+def load_ecohab_data(cfp: str, key: str) -> pl.LazyFrame:
     """Loads already analyzed main data structure
 
     Args:
         cfp: config file path
-        key: key under which dataframe is stored in HDF
+        key: name of the parquet file where data is stored.
 
     Raises:
         KeyError: raised if the key not found in file.
@@ -47,20 +49,14 @@ def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pd.DataFrame:
     """
     cfg = read_config(cfp)
     
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    
+    results_path = Path(cfg['project_location']) / 'results' / f"{key}.parquet"
+ 
     if results_path.is_file():
         try:
-            df = pd.read_hdf(results_path, key=key)
-            if key == 'binary_df': # restore index
-                df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in df.columns])
-                df.columns.names = ['cage', 'animal_id']
-            return df
+            lf = pl.scan_parquet(results_path) 
+            return lf
         except KeyError:
-            if verbose:
-                print(f'{key} not found in the specified location: {results_path}. Perhaps not analyzed yet!')
-            else:
-                pass
+            print(f'{key} not found in the specified location: {results_path}. Perhaps not analyzed yet!')
     
 def get_animal_ids(data_path: str) -> list:
     """Auxfun to read animal IDs from the data if not provided
@@ -79,104 +75,145 @@ def make_project_path(project_location: str, experiment_name: str) -> str:
 
     return str(project_location)
 
-def _create_phase_multiindex(cfg: dict, position: bool = False, cages: bool = False, animals: bool = False) -> pd.MultiIndex:
-    """Auxfun to create multindices for various DataFrames
-    """
-    df = load_ecohab_data(cfg, key='main_df')
-    
-    animal_ids = list(cfg['animal_ids'])
-    positions = list(set(cfg['antenna_combinations'].values()))
-    cage_list = [position for position in positions if 'cage' in position]
-    phase_Ns = list(df.day.unique())
-    phases = list(cfg['phase'].keys())
 
-    if not any([position, cages, animals]):
-        idx = pd.MultiIndex.from_product(
-            [phases, phase_Ns], names=['phase', 'phase_count']
-        )
-        return idx
-    elif cages & animals:
-        idx = pd.MultiIndex.from_product(
-            [phases, phase_Ns, cage_list, animal_ids], names=['phase', 'phase_count', 'cages', 'animal_ids']
-        )
-        return idx
-    elif position:
-        positions.append('undefined')
-        idx = pd.MultiIndex.from_product([phases, phase_Ns, positions], names=['phase', 'phase_count', 'position']
-        )
-        return idx
-    elif cages:
-        idx = pd.MultiIndex.from_product([phases, phase_Ns, cage_list], names=['phase', 'phase_count', 'position']
-        )
-        return idx
-    elif animals:
-        idx = pd.MultiIndex.from_product(
-            [phases, phase_Ns, animal_ids], names=['phase', 'phase_count', 'animal_ids']
-        )
-        return idx
-
-def get_phase_durations(cfg: dict, df: pd.DataFrame) -> pd.Series:
+def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Auxfun to calculate approximate phase durations.
        Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
     """    
-    phase_Ns = list(df.phase_count.unique())
-    phases = list(cfg['phase'].keys())
+    return (
+        lf.group_by(["phase", "phase_count"])
+          .agg(
+              duration_s = (
+                  (pl.col("datetime").last() - pl.col("datetime").first())
+                  .dt.total_seconds()
+              )
+          )
+          .with_columns(
+              (
+                  (pl.col("duration_s") / 3600).round(0).clip(1, 12) * 3600
+              ).cast(pl.Int64).alias("duration_seconds")
+          )
+          .select("phase", "phase_count", "duration_seconds")
+          .sort(["phase", "phase_count"])
+    )
 
-    hours = [60*60*i for i in range(1,13)]
-    # Prep data and index
-    phase_product = product(phases, phase_Ns)
-    idx = _create_phase_multiindex(cfg)
-    phase_durations = pd.Series(index=idx).sort_index()
-    # Find closest full hour
-    for phase, phase_N in phase_product:
-        try:
-            temp = df.query('phase == @phase and phase_count == @phase_N')
-            total_time = (temp.datetime.iloc[-1] - temp.datetime.iloc[0]).total_seconds()
-            time_calculated = np.abs(total_time - np.array(hours))
-            closest_hour = np.where(np.min(time_calculated) == time_calculated)[0][0]
-            phase_durations.loc[(phase, phase_N)] = hours[closest_hour]
-        except IndexError: # happens when phase_N doesn't exist for a specific phase
-            continue
+def get_day(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Auxfun for getting the day
+    """    
+    start_midnight = pl.col("datetime").first().dt.truncate("1d")
+
+    lf = lf.with_columns(
+        (pl.col("datetime") - start_midnight)
+        .dt.total_days()
+        .floor()
+        .cast(pl.Int16)
+        .add(1)
+        .alias("day")
+    )
+    return lf
+
+def get_phase(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Auxfun for getting the phase
+    """
+    start_str, end_str = list(cfg["phase"].values())
+    phase_names = list(cfg["phase"].keys())
+    start_t = time.fromisoformat(start_str)
+    end_t   = time.fromisoformat(end_str)
+
+    return lf.with_columns(
+        pl.when(
+            pl.col("datetime").dt.time().is_between(start_t, end_t, closed="both")
+        )
+        .then(pl.lit("light_phase"))
+        .otherwise(pl.lit("dark_phase"))
+        .cast(pl.Enum(phase_names))
+        .alias("phase")
+    )
+
+def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Auxfun used to count phases
+    """   
+
+    lf_with_run = lf.with_columns(
+        (
+            (pl.col("phase") != pl.col("phase").shift(1))
+            .fill_null(True)
+            .cast(pl.Int8)
+            .cum_sum()
+            .alias("run_id")
+        )
+    )
+
+    runs = (
+        lf_with_run
+        .select("run_id", "phase")
+        .unique()
+        .sort("run_id")
+        .with_columns(
+            pl.col("run_id")
+            .rank(method="dense")
+            .over("phase")
+            .cast(pl.Int16)
+            .alias("phase_count")
+        )
+        .drop('phase')
+    )
+
+    return (
+        lf_with_run.join(runs, on="run_id", how="left")
+                   .drop("run_id")
+    )
     
-    phase_durations = phase_durations.dropna()
-    
-    return phase_durations
-    
-def _sanitize_animal_ids(cfp: str, df: pd.DataFrame, min_antenna_crossings: int = 100) -> pd.DataFrame:
+def _sanitize_animal_ids(cfp: str, lf: pl.LazyFrame, min_antenna_crossings: int = 100) -> pl.LazyFrame:
     """Auxfun to remove ghost tags (random radio noise reads).
     """    
     cfg = read_config(cfp)
     
-    animal_ids = df.animal_id.unique()
+    animal_ids = (
+        lf.select(pl.col("animal_id").unique().alias("animal_id"))
+          .collect()["animal_id"]
+          .to_list()
+    )
+
+    antenna_crossings = (
+        lf.group_by(pl.col("animal_id")).count().collect()
+    )
+
+    animals_to_drop = (
+        antenna_crossings.filter(pl.col("count") < min_antenna_crossings)
+                 .get_column("animal_id")
+                 .to_list()
+    )
     
-    antenna_crossings = df.animal_id.value_counts()
-    animals_to_drop = list(antenna_crossings[antenna_crossings < min_antenna_crossings].index)
     
-    if len(animals_to_drop) > 0:
-        df = df.query('animal_id not in @animals_to_drop')
-        print(f'IDs dropped from dataset {animals_to_drop}')
-        
-        f = open(cfp,'w')
-        new_ids = sorted([animal_id for animal_id in animal_ids if animal_id not in animals_to_drop])
-        
-        cfg['dropped_ids'] = animals_to_drop
-        cfg['animal_ids'] = new_ids
-        toml.dump(cfg, f)
-        f.close()
-        
-        df = df.query('animal_id in @new_ids').reset_index(drop=True)
-        
+    if animals_to_drop:
+        print(f"IDs dropped from dataset {animals_to_drop}")
+        new_ids = sorted([a for a in animal_ids if a not in animals_to_drop])
+        lf = lf.filter(pl.col("animal_id").is_in(pl.lit(new_ids)))
+
+        cfg["dropped_ids"] = animals_to_drop
+        cfg["animal_ids"]  = new_ids
+        with cfp.open("w") as f:
+            toml.dump(cfg, f)            
     else:
         print('No ghost tags detected :)')
     
-    return df
+    return lf
 
-def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
+def _append_start_end_to_config(cfp: str, lf: pl.LazyFrame) -> None:
     """Auxfun to append start and end datetimes of the experiment if not user provided.
     """    
     cfg = read_config(cfp)
-    start_time = str(df.datetime.iloc[0])
-    end_time = str(df.datetime.iloc[-1])
+    bounds = (
+        lf.select([
+            pl.col("datetime").first().alias("start_time"),
+            pl.col("datetime").last().alias("end_time"),
+        ])
+        .collect()
+    )
+
+    start_time = str(bounds["start_time"][0])
+    end_time   = str(bounds["end_time"][0])
     
     f = open(cfp,'w')
     cfg['experiment_timeline'] = {
@@ -189,8 +226,20 @@ def _append_start_end_to_config(cfp: str, df: pd.DataFrame) -> None:
     
     print(f'Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True')
 
+def _add_cages_to_config(cfp: str) -> None:
+    cfg = read_config(cfp)
+    
+    positions = list(set(cfg['antenna_combinations'].values()))
+    cages = [pos for pos in positions if 'cage' in pos]
+
+    f = open(cfp,'w')
+    cfg['cages'] = cages
+    
+    toml.dump(cfg, f)
+    f.close()
+
 def run_dashboard(cfp: str | dict):
-    cfg = auxfun.read_config(cfp)
+    cfg = read_config(cfp)
     data_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     cfg_path = Path(cfg['project_location']) / 'config.toml'
     
@@ -200,19 +249,42 @@ def run_dashboard(cfp: str | dict):
     
     return process
 
-def _drop_empty_phase_counts(cfp: str | dict, df: pd.DataFrame):
-    """Auxfun to drop parts of DataFrame where no data was recorded.
-    """    
-    main_df = load_ecohab_data(cfp, 'main_df')
-    possible_dark_phases = main_df.query('phase == "dark_phase"').phase_count.unique()
-    possible_light_phases = main_df.query('phase == "light_phase"').phase_count.unique()
-    
-    filtered_df = df[
-        (df.index.get_level_values(0) == 'dark_phase') & 
-        (df.index.get_level_values(1).isin(possible_dark_phases)) |
-        
-        (df.index.get_level_values(0) == 'light_phase') & 
-        (df.index.get_level_values(1).isin(possible_light_phases))
-    ]
+def get_timedelta_expression(
+    time_col: str = "datetime",
+    group_col: str = "animal_id",
+    alias: str | None = "timedelta",
+) -> pl.Expr:
+    expr = (
+        (pl.col(time_col) - pl.col(time_col).shift(1))
+        .over(group_col)
+        .dt.total_seconds(fractional=True)
+        .fill_null(0)
+        .cast(pl.Float64)
+        .round(2)
+    )
+    return expr.alias(alias) if alias is not None else expr
 
-    return filtered_df
+def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict) -> pl.LazyFrame:
+    tunnels = cfg['tunnels']
+    positions = cfg['cages'] + list(set(tunnels.values())) + ['undefined']
+
+    return lf.with_columns(
+        pl.col('position')
+        .cast(pl.Utf8)              
+        .replace(tunnels)           
+        .cast(pl.Enum(positions))
+        .alias('position')   
+    )
+
+def get_agg_expression(
+    value_col: str,
+    animal_ids: list,
+    agg_fn: Callable[[pl.Expr], pl.Expr],
+) -> list[pl.Expr]:
+
+    return [
+        agg_fn(
+            pl.col(value_col).filter(pl.col("animal_id") == aid)
+        ).alias(str(aid))
+        for aid in animal_ids
+    ]
