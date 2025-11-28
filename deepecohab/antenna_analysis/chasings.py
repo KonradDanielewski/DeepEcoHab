@@ -9,7 +9,7 @@ from deepecohab.utils import auxfun
 def _combine_matches(cfg: dict) -> tuple[list, pl.Series]:
     """Auxfun to combine all the chasing events into one data structure
     """    
-    match_lf = auxfun.load_ecohab_data(cfg, 'match_df', verbose=False)
+    match_lf = auxfun.load_ecohab_data(cfg, 'match_df')
     match_df = match_lf.collect()
 
     datetimes = match_df['datetime']
@@ -85,7 +85,7 @@ def calculate_chasings(
     results_path = Path(cfg['project_location']) / 'results'
     key='chasings'
     
-    chasings = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
+    chasings = None if overwrite else auxfun.load_ecohab_data(cfp, key)
     
     if isinstance(chasings, pl.LazyFrame):
         return chasings
@@ -164,7 +164,7 @@ def calculate_ranking(
     results_path = Path(cfg['project_location']) / 'results'
     key='ranking_ordinal'
     
-    ranking_ordinal = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
+    ranking_ordinal = None if overwrite else auxfun.load_ecohab_data(cfp, key)
     
     if isinstance(ranking_ordinal, pl.LazyFrame):
         return ranking_ordinal

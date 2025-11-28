@@ -3,7 +3,6 @@ import importlib
 from pathlib import Path
 from typing import Callable
 
-import numpy as np
 import pandas as pd
 import polars as pl
 import toml
@@ -11,7 +10,9 @@ import toml
 import subprocess
 import sys
 
-from deepecohab.utils import auxfun
+from datetime import (
+    time,
+)
 
 
 def get_data_paths(data_path: Path) -> list:
@@ -33,12 +34,12 @@ def read_config(cfp: str | Path | dict) -> dict:
         return print(f'cfp should be either a dict, Path or str, but {type(cfp)} provided.')
     return cfg
 
-def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pl.LazyFrame:
+def load_ecohab_data(cfp: str, key: str) -> pl.LazyFrame:
     """Loads already analyzed main data structure
 
     Args:
         cfp: config file path
-        key: key under which dataframe is stored in HDF
+        key: name of the parquet file where data is stored.
 
     Raises:
         KeyError: raised if the key not found in file.
@@ -55,10 +56,7 @@ def load_ecohab_data(cfp: str, key: str, verbose: bool = True) -> pl.LazyFrame:
             lf = pl.scan_parquet(results_path) 
             return lf
         except KeyError:
-            if verbose:
-                print(f'{key} not found in the specified location: {results_path}. Perhaps not analyzed yet!')
-            else:
-                pass
+            print(f'{key} not found in the specified location: {results_path}. Perhaps not analyzed yet!')
     
 def get_animal_ids(data_path: str) -> list:
     """Auxfun to read animal IDs from the data if not provided
@@ -98,8 +96,75 @@ def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
           .select("phase", "phase_count", "duration_seconds")
           .sort(["phase", "phase_count"])
     )
+
+def get_day(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Auxfun for getting the day
+    """    
+    start_midnight = pl.col("datetime").first().dt.truncate("1d")
+
+    lf = lf.with_columns(
+        (pl.col("datetime") - start_midnight)
+        .dt.total_days()
+        .floor()
+        .cast(pl.Int16)
+        .add(1)
+        .alias("day")
+    )
+    return lf
+
+def get_phase(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Auxfun for getting the phase
+    """
+    start_str, end_str = list(cfg["phase"].values())
+    phase_names = list(cfg["phase"].keys())
+    start_t = time.fromisoformat(start_str)
+    end_t   = time.fromisoformat(end_str)
+
+    return lf.with_columns(
+        pl.when(
+            pl.col("datetime").dt.time().is_between(start_t, end_t, closed="both")
+        )
+        .then(pl.lit("light_phase"))
+        .otherwise(pl.lit("dark_phase"))
+        .cast(pl.Enum(phase_names))
+        .alias("phase")
+    )
+
+def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Auxfun used to count phases
+    """   
+
+    lf_with_run = lf.with_columns(
+        (
+            (pl.col("phase") != pl.col("phase").shift(1))
+            .fill_null(True)
+            .cast(pl.Int8)
+            .cum_sum()
+            .alias("run_id")
+        )
+    )
+
+    runs = (
+        lf_with_run
+        .select("run_id", "phase")
+        .unique()
+        .sort("run_id")
+        .with_columns(
+            pl.col("run_id")
+            .rank(method="dense")
+            .over("phase")
+            .cast(pl.Int16)
+            .alias("phase_count")
+        )
+        .drop('phase')
+    )
+
+    return (
+        lf_with_run.join(runs, on="run_id", how="left")
+                   .drop("run_id")
+    )
     
-def _sanitize_animal_ids(cfp: str, lf: pd.DataFrame, min_antenna_crossings: int = 100) -> pd.DataFrame:
+def _sanitize_animal_ids(cfp: str, lf: pl.LazyFrame, min_antenna_crossings: int = 100) -> pl.LazyFrame:
     """Auxfun to remove ghost tags (random radio noise reads).
     """    
     cfg = read_config(cfp)
@@ -174,7 +239,7 @@ def _add_cages_to_config(cfp: str) -> None:
     f.close()
 
 def run_dashboard(cfp: str | dict):
-    cfg = auxfun.read_config(cfp)
+    cfg = read_config(cfp)
     data_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     cfg_path = Path(cfg['project_location']) / 'config.toml'
     
@@ -198,24 +263,6 @@ def get_timedelta_expression(
         .round(2)
     )
     return expr.alias(alias) if alias is not None else expr
-
-
-def _drop_empty_phase_counts(cfp: str | dict, df: pd.DataFrame):
-    """Auxfun to drop parts of DataFrame where no data was recorded.
-    """    
-    main_df = load_ecohab_data(cfp, 'main_df')
-    possible_dark_phases = main_df.query('phase == "dark_phase"').phase_count.unique()
-    possible_light_phases = main_df.query('phase == "light_phase"').phase_count.unique()
-    
-    filtered_df = df[
-        (df.index.get_level_values(0) == 'dark_phase') & 
-        (df.index.get_level_values(1).isin(possible_dark_phases)) |
-        
-        (df.index.get_level_values(0) == 'light_phase') & 
-        (df.index.get_level_values(1).isin(possible_light_phases))
-    ]
-
-    return filtered_df
 
 def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict) -> pl.LazyFrame:
     tunnels = cfg['tunnels']

@@ -25,47 +25,35 @@ def calculate_time_alone(
     results_path = Path(cfg['project_location']) / 'results'
     key='time_alone'
 
-    time_alone = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
-
+    time_alone = None if overwrite else auxfun.load_ecohab_data(cfp, key)
     if isinstance(time_alone, pl.LazyFrame):
         return time_alone
 
-    #TODO enum
+    #TODO categorical?
     cages = cfg['cages']
 
-    binary_df = activity.create_binary_df(cfp, save_data, overwrite, return_df=True)
-
-    animal_ids = list(cfg['animal_ids'])
+    binary_df = auxfun.load_ecohab_data(cfp, 'binary_df')
 
     binary_filtered = binary_df.filter(
-        pl.any_horizontal([pl.col(c) for c in cages])
+        pl.col('is_in')
     )
 
-    binary_filtered = binary_filtered.with_columns(
-        pl.concat_list(cages).list.arg_max().alias('idx')
-    ).with_columns(
-        pl.lit(cages).list.get(pl.col('idx')).alias("cage")
-    ).drop(cages)
-
-    group_cols = ["datetime","cage", "phase", "day", "phase_count"]
+    group_cols = ['datetime','cage', 'phase', 'day', 'phase_count']
+    result_cols = ['phase', 'day', 'phase_count', 'animal_id', 'cage']
 
     time_alone = binary_filtered.group_by(
             group_cols
         ).agg(
-            "animal_id"
+            'animal_id'
         ).filter(
-            pl.col("animal_id").list.len()==1
+            pl.col('animal_id').list.len()==1
         ).with_columns(
-            pl.col("animal_id").list.get(0)
+            pl.col('animal_id').list.get(0)
         ).group_by(
-            ["cage", "phase", "day", "phase_count"]
+            result_cols
         ).agg(
-            auxfun.get_agg_expression(
-                value_col="datetime",
-                animal_ids=animal_ids,
-                agg_fn=lambda e: e.count(),
-            )
-        ).sort(["phase", "day", "phase_count","cage"])
+            pl.col('datetime').count()
+        ).sort(result_cols)
         
     if save_data:
         time_alone.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
@@ -92,11 +80,11 @@ def calculate_pairwise_meetings(
     """    
     cfg = auxfun.read_config(cfp)
     results_path = Path(cfg['project_location']) / 'results' / 'pairwise_meetings.parquet'
-    padded_path = Path(cfg['project_location']) / 'results' / 'padded_df.parquet' # TODO: padded df should be created at the end of creating the main_df as it is the same data structure just with phase split of events so no reason to check for it's existance here
+    padded_path = Path(cfg['project_location']) / 'results' / 'padded_df.parquet'
 
     cages = cfg['cages']
 
-    pairwise_meetings = None if overwrite else auxfun.load_ecohab_data(cfp, 'pairwise_meetings', verbose=False)
+    pairwise_meetings = None if overwrite else auxfun.load_ecohab_data(cfp, 'pairwise_meetings')
     
     if isinstance(pairwise_meetings, pl.DataFrame):
         return pairwise_meetings
@@ -166,7 +154,7 @@ def calculate_incohort_sociability(
     results_path = Path(cfg['project_location']) / 'results'
     key='incohort_sociability'
 
-    incohort_sociability = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
+    incohort_sociability = None if overwrite else auxfun.load_ecohab_data(cfp, key)
 
     if isinstance(incohort_sociability, pl.LazyFrame):
         return incohort_sociability
