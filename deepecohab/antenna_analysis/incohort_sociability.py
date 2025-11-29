@@ -111,7 +111,6 @@ def calculate_pairwise_meetings(
                 pl.min_horizontal(["event_end", "event_end_2"]) - 
                 pl.max_horizontal(["event_start", "event_start_2"])
             ).dt.total_seconds(fractional=True).round(3).alias("overlap_duration")
-            ,
         ])
         .filter(pl.col("overlap_duration") > minimum_time)
     )
@@ -136,7 +135,7 @@ def calculate_incohort_sociability(
     cfp: dict, 
     save_data: bool = True, 
     overwrite: bool = False, 
-    minimum_time: int | float | None = None
+    minimum_time: int | float | None = 2
     ) -> pl.LazyFrame:
     """Calculates in-cohort sociability. For more info: DOI:10.7554/eLife.19532.
 
@@ -162,7 +161,6 @@ def calculate_incohort_sociability(
     padded_df = auxfun.load_ecohab_data(cfg, key='padded_df')
     
     cages = cfg['cages']
-    animals = cfg['animal_ids']
 
     phase_durations = auxfun.get_phase_durations(padded_df)
 
@@ -170,21 +168,12 @@ def calculate_incohort_sociability(
     time_together_df = calculate_pairwise_meetings(cfg, minimum_time, save_data, overwrite)
 
     # Get time per position
-    time_per_position = activity.calculate_time_spent_per_position(cfg, save_data, overwrite)
-    time_per_cage = time_per_position.filter(
-        pl.col("position").is_in(cages)
-    ).unpivot(
-        animals,
-        index = ['phase', 'day', 'phase_count', 'position'],
-        variable_name='animal_id',
-        value_name='time_sum',
-    ).with_columns(
-        pl.col('animal_id').cast(pl.Enum(animals))
-    )
+    activity_df = activity.calculate_activity(cfp)
 
-    # Normalize times as proportion of the phase duration
-    estimated_proportion_together = time_per_cage.join(
-        time_per_cage,
+    estimated_proportion_together = activity_df.filter(
+        pl.col("position").is_in(cages)
+    ).join(
+        activity_df,
         on = ['phase_count', 'phase', 'position'],
         suffix="_right"
     ).rename(
@@ -192,12 +181,12 @@ def calculate_incohort_sociability(
     ).filter(
         pl.col('animal_id') < pl.col('animal_id_2')
     ).join(
-        phase_durations.collect(),
+        phase_durations,
         on = ['phase_count', 'phase']
     ).with_columns(
-        (cs.contains('time_sum')/pl.col('duration_seconds')),
+        (cs.contains('time_in_position')/pl.col('duration_seconds')),
     ).with_columns(
-        (pl.col('time_sum')*pl.col('time_sum_right')).alias('chance')
+        (pl.col('time_in_position')*pl.col('time_in_position_right')).alias('chance')
     ).group_by(
         ['day', 'phase_count', 'phase', 'animal_id', 'animal_id_2']
     ).agg(
@@ -206,7 +195,7 @@ def calculate_incohort_sociability(
     
     # sum of time spent together across all cages
     true_proportion_df = time_together_df.join(
-        phase_durations.collect(),
+        phase_durations,
         on = ['phase_count', 'phase']
     ).with_columns(
         pl.col('time_together')/pl.col('duration_seconds')
