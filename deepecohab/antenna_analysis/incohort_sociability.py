@@ -76,7 +76,7 @@ def calculate_pairwise_meetings(
         overwrite: toggles whether to overwrite the data.
         
     Returns:
-        Multiindex DataFrame of time spent together per phase, per cage.
+        LazyFrame of time spent together per phase, per cage.
     """    
     cfg = auxfun.read_config(cfp)
     results_path = Path(cfg['project_location']) / 'results' / 'pairwise_meetings.parquet'
@@ -144,10 +144,9 @@ def calculate_incohort_sociability(
         save_data: toogles whether to save data.
         overwrite: toggles whether to overwrite the data.
         minimum_time: sets minimum time together to be considered an interaction - in seconds. Passed to calculate_time_together.
-        n_workers: number of CPU threads used to paralelize the calculation. Passed to calculate_time_together.
 
     Returns:
-        Multiindex DataFrame of in-cohort sociability per phase for each possible pair of mice.
+        Long format LazyFrame of in-cohort sociability per phase for each possible pair of mice.
     """    
     cfg = auxfun.read_config(cfp)
     results_path = Path(cfg['project_location']) / 'results'
@@ -160,57 +159,42 @@ def calculate_incohort_sociability(
 
     padded_df = auxfun.load_ecohab_data(cfg, key='padded_df')
     
-    cages = cfg['cages']
-
     phase_durations = auxfun.get_phase_durations(padded_df)
 
     # Get time spent together in cages
-    time_together_df = calculate_pairwise_meetings(cfg, minimum_time, save_data, overwrite)
+    time_together_df = calculate_pairwise_meetings(cfg, minimum_time=minimum_time)
 
     # Get time per position
-    activity_df = activity.calculate_activity(cfp)
+    activity_df = activity.calculate_activity(cfg)
 
-    estimated_proportion_together = activity_df.filter(
-        pl.col("position").is_in(cages)
-    ).join(
+
+    core_columns = ['phase', 'day', 'phase_count', 'animal_id', 'animal_id_2']
+
+    estimated_proportion_together = activity_df.join(
         activity_df,
         on = ['phase_count', 'phase', 'position'],
-        suffix="_right"
-    ).rename(
-        {'animal_id_right' : 'animal_id_2'}
+        suffix="_2"
     ).filter(
         pl.col('animal_id') < pl.col('animal_id_2')
+    )
+
+    incohort_sociability = time_together_df.join(
+        estimated_proportion_together,
+        on = core_columns + ['position']
     ).join(
         phase_durations,
         on = ['phase_count', 'phase']
     ).with_columns(
-        (cs.contains('time_in_position')/pl.col('duration_seconds')),
-    ).with_columns(
-        (pl.col('time_in_position')*pl.col('time_in_position_right')).alias('chance')
+        pl.col('time_together')/pl.col('duration_seconds'),
+        (
+            pl.col("time_in_position")* pl.col("time_in_position_2")/ (pl.col("duration_seconds") ** 2)
+        ).alias("chance"),
     ).group_by(
-        ['day', 'phase_count', 'phase', 'animal_id', 'animal_id_2']
+        core_columns
     ).agg(
-        pl.col('chance').sum()
-    )
-    
-    # sum of time spent together across all cages
-    true_proportion_df = time_together_df.join(
-        phase_durations,
-        on = ['phase_count', 'phase']
-    ).with_columns(
-        pl.col('time_together')/pl.col('duration_seconds')
-    ).group_by(
-        ['day', 'phase_count', 'phase', 'animal_id', 'animal_id_2']
-    ).agg(
-        pl.col('time_together').sum()
-    )
+        (pl.col('time_together')-pl.col('chance')).sum().alias('sociability')
+    ).sort(core_columns)
 
-    incohort_sociability = estimated_proportion_together.join(
-        true_proportion_df,
-        on = ['day', 'phase_count', 'phase', 'animal_id', 'animal_id_2']
-    ).with_columns(
-        (pl.col('time_together')-pl.col('chance')).alias('sociability')
-    ).sort(['day', 'phase_count', 'phase', 'animal_id', 'animal_id_2'])
     
     if save_data:
         incohort_sociability.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
