@@ -275,6 +275,98 @@ def create_padded_df(
     
     return padded_lf
 
+def create_binary_df(
+    cfp: str | Path | dict, 
+    lf: pl.LazyFrame,
+    save_data: bool = True, 
+    overwrite: bool = False,
+    return_df: bool = False
+    ) -> pl.LazyFrame:
+    """Creates a long format binary DataFrame of the position of the animals.
+
+    Args:
+        cfp: path to project config file.
+        save_data: toogles whether to save data.
+        overwrite: toggles whether to overwrite the data.
+        return_df: toggles whether to return the LazyFrame.
+
+    Returns:
+        Binary LazyFrame (True/False) of position of each animal per second per cage. 
+    """
+    cfg = auxfun.read_config(cfp)
+    results_path = Path(cfg['project_location']) / 'results' 
+    key='binary_df'
+    
+    binary_lf = None if overwrite else auxfun.load_ecohab_data(cfp, key)
+    
+    if isinstance(binary_lf, pl.LazyFrame) and return_df:
+        return binary_lf.collect(engine='streaming')
+
+    cages = cfg['cages']
+    animal_ids = list(cfg['animal_ids'])
+
+    animals_lf = pl.DataFrame({'animal_id': animal_ids}).lazy().with_columns(
+        pl.col('animal_id').cast(pl.Enum(animal_ids))
+        )
+
+    lf_filtered = (
+        lf
+        .select(['datetime', 'animal_id', 'position'])
+        .filter(
+            pl.col('position') != pl.col('position').shift(-1).over('animal_id')
+        )
+    ).sort(['animal_id', 'datetime'])
+
+    time_range = pl.datetime_range(
+        pl.col('datetime').min(),
+        pl.col('datetime').max(), 
+        '1s',
+    ).alias('datetime')
+
+    range_lf = lf.select(time_range)
+
+    range_lf = auxfun.get_phase(cfg, range_lf)
+    range_lf = auxfun.get_day(range_lf)
+    range_lf = auxfun.get_phase_count(range_lf).with_columns(
+        pl.col("datetime").dt.hour().cast(pl.Int8).alias("hour")
+    )
+
+    grid_lf = animals_lf.join(range_lf, how='cross').sort(['animal_id', 'datetime'])
+
+    binary_lf = grid_lf.join_asof(
+        lf_filtered,
+        on='datetime',
+        by='animal_id',
+        strategy='forward',
+    ).sort('animal_id','datetime')
+
+    cages_df = (
+        pl.DataFrame({'cage': cages})
+        .lazy()
+        .with_columns(
+            pl.col('cage').cast(pl.Categorical)
+        )
+    )
+
+    binary_long = (
+        binary_lf
+        .join(cages_df, how="cross")
+        .with_columns(
+            pl.when(pl.col("position").is_not_null())
+            .then(pl.col("position") == pl.col("cage"))
+            .otherwise(False)
+            .alias("is_in")
+        )
+        .drop("position")
+        .sort("animal_id", "datetime", "cage")
+    )
+
+    if save_data:
+        binary_long.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
+
+    if return_df:
+        return binary_long
+
 def get_ecohab_data_structure(
     cfp: str,
     sanitize_animal_ids: bool = True,
@@ -366,105 +458,10 @@ def get_ecohab_data_structure(
     phase_durations_lf = auxfun.get_phase_durations(lf)
 
     create_padded_df(cfp, lf_sorted)
-    create_binary_df(cfp)
+    create_binary_df(cfp, lf_sorted)
 
     lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
     phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet")
 
     return lf_sorted
-
-
-def create_binary_df(
-    cfp: str | Path | dict, 
-    save_data: bool = True, 
-    overwrite: bool = False,
-    return_df: bool = False
-    ) -> pl.LazyFrame:
-    """Creates a long format binary DataFrame of the position of the animals.
-
-    Args:
-        cfp: path to project config file.
-        save_data: toogles whether to save data.
-        overwrite: toggles whether to overwrite the data.
-        return_df: toggles whether to return the LazyFrame.
-
-    Returns:
-        Binary LazyFrame (True/False) of position of each animal per second per cage. 
-    """
-    cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' 
-    key='binary_df'
-    
-    
-    binary_lf = None if overwrite else auxfun.load_ecohab_data(cfp, key)
-    
-    if isinstance(binary_lf, pl.LazyFrame) and return_df:
-        return binary_lf.collect(engine='streaming')
-
-    cages = cfg['cages']
-    animal_ids = list(cfg['animal_ids'])
-
-    lf = auxfun.load_ecohab_data(cfg, key='main_df')
-
-    animals_lf = pl.DataFrame({'animal_id': animal_ids}).lazy().with_columns(
-        pl.col('animal_id').cast(pl.Enum(animal_ids))
-        )
-
-    lf_filtered = (
-        lf
-        .select(['datetime', 'animal_id', 'position'])
-        .filter(
-            pl.col('position') != pl.col('position').shift(-1).over('animal_id')
-        )
-    ).sort(['animal_id', 'datetime'])
-
-    time_range = pl.datetime_range(
-        pl.col('datetime').min(),
-        pl.col('datetime').max(), 
-        '1s',
-    ).alias('datetime')
-
-    range_lf = lf.select(time_range)
-
-    range_lf = auxfun.get_phase(cfg, range_lf)
-    range_lf = auxfun.get_day(range_lf)
-    range_lf = auxfun.get_phase_count(range_lf).with_columns(
-        pl.col("datetime").dt.hour().cast(pl.Int8).alias("hour")
-    )
-
-    grid_lf = animals_lf.join(range_lf, how='cross').sort(['animal_id', 'datetime'])
-
-    binary_lf = grid_lf.join_asof(
-        lf_filtered,
-        on='datetime',
-        by='animal_id',
-        strategy='forward',
-    ).sort('animal_id','datetime')
-
-    cages_df = (
-        pl.DataFrame({'cage': cages})
-        .lazy()
-        .with_columns(
-            pl.col('cage').cast(pl.Categorical)
-        )
-    )
-
-    binary_long = (
-        binary_lf
-        .join(cages_df, how="cross")
-        .with_columns(
-            pl.when(pl.col("position").is_not_null())
-            .then(pl.col("position") == pl.col("cage"))
-            .otherwise(False)
-            .alias("is_in")
-        )
-        .drop("position")
-        .sort("animal_id", "datetime", "cage")
-    )
-
-    if save_data:
-        binary_long.sink_parquet(results_path / f"{key}.parquet", compression='lz4')
-
-    if return_df:
-        return binary_long
 
