@@ -234,7 +234,7 @@ def create_padded_df(
     base_midnight = pl.col("datetime").dt.date().cast(pl.Datetime("us")).dt.replace_time_zone(tz)
 
 
-    df = df.with_columns(
+    df = df.sort('datetime').with_columns(
         (pl.col('phase') != pl.col('phase').shift(-1).over('animal_id')).alias('mask')
     )
 
@@ -366,6 +366,7 @@ def get_ecohab_data_structure(
     phase_durations_lf = auxfun.get_phase_durations(lf)
 
     create_padded_df(cfp, lf_sorted)
+    create_binary_df(cfp)
 
     lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
     phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet")
