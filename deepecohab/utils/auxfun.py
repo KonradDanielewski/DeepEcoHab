@@ -176,11 +176,11 @@ def _sanitize_animal_ids(cfp: str, lf: pl.LazyFrame, min_antenna_crossings: int 
     )
 
     antenna_crossings = (
-        lf.group_by(pl.col("animal_id")).count().collect()
+        lf.group_by(pl.col("animal_id")).len().collect()
     )
 
     animals_to_drop = (
-        antenna_crossings.filter(pl.col("count") < min_antenna_crossings)
+        antenna_crossings.filter(pl.col("len") < min_antenna_crossings)
                  .get_column("animal_id")
                  .to_list()
     )
@@ -266,25 +266,12 @@ def get_timedelta_expression(
 
 def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict) -> pl.LazyFrame:
     tunnels = cfg['tunnels']
-    positions = cfg['cages'] + list(set(tunnels.values())) + ['undefined']
 
     return lf.with_columns(
         pl.col('position')
         .cast(pl.Utf8)              
         .replace(tunnels)           
-        .cast(pl.Enum(positions))
+        .cast(pl.Categorical)
         .alias('position')   
     )
 
-def get_agg_expression(
-    value_col: str,
-    animal_ids: list,
-    agg_fn: Callable[[pl.Expr], pl.Expr],
-) -> list[pl.Expr]:
-
-    return [
-        agg_fn(
-            pl.col(value_col).filter(pl.col("animal_id") == aid)
-        ).alias(str(aid))
-        for aid in animal_ids
-    ]
