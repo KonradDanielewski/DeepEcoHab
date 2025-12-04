@@ -37,12 +37,12 @@ def load_data(cfp: str | Path,
 
     lf = (
         lf.with_columns(
-            pl.col("file")
-              .str.split(r"[\\/]").list.get(-1)
-              .str.split("_").list.get(0)
-              .alias("COM")
-        )
-        .drop(["ind", "file"])
+            pl.col('file')
+            .str.extract(r"([^/\\]+)$")
+            .str.split("_")
+            .list.get(0)
+            .alias('COM')
+        ).drop(["ind", "file"])
     )
     
     if sanitize_animal_ids:
@@ -124,32 +124,14 @@ def _rename_antennas(lf: pl.LazyFrame, rename_dicts: dict) -> pl.LazyFrame:
     """Auxfun for antenna name mapping when custom layout is used
     """    
 
-    rows = []
-    for com, d in rename_dicts.items():
-        for k, v in d.items():
-            rows.append({
-                "COM": com,
-                "antenna_from": int(k),
-                "antenna_to": v,
-            })
-
-
-    if not rows:
-        return lf
-
-    map_lf = pl.DataFrame(rows).lazy()
-
-    lf = (
-        lf.join(
-            map_lf,
-            left_on=["COM", "antenna"],
-            right_on=["COM", "antenna_from"],
-            how="left",
+    lf = lf.with_columns(
+        pl.coalesce(
+            pl.when(
+                pl.col('COM') == com
+            ).then(
+                pl.col('antenna').replace(d)
+            ) for com, d in rename_dicts.items()
         )
-        .with_columns(
-            pl.coalesce([pl.col("antenna_to"), pl.col("antenna")]).alias("antenna")
-        )
-        .drop(["antenna_from", "antenna_to"])
     )
 
     return lf
