@@ -309,13 +309,7 @@ def create_binary_df(
         pl.col('animal_id').cast(pl.Enum(animal_ids))
         )
 
-    lf_filtered = (
-        lf
-        .select(['datetime', 'animal_id', 'position'])
-        .filter(
-            pl.col('position') != pl.col('position').shift(-1).over('animal_id')
-        )
-    ).sort(['animal_id', 'datetime'])
+    lf = lf.sort('datetime')
 
     time_range = pl.datetime_range(
         pl.col('datetime').min(),
@@ -334,7 +328,7 @@ def create_binary_df(
     grid_lf = animals_lf.join(range_lf, how='cross').sort(['animal_id', 'datetime'])
 
     binary_lf = grid_lf.join_asof(
-        lf_filtered,
+        lf,
         on='datetime',
         by='animal_id',
         strategy='forward',
