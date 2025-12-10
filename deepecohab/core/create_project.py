@@ -64,7 +64,7 @@ def create_ecohab_project(
     project_location = auxfun.make_project_path(project_location, experiment_name)
     
     if not isinstance(animal_ids, list):
-        animal_ids = sorted(auxfun.get_animal_ids(data_path))
+        animal_ids = None
     else:
         animal_ids = sorted(animal_ids)
 

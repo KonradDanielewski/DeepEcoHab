@@ -45,10 +45,11 @@ def load_data(cfp: str | Path,
         ).drop(["ind", "file"])
     )
     
-    if sanitize_animal_ids:
-        lf = auxfun._sanitize_animal_ids(cfp, lf, min_antenna_crossings)
     if isinstance(animal_ids, list):
         lf = lf.filter(pl.col('animal_id').is_in(animal_ids))
+    else:
+        lf = auxfun.infer_animal_ids(cfp, lf, sanitize_animal_ids, min_antenna_crossings)
+        
     
     if custom_layout:
         rename_dicts = cfg['antenna_rename_scheme']
@@ -99,7 +100,7 @@ def calculate_timedelta(lf: pl.LazyFrame) -> pl.LazyFrame:
     )
     return lf
 
-def get_animal_position(lf: pl.LazyFrame, antenna_pairs: dict, positions: list) -> pl.LazyFrame:
+def get_animal_position(lf: pl.LazyFrame, antenna_pairs: dict) -> pl.LazyFrame:
     """Auxfun, groupby mapping of antenna pairs to position
     """    
     prev_ant = (
@@ -374,7 +375,6 @@ def get_ecohab_data_structure(
         return df
     
     antenna_pairs = cfg['antenna_combinations']
-    positions = list(set(antenna_pairs.values())) + ['undefined']
 
     lf = load_data(
         cfp=cfp,
@@ -418,7 +418,7 @@ def get_ecohab_data_structure(
     lf = calculate_timedelta(lf)
     lf = auxfun.get_day(lf)
 
-    lf = get_animal_position(lf, antenna_pairs, positions)
+    lf = get_animal_position(lf, antenna_pairs)
     lf = auxfun.get_phase(cfg, lf)
 
     lf = correct_phases_dst(cfg, lf) 

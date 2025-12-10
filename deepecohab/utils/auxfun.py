@@ -164,8 +164,8 @@ def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
                    .drop("run_id")
     )
     
-def _sanitize_animal_ids(cfp: str, lf: pl.LazyFrame, min_antenna_crossings: int = 100) -> pl.LazyFrame:
-    """Auxfun to remove ghost tags (random radio noise reads).
+def infer_animal_ids(cfp: str, lf: pl.LazyFrame, sanitize_animal_ids: bool = False, min_antenna_crossings: int = 100) -> pl.LazyFrame:
+    """Auxfun to infer animal ids from data, optionally removing ghost tags (random radio noise reads).
     """    
     cfg = read_config(cfp)
     
@@ -175,28 +175,30 @@ def _sanitize_animal_ids(cfp: str, lf: pl.LazyFrame, min_antenna_crossings: int 
           .to_list()
     )
 
-    antenna_crossings = (
-        lf.group_by(pl.col("animal_id")).len().collect()
-    )
+    if sanitize_animal_ids:
+        antenna_crossings = (
+            lf.group_by(pl.col("animal_id")).len().collect()
+        )
 
-    animals_to_drop = (
-        antenna_crossings.filter(pl.col("len") < min_antenna_crossings)
-                 .get_column("animal_id")
-                 .to_list()
-    )
+        animals_to_drop = (
+            antenna_crossings.filter(pl.col("len") < min_antenna_crossings)
+                    .get_column("animal_id")
+                    .to_list()
+        )
     
-    
-    if animals_to_drop:
-        print(f"IDs dropped from dataset {animals_to_drop}")
-        new_ids = sorted([a for a in animal_ids if a not in animals_to_drop])
-        lf = lf.filter(pl.col("animal_id").is_in(pl.lit(new_ids)))
+        if animals_to_drop:
+            print(f"IDs dropped from dataset {animals_to_drop}")
+            drop = set(animals_to_drop)
+            animal_ids = sorted(set(animal_ids) - drop)
+            lf = lf.filter(pl.col("animal_id").is_in(pl.lit(animal_ids)))
 
-        cfg["dropped_ids"] = animals_to_drop
-        cfg["animal_ids"]  = new_ids
-        with cfp.open("w") as f:
-            toml.dump(cfg, f)            
+        cfg["dropped_ids"] = animals_to_drop        
     else:
         print('No ghost tags detected :)')
+
+    cfg["animal_ids"]  = animal_ids
+    with cfp.open("w") as f:
+        toml.dump(cfg, f)    
     
     return lf
 
