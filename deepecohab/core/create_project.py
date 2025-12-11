@@ -1,4 +1,4 @@
-from datetime import datetime
+import datetime as dt
 from pathlib import Path
 
 import toml
@@ -52,8 +52,8 @@ def create_ecohab_project(
         print(f'{data_path} is empty, please check if you provided the correct directory')
         return
     dt_format = '%Y-%m-%d %H:%M:%S'
-    check_date = (datetime.strptime(finish_datetime, dt_format) - 
-                  datetime.strptime(start_datetime, dt_format)).days < 0
+    check_date = (dt.datetime.strptime(finish_datetime, dt_format) - 
+                  dt.datetime.strptime(start_datetime, dt_format)).days < 0
     
     if check_date:
         raise ValueError('Finish date before start date! Please check provided dates.')

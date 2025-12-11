@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import polars as pl
+
 from openskill.models import PlackettLuce
 
 from deepecohab.utils import auxfun

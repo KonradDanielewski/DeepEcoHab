@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import polars as pl
-import polars.selectors as cs
 
 from deepecohab.antenna_analysis import activity
 from deepecohab.utils import auxfun
@@ -28,9 +27,6 @@ def calculate_time_alone(
     time_alone = None if overwrite else auxfun.load_ecohab_data(cfp, key)
     if isinstance(time_alone, pl.LazyFrame):
         return time_alone
-
-    #TODO categorical?
-    cages = cfg['cages']
 
     binary_df = auxfun.load_ecohab_data(cfp, 'binary_df')
 
@@ -93,7 +89,7 @@ def calculate_pairwise_meetings(
         pl.scan_parquet(padded_path)
         .filter(pl.col("position").is_in(cages))
         .with_columns([
-            (pl.col("datetime") - pl.duration(seconds=pl.col("timedelta"))).alias("event_start"),
+            (pl.col("datetime") - pl.duration(seconds=pl.col("time_spent"))).alias("event_start"),
             pl.col("datetime").alias("event_end"),
         ])
     )

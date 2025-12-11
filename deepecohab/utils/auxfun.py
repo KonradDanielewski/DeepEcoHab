@@ -1,19 +1,14 @@
-import datetime as dt
 import importlib
 from pathlib import Path
-from typing import Callable
 
-import pandas as pd
 import polars as pl
+
 import toml
 
 import subprocess
 import sys
 
-from datetime import (
-    time,
-)
-
+import datetime as dt
 
 def get_data_paths(data_path: Path) -> list:
     """Auxfun to load all raw data paths
@@ -34,7 +29,7 @@ def read_config(cfp: str | Path | dict) -> dict:
         return print(f'cfp should be either a dict, Path or str, but {type(cfp)} provided.')
     return cfg
 
-def load_ecohab_data(cfp: str, key: str) -> pl.LazyFrame:
+def load_ecohab_data(cfp: str, key: str, return_df: bool = False) -> pl.LazyFrame | pl.DataFrame:
     """Loads already analyzed main data structure
 
     Args:
@@ -53,19 +48,14 @@ def load_ecohab_data(cfp: str, key: str) -> pl.LazyFrame:
  
     if results_path.is_file():
         try:
-            lf = pl.scan_parquet(results_path) 
-            return lf
+            if return_df:
+                res_frame = pl.read_parquet(results_path) 
+            else:
+                res_frame = pl.scan_parquet(results_path) 
+            return res_frame
         except KeyError:
             print(f'{key} not found in the specified location: {results_path}. Perhaps not analyzed yet!')
-    
-def get_animal_ids(data_path: str) -> list:
-    """Auxfun to read animal IDs from the data if not provided
-    """    
-    data_files = get_data_paths(Path(data_path))
-    
-    dfs = [pd.read_csv(file, delimiter='\t', names=['ind', 'date', 'time', 'antenna', 'time_under', 'animal_id']) for file in data_files[:10]]
-    animal_ids = pd.concat(dfs).animal_id.astype(str).unique()
-    return animal_ids
+
 
 def make_project_path(project_location: str, experiment_name: str) -> str:
     """Auxfun to make a name of the project directory using its name and time of creation
@@ -117,8 +107,8 @@ def get_phase(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
     """
     start_str, end_str = list(cfg["phase"].values())
     phase_names = list(cfg["phase"].keys())
-    start_t = time.fromisoformat(start_str)
-    end_t   = time.fromisoformat(end_str)
+    start_t = dt.time.fromisoformat(start_str)
+    end_t   = dt.time.fromisoformat(end_str)
 
     return lf.with_columns(
         pl.when(
@@ -202,8 +192,11 @@ def infer_animal_ids(cfp: str, lf: pl.LazyFrame, sanitize_animal_ids: bool = Fal
     
     return lf
 
-def _append_start_end_to_config(cfp: str, lf: pl.LazyFrame) -> None:
+def append_start_end_to_config(cfp: str, lf: pl.LazyFrame) -> dict:
     """Auxfun to append start and end datetimes of the experiment if not user provided.
+
+    Returns:
+        Config with updated start and end datetimes
     """    
     cfg = read_config(cfp)
     bounds = (
@@ -228,7 +221,12 @@ def _append_start_end_to_config(cfp: str, lf: pl.LazyFrame) -> None:
     
     print(f'Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True')
 
-def _add_cages_to_config(cfp: str) -> None:
+    return cfg
+
+def add_cages_to_config(cfp: str) -> None:
+    """
+    Auxfun to add cage names to config for reading convenience
+    """ 
     cfg = read_config(cfp)
     
     positions = list(set(cfg['antenna_combinations'].values()))
@@ -241,6 +239,9 @@ def _add_cages_to_config(cfp: str) -> None:
     f.close()
 
 def run_dashboard(cfp: str | dict):
+    """
+    Auxfun to open dashboard for experiment from provided config
+    """
     cfg = read_config(cfp)
     data_path = Path(cfg['project_location']) / 'results' / 'results.h5'
     cfg_path = Path(cfg['project_location']) / 'config.toml'
@@ -251,11 +252,15 @@ def run_dashboard(cfp: str | dict):
     
     return process
 
-def get_timedelta_expression(
+def get_time_spent_expression(
     time_col: str = "datetime",
     group_col: str = "animal_id",
-    alias: str | None = "timedelta",
+    alias: str | None = "time_spent",
 ) -> pl.Expr:
+    """
+    Auxfun to build a polars expression object to perform timedelta calculation
+    on a dataframe with specified column names
+    """    
     expr = (
         (pl.col(time_col) - pl.col(time_col).shift(1))
         .over(group_col)
@@ -267,6 +272,10 @@ def get_timedelta_expression(
     return expr.alias(alias) if alias is not None else expr
 
 def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict) -> pl.LazyFrame:
+    """
+    Auxfun to map directional tunnels in a LazyFrame to undirected ones
+    """ 
+
     tunnels = cfg['tunnels']
 
     return lf.with_columns(

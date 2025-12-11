@@ -76,7 +76,7 @@ def calculate_activity(
         padded_lf
         .group_by(["phase", "day", "phase_count", "position", 'animal_id'])
         .agg(
-            pl.sum('timedelta').alias('time_in_position'),
+            pl.sum('time_spent').alias('time_in_position'),
             pl.len().alias('visits_to_position'),
         )
     )

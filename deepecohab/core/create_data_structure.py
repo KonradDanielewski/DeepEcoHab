@@ -2,10 +2,7 @@ from pathlib import Path
 
 import polars as pl
 
-from datetime import (
-    datetime,
-    time,
-)
+import datetime as dt
 
 import pytz
 from tzlocal import get_localzone
@@ -18,7 +15,7 @@ def load_data(cfp: str | Path,
               fname_prefix: str,
               min_antenna_crossings: int = 100, 
               animal_ids: list | None = None) -> pl.LazyFrame:
-    """Auxfun to load and combine text files into a pandas dataframe
+    """Auxfun to load and combine text files into a LazyFrame
     """    
     cfg = auxfun.read_config(cfp)   
     data_path = Path(cfg['data_path'])
@@ -55,15 +52,17 @@ def load_data(cfp: str | Path,
         rename_dicts = cfg['antenna_rename_scheme']
         lf = _rename_antennas(lf, rename_dicts)
 
-    #TODO confirm
-    auxfun._add_cages_to_config(cfp)
+    auxfun.add_cages_to_config(cfp)
 
     return lf
 
 def correct_phases_dst(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
+    """
+    Auxfun to adjust phase start/end to dayligh saving time shift
+    """    
     start_time, end_time = cfg['phase'].values()
-    start_time = time.fromisoformat(start_time)
-    end_time = time.fromisoformat(end_time)
+    start_time = dt.time.fromisoformat(start_time)
+    end_time = dt.time.fromisoformat(end_time)
 
     time_offset = (pl.col("datetime").dt.dst_offset() - pl.col("datetime").first().dt.dst_offset())
 
@@ -91,12 +90,12 @@ def correct_phases_dst(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf
 
 
-def calculate_timedelta(lf: pl.LazyFrame) -> pl.LazyFrame:
+def calculate_time_spent(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Auxfun to calculate timedelta between positions i.e. time spent in each state, rounded to 10s of miliseconds
     """    
 
     lf = lf.with_columns(
-        auxfun.get_timedelta_expression()
+        auxfun.get_time_spent_expression()
     )
     return lf
 
@@ -145,7 +144,7 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str | None = None) -
     datetime_df = (
         pl.concat_str([pl.col("date"), pl.col("time")], separator=" ")
           .str.strptime(pl.Datetime, strict=False)              
-          .dt.replace_time_zone(timezone)
+          .dt.replace_time_zone(timezone.key)
     )
 
     return (
@@ -164,10 +163,10 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str | None = None) -
     )
 
 
-def _split_datetime(phase_start: str) -> datetime:
+def _split_datetime(phase_start: str) -> dt.datetime:
     """Auxfun to split datetime string.
     """    
-    return datetime.strptime(phase_start, "%H:%M:%S")
+    return dt.datetime.strptime(phase_start, "%H:%M:%S")
 
 def create_padded_df(
     cfp: Path | str | dict,
@@ -238,16 +237,16 @@ def create_padded_df(
         pl.when(
             pl.col('mask')
         ).then(
-            auxfun.get_timedelta_expression(alias = None)
+            auxfun.get_time_spent_expression(alias = None)
         ).otherwise(
             pl.when(
                 pl.col('mask').shift(1).over('animal_id')
             ).then(
-                auxfun.get_timedelta_expression(alias = None)
+                auxfun.get_time_spent_expression(alias = None)
             ).otherwise(
-                pl.col('timedelta')
+                pl.col('time_spent')
             )
-        ).alias('timedelta'),
+        ).alias('time_spent'),
         pl.when(pl.col('mask')).then(
             pl.col('position').shift(-1).over('animal_id')
         ).otherwise(pl.col('position')).alias('position')
@@ -351,6 +350,7 @@ def get_ecohab_data_structure(
     min_antenna_crossings: int = 100,
     custom_layout: bool = False,
     overwrite: bool = False,
+    save_data: bool = True,
     timezone: str | None = None,
     animal_ids: list | None = None,
 ) -> pl.LazyFrame:
@@ -388,7 +388,7 @@ def get_ecohab_data_structure(
     cfg = auxfun.read_config(cfp) # reload config potential animal_id changes due to sanitation
 
     if not isinstance(timezone, str):
-        timezone = get_localzone().key
+        timezone = get_localzone()
 
     lf = _prepare_columns(cfg, lf, timezone)
 
@@ -396,26 +396,27 @@ def get_ecohab_data_structure(
     try:
         start_date = cfg['experiment_timeline']['start_date']
         finish_date = cfg['experiment_timeline']['finish_date']
-        
-        if isinstance(start_date, str) and isinstance(finish_date, str):
-            tz = pytz.timezone(timezone)
-            start = tz.localize(datetime.fromisoformat(start_date))
-            finish = tz.localize(datetime.fromisoformat(finish_date))
-
-            lf = (
-                lf.filter(
-                    (pl.col("datetime") >= pl.lit(start)) &
-                    (pl.col("datetime") <= pl.lit(finish))
-                )
-                .sort("datetime")
-            )
     except KeyError:
         print('Start and end dates not provided. Extracting from data...')
-        auxfun._append_start_end_to_config(cfp, lf)
+        cfg = auxfun.append_start_end_to_config(cfp, lf)
+        
+    if isinstance(start_date, str) and isinstance(finish_date, str):
+        tz = pytz.timezone(timezone.key)
+        start = tz.localize(dt.datetime.fromisoformat(start_date))
+        finish = tz.localize(dt.datetime.fromisoformat(finish_date))
+
+        lf = (
+            lf.filter(
+                (pl.col("datetime") >= pl.lit(start)) &
+                (pl.col("datetime") <= pl.lit(finish))
+            )
+            .sort("datetime")
+        )
+
     
 
     lf = lf.sort('datetime')
-    lf = calculate_timedelta(lf)
+    lf = calculate_time_spent(lf)
     lf = auxfun.get_day(lf)
 
     lf = get_animal_position(lf, antenna_pairs)
@@ -433,11 +434,12 @@ def get_ecohab_data_structure(
 
     phase_durations_lf = auxfun.get_phase_durations(lf)
 
-    create_padded_df(cfp, lf_sorted)
-    create_binary_df(cfp, lf_sorted)
+    create_padded_df(cfp, lf_sorted, save_data, overwrite)
+    create_binary_df(cfp, lf_sorted, save_data, overwrite)
 
-    lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
-    phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet")
+    if save_data:
+        lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
+        phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet")
 
     return lf_sorted
 

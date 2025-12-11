@@ -16,10 +16,7 @@ from deepecohab.antenna_analysis.chasings import (
 from deepecohab.antenna_analysis import auxiliary_analysis
 
 from deepecohab.core.create_project import create_ecohab_project
-from deepecohab.core.create_data_structure import (
-    get_ecohab_data_structure,
-    create_binary_df
-)
+from deepecohab.core.create_data_structure import get_ecohab_data_structure
 
 from deepecohab.utils.auxfun import (
     load_ecohab_data,
