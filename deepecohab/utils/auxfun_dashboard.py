@@ -1,245 +1,317 @@
+import argparse
 import io
-import zipfile
 import json
+import zipfile
 
-from dash import dcc, html, exceptions
 import dash_bootstrap_components as dbc
-import plotly.graph_objects as go
-
 import pandas as pd
-
+import plotly.graph_objects as go
+from dash import dcc, exceptions, html
 
 COMMON_CFG = {"displayModeBar": False}
 
-def generate_settings_block(phase_type_id, aggregate_stats_id, slider_id, slider_range, include_download=False):
-    block = html.Div([
-                html.Div([
-                    html.Div([
-                        dcc.RadioItems(
-                            id=phase_type_id,
-                            options=[
-                                {'label': 'Dark', 'value': 'dark_phase'},
-                                {'label': 'Light', 'value': 'light_phase'},
-                                {'label': 'All', 'value': 'all'},
-                            ],
-                            value='dark_phase',
-                            labelStyle={'display': 'block', 'marginBottom': '5px'},
-                            inputStyle={'marginRight': '6px'},
-                        )
-                    ], className="control-radio-btns"),
+
+def generate_settings_block(
+    phase_type_id, aggregate_stats_id, slider_id, slider_range, include_download=False
+):
+    block = html.Div(
+        [
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            dcc.RadioItems(
+                                id=phase_type_id,
+                                options=[
+                                    {"label": "Dark", "value": "dark_phase"},
+                                    {"label": "Light", "value": "light_phase"},
+                                    {"label": "All", "value": "all"},
+                                ],
+                                value="dark_phase",
+                                labelStyle={"display": "block", "marginBottom": "5px"},
+                                inputStyle={"marginRight": "6px"},
+                            )
+                        ],
+                        className="control-radio-btns",
+                    ),
                     html.Div(className="divider"),
-                    html.Div([
-                        dcc.RadioItems(
-                            id=aggregate_stats_id,
-                            options=[
-                                {'label': 'Sum', 'value': 'sum'},
-                                {'label': 'Mean', 'value': 'mean'},
-                            ],
-                            value='sum',
-                            labelStyle={'display': 'block', 'marginBottom': '5px'},
-                            inputStyle={'marginRight': '6px'},
-                        )
-                    ], className="control-radio-btns"),
+                    html.Div(
+                        [
+                            dcc.RadioItems(
+                                id=aggregate_stats_id,
+                                options=[
+                                    {"label": "Sum", "value": "sum"},
+                                    {"label": "Mean", "value": "mean"},
+                                ],
+                                value="sum",
+                                labelStyle={"display": "block", "marginBottom": "5px"},
+                                inputStyle={"marginRight": "6px"},
+                            )
+                        ],
+                        className="control-radio-btns",
+                    ),
                     html.Div(className="divider"),
-                    html.Div([
-                        html.Label('Days of experiment', className="slider-label"),
-                        dcc.RangeSlider(
-                            id=slider_id,
-                            min=slider_range[0],
-                            max=slider_range[1],
-                            value=[1, 1],
-                            count=1,
-                            step=1,
-                            tooltip={'placement': 'bottom', 'always_visible': True},
-                            updatemode='mouseup',
-                            included=True,
-                            vertical=False,
-                            persistence=True,
-                            className='slider',
-                        )
-                    ], className="flex-container"),
+                    html.Div(
+                        [
+                            html.Label("Days of experiment", className="slider-label"),
+                            dcc.RangeSlider(
+                                id=slider_id,
+                                min=slider_range[0],
+                                max=slider_range[1],
+                                value=[1, 1],
+                                count=1,
+                                step=1,
+                                tooltip={"placement": "bottom", "always_visible": True},
+                                updatemode="mouseup",
+                                included=True,
+                                vertical=False,
+                                persistence=True,
+                                className="slider",
+                            ),
+                        ],
+                        className="flex-container",
+                    ),
                     # Conditional block
-                            *([
-                                html.Div(className="divider"),
-                                html.Div([
-                                    dbc.Container([
-                                        html.Button('Downloads', id='open-modal', n_clicks=0, className='DownloadButton'),
-                                        generate_download_block(),
-                                    ]),
-                                ], className='download-row'),
-                            ] if include_download else []),
-                        ], className="centered-container"),
-                    ], className="header-bar")
+                    *(
+                        [
+                            html.Div(className="divider"),
+                            html.Div(
+                                [
+                                    dbc.Container(
+                                        [
+                                            html.Button(
+                                                "Downloads",
+                                                id="open-modal",
+                                                n_clicks=0,
+                                                className="DownloadButton",
+                                            ),
+                                            generate_download_block(),
+                                        ]
+                                    ),
+                                ],
+                                className="download-row",
+                            ),
+                        ]
+                        if include_download
+                        else []
+                    ),
+                ],
+                className="centered-container",
+            ),
+        ],
+        className="header-bar",
+    )
 
-    return block       
-            
+    return block
+
+
 def generate_comparison_block(side: str, slider_range: list[int]):
-    return html.Div([
-        html.Label('Select Plot', style={'fontWeight': 'bold'}),
-        dcc.Dropdown(
-            id={'type': 'plot-dropdown', 'side': side},
-            options=[
-                {'label': 'Visits to compartments', 'value': 'position_visits'},
-                {'label': 'Time spent in compartments', 'value': 'position_time'},
-                {'label': 'Pairwise encounters', 'value': 'pairwise_encounters'},
-                {'label': 'Pairwise time', 'value': 'pairwise_time'},
-                {'label': 'Chasings', 'value': 'chasings'},
-                {'label': 'In cohort sociability', 'value': 'sociability'},
-                {'label': 'Network graph', 'value': 'network'},
-            ],
-            value='position_visits',
-        ),
-        html.Div([
-            dcc.Graph(id={'type': 'comparison-plot', 'side': side}),
-            dcc.Store(id={'store': 'comparison-plot', 'side': side})
-            ]),
-        generate_settings_block(
-            {'type': 'mode-switch', 'side': side},
-            {'type': 'aggregate-switch', 'side': side},
-            {'type': 'phase-slider', 'side': side},
-            slider_range,
-        ),
-        get_fmt_download_buttons("download-btn-comparison", ["svg","png", "json", "csv"], side, is_vertical=False),
-        dcc.Download(id={"type": "download-component-comparison", "side": side}),
+    return html.Div(
+        [
+            html.Label("Select Plot", style={"fontWeight": "bold"}),
+            dcc.Dropdown(
+                id={"type": "plot-dropdown", "side": side},
+                options=[
+                    {"label": "Visits to compartments", "value": "position_visits"},
+                    {"label": "Time spent in compartments", "value": "position_time"},
+                    {"label": "Pairwise encounters", "value": "pairwise_encounters"},
+                    {"label": "Pairwise time", "value": "pairwise_time"},
+                    {"label": "Chasings", "value": "chasings"},
+                    {"label": "In cohort sociability", "value": "sociability"},
+                    {"label": "Network graph", "value": "network"},
+                ],
+                value="position_visits",
+            ),
+            html.Div(
+                [
+                    dcc.Graph(id={"type": "comparison-plot", "side": side}),
+                    dcc.Store(id={"store": "comparison-plot", "side": side}),
+                ]
+            ),
+            generate_settings_block(
+                {"type": "mode-switch", "side": side},
+                {"type": "aggregate-switch", "side": side},
+                {"type": "phase-slider", "side": side},
+                slider_range,
+            ),
+            get_fmt_download_buttons(
+                "download-btn-comparison",
+                ["svg", "png", "json", "csv"],
+                side,
+                is_vertical=False,
+            ),
+            dcc.Download(id={"type": "download-component-comparison", "side": side}),
+        ],
+        className="h-100 p-2",
+    )
 
-    ], className="h-100 p-2")
 
 def generate_plot_download_tab():
     return dcc.Tab(
-        label='Plots',
-        value='tab-plots',
-        className='dash-tab',
-        selected_className='dash-tab--selected',
-        children = [dbc.Row(
-            [
-                dbc.Col(
-                    dbc.Checklist(
-                        id="plot-checklist",
-                        options=[],
-                        value=[],
-                        inline=False,
-                        className='download-dropdown',
+        label="Plots",
+        value="tab-plots",
+        className="dash-tab",
+        selected_className="dash-tab--selected",
+        children=[
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Checklist(
+                            id="plot-checklist",
+                            options=[],
+                            value=[],
+                            inline=False,
+                            className="download-dropdown",
+                        ),
+                        width=8,
                     ),
-                    width=8
-                ),
-                dbc.Col(
-                    get_fmt_download_buttons("download-btn", ["svg","png", "json", "csv"], "plots"),
-                    width=4,
-                    className="d-flex flex-column align-items-start"
-                )
-            ]
-        )],
+                    dbc.Col(
+                        get_fmt_download_buttons(
+                            "download-btn", ["svg", "png", "json", "csv"], "plots"
+                        ),
+                        width=4,
+                        className="d-flex flex-column align-items-start",
+                    ),
+                ]
+            )
+        ],
     )
-    
+
 
 def generate_csv_download_tab():
-    options=[
-        {'label': 'Main DF' ,'value': 'main_df'},
-        {'label': 'Chasing' ,'value': 'chasings'},
-        {'label': 'Time per position' ,'value': 'time_per_position'},
-        {'label': 'Visits per position' ,'value': 'visits_per_position'},
-        {'label': 'Time together' ,'value': 'time_together'},
-        {'label': 'Pairwise encounters' ,'value': 'pairwise_encounters'},
-        {'label': 'Incohort sociability' ,'value': 'incohort_sociability'},
-        {'label': 'Ranking in time' ,'value': 'ranking_in_time'},
-        {'label': 'Ranking' ,'value': 'ranking'},
-        {'label': 'Ranking ordinal' ,'value': 'ranking_ordinal'},
-        {'label': 'Match DF' ,'value': 'match_df'},
-        {'label': 'Binary DF' ,'value': 'binary_df'},
+    options = [
+        {"label": "Main DF", "value": "main_df"},
+        {"label": "Chasing", "value": "chasings"},
+        {"label": "Time per position", "value": "time_per_position"},
+        {"label": "Visits per position", "value": "visits_per_position"},
+        {"label": "Time together", "value": "time_together"},
+        {"label": "Pairwise encounters", "value": "pairwise_encounters"},
+        {"label": "Incohort sociability", "value": "incohort_sociability"},
+        {"label": "Ranking in time", "value": "ranking_in_time"},
+        {"label": "Ranking", "value": "ranking"},
+        {"label": "Ranking ordinal", "value": "ranking_ordinal"},
+        {"label": "Match DF", "value": "match_df"},
+        {"label": "Binary DF", "value": "binary_df"},
     ]
 
     return dcc.Tab(
-        label='DataFrames',
-        value='tab-dataframes',
-        className='dash-tab',
-        selected_className='dash-tab--selected',
-        children = [dbc.Row(
-            [
-                dbc.Col(
-                    dbc.Checklist(
-                        id='data-keys-checklist',
-                        options=options,
-                        value=[],
-                        inline=False,
-                        className='download-dropdown',
+        label="DataFrames",
+        value="tab-dataframes",
+        className="dash-tab",
+        selected_className="dash-tab--selected",
+        children=[
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Checklist(
+                            id="data-keys-checklist",
+                            options=options,
+                            value=[],
+                            inline=False,
+                            className="download-dropdown",
+                        ),
+                        align="center",
+                        width=8,
                     ),
-                    align='center',
-                    width=8
-                ),
-                dbc.Col(
-                    [
-                        dbc.Button("Download DataFrame/s", id={"type":"download-btn", "fmt":"csv", "side": "dfs"}, n_clicks=0, color="primary", className="ModalButton")
-                    ],
-                    width=4,
-                    align='center',
-                    className="d-flex flex-column align-items-start"
-                )
-            ]
-        )],
+                    dbc.Col(
+                        [
+                            dbc.Button(
+                                "Download DataFrame/s",
+                                id={
+                                    "type": "download-btn",
+                                    "fmt": "csv",
+                                    "side": "dfs",
+                                },
+                                n_clicks=0,
+                                color="primary",
+                                className="ModalButton",
+                            )
+                        ],
+                        width=4,
+                        align="center",
+                        className="d-flex flex-column align-items-start",
+                    ),
+                ]
+            )
+        ],
     )
+
 
 def generate_download_block():
     modal = dbc.Modal(
-    [
-        dbc.ModalHeader([dbc.ModalTitle('Downloads')]),
-        dbc.ModalBody(
-            dcc.Tabs(
-                id='download-tabs',
-                value='tab-plots',
-                children=[
-                    generate_plot_download_tab(),
-                    generate_csv_download_tab()
-                ],
-                style={
-                    'backgroundColor': '#1f2c44',
-                }
-            )
-        ),
-        dcc.Download(id="download-component"),
-    ],
-    id="modal",
-    is_open=False,
-)
+        [
+            dbc.ModalHeader([dbc.ModalTitle("Downloads")]),
+            dbc.ModalBody(
+                dcc.Tabs(
+                    id="download-tabs",
+                    value="tab-plots",
+                    children=[
+                        generate_plot_download_tab(),
+                        generate_csv_download_tab(),
+                    ],
+                    style={
+                        "backgroundColor": "#1f2c44",
+                    },
+                )
+            ),
+            dcc.Download(id="download-component"),
+        ],
+        id="modal",
+        is_open=False,
+    )
 
     return modal
-    
+
+
 def get_data_slice(mode: str, phase_range: list):
-    """Sets data slice to be taken from data used for dashboard."""        
+    """Sets data slice to be taken from data used for dashboard."""
     idx = pd.IndexSlice
-    if mode == 'all':
+    if mode == "all":
         return idx[(slice(None), slice(phase_range[0], phase_range[-1])), :]
     else:
         return idx[(mode, slice(phase_range[0], phase_range[-1])), :]
-    
+
+
 def check_if_slice_applicable(name: str, mode: str, phase_range: list):
-    if name not in ['main_df', 'ranking', 'match_df', 'ranking_in_time']:
+    if name not in ["main_df", "ranking", "match_df", "ranking_in_time"]:
         return get_data_slice(mode, phase_range)
     else:
         return slice(None)
-    
+
+
 def generate_standard_graph(graph_id: str, css_class: str = "plot-450"):
-    return html.Div([dcc.Graph(id={'graph': graph_id}, className=css_class, config=COMMON_CFG), 
-            dcc.Store(id={'store': graph_id})])
+    return html.Div(
+        [
+            dcc.Graph(id={"graph": graph_id}, className=css_class, config=COMMON_CFG),
+            dcc.Store(id={"store": graph_id}),
+        ]
+    )
+
 
 def get_options_from_ids(obj_ids: list):
     return [{"label": get_display_name(obj_id), "value": obj_id} for obj_id in obj_ids]
 
+
 def get_display_name(name: str, sep: str = "-"):
     return " ".join(word.capitalize() for word in name.split(sep))
+
 
 def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical=True):
     buttons = []
     width_col = 12
     if not is_vertical:
-        width_col = 12//len(fmts)
+        width_col = 12 // len(fmts)
     for fmt in fmts:
-        btn = dbc.Button(f"Download {fmt.upper()}", 
-                   id={"type":type, "fmt":fmt, "side": side}, 
-                   n_clicks=0, 
-                   color="primary", 
-                   className=f"ModalButton")
+        btn = dbc.Button(
+            f"Download {fmt.upper()}",
+            id={"type": type, "fmt": fmt, "side": side},
+            n_clicks=0,
+            color="primary",
+            className="ModalButton",
+        )
         buttons.append(dbc.Col(btn, width=width_col))
     return dbc.Row(buttons)
+
 
 def get_plot_file(df_data: pd.DataFrame, figure: go.Figure, fmt: str, plot_name: str):
     if fmt == "svg":
@@ -258,22 +330,26 @@ def get_plot_file(df_data: pd.DataFrame, figure: go.Figure, fmt: str, plot_name:
     else:
         raise exceptions.PreventUpdate
 
-def download_plots(selected_plots: list, 
-                   fmt: str, 
-                   all_figures: list, 
-                   all_ids: list, 
-                   all_stores: list, 
-                   store_ids: list):
 
+def download_plots(
+    selected_plots: list,
+    fmt: str,
+    all_figures: list,
+    all_ids: list,
+    all_stores: list,
+    store_ids: list,
+):
     if not selected_plots or not fmt:
-            raise exceptions.PreventUpdate
-    
+        raise exceptions.PreventUpdate
+
     fig_dict = {id_dict["graph"]: fig for id_dict, fig in zip(all_ids, all_figures)}
-    state_dict = {id_dict["store"]: data for id_dict, data in zip(store_ids, all_stores)}
+    state_dict = {
+        id_dict["store"]: data for id_dict, data in zip(store_ids, all_stores)
+    }
 
     files = []
     for plot_id in selected_plots:
-        plot_name = f'plot_{plot_id}'
+        plot_name = f"plot_{plot_id}"
         figure = go.Figure(fig_dict[plot_id])
         if figure is None:
             continue
@@ -281,7 +357,7 @@ def download_plots(selected_plots: list,
         df_data = state_dict[plot_id]
         if df_data is None:
             continue
-        
+
         plt_file = get_plot_file(df_data, figure, fmt, plot_name)
         files.append(plt_file)
 
@@ -295,19 +371,20 @@ def download_plots(selected_plots: list,
             for fname, content in files:
                 zf.writestr(fname, content)
         zip_buffer.seek(0)
-        return dcc.send_bytes(lambda b: b.write(zip_buffer.read()), filename=f"plots_{fmt}.zip")
+        return dcc.send_bytes(
+            lambda b: b.write(zip_buffer.read()), filename=f"plots_{fmt}.zip"
+        )
 
     else:
         raise exceptions.PreventUpdate
-    
-def download_dataframes(selected_dfs: list,
-                        mode: str, 
-                        phase_range: list,
-                        store: pd.HDFStore):
-    
+
+
+def download_dataframes(
+    selected_dfs: list, mode: str, phase_range: list, store: pd.HDFStore
+):
     if not selected_dfs:
         raise exceptions.PreventUpdate
-    
+
     if len(selected_dfs) == 1:
         name = selected_dfs[0]
         data_slice = check_if_slice_applicable(name, mode, phase_range)
@@ -326,11 +403,24 @@ def download_dataframes(selected_dfs: list,
                 zf.writestr(f"{name}.csv", csv_bytes)
 
     zip_buffer.seek(0)
-    
+
     return dcc.send_bytes(
-        lambda b: b.write(zip_buffer.getvalue()),
-        filename="selected_dataframes.zip"
+        lambda b: b.write(zip_buffer.getvalue()), filename="selected_dataframes.zip"
     )
 
-    
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Run DeepEcoHab Dashboard")
+    parser.add_argument(
+        "--results-path",
+        type=str,
+        required=True,
+        help="h5 file path extracted from the config (examples/test_name2_2025-04-18/results/test_name2_data.h5)",
+    )
+    parser.add_argument(
+        "--config-path",
+        type=str,
+        required=True,
+        help="path to the config file of the project",
+    )
+    return parser.parse_args()

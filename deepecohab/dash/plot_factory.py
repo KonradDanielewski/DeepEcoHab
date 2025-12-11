@@ -118,10 +118,10 @@ def plot_sum_bar_activity(
     """Plots bar graph of sum of cage and tunnel visits or time spent."""
     match type_switch:
         case 'visits':
-            position_title = f'<b>Visits to each position</u></b>'
+            position_title = '<b>Visits to each position</b>'
             position_y_title = '<b>Number of visits</b>'   
         case 'time':
-            position_title = f'<b>Time spent in each position</u></b>'
+            position_title = '<b>Time spent in each position</b>'
             position_y_title = '<b>Time spent [s]</b>'
 
     plot_df = auxfun_plots.prep_sum_per_position_df(df)
@@ -149,10 +149,10 @@ def plot_mean_box_activity(
     """Plots box graph of mean of cage and tunnel visits or time spent."""
     match type_switch:
         case 'visits':
-            position_title = f'<b>Visits to each position</u></b>'
+            position_title = '<b>Visits to each position</b>'
             position_y_title = '<b>Number of visits</b>'
         case 'time':
-            position_title = f'<b>Time spent in each position</u></b>'
+            position_title = '<b>Time spent in each position</b>'
             position_y_title = '<b>Time spent [s]</b>'
 
     plot_df = auxfun_plots.prep_mean_per_position_df(df)
@@ -250,10 +250,10 @@ def plot_sociability_heatmap(
     """Plots heatmaps for pairwise encounters or time spent together."""
     match type_switch:
         case 'visits':
-            pairwise_title = f'<b>Number of pairwise encounters</b>'
+            pairwise_title = '<b>Number of pairwise encounters</b>'
             pairwise_z_label = 'Number: %{z}'   
         case 'time':
-            pairwise_title = f'<b>Time spent together</b>'
+            pairwise_title = '<b>Time spent together</b>'
             pairwise_z_label = 'Time [s]: %{z}'
 
     match agg_switch:
@@ -361,7 +361,7 @@ def plot_network_graph(
             layout=go.Layout(
                 showlegend=False,
                 hovermode='closest',
-                title=dict(text=f'<b>Social structure network graph</u></b>', x=0.01, y=0.95),
+                title=dict(text='<b>Social structure network graph</b>', x=0.01, y=0.95),
             )
         )
 
