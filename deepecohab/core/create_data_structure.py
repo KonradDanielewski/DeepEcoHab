@@ -315,7 +315,7 @@ def create_binary_df(
     )
 
     if save_data:
-        binary_long.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
+        binary_long.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
 
     if return_df:
         return binary_long

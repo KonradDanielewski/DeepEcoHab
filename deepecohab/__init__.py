@@ -1,4 +1,3 @@
-from deepecohab.antenna_analysis import auxiliary_analysis
 from deepecohab.antenna_analysis.activity import (
     calculate_activity,
     calculate_cage_occupancy,

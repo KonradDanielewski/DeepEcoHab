@@ -128,8 +128,6 @@ def create_ecohab_project(
             raise FileNotFoundError(f"Config file not found in {project_location}!")
     else:
         Path.mkdir(project_location)
-        Path.mkdir(project_location / "plots")
-        Path.mkdir(project_location / "plots" / "fig_source")
         Path.mkdir(project_location / "results")
 
     # Create the toml
