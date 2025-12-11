@@ -39,12 +39,10 @@ def load_data(
         .alias("COM")
     ).drop(["ind", "file"])
 
-    if isinstance(animal_ids, list):
-        lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
-    else:
-        lf = auxfun.infer_animal_ids(
-            config_path, lf, sanitize_animal_ids, min_antenna_crossings
-        )
+    
+    lf = auxfun.set_animal_ids(
+        config_path, lf, animal_ids, sanitize_animal_ids, min_antenna_crossings
+    )
 
     if custom_layout:
         rename_dicts = cfg["antenna_rename_scheme"]

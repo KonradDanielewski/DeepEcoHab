@@ -152,39 +152,43 @@ def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf_with_run.join(runs, on="run_id", how="left").drop("run_id")
 
 
-def infer_animal_ids(
+def set_animal_ids(
     config_path: str,
     lf: pl.LazyFrame,
+    animal_ids: list | None = None,
     sanitize_animal_ids: bool = False,
     min_antenna_crossings: int = 100,
 ) -> pl.LazyFrame:
     """Auxfun to infer animal ids from data, optionally removing ghost tags (random radio noise reads)."""
     cfg = read_config(config_path)
 
-    animal_ids = (
-        lf.select(pl.col("animal_id").unique().alias("animal_id"))
-        .collect()["animal_id"]
-        .to_list()
-    )
-
-    if sanitize_animal_ids:
-        antenna_crossings = lf.group_by(pl.col("animal_id")).len().collect()
-
-        animals_to_drop = (
-            antenna_crossings.filter(pl.col("len") < min_antenna_crossings)
-            .get_column("animal_id")
+    if isinstance(animal_ids, list):
+        lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
+    else:
+        animal_ids = (
+            lf.select(pl.col("animal_id").unique().alias("animal_id"))
+            .collect()["animal_id"]
             .to_list()
         )
 
-        if animals_to_drop:
-            print(f"IDs dropped from dataset {animals_to_drop}")
-            drop = set(animals_to_drop)
-            animal_ids = sorted(set(animal_ids) - drop)
-            lf = lf.filter(pl.col("animal_id").is_in(pl.lit(animal_ids)))
+        if sanitize_animal_ids:
+            antenna_crossings = lf.group_by(pl.col("animal_id")).len().collect()
 
-        cfg["dropped_ids"] = animals_to_drop
-    else:
-        print("No ghost tags detected :)")
+            animals_to_drop = (
+                antenna_crossings.filter(pl.col("len") < min_antenna_crossings)
+                .get_column("animal_id")
+                .to_list()
+            )
+
+            if animals_to_drop:
+                print(f"IDs dropped from dataset {animals_to_drop}")
+                drop = set(animals_to_drop)
+                animal_ids = sorted(set(animal_ids) - drop)
+                lf = lf.filter(pl.col("animal_id").is_in(pl.lit(animal_ids)))
+
+            cfg["dropped_ids"] = animals_to_drop
+        else:
+            print("No ghost tags detected :)")
 
     cfg["animal_ids"] = animal_ids
     with config_path.open("w") as f:
