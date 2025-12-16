@@ -9,7 +9,7 @@ from deepecohab.utils import auxfun
 def _combine_matches(cfg: dict) -> tuple[list, pl.Series]:
     """Auxfun to combine all the chasing events into one data structure"""
     match_lf = auxfun.load_ecohab_data(cfg, "match_df")
-    match_df = match_lf.collect()
+    match_df = match_lf.collect().sort('datetime')
 
     datetimes = match_df["datetime"]
 
@@ -41,15 +41,14 @@ def _rank_mice_openskill(
     model = PlackettLuce(limit_sigma=True, balance=True)
     match_list, datetimes = _combine_matches(cfg)
 
-    if not isinstance(ranking, dict):
-        ranking = {}
+    ranking = {}
 
     for player in animal_ids:
         ranking[player] = model.rating()
 
-    ranking_update = []
+    ranking_df = []
 
-    for loser_name, winner_name in match_list:
+    for (loser_name, winner_name), datetime in zip(match_list, datetimes):
         new_ratings = model.rate(
             [[ranking[loser_name]], [ranking[winner_name]]], ranks=[1, 0]
         )
@@ -57,16 +56,27 @@ def _rank_mice_openskill(
         ranking[loser_name] = new_ratings[0][0]
         ranking[winner_name] = new_ratings[1][0]
 
-        temp = {
-            key: round(ranking[key].ordinal(), 3) for key in ranking.keys()
-        }  # alpha=200/ranking[key].sigma, target=1000 for ordinal if ELO like values
-        ranking_update.append(temp)
+        intermediate = {
+                'mu': [],
+                'sigma': [],
+                'ordinal': [],
+                'animal_id': [],
+                'datetime': [],
+            }
+        
+        for animal in ranking.keys():
+            intermediate['mu'].append(ranking[animal].mu)
+            intermediate['sigma'].append(ranking[animal].sigma)
+            intermediate['ordinal'].append(round(ranking[animal].ordinal(), 3))
+            intermediate['animal_id'].append(animal)
+            intermediate['datetime'].append(datetime)
 
-    ranking_in_time = pl.LazyFrame(ranking_update)
+        ranking_df.append(pl.LazyFrame(intermediate))
+    ranking_df = pl.concat(ranking_df).with_columns(pl.col('datetime').dt.hour().alias('hour'))
+    ranking_df = auxfun.get_phase(cfg, ranking_df)
+    ranking_df = auxfun.get_day(ranking_df)
 
-    ranking_in_time = ranking_in_time.with_columns(datetimes.alias("datetime"))
-
-    return ranking, ranking_in_time
+    return ranking_df
 
 
 def calculate_chasings(
@@ -86,7 +96,7 @@ def calculate_chasings(
     """
     cfg = auxfun.read_config(config_path)
     results_path = Path(cfg["project_location"]) / "results"
-    key = "chasings"
+    key = "chasings_df"
 
     chasings = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
@@ -163,45 +173,20 @@ def calculate_ranking(
     """
     cfg = auxfun.read_config(config_path)
     results_path = Path(cfg["project_location"]) / "results"
-    key = "ranking_ordinal"
+    key = "ranking"
 
-    ranking_ordinal = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+    ranking = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
-    if isinstance(ranking_ordinal, pl.LazyFrame):
-        return ranking_ordinal
+    if isinstance(ranking, pl.LazyFrame):
+        return ranking
 
     animals = cfg["animal_ids"]
-    df = auxfun.load_ecohab_data(config_path, "main_df")
 
-    ranking, ranking_in_time = _rank_mice_openskill(cfg, animals, ranking)
-
-    ranking_df = pl.LazyFrame(
-        {
-            "animal_id": list(ranking.keys()),
-            "mu": [v.mu for v in ranking.values()],
-            "sigma": [v.sigma for v in ranking.values()],
-        }
-    ).with_columns(pl.col("animal_id").cast(pl.Enum(animals)))
-
-    ranking_in_time = ranking_in_time.group_by("datetime", maintain_order=True).tail(1)
-
-    rit_datetimes = ranking_in_time.select("datetime").unique()
-
-    phase_end_marks = (
-        df.join(rit_datetimes, on="datetime", how="semi")
-        .group_by(["phase", "day", "phase_count"])
-        .agg(pl.col("datetime").max().alias("datetime"))
-    )
-
-    ranking_ordinal = phase_end_marks.join(ranking_in_time, on="datetime", how="left")
+    ranking = _rank_mice_openskill(cfg, animals, ranking)
 
     if save_data:
-        ranking_ordinal.sink_parquet(
-            results_path / "ranking_ordinal.parquet", compression="lz4"
+        ranking.sink_parquet(
+            results_path / "ranking.parquet", compression="lz4"
         )
-        ranking_in_time.sink_parquet(
-            results_path / "ranking_in_time.parquet", compression="lz4"
-        )
-        ranking_df.sink_parquet(results_path / "ranking.parquet", compression="lz4")
 
-    return ranking_ordinal
+    return ranking

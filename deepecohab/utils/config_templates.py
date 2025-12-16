@@ -10,6 +10,7 @@ class ExperimentConfig(ABC):
     animal_ids: list[str]
     dark_phase_start: str
     light_phase_start: str
+    days_range: list[int, int]
     start_datetime: str = None
     finish_datetime: str = None
     antenna_combinations: dict[str, str] = field(default_factory=dict)
@@ -48,6 +49,7 @@ class ExperimentConfig(ABC):
         data["animal_ids"] = self.animal_ids
         data["phase"] = self.phase
         data["experiment_timeline"] = self.experiment_timeline
+        data['days_range'] = self.days_range
         data["antenna_combinations"] = self.antenna_combinations
         data["tunnels"] = self.tunnels
         try:

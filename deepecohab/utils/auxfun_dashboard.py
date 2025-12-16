@@ -4,8 +4,8 @@ import json
 import zipfile
 
 import dash_bootstrap_components as dbc
-import pandas as pd
 import plotly.graph_objects as go
+import polars as pl
 from dash import dcc, exceptions, html
 
 COMMON_CFG = {"displayModeBar": False}
@@ -25,7 +25,7 @@ def generate_settings_block(
                                 options=[
                                     {"label": "Dark", "value": "dark_phase"},
                                     {"label": "Light", "value": "light_phase"},
-                                    {"label": "All", "value": "all"},
+                                    {"label": "All", "value": 'all'},
                                 ],
                                 value="dark_phase",
                                 labelStyle={"display": "block", "marginBottom": "5px"},
@@ -263,22 +263,6 @@ def generate_download_block():
     return modal
 
 
-def get_data_slice(mode: str, phase_range: list):
-    """Sets data slice to be taken from data used for dashboard."""
-    idx = pd.IndexSlice
-    if mode == "all":
-        return idx[(slice(None), slice(phase_range[0], phase_range[-1])), :]
-    else:
-        return idx[(mode, slice(phase_range[0], phase_range[-1])), :]
-
-
-def check_if_slice_applicable(name: str, mode: str, phase_range: list):
-    if name not in ["main_df", "ranking", "match_df", "ranking_in_time"]:
-        return get_data_slice(mode, phase_range)
-    else:
-        return slice(None)
-
-
 def generate_standard_graph(graph_id: str, css_class: str = "plot-450"):
     return html.Div(
         [
@@ -313,7 +297,7 @@ def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical=True)
     return dbc.Row(buttons)
 
 
-def get_plot_file(df_data: pd.DataFrame, figure: go.Figure, fmt: str, plot_name: str):
+def get_plot_file(df_data: pl.DataFrame, figure: go.Figure, fmt: str, plot_name: str):
     if fmt == "svg":
         content = figure.to_image(format="svg")
         return (f"{plot_name}.svg", content)
@@ -324,8 +308,8 @@ def get_plot_file(df_data: pd.DataFrame, figure: go.Figure, fmt: str, plot_name:
         content = json.dumps(figure.to_plotly_json()).encode("utf-8")
         return (f"{plot_name}.json", content)
     elif fmt == "csv":
-        df = pd.read_json(df_data, orient="split")
-        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        df = pl.read_json(io.StringIO(df_data)).explode(pl.all())
+        csv_bytes = df.write_csv().encode("utf-8")
         return (f"{plot_name}.csv", csv_bytes)
     else:
         raise exceptions.PreventUpdate
@@ -380,26 +364,32 @@ def download_plots(
 
 
 def download_dataframes(
-    selected_dfs: list, mode: str, phase_range: list, store: pd.HDFStore
+    selected_dfs: list, phase_type: list[str], days_range: list, store: dict
 ):
     if not selected_dfs:
         raise exceptions.PreventUpdate
 
+    phase_type = ([phase_type] if not phase_type == 'all' else ['dark_phase', 'light_phase'])
+
     if len(selected_dfs) == 1:
         name = selected_dfs[0]
-        data_slice = check_if_slice_applicable(name, mode, phase_range)
         if name in store:
-            df = store[name].loc[data_slice]
-            return dcc.send_data_frame(df.to_csv, f"{name}.csv")
+            df = store[name].filter(
+                pl.col('day').is_between(days_range[0], days_range[-1]),
+                pl.col('phase').is_in(phase_type),
+            )
+            return dcc.send_string(df.write_csv, f"{name}.csv")
         return None
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zf:
         for name in selected_dfs:
             if name in store:
-                data_slice = check_if_slice_applicable(name, mode, phase_range)
-                df = store[name].loc[data_slice]
-                csv_bytes = df.to_csv().encode("utf-8")
+                df = store[name].filter(
+                    pl.col('day').is_between(days_range[0], days_range[-1]),
+                    pl.col('phase').is_in(phase_type),
+                )
+                csv_bytes = df.write_csv().encode("utf-8")
                 zf.writestr(f"{name}.csv", csv_bytes)
 
     zip_buffer.seek(0)
