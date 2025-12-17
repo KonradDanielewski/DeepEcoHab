@@ -92,11 +92,11 @@ def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
     )
 
 
-def get_day(lf: pl.LazyFrame) -> pl.LazyFrame:
+def get_day() -> pl.Expr:
     """Auxfun for getting the day"""
     start_midnight = pl.col("datetime").first().dt.truncate("1d")
 
-    lf = lf.with_columns(
+    return (
         (pl.col("datetime") - start_midnight)
         .dt.total_days()
         .floor()
@@ -104,17 +104,17 @@ def get_day(lf: pl.LazyFrame) -> pl.LazyFrame:
         .add(1)
         .alias("day")
     )
-    return lf
 
 
-def get_phase(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
+
+def get_phase(cfg: dict) -> pl.Expr:
     """Auxfun for getting the phase"""
     start_str, end_str = list(cfg["phase"].values())
     phase_names = list(cfg["phase"].keys())
     start_t = dt.time.fromisoformat(start_str)
     end_t = dt.time.fromisoformat(end_str)
 
-    return lf.with_columns(
+    return (
         pl.when(pl.col("datetime").dt.time().is_between(start_t, end_t, closed="both"))
         .then(pl.lit("light_phase"))
         .otherwise(pl.lit("dark_phase"))
@@ -123,33 +123,26 @@ def get_phase(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
     )
 
 
-def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
+def get_hour(dt_col: str = "datetime") -> pl.Expr:
+    return pl.col(dt_col).dt.hour().cast(pl.Int8).alias("hour")
+
+def get_phase_count() -> pl.Expr:
     """Auxfun used to count phases"""
-    lf_with_run = lf.with_columns(
-        (
-            (pl.col("phase") != pl.col("phase").shift(1))
-            .fill_null(True)
-            .cast(pl.Int8)
-            .cum_sum()
-            .alias("run_id")
-        )
+
+    run_id = (
+        (pl.col('phase') != pl.col('phase').shift(1))
+        .fill_null(True)
+        .cast(pl.Int8)
+        .cum_sum()
     )
 
-    runs = (
-        lf_with_run.select("run_id", "phase")
-        .unique()
-        .sort("run_id")
-        .with_columns(
-            pl.col("run_id")
-            .rank(method="dense")
-            .over("phase")
-            .cast(pl.Int16)
-            .alias("phase_count")
-        )
-        .drop("phase")
+    return (
+        run_id
+        .rank(method="dense")
+        .over('phase')
+        .cast(pl.Int16)
+        .alias("phase_count")
     )
-
-    return lf_with_run.join(runs, on="run_id", how="left").drop("run_id")
 
 
 def set_animal_ids(
