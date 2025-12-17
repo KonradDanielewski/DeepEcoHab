@@ -43,6 +43,7 @@ def calculate_time_alone(
         .with_columns(pl.col("animal_id").list.get(0))
         .group_by(result_cols)
         .agg(pl.col("datetime").count())
+        .rename({'datetime': 'time_alone'})
         .sort(result_cols)
     )
 
@@ -132,7 +133,7 @@ def calculate_pairwise_meetings(
     ).sort(["phase", "day", "phase_count", "position", "animal_id", "animal_id_2"])
 
     if save_data:
-        pairwise_meetings.sink_parquet(results_path, compression="lz4")
+        pairwise_meetings.sink_parquet(results_path, compression="lz4", engine='streaming')
 
     return pairwise_meetings
 

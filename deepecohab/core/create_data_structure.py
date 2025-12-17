@@ -336,7 +336,6 @@ def get_ecohab_data_structure(
     overwrite: bool = False,
     save_data: bool = True,
     timezone: str | None = None,
-    animal_ids: list | None = None,
 ) -> pl.LazyFrame:
     """Prepares EcoHab data for further analysis
 
@@ -364,6 +363,11 @@ def get_ecohab_data_structure(
         return df
 
     antenna_pairs = cfg["antenna_combinations"]
+    
+    try:
+        animal_ids = cfg["animal_ids"]
+    except KeyError:
+        animal_ids = None
 
     lf = load_data(
         config_path=config_path,
@@ -420,6 +424,8 @@ def get_ecohab_data_structure(
     lf_sorted = lf.select(sorted_cols)
 
     phase_durations_lf = auxfun.get_phase_durations(lf)
+    
+    auxfun.add_cages_to_config(config_path)
 
     create_padded_df(config_path, lf_sorted, save_data, overwrite)
     create_binary_df(config_path, lf_sorted, save_data, overwrite)

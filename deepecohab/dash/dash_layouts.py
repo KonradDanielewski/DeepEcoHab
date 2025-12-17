@@ -106,7 +106,7 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
                         [
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                    "time-per-cage", css_class="plot-800"
+                                    "time-per-cage", css_class="plot-500"
                                 ),
                                 width=12,
                             ),
@@ -123,10 +123,10 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
                                 dcc.RadioItems(
                                     id="pairwise-switch",
                                     options=[
-                                        {"label": "Visits", "value": "visits"},
-                                        {"label": "Time", "value": "time"},
+                                        {"label": "Visits", "value": "pairwise_encounters"},
+                                        {"label": "Time", "value": "time_together"},
                                     ],
-                                    value="visits",
+                                    value="pairwise_encounters",
                                     labelStyle={"display": "inline-block"},
                                 ),
                                 width=1,
@@ -143,12 +143,23 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
                             ),
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                    "sociability-heatmap", css_class="plot-600"
-                                ),
+                                        "sociability-heatmap", css_class="plot-600"
+                                    ),
                                 width=6,
-                            ),
+                                ),
+
                         ],
                         className="g-3",
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                auxfun_dashboard.generate_standard_graph(
+                                        "time-alone", css_class="plot-500"
+                                    ),
+                                width=6,
+                                ),
+                        ],
                     ),
                 ],
                 fluid=True,

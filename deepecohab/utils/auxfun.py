@@ -207,14 +207,12 @@ def append_start_end_to_config(config_path: str, lf: pl.LazyFrame) -> dict:
     start_time = str(bounds["start_time"][0])
     end_time = str(bounds["end_time"][0])
 
-    f = open(config_path, "w")
-    cfg["experiment_timeline"] = {
-        "start_date": start_time,
-        "finish_date": end_time,
-    }
-
-    toml.dump(cfg, f)
-    f.close()
+    with open(config_path, "w") as config:
+        cfg["experiment_timeline"] = {
+            "start_date": start_time,
+            "finish_date": end_time,
+        }
+        toml.dump(cfg, config)
 
     print(
         f"Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True"
@@ -230,11 +228,19 @@ def add_cages_to_config(config_path: str) -> None:
     positions = list(set(cfg["antenna_combinations"].values()))
     cages = [pos for pos in positions if "cage" in pos]
 
-    f = open(config_path, "w")
-    cfg["cages"] = cages
+    with open(config_path, "w") as config:
+        cfg["cages"] = sorted(cages)
+        toml.dump(cfg, config)
+    
+def add_days_to_config(config_path: str | Path, lf: pl.LazyFrame) -> None:
+    """Auxfun to add days range to config for reading convenience"""
+    cfg = read_config(config_path)
 
-    toml.dump(cfg, f)
-    f.close()
+    days = lf.collect().get_column('day').unique(maintain_order=True).to_list()
+
+    with open(config_path, "w") as config:
+        cfg["days"] = [days[0], days[-1]]
+        toml.dump(cfg, config)
 
 
 def run_dashboard(config_path: str | dict):

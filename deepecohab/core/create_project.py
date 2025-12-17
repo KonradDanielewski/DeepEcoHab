@@ -54,9 +54,10 @@ def create_ecohab_project(
         )
         return
     dt_format = "%Y-%m-%d %H:%M:%S"
+    last_date = dt.datetime.strptime(finish_datetime, dt_format)
+    first_date = dt.datetime.strptime(start_datetime, dt_format)
     check_date = (
-        dt.datetime.strptime(finish_datetime, dt_format)
-        - dt.datetime.strptime(start_datetime, dt_format)
+        last_date - first_date
     ).days < 0
 
     if check_date:
@@ -72,6 +73,8 @@ def create_ecohab_project(
     else:
         animal_ids = sorted(animal_ids)
 
+    days_range = [1, (last_date - first_date).days + 1]
+
     if field_ecohab and isinstance(antenna_rename_scheme, dict):
         config = config_templates.FieldConfig(
             project_location=project_location,
@@ -82,6 +85,7 @@ def create_ecohab_project(
             dark_phase_start=dark_phase_start,
             start_datetime=start_datetime,
             finish_datetime=finish_datetime,
+            days_range=days_range,
             antenna_rename_scheme=antenna_rename_scheme,
         ).to_dict()
 
@@ -95,11 +99,12 @@ def create_ecohab_project(
             dark_phase_start=dark_phase_start,
             start_datetime=start_datetime,
             finish_datetime=finish_datetime,
+            days_range=days_range,
             antenna_rename_scheme=antenna_rename_scheme,
         ).to_dict()
 
     elif custom_layout or field_ecohab and not isinstance(antenna_rename_scheme, dict):
-        raise TypeError(
+        raise ValueError(
             "Chosen custom layout/field layout but antenna renaming graph not provided!"
         )
 
@@ -113,6 +118,7 @@ def create_ecohab_project(
             dark_phase_start=dark_phase_start,
             start_datetime=start_datetime,
             finish_datetime=finish_datetime,
+            days_range=days_range,
         ).to_dict()
 
     # Remake into Path here for safety

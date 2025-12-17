@@ -63,7 +63,7 @@ def calculate_activity(
     cfg = auxfun.read_config(config_path)
 
     results_path = Path(cfg["project_location"]) / "results"
-    key = "time_per_position"
+    key = "activity_df"
 
     time_per_position_lf = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 

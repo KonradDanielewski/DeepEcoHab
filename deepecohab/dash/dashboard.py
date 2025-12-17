@@ -1,15 +1,17 @@
+from typing import Literal
 import sys
 from pathlib import Path
 
 import dash
 import dash_bootstrap_components as dbc
-import pandas as pd
+import polars as pl
 import plotly.graph_objects as go
 from dash import ctx, dcc, html
 from dash.dependencies import ALL, MATCH, Input, Output, State
 
 from deepecohab.dash import dash_layouts, dash_plotting
 from deepecohab.utils import (
+    auxfun,
     auxfun_dashboard,
     auxfun_plots,
 )
@@ -32,27 +34,25 @@ if __name__ == "__main__":
     args = auxfun_dashboard.parse_arguments()
     results_path = args.results_path
     config_path = args.config_path
+    
+    cfg = auxfun.read_config(config_path)
 
-    if not Path(results_path).is_file():
+    if not Path(results_path).is_dir():
         FileNotFoundError(f"{results_path} not found.")
         sys.exit(1)
     if not Path(config_path).is_file():
         FileNotFoundError(f"{config_path} not found.")
         sys.exit(1)
 
-    store = pd.HDFStore(results_path, mode="r")
-    store = {
-        key.replace("/", ""): store[key]
-        for key in store.keys()
-        if "meta" not in key or "binary" not in key
-    }  # and 'binary' not in key -- Avoid reading binary as not used
-    _data = store["chasings"]
-    n_phases = _data.index.get_level_values(1).max()
-    phase_range = [1, n_phases]
+    store = {file.stem: pl.read_parquet(file) for file in Path(results_path).glob('*.parquet') if 'binary' not in str(file)}
+    days_range = cfg['days_range']
+    cages = cfg['cages']
+    animals = cfg['animal_ids']
+    colors = auxfun_plots.color_sampling(animals)
 
     # Dashboard layout
-    dashboard_layout = dash_layouts.generate_graphs_layout(phase_range)
-    comparison_tab = dash_layouts.generate_comparison_layout(phase_range)
+    dashboard_layout = dash_layouts.generate_graphs_layout(days_range)
+    comparison_tab = dash_layouts.generate_comparison_layout(days_range)
 
     app.layout = html.Div(
         [
@@ -115,6 +115,8 @@ if __name__ == "__main__":
             Output({"store": "time-per-cage"}, "data"),
             Output({"graph": "metrics"}, "figure"),
             Output({"store": "metrics"}, "data"),
+            Output({"graph": "time-alone"}, "figure"),
+            Output({"store": "time-alone"}, "data"),
         ],
         [
             Input("phase-slider", "value"),
@@ -125,45 +127,47 @@ if __name__ == "__main__":
         ],
     )
     def update_plots(
-        phase_range, mode, aggregate_stats_switch, position_switch, pairwise_switch
-    ):
-        data_slice = auxfun_dashboard.get_data_slice(mode, phase_range)
+        days_range, phase_type, aggregate_stats_switch, position_switch, pairwise_switch
+    ):       
+        phase_type = ([phase_type] if not phase_type == 'all' else ['dark_phase', 'light_phase'])
 
-        animals = store["main_df"].animal_id.cat.categories
-        colors = auxfun_plots.color_sampling(animals)
-
-        position_fig, position_data = dash_plotting.activity_bar(
-            store, data_slice, position_switch, aggregate_stats_switch
+        print(days_range, phase_type, pairwise_switch, str(aggregate_stats_switch), animals, cages)
+        
+        position_fig, position_data = dash_plotting.activity(
+            store, days_range, phase_type, str(position_switch), str(aggregate_stats_switch)
         )
         activity_fig, activity_data = dash_plotting.activity_line(
-            store, phase_range, aggregate_stats_switch, animals, colors
+            store, days_range, str(aggregate_stats_switch), animals, colors
         )
         pairwise_plot, pairwise_data = dash_plotting.pairwise_sociability(
-            store, data_slice, pairwise_switch, aggregate_stats_switch
+            store, days_range, phase_type, str(pairwise_switch), str(aggregate_stats_switch), animals, cages,
         )
-        chasings_plot, chasings_data = dash_plotting.chasings(
-            store, data_slice, aggregate_stats_switch
+        chasings_plot, chasings_data = dash_plotting.chasings_heatmap(
+            store, days_range, phase_type, str(aggregate_stats_switch), animals,
         )
         incohort_soc_plot, incohort_soc_data = dash_plotting.within_cohort_sociability(
-            store, data_slice
+            store, days_range, phase_type, animals,
         )
         network_plot, network_plot_data = dash_plotting.network_graph(
-            store, mode, phase_range, animals, colors
+            store, days_range, phase_type, animals, colors
         )
         chasing_line_plot, chasing_line_data = dash_plotting.chasings_line(
-            store, phase_range, aggregate_stats_switch, animals, colors
+            store, days_range, str(aggregate_stats_switch), animals, colors
         )
         ranking_line, ranking_data = dash_plotting.ranking_over_time(
             store, animals, colors
         )
-        ranking_distribution, ranking_distribution_data = (
-            dash_plotting.ranking_distribution(store, data_slice, animals, colors)
+        ranking_distribution, ranking_distribution_data = dash_plotting.ranking_distribution(
+            store, days_range, animals, colors
         )
         time_per_cage, time_per_cage_data = dash_plotting.time_per_cage(
-            store, phase_range, aggregate_stats_switch, animals, colors
+            store, days_range, str(aggregate_stats_switch), animals, cages,
         )
-        metrics_fig, metrics_data = dash_plotting.metrics(
-            store, data_slice, animals, colors
+        metrics_fig, metrics_data = dash_plotting.polar_metrics(
+            store, days_range, phase_type, animals, colors
+        )
+        time_alone_fig, time_alone_data = dash_plotting.time_alone(
+            store, days_range, phase_type, cages
         )
 
         return [
@@ -189,6 +193,8 @@ if __name__ == "__main__":
             auxfun_plots.to_store_json(time_per_cage_data),
             metrics_fig,
             auxfun_plots.to_store_json(metrics_data),
+            time_alone_fig,
+            auxfun_plots.to_store_json(time_alone_data),
         ]
 
     @app.callback(
@@ -199,24 +205,27 @@ if __name__ == "__main__":
         [
             Input({"type": "plot-dropdown", "side": MATCH}, "value"),
             Input({"type": "mode-switch", "side": MATCH}, "value"),
-            Input({"type": "aggregate-switch", "side": MATCH}, "value"),
             Input({"type": "phase-slider", "side": MATCH}, "value"),
+            Input({"type": "aggregate-switch", "side": MATCH}, "value"),
         ],
     )
-    def update_comparison_plot(plot_type, mode, aggregate_stats_switch, phase_range):
-        data_slice = auxfun_dashboard.get_data_slice(mode, phase_range)
+    def update_comparison_plot(
+        plot_type: str, 
+        phase_type: str,
+        days_range: list[int, int], 
+        aggregate_stats_switch: Literal['sum', 'mean'], 
+    ) -> tuple[go.Figure, str]:
+        phase_type = ([phase_type] if not phase_type == 'all' else ['dark_phase', 'light_phase'])
 
-        animals = store["main_df"].animal_id.cat.categories
-        colors = auxfun_plots.color_sampling(animals)
         plt, df = dash_plotting.get_single_plot(
             store,
-            mode,
+            days_range,
+            phase_type,
             plot_type,
-            data_slice,
-            phase_range,
             aggregate_stats_switch,
             animals,
             colors,
+            cages
         )
         return plt, auxfun_plots.to_store_json(df)
 
@@ -253,8 +262,8 @@ if __name__ == "__main__":
         btn_clicks,
         selected_dfs,
         selected_plots,
-        mode,
-        phase_range,
+        phase_type,
+        days_range,
         all_figures,
         all_ids,
         all_stores,
@@ -266,7 +275,7 @@ if __name__ == "__main__":
 
         if triggered["side"] == "dfs":
             return auxfun_dashboard.download_dataframes(
-                selected_dfs, mode, phase_range, store
+                selected_dfs, phase_type, days_range, store
             )
         elif triggered["side"] == "plots":
             return auxfun_dashboard.download_plots(
@@ -308,4 +317,4 @@ if __name__ == "__main__":
         return dcc.send_bytes(lambda b: b.write(content), filename=fname)
 
     auxfun_plots.open_browser()
-    app.run(debug=False, port=8050)
+    app.run(debug=True, port=8050)
