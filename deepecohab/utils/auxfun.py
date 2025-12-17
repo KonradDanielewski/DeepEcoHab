@@ -246,7 +246,7 @@ def add_days_to_config(config_path: str | Path, lf: pl.LazyFrame) -> None:
 def run_dashboard(config_path: str | dict):
     """Auxfun to open dashboard for experiment from provided config"""
     cfg = read_config(config_path)
-    data_path = Path(cfg["project_location"]) / "results" / "results.h5"
+    data_path = Path(cfg["project_location"]) / "results"
     cfg_path = Path(cfg["project_location"]) / "config.toml"
 
     path_to_dashboard = importlib.util.find_spec("deepecohab.dash.dashboard").origin
