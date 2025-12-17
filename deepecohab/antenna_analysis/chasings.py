@@ -71,10 +71,14 @@ def _rank_mice_openskill(
             intermediate['animal_id'].append(animal)
             intermediate['datetime'].append(datetime)
 
+
         ranking_df.append(pl.LazyFrame(intermediate))
-    ranking_df = pl.concat(ranking_df).with_columns(pl.col('datetime').dt.hour().alias('hour'))
-    ranking_df = auxfun.get_phase(cfg, ranking_df)
-    ranking_df = auxfun.get_day(ranking_df)
+    ranking_df = pl.concat(ranking_df)
+    ranking_df = ranking_df.with_columns(
+            auxfun.get_phase(cfg),
+            auxfun.get_day(), 
+            auxfun.get_hour()
+        )
 
     return ranking_df
 
