@@ -139,45 +139,16 @@ if __name__ == "__main__":
             position_switch, pairwise_switch, animals, colors, cages,
         )
         
-        ranking_line, ranking_data = dash_plotting.plot_registry.get_plot("ranking-line", plot_cfg)
-        metrics_fig, metrics_data = dash_plotting.plot_registry.get_plot("metrics-polar-line", plot_cfg)
-        ranking_distribution, ranking_distribution_data = dash_plotting.plot_registry.get_plot("ranking-distribution-line", plot_cfg)
-        network_plot, network_plot_data = dash_plotting.plot_registry.get_plot("network-graph", plot_cfg)
-        chasings_plot, chasings_data = dash_plotting.plot_registry.get_plot("chasings-heatmap", plot_cfg)
-        chasing_line_plot, chasing_line_data = dash_plotting.plot_registry.get_plot("chasings-line", plot_cfg)
-        position_fig, position_data = dash_plotting.plot_registry.get_plot("activity-bar", plot_cfg)
-        activity_fig, activity_data = dash_plotting.plot_registry.get_plot("activity-line", plot_cfg)
-        time_per_cage, time_per_cage_data = dash_plotting.plot_registry.get_plot("time-per-cage-heatmap", plot_cfg)
-        pairwise_plot, pairwise_data = dash_plotting.plot_registry.get_plot("sociability-heatmap", plot_cfg)
-        incohort_soc_plot, incohort_soc_data = dash_plotting.plot_registry.get_plot("cohort-heatmap", plot_cfg)
-        time_alone_fig, time_alone_data = dash_plotting.plot_registry.get_plot("time-alone-bar", plot_cfg)
+        plot_names = list(dash_plotting.plot_registry._registry.keys())
         
-        return [
-            ranking_line,
-            auxfun_plots.to_store_json(ranking_data),
-            metrics_fig,
-            auxfun_plots.to_store_json(metrics_data),
-            ranking_distribution,
-            auxfun_plots.to_store_json(ranking_distribution_data),
-            network_plot,
-            auxfun_plots.to_store_json(network_plot_data),
-            chasings_plot,
-            auxfun_plots.to_store_json(chasings_data),
-            chasing_line_plot,
-            auxfun_plots.to_store_json(chasing_line_data),
-            position_fig,
-            auxfun_plots.to_store_json(position_data),
-            activity_fig,
-            auxfun_plots.to_store_json(activity_data),
-            time_per_cage,
-            auxfun_plots.to_store_json(time_per_cage_data),
-            pairwise_plot,
-            auxfun_plots.to_store_json(pairwise_data),
-            incohort_soc_plot,
-            auxfun_plots.to_store_json(incohort_soc_data),
-            time_alone_fig,
-            auxfun_plots.to_store_json(time_alone_data),
-        ]
+        output = []
+        
+        for name in plot_names:
+            fig, data = dash_plotting.plot_registry.get_plot(name, plot_cfg)
+            output.extend([fig, auxfun_plots.to_store_json(data)])
+
+        return output
+
         
 
     @app.callback(
