@@ -12,7 +12,14 @@ COMMON_CFG = {"displayModeBar": False}
 
 
 def generate_settings_block(
-    phase_type_id, aggregate_stats_id, slider_id, slider_range, include_download=False
+    phase_type_id, 
+    aggregate_stats_id, 
+    slider_id, 
+    slider_range, 
+    position_switch_id: dict | None = None, 
+    pairwise_switch_id: dict | None = None, 
+    include_download=False,
+    comparison_layout=False,
 ):
     block = html.Div(
         [
@@ -95,6 +102,38 @@ def generate_settings_block(
                         if include_download
                         else []
                     ),
+                    *(
+                        [
+                            html.Div(className="divider"),
+                            html.Div(
+                                dcc.RadioItems(
+                                    id=position_switch_id,
+                                    inline=True,
+                                    options=[
+                                        {"label": "Visits", "value": "visits"},
+                                        {"label": "Time", "value": "time"},
+                                    ],
+                                    value="visits",
+                                    labelStyle={"display": "inline-block"},
+                                ),
+                            ),
+                            html.Div(className="divider"),
+                            html.Div(
+                                dcc.RadioItems(
+                                    id=pairwise_switch_id,
+                                    inline=True,
+                                    options=[
+                                        {"label": "Social - Visits", "value": "pairwise_encounters"},
+                                        {"label": "Social - Time", "value": "time_together"},
+                                    ],
+                                    value="pairwise_encounters",
+                                    labelStyle={"display": "inline-block"},
+                                ),
+                            ),
+                        ]
+                        if comparison_layout
+                        else []
+                    ),
                 ],
                 className="centered-container",
             ),
@@ -112,15 +151,20 @@ def generate_comparison_block(side: str, slider_range: list[int]):
             dcc.Dropdown(
                 id={"type": "plot-dropdown", "side": side},
                 options=[
-                    {"label": "Visits to compartments", "value": "position_visits"},
-                    {"label": "Time spent in compartments", "value": "position_time"},
-                    {"label": "Pairwise encounters", "value": "pairwise_encounters"},
-                    {"label": "Pairwise time", "value": "pairwise_time"},
-                    {"label": "Chasings", "value": "chasings"},
-                    {"label": "In cohort sociability", "value": "sociability"},
-                    {"label": "Network graph", "value": "network"},
+                    {"label": "Ranking over time", "value": "ranking-line"},
+                    {"label": "Metrics", "value": "metrics-polar-line"},
+                    {"label": "Ranking distribution", "value": "ranking-distribution-line"},
+                    {"label": "Pairwise time", "value": "network-graph"},
+                    {"label": "Chasings heatmap", "value": "chasings-heatmap"},
+                    {"label": "Chasings diurnal", "value": "chasings-line"},
+                    {"label": "Activity Bar", "value": "activity-bar"},
+                    {"label": "Activity diurnal", "value": "activity-line"},
+                    {"label": "Cage occupancy heatmap", "value": "time-per-cage-heatmap"},
+                    {"label": "Sociability heatmap", "value": "sociability-heatmap"},
+                    {"label": "Within-cohort sociability heatmap", "value": "cohort-heatmap"},
+                    {"label": "Time spent alone", "value": "time-alone-bar"},
                 ],
-                value="position_visits",
+                value="ranking-line",
             ),
             html.Div(
                 [
@@ -129,10 +173,13 @@ def generate_comparison_block(side: str, slider_range: list[int]):
                 ]
             ),
             generate_settings_block(
-                {"type": "mode-switch", "side": side},
-                {"type": "aggregate-switch", "side": side},
-                {"type": "phase-slider", "side": side},
-                slider_range,
+                phase_type_id = {"type": "mode-switch", "side": side},
+                aggregate_stats_id = {"type": "aggregate-switch", "side": side},
+                slider_id = {"type": "phase-slider", "side": side},
+                slider_range = slider_range,
+                position_switch_id = {"type": "position-switch", "side": side},
+                pairwise_switch_id = {"type": "pairwise-switch", "side": side},
+                comparison_layout=True,
             ),
             get_fmt_download_buttons(
                 "download-btn-comparison",

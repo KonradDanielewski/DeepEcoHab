@@ -1,5 +1,12 @@
 import json
 import webbrowser
+from dataclasses import dataclass, field
+from typing import (
+    Any, 
+    Callable, 
+    Dict, 
+    Literal,
+)
 
 import networkx as nx
 import numpy as np
@@ -8,6 +15,35 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import polars as pl
 
+
+@dataclass(frozen=True)
+class PlotConfig:
+    store: dict
+    days_range: list[int]
+    phase_type: list[str]
+    agg_switch: Literal['sum', 'mean']
+    position_switch: Literal['visits', 'time']
+    pairwise_switch: Literal['time_together', 'pairwise_encounters']
+    animals: list[str]
+    colors: list[str]
+    cages: list[str]
+
+class PlotRegistry:
+    def __init__(self):
+        self._registry: Dict[str, Callable[[PlotConfig], Any]] = {}
+
+    def register(self, name: str):
+        """Decorator to register a new plot type."""
+        def wrapper(func: Callable[[PlotConfig], Any]):
+            self._registry[name] = func
+            return func
+        return wrapper
+
+    def get_plot(self, name: str, config: PlotConfig):
+        plotter = self._registry.get(name)
+        if not plotter:
+            return {}
+        return plotter(config)
 
 def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis") -> list:
     """Auxfun to create edges trace with color mapping based on edge width"""
@@ -30,8 +66,8 @@ def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis") -> list:
         source_x, source_y = pos[edge[0]]
         target_x, target_y = pos[edge[1]]
         edge_width = (
-            normalized_widths[i] * 10
-        )  # Scale width of edges to be nicely visible
+            normalized_widths[i] * 10 # connection width scaler for visivbility
+        )  
 
         edge_trace.append(
             go.Scatter(

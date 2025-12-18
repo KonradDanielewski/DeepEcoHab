@@ -371,16 +371,12 @@ def plot_within_cohort_heatmap(
 
 
 def plot_metrics_polar(
-    store: dict,
-    days_range: list[int, int],
-    phase_type: list[str],
+    df: pl.DataFrame,
     animals: list[str], 
     colors: list[str], 
     ) -> tuple[go.Figure, pl.DataFrame]:
-    plot_df = auxfun_plots.prep_polar_df(store, days_range, phase_type)
-
     fig = px.line_polar(
-        plot_df, 
+        df, 
         r='value', 
         theta='metric', 
         color='animal_id', 
@@ -393,7 +389,7 @@ def plot_metrics_polar(
     fig.update_polars(bgcolor="rgba(0,0,0,0)")
     fig.update_layout(title_y=0.95, title_x=0.45)
 
-    return fig, plot_df
+    return fig, df
 
 
 def plot_network_graph(
