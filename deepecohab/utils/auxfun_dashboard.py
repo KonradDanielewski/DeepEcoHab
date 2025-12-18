@@ -181,17 +181,12 @@ def generate_plot_download_tab():
 def generate_csv_download_tab():
     options = [
         {"label": "Main DF", "value": "main_df"},
-        {"label": "Chasing", "value": "chasings"},
-        {"label": "Time per position", "value": "time_per_position"},
-        {"label": "Visits per position", "value": "visits_per_position"},
-        {"label": "Time together", "value": "time_together"},
-        {"label": "Pairwise encounters", "value": "pairwise_encounters"},
+        {"label": "Chasing", "value": "chasings_df"},
+        {"label": "Activity", "value": "activity_df"},
+        {"label": "Pairwise meetings", "value": "pairwise_meetings"},
         {"label": "Incohort sociability", "value": "incohort_sociability"},
-        {"label": "Ranking in time", "value": "ranking_in_time"},
+        {"label": "Time alone", "value": "time_alone"},
         {"label": "Ranking", "value": "ranking"},
-        {"label": "Ranking ordinal", "value": "ranking_ordinal"},
-        {"label": "Match DF", "value": "match_df"},
-        {"label": "Binary DF", "value": "binary_df"},
     ]
 
     return dcc.Tab(
