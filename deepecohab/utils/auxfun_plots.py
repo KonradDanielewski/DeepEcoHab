@@ -13,8 +13,7 @@ def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis") -> list:
     """Auxfun to create edges trace with color mapping based on edge width"""
     edge_trace = []
 
-    edge_widths = [G.edges[edge]["chasings"] for edge in G.edges()]
-
+    edge_widths = [G.edges[edge]["chasings"] if G.edges[edge]["chasings"] is not None else 0 for edge in G.edges()]
     # Normalize edge widths to the range [0, 1] for color mapping
     max_width = max(edge_widths)
     min_width = min(edge_widths)

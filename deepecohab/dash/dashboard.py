@@ -130,9 +130,7 @@ if __name__ == "__main__":
         days_range, phase_type, aggregate_stats_switch, position_switch, pairwise_switch
     ):       
         phase_type = ([phase_type] if not phase_type == 'all' else ['dark_phase', 'light_phase'])
-
-        print(days_range, phase_type, pairwise_switch, str(aggregate_stats_switch), animals, cages)
-        
+       
         position_fig, position_data = dash_plotting.activity(
             store, days_range, phase_type, str(position_switch), str(aggregate_stats_switch)
         )
@@ -149,7 +147,7 @@ if __name__ == "__main__":
             store, days_range, phase_type, animals,
         )
         network_plot, network_plot_data = dash_plotting.network_graph(
-            store, days_range, phase_type, animals, colors
+            store, days_range, animals, colors
         )
         chasing_line_plot, chasing_line_data = dash_plotting.chasings_line(
             store, days_range, str(aggregate_stats_switch), animals, colors

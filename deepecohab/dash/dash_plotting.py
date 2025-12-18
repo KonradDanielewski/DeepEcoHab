@@ -1,4 +1,5 @@
 import math
+from itertools import product
 from typing import Literal
 
 import numpy as np
@@ -95,7 +96,11 @@ def ranking_distribution(
 
         data_dict[animal] = norm.pdf(x_axis, intermediate[1], intermediate[2])
 
-    df = pl.DataFrame(data_dict)
+    df = (
+        pl.DataFrame(data_dict)
+        .with_columns(ranking=x_axis)
+        .unpivot(variable_name='animal_id', value_name='probability_density', index='ranking')
+    )
 
     return plot_factory.plot_ranking_distribution(df, animals, colors)
     
@@ -103,7 +108,6 @@ def ranking_distribution(
 def network_graph(
     store: dict,
     days_range: list[int, int],
-    phase_type: list[str],
     animals: list[str],
     colors: list[str],
 ) -> tuple[go.Figure, pl.DataFrame]:
@@ -120,15 +124,32 @@ def network_graph(
     Returns:
         A Plotly Figure object representing the network graph.
     """
+    join_df = pl.LazyFrame(
+        (product(
+            animals,
+            animals,
+            )
+        ), 
+        schema=[
+            ('chased', pl.Enum(animals)),
+            ('chaser', pl.Enum(animals)),
+        ]
+    )
+    
     connections = (
         store['chasings_df'].lazy()
         .filter(
             pl.col('day').is_between(days_range[0], days_range[-1]),
-            pl.col('phase').is_in(phase_type)
         )
         .group_by('chased', 'chaser')
         .agg(pl.sum('chasings'))
-        .rename({'chaser': 'source', 'chased': 'target'})
+        .join(
+            join_df,
+            on=['chaser', 'chased'],
+            how='full',
+        )
+        .drop('chaser', 'chased')
+        .rename({'chaser_right': 'source', 'chased_right': 'target'})
         .sort('target', 'source') # Order is necesarry for deterministic result of node position
     ).collect()
     
@@ -136,7 +157,6 @@ def network_graph(
         store['ranking']
         .filter(
             pl.col('day') == days_range[-1],
-            pl.col('phase').is_in(phase_type)
         )
         .group_by('animal_id')
         .agg(pl.last('ordinal'))
@@ -168,6 +188,18 @@ def chasings_heatmap(
     """
     lf = store['chasings_df'].lazy()
     
+    join_df = pl.LazyFrame(
+        (product(
+            animals,
+            animals,
+            )
+        ), 
+        schema=[
+            ('chased', pl.Enum(animals)),
+            ('chaser', pl.Enum(animals)),
+        ]
+    )
+    
     match agg_switch:
         case 'sum':
             agg_func = pl.when(pl.len()>0).then(pl.sum('chasings')).alias('sum')
@@ -184,15 +216,21 @@ def chasings_heatmap(
         .group_by(['chaser', 'chased'], maintain_order=True)
         .agg(
             agg_func
-        ).collect()
+        )
+        .join(
+            join_df,
+            on=['chaser', 'chased'],
+            how='full',
+        )
+        .drop('chaser', 'chased').collect()
         .pivot(
-            on='chaser',
-            index='chased',
+            on='chaser_right',
+            index='chased_right',
             values=agg_switch,
         )
-        .drop('chased')
+        .drop('chased_right')
         .select(animals)
-    ).to_numpy()
+    )
 
     return plot_factory.plot_chasings_heatmap(img, animals)
 
@@ -358,6 +396,20 @@ def time_per_cage(
     """placeholder"""
     lf = store["cage_occupancy"].lazy()
     
+    join_df = pl.LazyFrame(
+        (product(
+            list(range(24)),
+            cages,
+            animals,
+            )
+        ), 
+        schema=[
+            ('hour', pl.Int8()),
+            ('cage', pl.Categorical()),
+            ('animal_id', pl.Enum(animals)),
+        ]
+    )
+    
     match agg_switch:
         case 'sum':
             agg = pl.sum('time_spent'),
@@ -371,16 +423,23 @@ def time_per_cage(
         .group_by(['cage', 'animal_id', 'hour'], maintain_order=True)
         .agg(
             agg  
-        ).collect()
+        )
+        .join(
+            join_df,
+            on=['hour', 'cage', 'animal_id'],
+            how='full',
+        )
+        .drop('hour', 'cage', 'animal_id')
+        .collect()
         .pivot(
-            on='hour',
-            index=['cage', 'animal_id'],
+            on='hour_right',
+            index=['cage_right', 'animal_id_right'],
             values='time_spent',
         )
-        .drop('cage', 'animal_id')
-    ).to_numpy().reshape(len(cages), len(animals), 24)
+        .drop('cage_right', 'animal_id_right')
+    )
 
-    return plot_factory.time_spent_per_cage(img, animals)
+    return plot_factory.time_spent_per_cage(img, animals, cages)
 
 
 def pairwise_sociability(
@@ -407,28 +466,48 @@ def pairwise_sociability(
         A Plotly Figure object representing the heatmaps.
     """
     lf = store['pairwise_meetings'].lazy()
+    join_df = pl.LazyFrame(
+        (product(
+            cages, 
+            animals,
+            animals,
+            )
+        ), 
+        schema=[
+            ('position', pl.Categorical()), 
+            ('animal_id', pl.Enum(animals)),
+            ('animal_id_2', pl.Enum(animals)),
+        ]
+    )
+
     img = (
         lf
-        .with_columns(pl.col(type_switch).round(2))
+        .with_columns(pl.col('time_together').round(2))
         .filter(
             pl.col('phase').is_in(phase_type),
             pl.col('day').is_between(days_range[0], days_range[-1]),
         )
         .group_by(['animal_id', 'animal_id_2', 'position'], maintain_order=True)
         .agg(
-            pl.when(pl.len()>0).then(pl.sum(type_switch)).alias('sum'),
-            pl.mean(type_switch).alias('mean')
-            
-        ).collect()
+            pl.when(pl.len()>0).then(pl.sum('time_together')).alias('sum'),
+            pl.mean('time_together').alias('mean'),
+        )
+        .join(
+            join_df,
+            on=['position', 'animal_id', 'animal_id_2'],
+            how='full',
+        )
+        .drop('position', 'animal_id', 'animal_id_2')
+        .collect()
         .pivot(
-            on='animal_id_2',
-            index=['position', 'animal_id'],
+            on='animal_id_2_right',
+            index=['position_right', 'animal_id_right'],
             values=agg_switch,
         )
-        .drop('position', 'animal_id')
-    ).to_numpy().reshape(len(cages), len(animals)-1, len(animals)-1)
+        .drop('position_right', 'animal_id_right')
+    )
 
-    return plot_factory.plot_sociability_heatmap(img, type_switch, animals)
+    return plot_factory.plot_sociability_heatmap(img, type_switch, animals, cages)
 
 def time_alone(
     store: dict,
@@ -465,6 +544,18 @@ def within_cohort_sociability(
         A Plotly Figure object representing the heatmap.
     """
     lf = store['incohort_sociability'].lazy()
+
+    join_df = pl.LazyFrame(
+        (product(
+            animals,
+            animals,
+            )
+        ), 
+        schema=[
+            ('animal_id', pl.Enum(animals)),
+            ('animal_id_2', pl.Enum(animals)),
+        ]
+    )
     img = (
         lf
         .with_columns(pl.col('sociability').round(3))
@@ -475,14 +566,20 @@ def within_cohort_sociability(
         .group_by(['animal_id', 'animal_id_2'], maintain_order=True)
         .agg(
             pl.mean('sociability').alias('mean')
-        ).collect()
+        )
+        .join(
+            join_df,
+            on=['animal_id', 'animal_id_2'],
+            how='full',
+        )
+        .drop('animal_id', 'animal_id_2').collect()
         .pivot(
-            on='animal_id_2',
-            index='animal_id',
+            on='animal_id_2_right',
+            index='animal_id_right',
             values='mean',
         )
-        .drop('animal_id')
-    ).to_numpy().reshape(len(animals)-1, len(animals)-1)
+        .drop('animal_id_right')
+    )
 
     return plot_factory.plot_within_cohort_heatmap(img, animals)
 

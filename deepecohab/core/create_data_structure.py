@@ -238,7 +238,6 @@ def create_binary_df(
     lf: pl.LazyFrame,
     save_data: bool = True,
     overwrite: bool = False,
-    return_df: bool = False,
 ) -> pl.LazyFrame:
     """Creates a long format binary DataFrame of the position of the animals.
 
