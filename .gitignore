@@ -2,6 +2,7 @@
 *.h5
 test*/
 !test_data*/
+examples/test_data_field/*.txt
 build/
 *.egg-info/
 training*
