@@ -66,6 +66,7 @@ def generate_settings_block(
                                 included=True,
                                 vertical=False,
                                 persistence=True,
+                                persistence_type='session',
                                 className="slider",
                             ),
                         ],
