@@ -228,7 +228,7 @@ def create_padded_df(
     ).drop("mask")
 
     if save_data:
-        padded_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
+        padded_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
 
     return padded_lf
 
@@ -237,8 +237,7 @@ def create_binary_df(
     config_path: str | Path | dict,
     lf: pl.LazyFrame,
     save_data: bool = True,
-    overwrite: bool = False,
-    return_df: bool = False,
+    overwrite: bool = False
 ) -> pl.LazyFrame:
     """Creates a long format binary DataFrame of the position of the animals.
 
@@ -280,17 +279,6 @@ def create_binary_df(
     ).alias("datetime")
 
     range_lf = lf.select(time_range)
-    range_lf = (
-        range_lf
-        .with_columns([
-            auxfun.get_phase(cfg),
-            auxfun.get_day(), 
-            auxfun.get_hour()
-        ])
-        .with_columns(
-            auxfun.get_phase_count()
-        )
-    )
 
     grid_lf = animals_lf.join(range_lf, how="cross", maintain_order='right_left')
 
@@ -431,7 +419,7 @@ def get_ecohab_data_structure(
     create_binary_df(config_path, lf_sorted, save_data, overwrite)
 
     if save_data:
-        lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
-        phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet")
+        lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet", engine='streaming')
 
     return lf_sorted

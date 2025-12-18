@@ -1,8 +1,6 @@
 from pathlib import Path
 
 import polars as pl
-import polars.selectors as cs
-
 from deepecohab.utils import auxfun
 
 
@@ -35,12 +33,17 @@ def calculate_cage_occupancy(
 
     cols = ["day", "hour", "cage", "animal_id"]
 
+    binary_lf = binary_lf.with_columns(
+            auxfun.get_hour(),
+            auxfun.get_day()
+        )
+
     cage_occupancy = (
-        binary_lf.group_by(cols).agg(cs.boolean().sum().alias("time_spent")).sort(cols)
+        binary_lf.group_by(cols).agg(pl.col('is_in').sum().alias("time_spent")).sort(cols)
     )
 
     if save_data:
-        cage_occupancy.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
+        cage_occupancy.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
 
     return cage_occupancy
 
@@ -81,6 +84,6 @@ def calculate_activity(
     )
 
     if save_data:
-        per_position_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
+        per_position_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
 
     return per_position_lf

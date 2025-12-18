@@ -151,8 +151,8 @@ def calculate_chasings(
     )
 
     if save_data:
-        chasings.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
-        matches.sink_parquet(results_path / "match_df.parquet", compression="lz4")
+        chasings.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        matches.sink_parquet(results_path / "match_df.parquet", compression="lz4", engine='streaming')
 
     return chasings
 
@@ -190,7 +190,7 @@ def calculate_ranking(
 
     if save_data:
         ranking.sink_parquet(
-            results_path / "ranking.parquet", compression="lz4"
+            results_path / "ranking.parquet", compression="lz4", engine='streaming'
         )
 
     return ranking

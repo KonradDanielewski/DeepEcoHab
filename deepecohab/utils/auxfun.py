@@ -94,7 +94,7 @@ def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 def get_day() -> pl.Expr:
     """Auxfun for getting the day"""
-    start_midnight = pl.col("datetime").first().dt.truncate("1d")
+    start_midnight = pl.col("datetime").min().dt.truncate("1d")
 
     return (
         (pl.col("datetime") - start_midnight)

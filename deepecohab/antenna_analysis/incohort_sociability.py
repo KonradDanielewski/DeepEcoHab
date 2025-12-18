@@ -33,22 +33,30 @@ def calculate_time_alone(
 
     binary_filtered = binary_df.filter(pl.col("is_in"))
 
-    group_cols = ["datetime", "cage", "phase", "day", "phase_count"]
-    result_cols = ["phase", "day", "phase_count", "animal_id", "cage"]
+    group_cols = ["datetime", "cage"]
+    result_cols = ["phase", "phase_count", "day", "animal_id", "cage"]
 
     time_alone = (
         binary_filtered.group_by(group_cols)
-        .agg("animal_id")
-        .filter(pl.col("animal_id").list.len() == 1)
-        .with_columns(pl.col("animal_id").list.get(0))
+        .agg(
+            pl.len().alias('n'),
+            pl.col('animal_id').first()
+        )
+        .filter(pl.col("n") == 1)
+        .with_columns(
+            auxfun.get_phase(cfg),
+            auxfun.get_day())
         .group_by(result_cols)
-        .agg(pl.col("datetime").count())
-        .rename({'datetime': 'time_alone'})
+        .agg(pl.len().alias('time_alone'))
+        .with_columns(
+            auxfun.get_phase_count()
         .sort(result_cols)
+        )
     )
 
+
     if save_data:
-        time_alone.sink_parquet(results_path / f"{key}.parquet", compression="lz4")
+        time_alone.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
 
     return time_alone
 
@@ -199,7 +207,7 @@ def calculate_incohort_sociability(
 
     if save_data:
         incohort_sociability.sink_parquet(
-            results_path / f"{key}.parquet", compression="lz4"
+            results_path / f"{key}.parquet", compression="lz4", engine='streaming'
         )
 
     return incohort_sociability
