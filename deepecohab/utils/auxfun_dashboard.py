@@ -60,7 +60,6 @@ def generate_settings_block(
                                 max=slider_range[1],
                                 value=[1, 1],
                                 count=1,
-                                step=1,
                                 tooltip={"placement": "bottom", "always_visible": True},
                                 updatemode="mouseup",
                                 included=True,
