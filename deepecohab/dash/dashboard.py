@@ -90,33 +90,32 @@ if __name__ == "__main__":
         elif tab == "tab-other":
             return comparison_tab
 
-    # Plots update callback
     @app.callback(
         [
-            Output({"graph": "position-plot"}, "figure"),
-            Output({"store": "position-plot"}, "data"),
-            Output({"graph": "activity-plot"}, "figure"),
-            Output({"store": "activity-plot"}, "data"),
-            Output({"graph": "pairwise-heatmap"}, "figure"),
-            Output({"store": "pairwise-heatmap"}, "data"),
+            Output({"graph": "ranking-line"}, "figure"),
+            Output({"store": "ranking-line"}, "data"),
+            Output({"graph": "metrics-polar-line"}, "figure"),
+            Output({"store": "metrics-polar-line"}, "data"),
+            Output({"graph": "ranking-distribution-line"}, "figure"),
+            Output({"store": "ranking-distribution-line"}, "data"),
+            Output({"graph": "network-graph"}, "figure"),
+            Output({"store": "network-graph"}, "data"),           
             Output({"graph": "chasings-heatmap"}, "figure"),
             Output({"store": "chasings-heatmap"}, "data"),
+            Output({"graph": "chasings-line"}, "figure"),
+            Output({"store": "chasings-line"}, "data"),
+            Output({"graph": "activity-bar"}, "figure"),
+            Output({"store": "activity-bar"}, "data"),
+            Output({"graph": "activity-line"}, "figure"),
+            Output({"store": "activity-line"}, "data"),\
+            Output({"graph": "time-per-cage-heatmap"}, "figure"),
+            Output({"store": "time-per-cage-heatmap"}, "data"),
             Output({"graph": "sociability-heatmap"}, "figure"),
             Output({"store": "sociability-heatmap"}, "data"),
-            Output({"graph": "network"}, "figure"),
-            Output({"store": "network"}, "data"),
-            Output({"graph": "chasings-plot"}, "figure"),
-            Output({"store": "chasings-plot"}, "data"),
-            Output({"graph": "ranking-time-plot"}, "figure"),
-            Output({"store": "ranking-time-plot"}, "data"),
-            Output({"graph": "ranking-distribution"}, "figure"),
-            Output({"store": "ranking-distribution"}, "data"),
-            Output({"graph": "time-per-cage"}, "figure"),
-            Output({"store": "time-per-cage"}, "data"),
-            Output({"graph": "metrics"}, "figure"),
-            Output({"store": "metrics"}, "data"),
-            Output({"graph": "time-alone"}, "figure"),
-            Output({"store": "time-alone"}, "data"),
+            Output({"graph": "cohort-heatmap"}, "figure"),
+            Output({"store": "cohort-heatmap"}, "data"),
+            Output({"graph": "time-alone-bar"}, "figure"),
+            Output({"store": "time-alone-bar"}, "data"),
         ],
         [
             Input("phase-slider", "value"),
@@ -127,75 +126,30 @@ if __name__ == "__main__":
         ],
     )
     def update_plots(
-        days_range, phase_type, aggregate_stats_switch, position_switch, pairwise_switch
+        days_range, 
+        phase_type, 
+        aggregate_stats_switch, 
+        position_switch, 
+        pairwise_switch,
     ):       
         phase_type = ([phase_type] if not phase_type == 'all' else ['dark_phase', 'light_phase'])
 
-        print(days_range, phase_type, pairwise_switch, str(aggregate_stats_switch), animals, cages)
+        plot_cfg = auxfun_plots.PlotConfig(
+            store, days_range, phase_type, aggregate_stats_switch,
+            position_switch, pairwise_switch, animals, colors, cages,
+        )
         
-        position_fig, position_data = dash_plotting.activity(
-            store, days_range, phase_type, str(position_switch), str(aggregate_stats_switch)
-        )
-        activity_fig, activity_data = dash_plotting.activity_line(
-            store, days_range, str(aggregate_stats_switch), animals, colors
-        )
-        pairwise_plot, pairwise_data = dash_plotting.pairwise_sociability(
-            store, days_range, phase_type, str(pairwise_switch), str(aggregate_stats_switch), animals, cages,
-        )
-        chasings_plot, chasings_data = dash_plotting.chasings_heatmap(
-            store, days_range, phase_type, str(aggregate_stats_switch), animals,
-        )
-        incohort_soc_plot, incohort_soc_data = dash_plotting.within_cohort_sociability(
-            store, days_range, phase_type, animals,
-        )
-        network_plot, network_plot_data = dash_plotting.network_graph(
-            store, days_range, phase_type, animals, colors
-        )
-        chasing_line_plot, chasing_line_data = dash_plotting.chasings_line(
-            store, days_range, str(aggregate_stats_switch), animals, colors
-        )
-        ranking_line, ranking_data = dash_plotting.ranking_over_time(
-            store, animals, colors
-        )
-        ranking_distribution, ranking_distribution_data = dash_plotting.ranking_distribution(
-            store, days_range, animals, colors
-        )
-        time_per_cage, time_per_cage_data = dash_plotting.time_per_cage(
-            store, days_range, str(aggregate_stats_switch), animals, cages,
-        )
-        metrics_fig, metrics_data = dash_plotting.polar_metrics(
-            store, days_range, phase_type, animals, colors
-        )
-        time_alone_fig, time_alone_data = dash_plotting.time_alone(
-            store, days_range, phase_type, cages
-        )
+        plot_names = list(dash_plotting.plot_registry._registry.keys())
+        
+        output = []
+        
+        for name in plot_names:
+            fig, data = dash_plotting.plot_registry.get_plot(name, plot_cfg)
+            output.extend([fig, auxfun_plots.to_store_json(data)])
 
-        return [
-            position_fig,
-            auxfun_plots.to_store_json(position_data),
-            activity_fig,
-            auxfun_plots.to_store_json(activity_data),
-            pairwise_plot,
-            auxfun_plots.to_store_json(pairwise_data),
-            chasings_plot,
-            auxfun_plots.to_store_json(chasings_data),
-            incohort_soc_plot,
-            auxfun_plots.to_store_json(incohort_soc_data),
-            network_plot,
-            auxfun_plots.to_store_json(network_plot_data),
-            chasing_line_plot,
-            auxfun_plots.to_store_json(chasing_line_data),
-            ranking_line,
-            auxfun_plots.to_store_json(ranking_data),
-            ranking_distribution,
-            auxfun_plots.to_store_json(ranking_distribution_data),
-            time_per_cage,
-            auxfun_plots.to_store_json(time_per_cage_data),
-            metrics_fig,
-            auxfun_plots.to_store_json(metrics_data),
-            time_alone_fig,
-            auxfun_plots.to_store_json(time_alone_data),
-        ]
+        return output
+
+        
 
     @app.callback(
         [
@@ -207,6 +161,8 @@ if __name__ == "__main__":
             Input({"type": "mode-switch", "side": MATCH}, "value"),
             Input({"type": "phase-slider", "side": MATCH}, "value"),
             Input({"type": "aggregate-switch", "side": MATCH}, "value"),
+            Input({"type": "position-switch", "side": MATCH}, "value"),
+            Input({"type": "pairwise-switch", "side": MATCH}, "value"),
         ],
     )
     def update_comparison_plot(
@@ -214,19 +170,18 @@ if __name__ == "__main__":
         phase_type: str,
         days_range: list[int, int], 
         aggregate_stats_switch: Literal['sum', 'mean'], 
+        position_switch: Literal["time", "visits"],
+        pairwise_switch: Literal["time_together", "pairwise_encounters"],
     ) -> tuple[go.Figure, str]:
         phase_type = ([phase_type] if not phase_type == 'all' else ['dark_phase', 'light_phase'])
-
-        plt, df = dash_plotting.get_single_plot(
-            store,
-            days_range,
-            phase_type,
-            plot_type,
-            aggregate_stats_switch,
-            animals,
-            colors,
-            cages
+           
+        plot_cfg = auxfun_plots.PlotConfig(
+          store, days_range, phase_type, aggregate_stats_switch,
+          position_switch, pairwise_switch, animals, colors, cages,
         )
+        plt, df = dash_plotting.plot_registry.get_plot(plot_type, plot_cfg)
+
+    
         return plt, auxfun_plots.to_store_json(df)
 
     @app.callback(

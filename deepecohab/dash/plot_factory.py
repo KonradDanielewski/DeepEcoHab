@@ -73,7 +73,7 @@ def plot_time_alone(df: pl.DataFrame, cages: list[str]) -> tuple[go.Figure, pl.D
     )
     
     fig.update_xaxes(title_text='<b>Animal ID</b>')
-    fig.update_yaxes(title_text='placeholder')
+    fig.update_yaxes(title_text='<b>Time alone [s]</b>')
     
     return fig, df
 
@@ -224,9 +224,14 @@ def plot_ranking_distribution(
     """Plots line graph of ranking distribution with shaded area."""  
     fig = px.line(
         df,
+        x='ranking',
+        y='probability_density',
+        color='animal_id',
         color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+        hover_data=['animal_id', 'ranking', 'probability_density'],
     )
     fig.update_traces(fill='tozeroy')
+
 
     fig.update_layout(
         title='<b>Ranking probability distribution</b>',
@@ -248,10 +253,11 @@ def plot_ranking_distribution(
 def time_spent_per_cage(
     img: np.ndarray,
     animals: list[str], 
+    cages: list[str],
 ) -> tuple[go.Figure, pl.DataFrame]:
     """placeholder"""
     fig = px.imshow(
-        img, 
+        img.to_numpy().reshape(len(cages), len(animals), 24), # 24 hours in a day, 
         y=animals, 
         facet_col=0, 
         facet_col_wrap=2, 
@@ -269,9 +275,7 @@ def time_spent_per_cage(
         ])
     )
     
-    df = pl.DataFrame(img.reshape(-1, len(animals)-1), schema={animal: pl.Float32 for animal in animals[1:]})
-    
-    return fig, df
+    return fig, img
 
 
 def plot_chasings_heatmap(
@@ -282,7 +286,7 @@ def plot_chasings_heatmap(
     z_label = 'Number: %{z}'
 
     fig = px.imshow(
-        img,
+        img.to_numpy(),
         x=animals,
         y=animals,
         zmin=0, 
@@ -297,16 +301,15 @@ def plot_chasings_heatmap(
             z_label,
         ])
     )
-    
-    df = pl.DataFrame(img)
 
-    return fig, df
+    return fig, img
 
 
 def plot_sociability_heatmap(
     img: np.array, 
     type_switch: Literal['pairwise_encounters', 'time_together'], 
     animals: list[str],
+    cages: list[str],
 ) -> tuple[go.Figure, pl.DataFrame]:
     """Plots heatmaps for pairwise encounters or time spent together."""
     match type_switch:
@@ -318,10 +321,10 @@ def plot_sociability_heatmap(
             pairwise_z_label = 'Time [s]: %{z}'
     
     fig = px.imshow(
-        img,
+        img.to_numpy().reshape(len(cages), len(animals), len(animals)),
         zmin=0,
-        x=animals[1:],
-        y=animals[:-1],
+        x=animals,
+        y=animals,
         facet_col=0,
         facet_col_wrap=2,
         color_continuous_scale='Viridis',
@@ -338,10 +341,8 @@ def plot_sociability_heatmap(
             pairwise_z_label,
         ])
     )
-    
-    df = pl.dataframe.DataFrame(img.reshape(-1, len(animals)-1), schema={animal: pl.Float32 for animal in animals[1:]})
 
-    return fig, df
+    return fig, img
 
 
 def plot_within_cohort_heatmap(
@@ -350,10 +351,10 @@ def plot_within_cohort_heatmap(
 ) -> tuple[go.Figure, pl.DataFrame]:
     """Plots heatmap for within-cohort sociability."""
     fig = px.imshow(
-        img,
+        img.to_numpy().reshape(len(animals), len(animals)),
         zmin=0, 
-        x=animals[1:],
-        y=animals[:-1],
+        x=animals,
+        y=animals,
         color_continuous_scale="Viridis",
         title='<b>Within-cohort sociability</b>',
     )
@@ -365,23 +366,17 @@ def plot_within_cohort_heatmap(
             'Sociability: %{z}',
         ])
     )
-
-    df = pl.dataframe.DataFrame(img.reshape(-1, len(animals)-1), schema={animal: pl.Float32 for animal in animals[1:]})
     
-    return fig, df
+    return fig, img
 
 
 def plot_metrics_polar(
-    store: dict,
-    days_range: list[int, int],
-    phase_type: list[str],
+    df: pl.DataFrame,
     animals: list[str], 
     colors: list[str], 
     ) -> tuple[go.Figure, pl.DataFrame]:
-    plot_df = auxfun_plots.prep_polar_df(store, days_range, phase_type)
-
     fig = px.line_polar(
-        plot_df, 
+        df, 
         r='value', 
         theta='metric', 
         color='animal_id', 
@@ -394,7 +389,7 @@ def plot_metrics_polar(
     fig.update_polars(bgcolor="rgba(0,0,0,0)")
     fig.update_layout(title_y=0.95, title_x=0.45)
 
-    return fig, plot_df
+    return fig, df
 
 
 def plot_network_graph(
@@ -406,12 +401,16 @@ def plot_network_graph(
     G = nx.from_pandas_edgelist(connections, create_using=nx.DiGraph, edge_attr='chasings')
     pos = nx.spring_layout(G, k=None, iterations=300, seed=42, weight='chasings', method='energy')
 
-    node_pos = pos.copy()
+    edge_trace = auxfun_plots.create_edges_trace(G, pos)
     
     for animal in animals:
-        node_pos[animal] = np.append(pos[animal], nodes.filter(pl.col('animal_id') == animal).select('ordinal').item())
-    node_trace = auxfun_plots.create_node_trace(node_pos, colors, animals)
-    edge_trace = auxfun_plots.create_edges_trace(G, pos)
+        try:
+            ordinal = nodes.filter(pl.col('animal_id') == animal).select('ordinal').item()
+        except ValueError:
+            ordinal = 0
+        pos[animal] = np.append(pos[animal], ordinal)
+    node_trace = auxfun_plots.create_node_trace(pos, colors, animals)
+    
     
     fig = go.Figure(
             data=edge_trace + [node_trace],

@@ -30,19 +30,21 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
                             dbc.Col(
                                 [
                                     auxfun_dashboard.generate_standard_graph(
-                                        "ranking-time-plot", css_class="plot-500"
+                                        "ranking-line", css_class="plot-500"
                                     ),
                                     auxfun_dashboard.generate_standard_graph(
-                                        "ranking-distribution"
+                                        "ranking-distribution-line"
                                     ),
                                 ],
                                 width=6,
                             ),
                             dbc.Col(
                                 [
-                                    auxfun_dashboard.generate_standard_graph("metrics"),
                                     auxfun_dashboard.generate_standard_graph(
-                                        "network", css_class="plot-500"
+                                        "metrics-polar-line", css_class="plot-500"
+                                    ),
+                                    auxfun_dashboard.generate_standard_graph(
+                                        "network-graph", css_class="plot-500"
                                     ),
                                 ],
                                 width=6,
@@ -60,7 +62,7 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
                             ),
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                    "chasings-plot"
+                                    "chasings-line"
                                 ),
                                 width=6,
                             ),
@@ -89,13 +91,13 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
                         [
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                    "position-plot"
+                                    "activity-bar"
                                 ),
                                 width=6,
                             ),
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                    "activity-plot"
+                                    "activity-line"
                                 ),
                                 width=6,
                             ),
@@ -106,7 +108,7 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
                         [
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                    "time-per-cage", css_class="plot-500"
+                                    "time-per-cage-heatmap", css_class="plot-500"
                                 ),
                                 width=12,
                             ),
@@ -137,13 +139,13 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
                         [
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                    "pairwise-heatmap", css_class="plot-600"
+                                    "sociability-heatmap", css_class="plot-600"
                                 ),
                                 width=6,
                             ),
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                        "sociability-heatmap", css_class="plot-600"
+                                        "cohort-heatmap", css_class="plot-600"
                                     ),
                                 width=6,
                                 ),
@@ -155,7 +157,7 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
                         [
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                        "time-alone", css_class="plot-500"
+                                        "time-alone-bar", css_class="plot-500"
                                     ),
                                 width=6,
                                 ),
@@ -176,7 +178,9 @@ def generate_comparison_layout(phase_range: list[int, int]) -> html.Div:
             dbc.Row(
                 [
                     dbc.Col(
-                        auxfun_dashboard.generate_comparison_block("left", phase_range),
+                        auxfun_dashboard.generate_comparison_block(
+                            "left", phase_range
+                        ),
                         width=6,
                     ),
                     dbc.Col(

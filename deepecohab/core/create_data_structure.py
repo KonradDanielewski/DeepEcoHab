@@ -237,7 +237,7 @@ def create_binary_df(
     config_path: str | Path | dict,
     lf: pl.LazyFrame,
     save_data: bool = True,
-    overwrite: bool = False
+    overwrite: bool = False,
 ) -> pl.LazyFrame:
     """Creates a long format binary DataFrame of the position of the animals.
 

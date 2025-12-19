@@ -141,7 +141,7 @@ def calculate_pairwise_meetings(
     ).sort(["phase", "day", "phase_count", "position", "animal_id", "animal_id_2"])
 
     if save_data:
-        pairwise_meetings.sink_parquet(results_path, compression="lz4", engine='streaming')
+        pairwise_meetings.sink_parquet(results_path, compression="lz4")
 
     return pairwise_meetings
 
