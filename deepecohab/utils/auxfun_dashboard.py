@@ -12,14 +12,14 @@ COMMON_CFG = {"displayModeBar": False}
 
 
 def generate_settings_block(
-    phase_type_id, 
-    aggregate_stats_id, 
-    slider_id, 
-    slider_range, 
-    position_switch_id: dict | None = None, 
-    pairwise_switch_id: dict | None = None, 
-    include_download=False,
-    comparison_layout=False,
+    phase_type_id: dict|str,  
+    aggregate_stats_id: dict|str,  
+    slider_id: dict|str,  
+    slider_range: list[int, int],  
+    position_switch_id: dict|str|None = None, 
+    pairwise_switch_id: dict|str|None = None, 
+    include_download: bool = False,
+    comparison_layout: bool = False,
 ):
     block = html.Div(
         [
@@ -65,9 +65,15 @@ def generate_settings_block(
                                 id=slider_id,
                                 min=slider_range[0],
                                 max=slider_range[1],
-                                value=[1, 1],
+                                value=[slider_range[0], slider_range[1]],
+                                step=1,
                                 count=1,
-                                tooltip={"placement": "bottom", "always_visible": True},
+                                marks={i: str(i) for i in slider_range},
+                                tooltip={
+                                    "placement": "bottom",
+                                    "always_visible": True,
+                                    "style": {"color": "LightSteelBlue", "fontSize": "12px"},
+                                },
                                 updatemode="mouseup",
                                 included=True,
                                 vertical=False,

@@ -107,7 +107,7 @@ if __name__ == "__main__":
             Output({"graph": "activity-bar"}, "figure"),
             Output({"store": "activity-bar"}, "data"),
             Output({"graph": "activity-line"}, "figure"),
-            Output({"store": "activity-line"}, "data"),\
+            Output({"store": "activity-line"}, "data"),
             Output({"graph": "time-per-cage-heatmap"}, "figure"),
             Output({"store": "time-per-cage-heatmap"}, "data"),
             Output({"graph": "sociability-heatmap"}, "figure"),

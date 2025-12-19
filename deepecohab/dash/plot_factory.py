@@ -383,6 +383,7 @@ def plot_metrics_polar(
         line_close=True,
         line_shape='spline', 
         color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+        range_r=[df['value'].min() - 0.5, df['value'].max() + 0.5],
         title='<b>Social dominance metrics</b>'
     )
 
@@ -399,8 +400,8 @@ def plot_network_graph(
 ) -> tuple[go.Figure, pl.DataFrame]:
     """Plots network graph of social structure."""
     G = nx.from_pandas_edgelist(connections, create_using=nx.DiGraph, edge_attr='chasings')
-    pos = nx.spring_layout(G, k=None, iterations=300, seed=42, weight='chasings', method='energy')
-
+    pos = nx.spring_layout(G, k=None, iterations=50, seed=42, weight='chasings', method='energy')
+    
     edge_trace = auxfun_plots.create_edges_trace(G, pos)
     
     for animal in animals:
@@ -410,7 +411,6 @@ def plot_network_graph(
             ordinal = 0
         pos[animal] = np.append(pos[animal], ordinal)
     node_trace = auxfun_plots.create_node_trace(pos, colors, animals)
-    
     
     fig = go.Figure(
             data=edge_trace + [node_trace],
