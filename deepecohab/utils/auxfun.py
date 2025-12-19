@@ -8,6 +8,9 @@ import polars as pl
 import toml
 
 
+DATA_KEYS = ['activity_df', 'binary_df', 'cage_occupancy', 'chasings_df', 'incohort_sociability', 'main_df', 'match_df', 'padded_df', 'pairwise_meetings', 'phase_durations', 'ranking', 'time_alone']
+    
+
 def get_data_paths(data_path: Path) -> list:
     """Auxfun to load all raw data paths"""
     data_files = list(data_path.glob("COM*.txt"))
