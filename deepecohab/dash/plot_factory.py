@@ -36,6 +36,7 @@ def plot_activity(
                 title=position_title,
                 barmode='group',
             )
+            fig.update_layout(barcornerradius=15)
         case 'mean':
             fig = px.box(
                 df,
@@ -56,12 +57,9 @@ def plot_activity(
     return fig, df
 
 
-def plot_time_alone(df: pl.DataFrame, cages: list[str]) -> tuple[go.Figure, pl.DataFrame]:
+def plot_time_alone(df: pl.DataFrame, colors: list[str]) -> tuple[go.Figure, pl.DataFrame]:
     """Plot time alone as a relative bar plot TODO: consider normalization
     for visualization and hover info with real value"""
-    
-    colors = auxfun_plots.color_sampling(cages)
-    
     fig = px.bar(
         df, 
         x='animal_id', 
@@ -74,6 +72,7 @@ def plot_time_alone(df: pl.DataFrame, cages: list[str]) -> tuple[go.Figure, pl.D
     
     fig.update_xaxes(title_text='<b>Animal ID</b>')
     fig.update_yaxes(title_text='<b>Time alone [s]</b>')
+    fig.update_layout(barcornerradius=15)
     
     return fig, df
 
@@ -90,18 +89,16 @@ def plot_sum_line_per_hour(
         case 'activity':
             title = "<b>Activity over time</b>"
             y_axes_label = "Antenna detections"
-            y = 'total_detections'
             color_col = 'animal_id'
         case 'chasings':
             title = "<b>Chasing over time</b>"
             y_axes_label = "# of chasing events"
-            y = 'total_chasings'
             color_col = 'chaser'
 
     fig = px.line(
         df, 
         x="hour", 
-        y=y, 
+        y='total', 
         color=color_col,
         color_discrete_map={animal: color for animal, color in zip(animals, colors)},
         category_orders={color_col: animals}, 
@@ -125,12 +122,10 @@ def plot_mean_line_per_hour(
         case 'activity':
             title = "<b>Activity over time</b>"
             y_axes_label = "Antenna detections"
-            y_col = 'mean_detections'
             animal_col = 'animal_id'
         case 'chasings':
             title = "<b>Chasing over time</b>"
             y_axes_label = "# of chasing events"
-            y_col = 'mean_chasings'
             animal_col = 'chaser'
 
     fig = go.Figure()
@@ -140,8 +135,8 @@ def plot_mean_line_per_hour(
         
         x = animal_df['hour'].to_list()
         x_rev = x[::-1]
-        y = animal_df[y_col].to_list()
-        y_upper = animal_df["upper"].to_list() 
+        y = animal_df['mean'].to_list()
+        y_upper = animal_df["upper"].to_list()
         y_lower = animal_df["lower"].to_list()[::-1]
 
         shade_color = color.replace('rgb', 'rgba').replace(')', ', 0.2)') # shaded region is SEM

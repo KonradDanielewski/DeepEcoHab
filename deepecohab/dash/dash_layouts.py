@@ -5,6 +5,7 @@ from deepecohab.utils import auxfun_dashboard
 
 
 def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
+    """Generates layout of the main dashboard tab"""
     return html.Div(
         [
             auxfun_dashboard.generate_settings_block(
@@ -172,6 +173,7 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
 
 
 def generate_comparison_layout(phase_range: list[int, int]) -> html.Div:
+    """Generates layout for the comparisons tab"""
     return html.Div(
         [
             html.H2("Plot Comparison", className="text-center my-4"),

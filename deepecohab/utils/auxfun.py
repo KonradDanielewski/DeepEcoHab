@@ -3,6 +3,7 @@ import importlib
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 import toml
@@ -19,7 +20,7 @@ def get_data_paths(data_path: Path) -> list:
     return data_files
 
 
-def read_config(config_path: str | Path | dict) -> dict:
+def read_config(config_path: str | Path | dict[str, Any]) -> dict:
     """Auxfun to check validity of the passed config_path variable (config path or dict)"""
     if isinstance(config_path, (str, Path)):
         cfg = toml.load(config_path)
@@ -33,7 +34,7 @@ def read_config(config_path: str | Path | dict) -> dict:
 
 
 def load_ecohab_data(
-    config_path: str, key: str, return_df: bool = False
+    config_path: str | Path | dict[str, Any], key: str, return_df: bool = False
 ) -> pl.LazyFrame | pl.DataFrame:
     """Loads already analyzed main data structure
 
@@ -110,7 +111,7 @@ def get_day() -> pl.Expr:
 
 
 
-def get_phase(cfg: dict) -> pl.Expr:
+def get_phase(cfg: dict[str, Any]) -> pl.Expr:
     """Auxfun for getting the phase"""
     start_str, end_str = list(cfg["phase"].values())
     phase_names = list(cfg["phase"].keys())
@@ -149,7 +150,7 @@ def get_phase_count() -> pl.Expr:
 
 
 def set_animal_ids(
-    config_path: str,
+    config_path: str | Path | dict[str, Any],
     lf: pl.LazyFrame,
     animal_ids: list | None = None,
     sanitize_animal_ids: bool = False,
@@ -193,7 +194,7 @@ def set_animal_ids(
     return lf
 
 
-def append_start_end_to_config(config_path: str, lf: pl.LazyFrame) -> dict:
+def append_start_end_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFrame) -> dict[str, Any]:
     """Auxfun to append start and end datetimes of the experiment if not user provided.
 
     Returns:
@@ -224,7 +225,7 @@ def append_start_end_to_config(config_path: str, lf: pl.LazyFrame) -> dict:
     return cfg
 
 
-def add_cages_to_config(config_path: str) -> None:
+def add_cages_to_config(config_path: str | Path | dict[str, Any]) -> None:
     """Auxfun to add cage names to config for reading convenience"""
     cfg = read_config(config_path)
 
@@ -235,7 +236,7 @@ def add_cages_to_config(config_path: str) -> None:
         cfg["cages"] = sorted(cages)
         toml.dump(cfg, config)
     
-def add_days_to_config(config_path: str | Path, lf: pl.LazyFrame) -> None:
+def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFrame) -> None:
     """Auxfun to add days range to config for reading convenience"""
     cfg = read_config(config_path)
 
@@ -246,7 +247,7 @@ def add_days_to_config(config_path: str | Path, lf: pl.LazyFrame) -> None:
         toml.dump(cfg, config)
 
 
-def run_dashboard(config_path: str | dict):
+def run_dashboard(config_path: str | Path | dict[str, Any]):
     """Auxfun to open dashboard for experiment from provided config"""
     cfg = read_config(config_path)
     data_path = Path(cfg["project_location"]) / "results"
@@ -285,7 +286,7 @@ def get_time_spent_expression(
     return expr.alias(alias) if alias is not None else expr
 
 
-def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict) -> pl.LazyFrame:
+def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
     """Auxfun to map directional tunnels in a LazyFrame to undirected ones"""
     tunnels = cfg["tunnels"]
 

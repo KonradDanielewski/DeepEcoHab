@@ -15,10 +15,16 @@ plot_registry = PlotRegistry()
 
 @plot_registry.register("ranking-line")
 def ranking_over_time(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a line plot of the ranking distribution over time.
+    """Generates a line plot showing the evolution of animal rankings over time.
 
-    Returns:
-        A Plotly Figure object representing the line plot.
+        Tracks the ordinal rank of each animal across days and hours to visualize 
+        changes in social hierarchy.
+
+        Args:
+            cfg: Configuration object containing 'ranking' data, animal IDs, and colors.
+
+        Returns:
+            A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
     lf = cfg.store['ranking'].lazy()
 
@@ -33,34 +39,41 @@ def ranking_over_time(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
         )
     ).collect()
 
-    return plot_factory.plot_ranking_line(df, cfg.colors, cfg.animals)
+    return plot_factory.plot_ranking_line(df, cfg.animal_colors, cfg.animals)
 
 
 @plot_registry.register("metrics-polar-line")
 def polar_metrics(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a polar plot of different social dominance related metrics.
+    """Generates a polar (radar) plot comparing various social dominance metrics.
 
-    Shows a z-scored value correspondings to specific metrics, currently: 
-    chasings, being chased, activity, time alone and time together. Each line represents a different animal
+    Visualizes z-scored values for chasing behavior, activity levels, and social 
+    proximity (time alone vs. together) for each animal on a unified circular scale.
+
+    Args:
+        cfg: Configuration object with 'days_range', 'phase_type', and color mappings.
 
     Returns:
-        A Plotly Figure object representing the metrics.
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
     df = auxfun_plots.prep_polar_df(cfg.store, cfg.days_range, cfg.phase_type)
     
     return plot_factory.plot_metrics_polar(
-        df, cfg.animals, cfg.colors
+        df, cfg.animals, cfg.animal_colors
     )
 
 
 @plot_registry.register("ranking-distribution-line")
 def ranking_distribution(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a line plot of the ranking distribution.
+    """Generates a line plot of the ranking probability distributions.
 
-    Shows the probability distribution for the ranking of each animal for the last day in range.
+    Fits and displays the probability density functions (PDF) for each animal's 
+    ranking based on Mu and Sigma values for the final day in the selected range.
+
+    Args:
+        cfg: Configuration object containing Gaussian parameters (mu, sigma) in 'ranking'.
 
     Returns:
-        A Plotly Figure object representing the line plot.
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
     data_dict = {}
     x_axis = np.arange(-10, 50, 0.1)
@@ -78,18 +91,21 @@ def ranking_distribution(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
         .unpivot(variable_name='animal_id', value_name='probability_density', index='ranking')
     )
 
-    return plot_factory.plot_ranking_distribution(df, cfg.animals, cfg.colors)
+    return plot_factory.plot_ranking_distribution(df, cfg.animals, cfg.animal_colors)
    
     
 @plot_registry.register("network-graph")
 def network_graph(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a network graph.
+    """Generates a social network graph of animal interactions.
 
-    Nodes are sized by ranking and edges are normalized based on chasings. 
-    It outputs a graph for the last ranking in the day range and the sum of all chasings up to this day.
+    Visualizes hierarchy and aggression where node size represents ranking 
+    and edges represent the sum of chasing events in a directional fashion.
+
+    Args:
+        cfg: Configuration object containing interaction data and ranking ordinal.
 
     Returns:
-        A Plotly Figure object representing the network graph.
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
     join_df = pl.LazyFrame(
         (product(
@@ -130,18 +146,23 @@ def network_graph(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     )
 
     return plot_factory.plot_network_graph(
-        connections, nodes, cfg.animals, cfg.colors
+        connections, nodes, cfg.animals, cfg.animal_colors
     )
     
 
 @plot_registry.register("chasings-heatmap")    
 def chasings_heatmap(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a heatmap of chasings.
+    """Generates a chaser-vs-chased interaction heatmap.
 
-    Shows the number of chasings based on the specified data slice.
+    Displays a matrix of agonistic interactions, where rows and columns represent 
+    individual animals and cells show the sum or mean of chasing events. Columns 
+    represent Chasers and rows represent Chased.
+
+    Args:
+        cfg: Configuration object defining the 'agg_switch' (sum/mean) and time filters.
 
     Returns:
-        A Plotly Figure object representing the heatmap.
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
     lf = cfg.store['chasings_df'].lazy()
     
@@ -194,55 +215,88 @@ def chasings_heatmap(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 
 @plot_registry.register("chasings-line")   
 def chasings_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a line plot of chasings per hour.
+    """Generates a line plot of chasing frequency per hour.
 
-    This function filters data based on the specified phase range and generates a line plot
-    showing the number of chasings per hour. The aggregation can be either the sum or the mean.
+    Shows the diurnal rhythm of aggression. For mean includes a shaded area representing 
+    the Standard Error of the Mean (SEM) across the selected days.
+
+    Args:
+        cfg: Configuration object containing 'chasings_df' and the aggregation toggle.
 
     Returns:
-        A Plotly Figure object representing the line plot.
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
     n_days = len(range(cfg.days_range[0], cfg.days_range[-1])) + 1
+
+    join_df = pl.LazyFrame(
+        (product(
+            cfg.animals,
+            cfg.animals,
+            list(range(24)),
+            list(range(cfg.days_range[0], cfg.days_range[-1] + 1)),
+            )
+        ), 
+        schema=[
+            ('chased', pl.Enum(cfg.animals)),
+            ('chaser', pl.Enum(cfg.animals)),
+            ('hour', pl.Int8()),
+            ('day', pl.Int16()),
+        ]
+    )
+
     lf = cfg.store['chasings_df'].lazy()
     df = (
         lf
-        .filter(pl.col('day').is_between(cfg.days_range[0], cfg.days_range[-1]))
-        .group_by(["hour", "chaser"])
+        .filter(pl.col('day').is_between(cfg.days_range[0], cfg.days_range[1]))
+        .join(
+            join_df,
+            on=['chaser', 'chased', 'hour', 'day'],
+            how='full',
+        )
+        .drop(["hour", "chaser", "chased", "day"])
+        .rename({"hour_right": "hour", "chaser_right": "chaser", "chased_right": "chased", "day_right": "day"})
+        .group_by('day', 'hour', 'chaser')
         .agg(
-            pl.sum("chasings").alias("total_chasings"),
-            (pl.sum("chasings") / n_days).alias("mean_chasings"),
-            (pl.std("chasings") / math.sqrt(n_days)).fill_null(0).alias("sem")
+            pl.sum('chasings')
+        )
+        .group_by('hour', 'chaser')
+        .agg(
+            pl.sum('chasings').alias('total'),
+            pl.mean('chasings').alias('mean'),
+            (pl.std('chasings') / math.sqrt(n_days)).alias('sem'),
         )
         .with_columns(
-            (pl.col('mean_chasings') - pl.col('sem')).alias('lower'),
-            (pl.col('mean_chasings') + pl.col('sem')).alias('upper')
+            (pl.col('mean') - pl.col('sem')).alias('lower'),
+            (pl.col('mean') + pl.col('sem')).alias('upper')
         )
-        .sort(['hour', "chaser"])
+        .sort('chaser', 'hour')
     ).collect()
 
     match cfg.agg_switch:
         case "sum":
             return plot_factory.plot_sum_line_per_hour(
-                df, cfg.animals, cfg.colors, "chasings"
+                df, cfg.animals, cfg.animal_colors, "chasings"
             )
         case "mean":
             return plot_factory.plot_mean_line_per_hour(
-                df, cfg.animals, cfg.colors, "chasings"
+                df, cfg.animals, cfg.animal_colors, "chasings"
             )
 
 
 @plot_registry.register("activity-bar")   
 def activity(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a bar plot or box plot of activity.
+    """Generates a bar or box plot of animal activity levels by position.
 
-    This function generates either a bar plot or a box plot of activity based on the specified data slice (phase type and range).
-    For 'mean', a box plot is created showing the mean number of entries or mean time spent per position.
-    For 'sum', a bar plot is created showing the sum of entries or time spent per position.
+    Quantifies behavior either by the number of visits to specific locations 
+    or the total time spent in those locations.
+
+    Args:
+        cfg: Configuration object containing 'position_switch' (visits/time) 
+            and 'agg_switch'.
 
     Returns:
-        A Plotly Figure object representing the bar plot or box plot.
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
-    
     lf = cfg.store['activity_df'].lazy()
     df = (
         lf
@@ -258,40 +312,65 @@ def activity(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
         .sort(['position'])
     ).collect()
 
-    x = np.linspace(0, 1, len(df.select("position").unique()))
-    colors = px.colors.sample_colorscale("Phase", x)
-
-    return plot_factory.plot_activity(df, colors, cfg.position_switch, cfg.agg_switch)
+    return plot_factory.plot_activity(df, cfg.position_colors, cfg.position_switch, cfg.agg_switch)
 
 
 @plot_registry.register("activity-line")   
 def activity_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a line plot of cage visits per hour.
+    """Generates a line plot of diurnal activity based on antenna crossings.
 
-    This function filters data based on the specified phase range and generates a line plot
-    showing the activity (antenna reads) per hour. The aggregation can be either the sum or the mean.
+    Plots the number of antenna detections per hour, allowing for 
+    comparison of circadian rhythms between animals. For mean includes a shaded area 
+    representing the Standard Error of the Mean (SEM) across the selected days.
+
+    Args:
+        cfg: Configuration object containing 'padded_df' for sensor detections.
 
     Returns:
-        A Plotly Figure object representing the line plot.
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
     n_days = len(range(cfg.days_range[0], cfg.days_range[-1])) + 1
-    lf = cfg.store['padded_df'].lazy()
+    
+    join_df = pl.LazyFrame(
+        (product(
+            cfg.animals,
+            list(range(cfg.days_range[0], cfg.days_range[1] + 1)),
+            list(range(24)),
+            )
+        ), 
+        schema=[
+            ('animal_id', pl.Enum(cfg.animals)),
+            ('day', pl.Int16()),
+            ('hour', pl.Int8()),
+        ]
+    )
+
     df = (
-        lf
-        .filter(pl.col('day').is_between(cfg.days_range[0],cfg.days_range[-1]))
-        .group_by(['day', "hour", "animal_id"])
-        .len('detections')
-        .group_by(["hour", 'animal_id'])
+        cfg.store['padded_df'].lazy()
+        .filter(pl.col('day').is_between(cfg.days_range[0], cfg.days_range[1]))
+        .join(
+            join_df,
+            on=['animal_id', 'hour', 'day'],
+            how='full',
+        )
+        .drop(["hour", "animal_id", "day"])
+        .rename({"hour_right": "hour", "animal_id_right": "animal_id", "day_right": "day"})
+        .group_by("day", "hour", "animal_id")
         .agg(
-            pl.sum("detections").alias("total_detections"),
-            (pl.sum("detections") / n_days).alias("mean_detections"),
-            (pl.std("detections") / math.sqrt(n_days)).alias("sem")
+            pl.len().alias('n_detections'),
+        )
+        .group_by('hour', 'animal_id')
+        .agg(
+            pl.sum('n_detections').alias('total'),
+            pl.mean('n_detections').alias('mean'),
+            (pl.std("n_detections") / math.sqrt(n_days)).alias('sem'),
+            
         )
         .with_columns(
-            (pl.col('mean_detections') - pl.col('sem')).alias('lower'),
-            (pl.col('mean_detections') + pl.col('sem')).alias('upper')
+            (pl.col('mean') - pl.col('sem')).alias('lower'),
+            (pl.col('mean') + pl.col('sem')).alias('upper')
         )
-        .sort(['hour', 'animal_id'])
+        .sort('animal_id', 'hour')
     ).collect()
 
     match cfg.agg_switch:
@@ -299,21 +378,31 @@ def activity_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
             return plot_factory.plot_sum_line_per_hour(
                 df, 
                 cfg.animals, 
-                cfg.colors, 
+                cfg.animal_colors, 
                 "activity",
             )
         case "mean":
             return plot_factory.plot_mean_line_per_hour(
                 df,
                 cfg.animals,
-                cfg.colors,
+                cfg.animal_colors,
                 "activity",
             )
 
 
 @plot_registry.register("time-per-cage-heatmap")   
 def time_per_cage(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """placeholder"""
+    """Generates a grid of heatmaps showing cage occupancy over 24 hours.
+
+    Creates a subplot for each cage, visualizing when and for how long specific animals 
+    occupy that space throughout the day.
+
+    Args:
+        cfg: Configuration object with 'cage_occupancy' data and 'agg_switch'.
+
+    Returns:
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
+    """
     lf = cfg.store["cage_occupancy"].lazy()
     
     join_df = pl.LazyFrame(
@@ -364,13 +453,16 @@ def time_per_cage(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 
 @plot_registry.register("sociability-heatmap")   
 def pairwise_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a plot with heatmaps corresponding to the number of cages.
+    """Generates heatmaps of pairwise sociability per cage.
 
-    This function generates a plot with multiple heatmaps, each corresponding to a cage,
-    showing pairwise sociability based on visits or time spent together.
+    Visualizes how often pairs of animals meet or spend time together, 
+    broken down by physical location (cages).
+
+    Args:
+        cfg: Configuration object defining 'pairwise_switch' (visits vs. time).
 
     Returns:
-        A Plotly Figure object representing the heatmaps.
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
     lf = cfg.store['pairwise_meetings'].lazy()
     join_df = pl.LazyFrame(
@@ -419,12 +511,16 @@ def pairwise_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 
 @plot_registry.register("cohort-heatmap")   
 def within_cohort_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-    """Generates a heatmap of within-cohort sociability.
+    """Generates a normalized heatmap of sociability within the entire cohort.
 
-    This function generates a heatmap showing normalized pairwise sociability within a cohort based on the specified data slice.
+    Provides a high-level view of social bonds by calculating the mean 
+    sociability index between all animal pairs across the specified range.
+
+    Args:
+        cfg: Configuration object containing 'incohort_sociability' data.
 
     Returns:
-        A Plotly Figure object representing the heatmap.
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
     lf = cfg.store['incohort_sociability'].lazy()
 
@@ -469,7 +565,17 @@ def within_cohort_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]
 
 @plot_registry.register("time-alone-bar")   
 def time_alone(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
+    """Generates a stacked bar plot of time spent alone.
 
+    Shows the duration each animal spent without any other animals present, 
+    segmented by the specific cages where this behavior occurred.
+
+    Args:
+        cfg: Configuration object with 'time_alone' data and color preferences.
+
+    Returns:
+        A tuple containing the Plotly Figure and the processed Polars DataFrame.
+    """
     df = (
         cfg.store['time_alone']
         .filter(
@@ -478,4 +584,4 @@ def time_alone(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
         )
     )
     
-    return plot_factory.plot_time_alone(df, cfg.cages)
+    return plot_factory.plot_time_alone(df, cfg.position_colors)

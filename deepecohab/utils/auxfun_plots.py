@@ -1,6 +1,6 @@
 import json
 import webbrowser
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import (
     Any, 
     Callable, 
@@ -25,8 +25,10 @@ class PlotConfig:
     position_switch: Literal['visits', 'time']
     pairwise_switch: Literal['time_together', 'pairwise_encounters']
     animals: list[str]
-    colors: list[str]
+    animal_colors: list[str]
     cages: list[str]
+    positions: list[str]
+    position_colors: list[str]
 
 class PlotRegistry:
     def __init__(self):
@@ -89,8 +91,8 @@ def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis") -> list:
 
 
 def create_node_trace(
-    pos: dict,
-    colors: list,
+    pos: dict[str, list[float]],
+    colors: list[str],
     animals: list[str],
 ) -> go.Scatter:
     """Auxfun to create node trace"""
@@ -136,7 +138,7 @@ def color_sampling(values: list[str], cmap: str = "Phase") -> list[str]:
     return colors
 
 def prep_polar_df(
-    store: dict,
+    store: dict[str, pl.DataFrame],
     days_range: list[int, int],
     phase_type: list[str],
 ) -> pl.DataFrame:
@@ -227,7 +229,7 @@ def prep_polar_df(
     return df
 
 
-def set_default_theme():
+def set_default_theme() -> None:
     """Sets default plotly theme. TODO: to be updated as we go."""
     dark_dash_template = go.layout.Template(
         layout=go.Layout(
@@ -245,7 +247,7 @@ def set_default_theme():
     pio.templates.default = "dash_dark"
 
 
-def open_browser():
+def open_browser() -> None:
     """Opens browser with dashboard."""
     webbrowser.open_new("http://127.0.0.1:8050/")
 
