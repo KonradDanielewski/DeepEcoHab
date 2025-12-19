@@ -164,7 +164,7 @@ def generate_comparison_block(side: str, slider_range: list[int, int]) -> html.D
                     {"label": "Ranking over time", "value": "ranking-line"},
                     {"label": "Metrics", "value": "metrics-polar-line"},
                     {"label": "Ranking distribution", "value": "ranking-distribution-line"},
-                    {"label": "Pairwise time", "value": "network-graph"},
+                    {"label": "Network graph", "value": "network-graph"},
                     {"label": "Chasings heatmap", "value": "chasings-heatmap"},
                     {"label": "Chasings diurnal", "value": "chasings-line"},
                     {"label": "Activity Bar", "value": "activity-bar"},
@@ -178,7 +178,7 @@ def generate_comparison_block(side: str, slider_range: list[int, int]) -> html.D
             ),
             html.Div(
                 [
-                    dcc.Graph(id={"type": "comparison-plot", "side": side}),
+                    dcc.Graph(id={"figure": "comparison-plot", "side": side}),
                     dcc.Store(id={"store": "comparison-plot", "side": side}),
                 ]
             ),
@@ -197,7 +197,7 @@ def generate_comparison_block(side: str, slider_range: list[int, int]) -> html.D
                 side,
                 is_vertical=False,
             ),
-            dcc.Download(id={"type": "download-component-comparison", "side": side}),
+            dcc.Download(id={"downloader": "download-component-comparison", "side": side}),
         ],
         className="h-100 p-2",
     )
@@ -322,8 +322,8 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450") -> html.
     """Generate Div that contains graph and corresponding data"""
     return html.Div(
         [
-            dcc.Graph(id={"graph": graph_id}, className=css_class, config=COMMON_CFG),
-            dcc.Store(id={"store": graph_id}),
+            dcc.Graph(id={"type": "graph", "name": graph_id}, className=css_class, config=COMMON_CFG),
+            dcc.Store(id={"type": "store", "name": graph_id}),
         ]
     )
 
@@ -388,11 +388,11 @@ def download_plots(
     if not selected_plots or not fmt:
         raise exceptions.PreventUpdate
 
-    fig_dict = {id_dict["graph"]: fig for id_dict, fig in zip(all_ids, all_figures)}
+    fig_dict = {id_dict["name"]: fig for id_dict, fig in zip(all_ids, all_figures)}
     state_dict = {
-        id_dict["store"]: data for id_dict, data in zip(store_ids, all_stores)
+        id_dict["name"]: data for id_dict, data in zip(store_ids, all_stores)
     }
-
+    
     files = []
     for plot_id in selected_plots:
         plot_name = f"plot_{plot_id}"

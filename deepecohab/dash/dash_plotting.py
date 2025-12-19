@@ -2,7 +2,6 @@ import math
 from itertools import product
 
 import numpy as np
-import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
 from scipy.stats import norm
@@ -134,6 +133,7 @@ def network_graph(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
         .drop('chaser', 'chased')
         .rename({'chaser_right': 'source', 'chased_right': 'target'})
         .sort('target', 'source') # Order is necesarry for deterministic result of node position
+        .fill_null(0)
     ).collect()
     
     nodes = (

@@ -46,11 +46,16 @@ class PlotRegistry:
         if not plotter:
             return {}
         return plotter(config)
+    
+    def list_names(self) -> list[str]:
+        return list(self._registry.keys())
+    
+    def list_name_func_pairs(self):
+        return self._registry.items()
+    
 
 def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis") -> list:
     """Auxfun to create edges trace with color mapping based on edge width"""
-    edge_trace = []
-
     edge_widths = [G.edges[edge]["chasings"] if G.edges[edge]["chasings"] is not None else 0 for edge in G.edges()]
     # Normalize edge widths to the range [0, 1] for color mapping
     max_width = max(edge_widths)
@@ -63,6 +68,8 @@ def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis") -> list:
         ]
 
     colorscale = px.colors.sample_colorscale(cmap, normalized_widths)
+
+    edge_trace = []
 
     for i, edge in enumerate(G.edges()):
         source_x, source_y = pos[edge[0]]
@@ -233,8 +240,8 @@ def set_default_theme() -> None:
     """Sets default plotly theme. TODO: to be updated as we go."""
     dark_dash_template = go.layout.Template(
         layout=go.Layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="#161f34",
+            plot_bgcolor="#161f34",
             font=dict(color="#e0e6f0"),
             xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
             yaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
@@ -242,7 +249,6 @@ def set_default_theme() -> None:
         )
     )
 
-    # register & set as default
     pio.templates["dash_dark"] = dark_dash_template
     pio.templates.default = "dash_dark"
 
