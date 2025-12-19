@@ -34,7 +34,7 @@ def calculate_time_alone(
     binary_filtered = binary_df.filter(pl.col("is_in"))
 
     group_cols = ["datetime", "cage"]
-    result_cols = ["phase", "phase_count", "day", "animal_id", "cage"]
+    result_cols = ["phase", "day", "animal_id", "cage"]
 
     time_alone = (
         binary_filtered.group_by(group_cols)
@@ -50,8 +50,7 @@ def calculate_time_alone(
         .agg(pl.len().alias('time_alone'))
         .with_columns(
             auxfun.get_phase_count()
-        .sort(result_cols)
-        )
+        ).sort(result_cols)
     )
 
 
