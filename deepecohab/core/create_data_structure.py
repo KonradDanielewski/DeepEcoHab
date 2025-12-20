@@ -361,7 +361,7 @@ def get_ecohab_data_structure(
         finish_date = cfg["experiment_timeline"]["finish_date"]
     except KeyError:
         print("Start and end dates not provided. Extracting from data...")
-        cfg = auxfun.append_start_end_to_config(config_path, lf)
+        cfg, start_date, finish_date = auxfun.append_start_end_to_config(config_path, lf)
 
     if isinstance(start_date, str) and isinstance(finish_date, str):
         start_date = dt.datetime.fromisoformat(start_date).astimezone(timezone)

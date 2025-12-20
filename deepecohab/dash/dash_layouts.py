@@ -146,25 +146,24 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
                             ),
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                        "cohort-heatmap", css_class="plot-600"
+                                        "network-sociability", css_class="plot-600"
                                     ),
                                 width=6,
-                                ),
-
+                            ),
                         ],
                         className="g-3",
                     ),
                     dbc.Row(
-                        [
+                        [                            
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                        "time-alone-bar", css_class="plot-500"
+                                        "cohort-heatmap", css_class="plot-500"
                                     ),
                                 width=6,
                             ),
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                        "network-sociability", css_class="plot-500"
+                                        "time-alone-bar", css_class="plot-500"
                                     ),
                                 width=6,
                             ),

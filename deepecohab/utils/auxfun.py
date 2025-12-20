@@ -219,17 +219,18 @@ def append_start_end_to_config(config_path: str | Path | dict[str, Any], lf: pl.
         Config with updated start and end datetimes
     """
     cfg = read_config(config_path)
-    bounds = lf.select(
+    bounds = lf.sort('datetime').select(
         [
             pl.col("datetime").first().alias("start_time"),
             pl.col("datetime").last().alias("end_time"),
         ]
     ).collect()
-
+    
     start_time = str(bounds["start_time"][0])
     end_time = str(bounds["end_time"][0])
 
     with open(config_path, "w") as config:
+        cfg['days_range'] = [1, (bounds['end_time'] - bounds['start_time']).item().days + 1]
         cfg["experiment_timeline"] = {
             "start_date": start_time,
             "finish_date": end_time,
@@ -240,7 +241,7 @@ def append_start_end_to_config(config_path: str | Path | dict[str, Any], lf: pl.
         f"Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True"
     )
 
-    return cfg
+    return cfg, start_time, end_time
 
 
 def add_cages_to_config(config_path: str | Path | dict[str, Any]) -> None:

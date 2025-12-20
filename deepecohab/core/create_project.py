@@ -53,15 +53,24 @@ def create_ecohab_project(
             f"{data_path} is empty, please check if you provided the correct directory"
         )
         return
-    dt_format = "%Y-%m-%d %H:%M:%S"
-    last_date = dt.datetime.strptime(finish_datetime, dt_format)
-    first_date = dt.datetime.strptime(start_datetime, dt_format)
-    check_date = (
-        last_date - first_date
-    ).days < 0
+    
+    check_date = None
+    days_range = None
+    
+    if isinstance(start_datetime, str) and isinstance(finish_datetime, str):
+        dt_format = "%Y-%m-%d %H:%M:%S"
+        last_date = dt.datetime.strptime(finish_datetime, dt_format)
+        first_date = dt.datetime.strptime(start_datetime, dt_format)
+        check_date = (
+            last_date - first_date
+        ).days < 0
+        
+        if check_date:
+            raise ValueError("Finish date before start date! Please check provided dates.")
+        
+        days_range = [1, (last_date - first_date).days + 1]
 
-    if check_date:
-        raise ValueError("Finish date before start date! Please check provided dates.")
+    
 
     if not isinstance(project_location, str):  # Has to be a string for config purposes
         data_path = str(data_path)
@@ -72,8 +81,6 @@ def create_ecohab_project(
         animal_ids = None
     else:
         animal_ids = sorted(animal_ids)
-
-    days_range = [1, (last_date - first_date).days + 1]
 
     if field_ecohab and isinstance(antenna_rename_scheme, dict):
         config = config_templates.FieldConfig(

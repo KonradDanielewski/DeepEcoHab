@@ -10,7 +10,7 @@ class ExperimentConfig(ABC):
     animal_ids: list[str]
     dark_phase_start: str
     light_phase_start: str
-    days_range: list[int, int]
+    days_range: list[int, int] | None = None
     start_datetime: str = None
     finish_datetime: str = None
     antenna_combinations: dict[str, str] = field(default_factory=dict)
