@@ -25,19 +25,40 @@ def calculate_time_alone(
     results_path = Path(cfg["project_location"]) / "results"
     key = "time_alone"
 
+    animal_ids = cfg["animal_ids"]
+    cages = cfg["cages"]
+
     time_alone = None if overwrite else auxfun.load_ecohab_data(config_path, key)
     if isinstance(time_alone, pl.LazyFrame):
         return time_alone
 
     binary_df = auxfun.load_ecohab_data(config_path, "binary_df")
 
-    binary_filtered = binary_df.filter(pl.col("is_in"))
-
     group_cols = ["datetime", "cage"]
     result_cols = ["phase", "day", "animal_id", "cage"]
 
+    
+    time_lf = (
+        binary_df
+        .select(
+            auxfun.get_day().alias("day"),
+            auxfun.get_phase(cfg).alias("phase"),
+        )
+        .unique()
+        .sort(["day", "phase"])
+    )
+
+    animals_lf = auxfun.get_lf_from_enum(animal_ids, 'animal_id', sorted = True, col_type=pl.Enum(animal_ids))
+    cages_lf = auxfun.get_lf_from_enum(cages, 'cage', col_type=pl.Categorical)
+
+    full_group_list = (
+        time_lf
+        .join(animals_lf, how='cross')
+        .join(cages_lf, how='cross')
+    )
+
     time_alone = (
-        binary_filtered.group_by(group_cols)
+        binary_df.group_by(group_cols)
         .agg(
             pl.len().alias('n'),
             pl.col('animal_id').first()
@@ -50,9 +71,16 @@ def calculate_time_alone(
         .agg(pl.len().alias('time_alone'))
         .with_columns(
             auxfun.get_phase_count()
-        ).sort(result_cols)
+        )
     )
 
+    time_alone = (
+        full_group_list.join(
+            time_alone,
+            on = result_cols,
+            how = 'left'
+        ).fill_null(0)
+    )
 
     if save_data:
         time_alone.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')

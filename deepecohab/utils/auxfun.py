@@ -144,6 +144,24 @@ def get_phase_count() -> pl.Expr:
         .alias("phase_count")
     )
 
+def get_lf_from_enum(
+        values: list,
+        col_name: str,
+        col_type: pl.DataType,
+        sorted: bool = False
+    ) -> pl.LazyFrame:
+    """Auxfun for creating LazyFrames from lists of values"""
+    res = pl.DataFrame(
+        {col_name: values}
+        ).lazy().with_columns(
+            pl.col(col_name).cast(col_type)
+            )
+    
+    if sorted:
+        return res.sort(
+            col_name
+        )
+    return res
 
 def set_animal_ids(
     config_path: str,

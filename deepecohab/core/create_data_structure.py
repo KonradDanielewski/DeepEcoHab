@@ -262,13 +262,7 @@ def create_binary_df(
     cages = cfg["cages"]
     animal_ids = list(cfg["animal_ids"])
 
-    animals_lf = (
-        pl.DataFrame({"animal_id": animal_ids})
-        .lazy()
-        .with_columns(pl.col("animal_id").cast(pl.Enum(animal_ids)))
-    ).sort(
-        "animal_id"
-    )
+    animals_lf = auxfun.get_lf_from_enum(animal_ids, 'animal_id', sorted = True, col_type = pl.Enum(animal_ids))
 
     lf = lf.select(['animal_id', 'datetime', 'position']).sort(["animal_id", "datetime"])
 
@@ -291,28 +285,15 @@ def create_binary_df(
         check_sortedness=False
     )
 
-    cages_df = (
-        pl.DataFrame({"cage": cages})
-        .lazy()
-        .with_columns(pl.col("cage").cast(pl.Categorical))
-    )
-
-    binary_long = (
-        binary_lf.join(cages_df, how="cross")
-        .with_columns(
-            pl.when(pl.col("position").is_not_null())
-                .then(pl.col("position") == pl.col("cage"))
-                .otherwise(False)
-                .alias("is_in")
-        )
-        .drop("position")
-    )
+    binary_lf = binary_lf.filter(
+        pl.col('position').is_in(cages)
+    ).rename({'position':'cage'})
 
     if save_data:
-        binary_long.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        binary_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
 
     
-    return binary_long
+    return binary_lf
 
 
 def get_ecohab_data_structure(
