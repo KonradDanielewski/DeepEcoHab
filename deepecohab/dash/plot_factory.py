@@ -36,7 +36,7 @@ def plot_activity(
                 title=position_title,
                 barmode='group',
             )
-            fig.update_layout(barcornerradius=15)
+            fig.update_layout(barcornerradius=10)
         case 'mean':
             fig = px.box(
                 df,
@@ -88,7 +88,7 @@ def plot_time_alone(df: pl.DataFrame, colors: list[str], agg_switch: Literal['me
     
     fig.update_xaxes(title_text='<b>Animal ID</b>')
     fig.update_yaxes(title_text='<b>Time alone [s]</b>')
-    fig.update_layout(barcornerradius=15)
+    fig.update_layout(barcornerradius=10)
     
     return fig, df
 
