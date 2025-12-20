@@ -155,17 +155,13 @@ def get_lf_from_enum(
         sorted: bool = False
     ) -> pl.LazyFrame:
     """Auxfun for creating LazyFrames from lists of values"""
-    res = pl.DataFrame(
-        {col_name: values}
-        ).lazy().with_columns(
-            pl.col(col_name).cast(col_type)
-            )
     
-    if sorted:
-        return res.sort(
-            col_name
-        )
-    return res
+    res = pl.LazyFrame(
+        {col_name: values},
+        schema={col_name: col_type},
+    )
+
+    return res.sort(col_name) if sorted else res
 
 def set_animal_ids(
     config_path: str | Path | dict[str, Any],
