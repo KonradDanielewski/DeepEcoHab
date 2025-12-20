@@ -1,5 +1,6 @@
 import io
 import json
+import webbrowser
 import zipfile
 from argparse import ArgumentParser
 from typing import Any, Literal
@@ -9,6 +10,8 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import polars as pl
 from dash import dcc, exceptions, html
+
+from deepecohab.dash.dash_plotting import plot_registry
 
 COMMON_CFG = {"displayModeBar": False}
 
@@ -123,7 +126,7 @@ def generate_settings_block(
                                         {"label": "Time", "value": "time"},
                                     ],
                                     value="visits",
-                                    labelStyle={"display": "inline-block"},
+                                    labelStyle={"display": "block", "marginBottom": "5px"},
                                 ),
                             ),
                             html.Div(className="divider"),
@@ -136,7 +139,7 @@ def generate_settings_block(
                                         {"label": "Social - Time", "value": "time_together"},
                                     ],
                                     value="pairwise_encounters",
-                                    labelStyle={"display": "inline-block"},
+                                    labelStyle={"display": "block", "marginBottom": "5px"},
                                 ),
                             ),
                         ]
@@ -160,20 +163,7 @@ def generate_comparison_block(side: str, slider_range: list[int, int]) -> html.D
             html.Label("Select Plot", style={"fontWeight": "bold"}),
             dcc.Dropdown(
                 id={"type": "plot-dropdown", "side": side},
-                options=[
-                    {"label": "Ranking over time", "value": "ranking-line"},
-                    {"label": "Metrics", "value": "metrics-polar-line"},
-                    {"label": "Ranking distribution", "value": "ranking-distribution-line"},
-                    {"label": "Network graph", "value": "network-graph"},
-                    {"label": "Chasings heatmap", "value": "chasings-heatmap"},
-                    {"label": "Chasings diurnal", "value": "chasings-line"},
-                    {"label": "Activity Bar", "value": "activity-bar"},
-                    {"label": "Activity diurnal", "value": "activity-line"},
-                    {"label": "Cage occupancy heatmap", "value": "time-per-cage-heatmap"},
-                    {"label": "Sociability heatmap", "value": "sociability-heatmap"},
-                    {"label": "Within-cohort sociability heatmap", "value": "cohort-heatmap"},
-                    {"label": "Time spent alone", "value": "time-alone-bar"},
-                ],
+                options=get_options_from_ids(plot_registry.list_names()),
                 value="ranking-line",
             ),
             html.Div(
@@ -477,3 +467,14 @@ def parse_arguments() -> ArgumentParser:
         help="path to the config file of the project",
     )
     return parser.parse_args()
+
+
+def open_browser() -> None:
+    """Opens browser with dashboard."""
+    webbrowser.open_new("http://127.0.0.1:8050/")
+
+
+def to_store_json(df: pl.DataFrame | None) -> dict | None:
+    if not isinstance(df, pl.DataFrame):
+        return None
+    return json.dumps(df.to_dict(as_series=False), default=str)

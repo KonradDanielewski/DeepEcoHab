@@ -26,7 +26,7 @@ def plot_activity(
 
     match agg_switch:
         case 'sum':
-            fig = px.bar(
+            fig = px.histogram(
                 df,
                 x='animal_id',
                 y=type_switch,
@@ -57,18 +57,34 @@ def plot_activity(
     return fig, df
 
 
-def plot_time_alone(df: pl.DataFrame, colors: list[str]) -> tuple[go.Figure, pl.DataFrame]:
+def plot_time_alone(df: pl.DataFrame, colors: list[str], agg_switch: Literal['mean', 'sum']) -> tuple[go.Figure, pl.DataFrame]:
     """Plot time alone as a relative bar plot TODO: consider normalization
     for visualization and hover info with real value"""
-    fig = px.bar(
-        df, 
-        x='animal_id', 
-        y='time_alone', 
-        color='cage',
-        color_discrete_sequence=colors,
-        hover_data=['animal_id', 'cage', 'day', 'time_alone'],
-        title='Time spent alone',
-    )
+    match agg_switch:
+        case 'sum':            
+            fig = px.histogram(
+                df, 
+                x='animal_id', 
+                y='time_alone', 
+                color='cage',
+                color_discrete_sequence=colors,
+                hover_data=['animal_id', 'cage', 'day', 'time_alone'],
+                title='Time spent alone',
+                barmode='group',
+            )
+        case 'mean':
+            fig = px.box(
+                df,
+                x='animal_id',
+                y='time_alone',
+                color='cage',
+                color_discrete_sequence=colors,
+                hover_data=['animal_id', 'cage', 'day', 'time_alone'],
+                title='Time spent alone',
+                boxmode='group',
+                points='outliers',
+            )
+            fig.update_traces(boxmean=True)
     
     fig.update_xaxes(title_text='<b>Animal ID</b>')
     fig.update_yaxes(title_text='<b>Time alone [s]</b>')
@@ -199,8 +215,6 @@ def plot_ranking_line(
             tracegroupgap=0,
             ),
         xaxis=dict(
-            # Breakes download from the dash - maybe a bug in dash? works outside. TODO: report it?
-            # rangeslider=dict(visible=True, thickness=0.1), 
             title='Timeline'
         ),
         yaxis=dict(
@@ -250,7 +264,7 @@ def time_spent_per_cage(
     animals: list[str], 
     cages: list[str],
 ) -> tuple[go.Figure, pl.DataFrame]:
-    """placeholder"""
+    """Plots N-cages of heatmaps with per hour time spent for each animal"""
     fig = px.imshow(
         img.to_numpy().reshape(len(cages), len(animals), 24), # 24 hours in a day, 
         y=animals, 
@@ -370,6 +384,7 @@ def plot_metrics_polar(
     animals: list[str], 
     colors: list[str], 
     ) -> tuple[go.Figure, pl.DataFrame]:
+    """Plots a polar line with different metrics per animal."""
     fig = px.line_polar(
         df, 
         r='value', 
@@ -390,21 +405,33 @@ def plot_metrics_polar(
 
 def plot_network_graph(
     connections: pl.DataFrame,
-    nodes: pl.DataFrame,
+    nodes: pl.DataFrame | None,
     animals, colors,
+    graph_type: Literal['chasings', 'sociability']
 ) -> tuple[go.Figure, pl.DataFrame]:
     """Plots network graph of social structure."""
-    G = nx.from_pandas_edgelist(connections, create_using=nx.DiGraph, edge_attr='chasings')
-    pos = nx.spring_layout(G, k=None, iterations=50, seed=42, weight='chasings', method='energy')
+    match graph_type:
+        case 'chasings':
+            edge_weight = 'chasings'
+            graph = nx.DiGraph
+            title = '<b>Dominance network graph</b>'
+        case 'sociability':
+            edge_weight = 'time_together'
+            graph = nx.Graph
+            title = '<b>Sociability network graph</b>'
     
-    edge_trace = auxfun_plots.create_edges_trace(G, pos)
+    G = nx.from_pandas_edgelist(connections, create_using=graph, edge_attr=edge_weight)
+    pos = nx.spring_layout(G, k=None, iterations=50, seed=42, weight=edge_weight, method='energy')
     
     for animal in animals:
-        try:
-            ordinal = nodes.filter(pl.col('animal_id') == animal).select('ordinal').item()
-        except ValueError:
-            ordinal = 0
+        match graph_type:
+            case 'chasings':
+                ordinal = nodes.filter(pl.col('animal_id') == animal).select('ordinal').item()
+            case 'sociability':
+                ordinal=20
         pos[animal] = np.append(pos[animal], ordinal)
+    
+    edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_weight=edge_weight)
     node_trace = auxfun_plots.create_node_trace(pos, colors, animals)
     
     fig = go.Figure(
@@ -412,7 +439,7 @@ def plot_network_graph(
             layout=go.Layout(
                 showlegend=False,
                 hovermode='closest',
-                title=dict(text='<b>Social structure network graph</b>', x=0.01, y=0.95),
+                title=dict(text=title, x=0.01, y=0.95),
             )
         )
 

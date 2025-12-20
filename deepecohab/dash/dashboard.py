@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Any
 import sys
 from pathlib import Path
 
@@ -78,9 +78,6 @@ if __name__ == "__main__":
                         children=comparison_tab,
                     ),
                 ],
-                style={
-                    "backgroundColor": "#1f2c44",  # Tab bar background
-                },
             )
         ]
     )
@@ -128,7 +125,7 @@ if __name__ == "__main__":
 
         fig, data = dash_plotting.plot_registry.get_plot(plot_name, plot_cfg)
         
-        return fig, auxfun_plots.to_store_json(data)
+        return fig, auxfun_dashboard.to_store_json(data)
 
         
     @app.callback(
@@ -157,8 +154,8 @@ if __name__ == "__main__":
         )
         fig, data = dash_plotting.plot_registry.get_plot(switches[0], plot_cfg)
 
-    
-        return fig, auxfun_plots.to_store_json(data)
+        return fig, auxfun_dashboard.to_store_json(data)
+
 
     @app.callback(
         [Output("modal", "is_open"), Output("plot-checklist", "options")],
@@ -172,6 +169,7 @@ if __name__ == "__main__":
                 [g["name"] for g in graph_ids]
             )
         return is_open, []
+
 
     @app.callback(
             Output("download-component", "data"),
@@ -222,6 +220,7 @@ if __name__ == "__main__":
         else:
             raise dash.exceptions.PreventUpdate
 
+
     @app.callback(
             Output({"type": "download-component-comparison", "side": MATCH}, "data"),
             Input({"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"),
@@ -250,5 +249,5 @@ if __name__ == "__main__":
         )
         return dcc.send_bytes(lambda b: b.write(content), filename=fname)
 
-    auxfun_plots.open_browser()
+    auxfun_dashboard.open_browser()
     app.run(debug=True, port=8050)

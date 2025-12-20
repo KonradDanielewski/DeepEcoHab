@@ -47,7 +47,7 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
                                         "metrics-polar-line", css_class="plot-500"
                                     ),
                                     auxfun_dashboard.generate_standard_graph(
-                                        "network-graph", css_class="plot-500"
+                                        "network-dominance", css_class="plot-500"
                                     ),
                                 ],
                                 width=6,
@@ -84,7 +84,6 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
                                         {"label": "Time", "value": "time"},
                                     ],
                                     value="visits",
-                                    labelStyle={"display": "inline-block"},
                                 ),
                                 width=1,
                             ),
@@ -132,7 +131,6 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
                                         {"label": "Time", "value": "time_together"},
                                     ],
                                     value="pairwise_encounters",
-                                    labelStyle={"display": "inline-block"},
                                 ),
                                 width=1,
                             ),
@@ -163,12 +161,17 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
                                         "time-alone-bar", css_class="plot-500"
                                     ),
                                 width=6,
-                                ),
+                            ),
+                            dbc.Col(
+                                auxfun_dashboard.generate_standard_graph(
+                                        "network-sociability", css_class="plot-500"
+                                    ),
+                                width=6,
+                            ),
                         ],
                     ),
                 ],
                 fluid=True,
-                style={"padding": "20px"},
             ),
         ]
     )
