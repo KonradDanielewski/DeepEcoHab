@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 import sys
 from pathlib import Path
 
@@ -45,14 +45,17 @@ if __name__ == "__main__":
         sys.exit(1)
 
     store = {file.stem: pl.read_parquet(file) for file in Path(results_path).glob('*.parquet') if 'binary' not in str(file)}
-    days_range = cfg['days_range']
-    cages = cfg['cages']
-    animals = cfg['animal_ids']
-    colors = auxfun_plots.color_sampling(animals)
+    
+    DAYS_RANGE = cfg['days_range']
+    CAGES = cfg['cages']
+    POSITIONS = sorted(store['activity_df']['position'].unique().to_list())
+    ANIMALS = cfg['animal_ids']
+    ANIMAL_COLORS = auxfun_plots.color_sampling(ANIMALS)
+    POSITION_COLORS = auxfun_plots.color_sampling(POSITIONS)
 
     # Dashboard layout
-    dashboard_layout = dash_layouts.generate_graphs_layout(days_range)
-    comparison_tab = dash_layouts.generate_comparison_layout(days_range)
+    dashboard_layout = dash_layouts.generate_graphs_layout(DAYS_RANGE)
+    comparison_tab = dash_layouts.generate_comparison_layout(DAYS_RANGE)
 
     app.layout = html.Div(
         [
@@ -89,33 +92,12 @@ if __name__ == "__main__":
             return dashboard_layout
         elif tab == "tab-other":
             return comparison_tab
+        
 
     @app.callback(
         [
-            Output({"graph": "ranking-line"}, "figure"),
-            Output({"store": "ranking-line"}, "data"),
-            Output({"graph": "metrics-polar-line"}, "figure"),
-            Output({"store": "metrics-polar-line"}, "data"),
-            Output({"graph": "ranking-distribution-line"}, "figure"),
-            Output({"store": "ranking-distribution-line"}, "data"),
-            Output({"graph": "network-graph"}, "figure"),
-            Output({"store": "network-graph"}, "data"),           
-            Output({"graph": "chasings-heatmap"}, "figure"),
-            Output({"store": "chasings-heatmap"}, "data"),
-            Output({"graph": "chasings-line"}, "figure"),
-            Output({"store": "chasings-line"}, "data"),
-            Output({"graph": "activity-bar"}, "figure"),
-            Output({"store": "activity-bar"}, "data"),
-            Output({"graph": "activity-line"}, "figure"),
-            Output({"store": "activity-line"}, "data"),\
-            Output({"graph": "time-per-cage-heatmap"}, "figure"),
-            Output({"store": "time-per-cage-heatmap"}, "data"),
-            Output({"graph": "sociability-heatmap"}, "figure"),
-            Output({"store": "sociability-heatmap"}, "data"),
-            Output({"graph": "cohort-heatmap"}, "figure"),
-            Output({"store": "cohort-heatmap"}, "data"),
-            Output({"graph": "time-alone-bar"}, "figure"),
-            Output({"store": "time-alone-bar"}, "data"),
+            Output({"type": "graph", "name": MATCH}, "figure"),
+            Output({"type": "store", "name": MATCH}, "data"),
         ],
         [
             Input("phase-slider", "value"),
@@ -125,79 +107,74 @@ if __name__ == "__main__":
             Input("pairwise-switch", "value"),
         ],
     )
-    def update_plots(
-        days_range, 
-        phase_type, 
-        aggregate_stats_switch, 
-        position_switch, 
-        pairwise_switch,
-    ):       
-        phase_type = ([phase_type] if not phase_type == 'all' else ['dark_phase', 'light_phase'])
+    def update_plots(days_range, phase_type, agg_switch, pos_switch, pair_switch) -> tuple[go.Figure, dict]:
+        plot_name = ctx.outputs_grouping[0]['id']['name']
 
+        phase_list = [phase_type] if phase_type != 'all' else ['dark_phase', 'light_phase']
+        
         plot_cfg = auxfun_plots.PlotConfig(
-            store, days_range, phase_type, aggregate_stats_switch,
-            position_switch, pairwise_switch, animals, colors, cages,
+            store=store,
+            days_range=days_range, 
+            phase_type=phase_list, 
+            agg_switch=agg_switch,
+            position_switch=pos_switch, 
+            pairwise_switch=pair_switch,
+            animals=ANIMALS, 
+            animal_colors=ANIMAL_COLORS, 
+            cages=CAGES, 
+            positions=POSITIONS,
+            position_colors=POSITION_COLORS,
         )
-        
-        plot_names = list(dash_plotting.plot_registry._registry.keys())
-        
-        output = []
-        
-        for name in plot_names:
-            fig, data = dash_plotting.plot_registry.get_plot(name, plot_cfg)
-            output.extend([fig, auxfun_plots.to_store_json(data)])
 
-        return output
+        fig, data = dash_plotting.plot_registry.get_plot(plot_name, plot_cfg)
+        
+        return fig, auxfun_plots.to_store_json(data)
 
         
-
     @app.callback(
         [
-            Output({"type": "comparison-plot", "side": MATCH}, "figure"),
+            Output({"figure": "comparison-plot", "side": MATCH}, "figure"),
             Output({"store": "comparison-plot", "side": MATCH}, "data"),
         ],
-        [
-            Input({"type": "plot-dropdown", "side": MATCH}, "value"),
-            Input({"type": "mode-switch", "side": MATCH}, "value"),
-            Input({"type": "phase-slider", "side": MATCH}, "value"),
-            Input({"type": "aggregate-switch", "side": MATCH}, "value"),
-            Input({"type": "position-switch", "side": MATCH}, "value"),
-            Input({"type": "pairwise-switch", "side": MATCH}, "value"),
-        ],
+            Input({"type": ALL, "side": MATCH}, "value"),
     )
-    def update_comparison_plot(
-        plot_type: str, 
-        phase_type: str,
-        days_range: list[int, int], 
-        aggregate_stats_switch: Literal['sum', 'mean'], 
-        position_switch: Literal["time", "visits"],
-        pairwise_switch: Literal["time_together", "pairwise_encounters"],
-    ) -> tuple[go.Figure, str]:
-        phase_type = ([phase_type] if not phase_type == 'all' else ['dark_phase', 'light_phase'])
+    def update_comparison_plot(switches: list[Any]) -> tuple[go.Figure, dict]:
+        """Render plots in the comparisons tab"""
+        phase_type = ([switches[1]] if not switches[1] == 'all' else ['dark_phase', 'light_phase'])
            
         plot_cfg = auxfun_plots.PlotConfig(
-          store, days_range, phase_type, aggregate_stats_switch,
-          position_switch, pairwise_switch, animals, colors, cages,
+            store=store, 
+            days_range=switches[3], 
+            phase_type=phase_type, 
+            agg_switch=switches[2],
+            position_switch=switches[4], 
+            pairwise_switch=switches[5], 
+            animals=ANIMALS, 
+            animal_colors=ANIMAL_COLORS, 
+            cages=CAGES, 
+            positions=POSITIONS,
+            position_colors=POSITION_COLORS,
         )
-        plt, df = dash_plotting.plot_registry.get_plot(plot_type, plot_cfg)
+        fig, data = dash_plotting.plot_registry.get_plot(switches[0], plot_cfg)
 
     
-        return plt, auxfun_plots.to_store_json(df)
+        return fig, auxfun_plots.to_store_json(data)
 
     @app.callback(
         [Output("modal", "is_open"), Output("plot-checklist", "options")],
         [Input("open-modal", "n_clicks")],
-        [State("modal", "is_open"), State({"graph": ALL}, "id")],
+        [State("modal", "is_open"), State({"type": "graph", "name": ALL}, "id")],
     )
-    def toggle_modal(open_click, is_open, graph_ids):
+    def toggle_modal(open_click: bool, is_open: bool, graph_ids: list[dict[str, str]]) -> tuple[bool, list]:
+        """Opens and closes Downloads modal component"""
         if open_click:
             return not is_open, auxfun_dashboard.get_options_from_ids(
-                [g["graph"] for g in graph_ids]
+                [g["name"] for g in graph_ids]
             )
         return is_open, []
 
     @app.callback(
-        Output("download-component", "data"),
+            Output("download-component", "data"),
         [
             Input({"type": "download-btn", "fmt": ALL, "side": ALL}, "n_clicks"),
         ],
@@ -206,24 +183,25 @@ if __name__ == "__main__":
             State("plot-checklist", "value"),
             State("mode-switch", "value"),
             State("phase-slider", "value"),
-            State({"graph": ALL}, "figure"),
-            State({"graph": ALL}, "id"),
-            State({"store": ALL}, "data"),
-            State({"store": ALL}, "id"),
+            State({"type": "graph", "name": ALL}, "figure"),
+            State({"type": "graph", "name": ALL}, "id"),
+            State({"type": "store", "name": ALL}, "data"),
+            State({"type": "store", "name": ALL}, "id"),
         ],
-        prevent_initial_call=True,
+            prevent_initial_call=True,
     )
     def download_selected_data(
-        btn_clicks,
-        selected_dfs,
-        selected_plots,
-        phase_type,
-        days_range,
-        all_figures,
-        all_ids,
-        all_stores,
-        store_ids,
-    ):
+        btn_clicks: int,
+        selected_dfs: list[pl.DataFrame],
+        selected_plots: list[str],
+        phase_type: str,
+        days_range: list[int, int],
+        all_figures: list[dict],
+        all_ids: list[dict],
+        all_stores: list[dict],
+        store_ids: list[dict],
+    ) -> dict[str, Any | None]:
+        """Triggers download from the Downloads modal component"""
         triggered = ctx.triggered_id
         if not triggered:
             raise dash.exceptions.PreventUpdate
@@ -245,17 +223,18 @@ if __name__ == "__main__":
             raise dash.exceptions.PreventUpdate
 
     @app.callback(
-        Output({"type": "download-component-comparison", "side": MATCH}, "data"),
-        Input(
-            {"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"
-        ),
-        State({"type": "comparison-plot", "side": MATCH}, "figure"),
-        State({"type": "comparison-plot", "side": MATCH}, "id"),
-        State({"store": "comparison-plot", "side": MATCH}, "data"),
-        State({"type": "plot-dropdown", "side": MATCH}, "value"),
-        prevent_initial_call=True,
+            Output({"type": "download-component-comparison", "side": MATCH}, "data"),
+            Input({"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"),
+        [
+            State({"figure": "comparison-plot", "side": MATCH}, "figure"),
+            State({"figure": "comparison-plot", "side": MATCH}, "id"),
+            State({"store": "comparison-plot", "side": MATCH}, "data"),
+            State({"type": "plot-dropdown", "side": MATCH}, "value"),
+        ],
+            prevent_initial_call=True,
     )
-    def download_comparison_data(btn_click, figure, fig_id, data_store, plot_type):
+    def download_comparison_data(btn_click: int, figure: dict, fig_id: str, data_store: dict, plot_type: str) -> dict[str, Any | None]:
+        """Triggers download from the comparisons tab"""
         triggered = ctx.triggered_id
         if not triggered:
             raise dash.exceptions.PreventUpdate

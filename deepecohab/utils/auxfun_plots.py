@@ -1,6 +1,6 @@
 import json
 import webbrowser
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import (
     Any, 
     Callable, 
@@ -25,8 +25,10 @@ class PlotConfig:
     position_switch: Literal['visits', 'time']
     pairwise_switch: Literal['time_together', 'pairwise_encounters']
     animals: list[str]
-    colors: list[str]
+    animal_colors: list[str]
     cages: list[str]
+    positions: list[str]
+    position_colors: list[str]
 
 class PlotRegistry:
     def __init__(self):
@@ -44,11 +46,16 @@ class PlotRegistry:
         if not plotter:
             return {}
         return plotter(config)
+    
+    def list_names(self) -> list[str]:
+        return list(self._registry.keys())
+    
+    def list_name_func_pairs(self):
+        return self._registry.items()
+    
 
 def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis") -> list:
     """Auxfun to create edges trace with color mapping based on edge width"""
-    edge_trace = []
-
     edge_widths = [G.edges[edge]["chasings"] if G.edges[edge]["chasings"] is not None else 0 for edge in G.edges()]
     # Normalize edge widths to the range [0, 1] for color mapping
     max_width = max(edge_widths)
@@ -61,6 +68,8 @@ def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis") -> list:
         ]
 
     colorscale = px.colors.sample_colorscale(cmap, normalized_widths)
+
+    edge_trace = []
 
     for i, edge in enumerate(G.edges()):
         source_x, source_y = pos[edge[0]]
@@ -89,8 +98,8 @@ def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis") -> list:
 
 
 def create_node_trace(
-    pos: dict,
-    colors: list,
+    pos: dict[str, list[float]],
+    colors: list[str],
     animals: list[str],
 ) -> go.Scatter:
     """Auxfun to create node trace"""
@@ -136,7 +145,7 @@ def color_sampling(values: list[str], cmap: str = "Phase") -> list[str]:
     return colors
 
 def prep_polar_df(
-    store: dict,
+    store: dict[str, pl.DataFrame],
     days_range: list[int, int],
     phase_type: list[str],
 ) -> pl.DataFrame:
@@ -227,12 +236,12 @@ def prep_polar_df(
     return df
 
 
-def set_default_theme():
+def set_default_theme() -> None:
     """Sets default plotly theme. TODO: to be updated as we go."""
     dark_dash_template = go.layout.Template(
         layout=go.Layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="#161f34",
+            plot_bgcolor="#161f34",
             font=dict(color="#e0e6f0"),
             xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
             yaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
@@ -240,12 +249,11 @@ def set_default_theme():
         )
     )
 
-    # register & set as default
     pio.templates["dash_dark"] = dark_dash_template
     pio.templates.default = "dash_dark"
 
 
-def open_browser():
+def open_browser() -> None:
     """Opens browser with dashboard."""
     webbrowser.open_new("http://127.0.0.1:8050/")
 

@@ -4,14 +4,17 @@ from dash import dcc, html
 from deepecohab.utils import auxfun_dashboard
 
 
-def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
+def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
+    """Generates layout of the main dashboard tab"""
     return html.Div(
         [
             auxfun_dashboard.generate_settings_block(
-                "mode-switch",
-                "aggregate-stats-switch",
-                "phase-slider",
-                phase_range,
+                phase_type_id = "mode-switch",
+                aggregate_stats_id = "aggregate-stats-switch",
+                slider_id = "phase-slider",
+                position_switch_id = "position-switch",
+                pairwise_switch_id = "pairwise-switch",
+                slider_range = days_range,
                 include_download=True,
             ),
             dbc.Container(
@@ -172,6 +175,7 @@ def generate_graphs_layout(phase_range: list[int, int]) -> html.Div:
 
 
 def generate_comparison_layout(phase_range: list[int, int]) -> html.Div:
+    """Generates layout for the comparisons tab"""
     return html.Div(
         [
             html.H2("Plot Comparison", className="text-center my-4"),
