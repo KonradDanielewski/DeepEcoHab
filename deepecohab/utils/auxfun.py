@@ -72,9 +72,9 @@ def load_ecohab_data(
 def make_project_path(project_location: str, experiment_name: str) -> str:
     """Auxfun to make a name of the project directory using its name and time of creation"""
     project_name = experiment_name + "_" + dt.datetime.today().strftime("%Y-%m-%d")
-    project_location = Path(project_location) / project_name
+    project_location = project_location / project_name
 
-    return str(project_location)
+    return project_location
 
 
 def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
