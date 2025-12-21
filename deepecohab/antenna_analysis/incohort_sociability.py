@@ -4,8 +4,9 @@ import polars as pl
 
 from deepecohab.antenna_analysis import activity
 from deepecohab.utils import auxfun
+from deepecohab.utils.auxfun import df_registry
 
-
+@df_registry.register('time_alone')
 def calculate_time_alone(
     config_path: Path | str | dict,
     save_data: bool = True,
@@ -22,16 +23,17 @@ def calculate_time_alone(
         DataFrame containing time spent alone in seconds.
     """
     cfg = auxfun.read_config(config_path)
-    results_path = Path(cfg["project_location"]) / "results"
     key = "time_alone"
-
-    animal_ids = cfg["animal_ids"]
-    cages = cfg["cages"]
 
     time_alone = None if overwrite else auxfun.load_ecohab_data(config_path, key)
     if isinstance(time_alone, pl.LazyFrame):
         return time_alone
 
+    results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
+    
+    animal_ids = cfg["animal_ids"]
+    cages = cfg["cages"]
+    
     binary_df = auxfun.load_ecohab_data(config_path, "binary_df")
 
     group_cols = ["datetime", "cage"]
@@ -83,11 +85,11 @@ def calculate_time_alone(
     )
 
     if save_data:
-        time_alone.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        time_alone.sink_parquet(results_path, compression="lz4", engine='streaming')
 
     return time_alone
 
-
+@df_registry.register('pairwise_meetings')
 def calculate_pairwise_meetings(
     config_path: str | Path | dict,
     minimum_time: int | float | None = 2,
@@ -107,19 +109,17 @@ def calculate_pairwise_meetings(
         LazyFrame of time spent together per phase, per cage.
     """
     cfg = auxfun.read_config(config_path)
-    results_path = (
-        Path(cfg["project_location"]) / "results" / "pairwise_meetings.parquet"
-    )
-    padded_path = Path(cfg["project_location"]) / "results" / "padded_df.parquet"
-
-    cages = cfg["cages"]
-
-    pairwise_meetings = (
-        None if overwrite else auxfun.load_ecohab_data(config_path, "pairwise_meetings")
-    )
+    key = "pairwise_meetings"
+    
+    pairwise_meetings = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
     if isinstance(pairwise_meetings, pl.DataFrame):
         return pairwise_meetings
+    
+    results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
+    padded_path = Path(cfg["project_location"]) / "results" / "padded_df.parquet"
+    
+    cages = cfg["cages"]
 
     lf = (
         pl.scan_parquet(padded_path)
@@ -168,11 +168,11 @@ def calculate_pairwise_meetings(
     ).sort(["phase", "day", "phase_count", "position", "animal_id", "animal_id_2"])
 
     if save_data:
-        pairwise_meetings.sink_parquet(results_path, compression="lz4")
+        pairwise_meetings.sink_parquet(results_path, compression="lz4", engine='streaming')
 
     return pairwise_meetings
 
-
+@df_registry.register('incohort_sociability')
 def calculate_incohort_sociability(
     config_path: dict,
     save_data: bool = True,
@@ -191,14 +191,15 @@ def calculate_incohort_sociability(
         Long format LazyFrame of in-cohort sociability per phase for each possible pair of mice.
     """
     cfg = auxfun.read_config(config_path)
-    results_path = Path(cfg["project_location"]) / "results"
     key = "incohort_sociability"
 
     incohort_sociability = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
     if isinstance(incohort_sociability, pl.LazyFrame):
         return incohort_sociability
-
+    
+    results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
+    
     padded_df = auxfun.load_ecohab_data(cfg, key="padded_df")
 
     phase_durations = auxfun.get_phase_durations(padded_df)
@@ -233,8 +234,6 @@ def calculate_incohort_sociability(
     )
 
     if save_data:
-        incohort_sociability.sink_parquet(
-            results_path / f"{key}.parquet", compression="lz4", engine='streaming'
-        )
+        incohort_sociability.sink_parquet(results_path, compression="lz4", engine='streaming')
 
     return incohort_sociability

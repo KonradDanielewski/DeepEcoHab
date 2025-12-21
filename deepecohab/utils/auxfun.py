@@ -3,38 +3,50 @@ import importlib
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import (
+    Callable,
+    Any, 
+)
 
 import polars as pl
 import toml
 
 
-DATA_KEYS = [
-    'activity_df', 'binary_df', 'cage_occupancy', 'chasings_df', 'incohort_sociability', 
-    'main_df', 'match_df', 'padded_df', 'pairwise_meetings', 'phase_durations', 'ranking', 
-    'time_alone',
-]
-    
+class DataFrameRegistry:
+    def __init__(self):
+        self._registry: dict[str, Callable] = {}
 
-def get_data_paths(data_path: Path) -> list:
-    """Auxfun to load all raw data paths"""
-    data_files = list(data_path.glob("COM*.txt"))
-    if len(data_files) == 0:
-        data_files = list(data_path.glob("20*.txt"))
-    return data_files
+    def register(self, name: str):
+        """Decorator to register a new plot type."""
+        def wrapper(func: Callable):
+            self._registry[name] = func
+            return func
+        return wrapper
+
+    def get_function(self, name: str) -> Callable:
+        """Retrieve a function by its registered name."""
+        if name not in self._registry:
+            available = ", ".join(self._registry.keys())
+            raise ValueError(f"'{name}' not found. Available: {available}")
+        return self._registry[name]
+
+    def list_available(self) -> list[str]:
+        """Returns a list of all registered function names."""
+        return list(self._registry.keys())
+
+df_registry = DataFrameRegistry()
 
 
 def read_config(config_path: str | Path | dict[str, Any]) -> dict:
     """Auxfun to check validity of the passed config_path variable (config path or dict)"""
-    if isinstance(config_path, (str, Path)):
-        cfg = toml.load(config_path)
-    elif isinstance(config_path, dict):
-        cfg = config_path
+    if isinstance(config_path, dict):
+        return config_path
+    
+    elif isinstance(config_path, (str, Path)):
+        return toml.load(config_path)
+    
     else:
-        return print(
-            f"config_path should be either a dict, Path or str, but {type(config_path)} provided."
-        )
-    return cfg
+        raise TypeError(f"config_path should be either a dict, Path or str, but {type(config_path)} provided.")
 
 
 def load_ecohab_data(
@@ -52,21 +64,18 @@ def load_ecohab_data(
     Returns:
         Desired data structure loaded from the file.
     """
+    if key not in df_registry.list_available():
+        raise KeyError(
+            f"{key} not found. Available keys: {df_registry.list_available()}"
+        )
+    
     cfg = read_config(config_path)
-
     results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
-
-    if results_path.is_file():
-        try:
-            if return_df:
-                res_frame = pl.read_parquet(results_path)
-            else:
-                res_frame = pl.scan_parquet(results_path)
-            return res_frame
-        except KeyError:
-            print(
-                f"{key} not found in the specified location: {results_path}. Perhaps not analyzed yet!"
-            )
+    
+    if not results_path.is_file():
+        return None
+    
+    return pl.read_parquet(results_path) if return_df else pl.scan_parquet(results_path)
 
 
 def make_project_path(project_location: str, experiment_name: str) -> str:
@@ -77,6 +86,7 @@ def make_project_path(project_location: str, experiment_name: str) -> str:
     return project_location
 
 
+@df_registry.register('phase_durations')
 def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Auxfun to calculate approximate phase durations.
     Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
@@ -134,6 +144,7 @@ def get_phase(cfg: dict[str, Any]) -> pl.Expr:
 def get_hour(dt_col: str = "datetime") -> pl.Expr:
     return pl.col(dt_col).dt.hour().cast(pl.Int8).alias("hour")
 
+
 def get_phase_count() -> pl.Expr:
     """Auxfun used to count phases"""
 
@@ -152,6 +163,7 @@ def get_phase_count() -> pl.Expr:
         .alias("phase_count")
     )
 
+
 def get_lf_from_enum(
         values: list,
         col_name: str,
@@ -166,6 +178,7 @@ def get_lf_from_enum(
     )
 
     return res.sort(col_name) if sorted else res
+
 
 def set_animal_ids(
     config_path: str | Path | dict[str, Any],
@@ -254,6 +267,7 @@ def add_cages_to_config(config_path: str | Path | dict[str, Any]) -> None:
     with open(config_path, "w") as config:
         cfg["cages"] = sorted(cages)
         toml.dump(cfg, config)
+    
     
 def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFrame) -> None:
     """Auxfun to add days range to config for reading convenience"""

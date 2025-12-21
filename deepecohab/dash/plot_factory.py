@@ -421,7 +421,7 @@ def plot_network_graph(
             title = '<b>Sociability network graph</b>'
     
     G = nx.from_pandas_edgelist(connections, create_using=graph, edge_attr=edge_weight)
-    pos = nx.spring_layout(G, k=None, iterations=50, seed=42, weight=edge_weight, method='energy')
+    pos = nx.spring_layout(G, k=None, iterations=200, seed=42, weight=edge_weight, method='energy')
     
     for animal in animals:
         match graph_type:
