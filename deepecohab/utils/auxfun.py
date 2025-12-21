@@ -72,18 +72,18 @@ def load_ecohab_data(
     Returns:
         Desired data structure loaded from the file.
     """
+    if key not in df_registry.list_available():
+        raise KeyError(
+            f"{key} not found. Available keys: {df_registry.list_available()}"
+        )
+    
     cfg = read_config(config_path)
-
     results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
-
-    if results_path.is_file():
-        if return_df:
-            res_frame = pl.read_parquet(results_path)
-        else:
-            res_frame = pl.scan_parquet(results_path)
-        return res_frame
-    else:
-        raise KeyError(f"{key} not found in the specified location: {results_path}. Available keys are: {df_registry.list_available()}")
+    
+    if not results_path.is_file():
+        return None
+    
+    return pl.read_parquet(results_path) if return_df else pl.scan_parquet(results_path)
 
 
 def make_project_path(project_location: str, experiment_name: str) -> str:
