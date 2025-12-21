@@ -36,25 +36,17 @@ class DataFrameRegistry:
 
 df_registry = DataFrameRegistry()
 
-def get_data_paths(data_path: Path) -> list:
-    """Auxfun to load all raw data paths"""
-    data_files = list(data_path.glob("COM*.txt"))
-    if len(data_files) == 0:
-        data_files = list(data_path.glob("20*.txt"))
-    return data_files
-
 
 def read_config(config_path: str | Path | dict[str, Any]) -> dict:
     """Auxfun to check validity of the passed config_path variable (config path or dict)"""
-    if isinstance(config_path, (str, Path)):
-        cfg = toml.load(config_path)
-    elif isinstance(config_path, dict):
-        cfg = config_path
+    if isinstance(config_path, dict):
+        return config_path
+    
+    elif isinstance(config_path, (str, Path)):
+        return toml.load(config_path)
+    
     else:
-        return print(
-            f"config_path should be either a dict, Path or str, but {type(config_path)} provided."
-        )
-    return cfg
+        raise TypeError(f"config_path should be either a dict, Path or str, but {type(config_path)} provided.")
 
 
 def load_ecohab_data(
