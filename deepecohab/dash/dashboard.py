@@ -184,7 +184,6 @@ if __name__ == "__main__":
             State({"type": "graph", "name": ALL}, "figure"),
             State({"type": "graph", "name": ALL}, "id"),
             State({"type": "store", "name": ALL}, "data"),
-            State({"type": "store", "name": ALL}, "id"),
         ],
             prevent_initial_call=True,
     )
@@ -197,7 +196,6 @@ if __name__ == "__main__":
         all_figures: list[dict],
         all_ids: list[dict],
         all_stores: list[dict],
-        store_ids: list[dict],
     ) -> dict[str, Any | None]:
         """Triggers download from the Downloads modal component"""
         triggered = ctx.triggered_id
@@ -215,14 +213,13 @@ if __name__ == "__main__":
                 all_figures,
                 all_ids,
                 all_stores,
-                store_ids,
             )
         else:
             raise dash.exceptions.PreventUpdate
 
 
     @app.callback(
-            Output({"type": "download-component-comparison", "side": MATCH}, "data"),
+            Output({"downloader": "download-component-comparison", "side": MATCH}, "data"),
             Input({"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"),
         [
             State({"figure": "comparison-plot", "side": MATCH}, "figure"),
@@ -232,14 +229,13 @@ if __name__ == "__main__":
         ],
             prevent_initial_call=True,
     )
-    def download_comparison_data(btn_click: int, figure: dict, fig_id: str, data_store: dict, plot_type: str) -> dict[str, Any | None]:
+    def download_comparison_data(btn_click: int, figure: dict, data_store: dict, plot_type: str) -> dict[str, Any | None]:
         """Triggers download from the comparisons tab"""
         triggered = ctx.triggered_id
         if not triggered:
             raise dash.exceptions.PreventUpdate
 
         figure = go.Figure(figure)
-
         if (figure is None) or (data_store is None):
             raise dash.exceptions.PreventUpdate
 

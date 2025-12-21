@@ -372,29 +372,20 @@ def download_plots(
     all_figures: list[go.Figure],
     all_ids: list[dict],
     all_stores: list[dict],
-    store_ids: list[dict],
 ) -> dict[str, Any | None]:
     """Downloads chosen plot/s related object via the browser"""
     if not selected_plots or not fmt:
         raise exceptions.PreventUpdate
-
-    fig_dict = {id_dict["name"]: fig for id_dict, fig in zip(all_ids, all_figures)}
-    state_dict = {
-        id_dict["name"]: data for id_dict, data in zip(store_ids, all_stores)
-    }
     
     files = []
-    for plot_id in selected_plots:
+
+    for fig_id, fig, data in zip(all_ids, all_figures, all_stores):
+        plot_id = fig_id["name"]
+        if plot_id not in selected_plots or fig is None or data is None:
+            continue
+        figure = go.Figure(fig)
         plot_name = f"plot_{plot_id}"
-        figure = go.Figure(fig_dict[plot_id])
-        if figure is None:
-            continue
-
-        df_data = state_dict[plot_id]
-        if df_data is None:
-            continue
-
-        plt_file = get_plot_file(df_data, figure, fmt, plot_name)
+        plt_file = get_plot_file(data, figure, fmt, plot_name)
         files.append(plt_file)
 
     if len(files) == 1:
