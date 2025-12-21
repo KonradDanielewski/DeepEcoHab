@@ -6,6 +6,7 @@ import polars as pl
 from tzlocal import get_localzone
 
 from deepecohab.utils import auxfun
+from deepecohab.utils.auxfun import df_registry
 
 
 def load_data(
@@ -150,6 +151,7 @@ def _split_datetime(phase_start: str) -> dt.datetime:
     return dt.datetime.strptime(phase_start, "%H:%M:%S")
 
 
+@df_registry.register('padded_df')
 def create_padded_df(
     config_path: Path | str | dict,
     df: pl.LazyFrame,
@@ -233,6 +235,7 @@ def create_padded_df(
     return padded_lf
 
 
+@df_registry.register('binary_df')
 def create_binary_df(
     config_path: str | Path | dict,
     lf: pl.LazyFrame,
@@ -296,6 +299,7 @@ def create_binary_df(
     return binary_lf
 
 
+@df_registry.register('main_df')
 def get_ecohab_data_structure(
     config_path: str,
     sanitize_animal_ids: bool = True,

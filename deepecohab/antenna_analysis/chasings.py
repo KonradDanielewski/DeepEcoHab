@@ -4,8 +4,10 @@ import polars as pl
 from openskill.models import PlackettLuce
 
 from deepecohab.utils import auxfun
+from deepecohab.utils.auxfun import df_registry
 
 
+@df_registry.register('ranking')
 def calculate_ranking(
     config_path: str | Path | dict,
     overwrite: bool = False,
@@ -66,13 +68,27 @@ def calculate_ranking(
     )
 
     if save_data:
-        ranking_df.sink_parquet(
-            results_path / "ranking.parquet", compression="lz4", engine='streaming'
-        )
+        ranking_df.sink_parquet(results_path / "ranking.parquet", compression="lz4", engine='streaming')
 
     return ranking
 
-
+@df_registry.register('match_df')
+def get_matches(lf: pl.LazyFrame, results_path: Path, save_data: bool) -> None:
+    """Creates a lazyframe of matches"""
+    matches = lf.select(
+        "animal_id", "animal_id_chasing", "datetime_chasing"
+    ).rename(
+        {
+            "animal_id": "loser",
+            "animal_id_chasing": "winner",
+            "datetime_chasing": "datetime",
+        }
+    )
+    if save_data:
+        matches.sink_parquet(results_path / "match_df.parquet", compression="lz4", engine='streaming')
+    
+    
+@df_registry.register('chasings_df')
 def calculate_chasings(
     config_path: str | Path | dict,
     overwrite: bool = False,
@@ -121,17 +137,9 @@ def calculate_chasings(
         .is_between(0.1, 1.2, "none"),
         (pl.col("datetime") < pl.col("datetime_chasing")),
     )
-
-    matches = intermediate.select(
-        "animal_id", "animal_id_chasing", "datetime_chasing"
-    ).rename(
-        {
-            "animal_id": "loser",
-            "animal_id_chasing": "winner",
-            "datetime_chasing": "datetime",
-        }
-    )
-
+    
+    get_matches(intermediate, results_path, save_data)
+    
     chasings = (
         intermediate.group_by(
             ["phase", "day", "phase_count", "hour", "animal_id_chasing", "animal_id"]
@@ -142,6 +150,5 @@ def calculate_chasings(
 
     if save_data:
         chasings.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
-        matches.sink_parquet(results_path / "match_df.parquet", compression="lz4", engine='streaming')
 
     return chasings

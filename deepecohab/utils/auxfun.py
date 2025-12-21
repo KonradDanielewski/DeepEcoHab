@@ -3,18 +3,38 @@ import importlib
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import (
+    Callable,
+    Any, 
+)
 
 import polars as pl
 import toml
 
 
-DATA_KEYS = [
-    'activity_df', 'binary_df', 'cage_occupancy', 'chasings_df', 'incohort_sociability', 
-    'main_df', 'match_df', 'padded_df', 'pairwise_meetings', 'phase_durations', 'ranking', 
-    'time_alone',
-]
-    
+class DataFrameRegistry:
+    def __init__(self):
+        self._registry: dict[str, Callable] = {}
+
+    def register(self, name: str):
+        """Decorator to register a new plot type."""
+        def wrapper(func: Callable):
+            self._registry[name] = func
+            return func
+        return wrapper
+
+    def get_function(self, name: str) -> Callable:
+        """Retrieve a function by its registered name."""
+        if name not in self._registry:
+            available = ", ".join(self._registry.keys())
+            raise ValueError(f"'{name}' not found. Available: {available}")
+        return self._registry[name]
+
+    def list_available(self) -> list[str]:
+        """Returns a list of all registered function names."""
+        return list(self._registry.keys())
+
+df_registry = DataFrameRegistry()
 
 def get_data_paths(data_path: Path) -> list:
     """Auxfun to load all raw data paths"""
@@ -57,16 +77,13 @@ def load_ecohab_data(
     results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 
     if results_path.is_file():
-        try:
-            if return_df:
-                res_frame = pl.read_parquet(results_path)
-            else:
-                res_frame = pl.scan_parquet(results_path)
-            return res_frame
-        except KeyError:
-            print(
-                f"{key} not found in the specified location: {results_path}. Perhaps not analyzed yet!"
-            )
+        if return_df:
+            res_frame = pl.read_parquet(results_path)
+        else:
+            res_frame = pl.scan_parquet(results_path)
+        return res_frame
+    else:
+        raise KeyError(f"{key} not found in the specified location: {results_path}. Available keys are: {df_registry.list_available()}")
 
 
 def make_project_path(project_location: str, experiment_name: str) -> str:
@@ -77,6 +94,7 @@ def make_project_path(project_location: str, experiment_name: str) -> str:
     return project_location
 
 
+@df_registry.register('phase_durations')
 def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Auxfun to calculate approximate phase durations.
     Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
@@ -134,6 +152,7 @@ def get_phase(cfg: dict[str, Any]) -> pl.Expr:
 def get_hour(dt_col: str = "datetime") -> pl.Expr:
     return pl.col(dt_col).dt.hour().cast(pl.Int8).alias("hour")
 
+
 def get_phase_count() -> pl.Expr:
     """Auxfun used to count phases"""
 
@@ -152,6 +171,7 @@ def get_phase_count() -> pl.Expr:
         .alias("phase_count")
     )
 
+
 def get_lf_from_enum(
         values: list,
         col_name: str,
@@ -166,6 +186,7 @@ def get_lf_from_enum(
     )
 
     return res.sort(col_name) if sorted else res
+
 
 def set_animal_ids(
     config_path: str | Path | dict[str, Any],
@@ -254,6 +275,7 @@ def add_cages_to_config(config_path: str | Path | dict[str, Any]) -> None:
     with open(config_path, "w") as config:
         cfg["cages"] = sorted(cages)
         toml.dump(cfg, config)
+    
     
 def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFrame) -> None:
     """Auxfun to add days range to config for reading convenience"""

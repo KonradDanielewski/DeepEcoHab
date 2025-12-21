@@ -2,8 +2,9 @@ from pathlib import Path
 
 import polars as pl
 from deepecohab.utils import auxfun
+from deepecohab.utils.auxfun import df_registry
 
-
+@df_registry.register('cage_occupancy')
 def calculate_cage_occupancy(
     config_path: str | Path | dict,
     save_data: bool = True,
@@ -82,7 +83,7 @@ def calculate_cage_occupancy(
 
     return cage_occupancy
 
-
+@df_registry.register('activity_df')
 def calculate_activity(
     config_path: str | Path | dict,
     save_data: bool = True,
