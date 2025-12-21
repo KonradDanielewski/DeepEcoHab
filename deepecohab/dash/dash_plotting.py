@@ -47,7 +47,7 @@ def ranking_distribution(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     Returns:
         A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
-    df = auxfun_plots.prep_ranking_distribution(cfg.store, cfg.animals, cfg.days_range)
+    df = auxfun_plots.prep_ranking_distribution(cfg.store, cfg.days_range)
 
     return plot_factory.plot_ranking_distribution(df, cfg.animals, cfg.animal_colors)
    
@@ -116,7 +116,7 @@ def activity(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     Returns:
         A tuple containing the Plotly Figure and the processed Polars DataFrame.
     """
-    df = auxfun_plots.prep_activity(cfg.store, cfg.days_range, cfg.phase_type)
+    df = auxfun_plots.prep_activity(cfg.store, cfg.days_range, cfg.phase_type, cfg.animals, cfg.positions)
 
     return plot_factory.plot_activity(df, cfg.position_colors, cfg.position_switch, cfg.agg_switch)
 

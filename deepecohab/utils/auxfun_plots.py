@@ -14,7 +14,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 import polars as pl
-from scipy.stats import norm
 
 
 def set_default_theme() -> None:
@@ -89,33 +88,28 @@ class PlotRegistry:
     def list_names(self) -> list[str]:
         return list(self._registry.keys())
     
-    def list_name_func_pairs(self):
-        return self._registry.items()
-    
 
 def create_edges_trace(G: nx.Graph, pos: dict, cmap: str = "Viridis", edge_weight: Literal['chasings', 'time_together'] = 'chasings') -> list:
     """Auxfun to create edges trace with color mapping based on edge width"""
-    edge_widths = [G.edges[edge][edge_weight] if G.edges[edge][edge_weight] is not None else 0 for edge in G.edges()]
-    # Normalize edge widths to the range [0, 1] for color mapping
-    max_width = max(edge_widths)
-    min_width = min(edge_widths)
-    if max_width == 0 and min_width == 0:
-        normalized_widths = [0 for _ in edge_widths]
-    else:
-        normalized_widths = [
-            (width - min_width) / (max_width - min_width) for width in edge_widths
-        ]
+    edge_widths = np.array([G.edges[e][edge_weight] for e in G.edges()])
 
-    colorscale = px.colors.sample_colorscale(cmap, normalized_widths)
+    min_w = edge_widths.min()
+    max_w = edge_widths.max()
+
+    if max_w == min_w:
+        normalized_widths = np.zeros_like(edge_widths)
+    else:
+        normalized_widths = (edge_widths - min_w) / (max_w - min_w)
+        colorscale = px.colors.sample_colorscale(cmap, normalized_widths)
 
     edge_trace = []
 
     for i, edge in enumerate(G.edges()):
+        if edge[0] == edge[1]:
+            continue
         source_x, source_y = pos[edge[0]][:2]
         target_x, target_y = pos[edge[1]][:2]
-        edge_width = (
-            normalized_widths[i] * 10 # connection width scaler for visivbility
-        )  
+        edge_width = normalized_widths[i] * 10 # connection width scaler for visivbility  
 
         edge_trace.append(
             go.Scatter(
@@ -178,10 +172,8 @@ def create_node_trace(
 
 def prep_ranking_over_time(store: dict[str, pl.DataFrame]) -> pl.DataFrame:
     """Aggregate animal ordinal rankings by day, hour, and datetime."""
-    lf = store['ranking'].lazy()
-
     df = (
-        lf
+        store['ranking'].lazy()
         .sort('datetime')
         .group_by('day', 'hour', 'animal_id', 'datetime', maintain_order=True)
         .agg(
@@ -189,7 +181,7 @@ def prep_ranking_over_time(store: dict[str, pl.DataFrame]) -> pl.DataFrame:
             .then(pl.first('ordinal'))
             .otherwise(pl.last('ordinal'))
         )
-    ).collect()
+    ).collect(engine='in-memory')
     
     return df
 
@@ -206,7 +198,7 @@ def prep_polar_df(
         store['time_alone'].lazy()
         .filter(
             pl.col('phase').is_in(phase_type),
-            pl.col('day').is_between(days_range[0], days_range[-1])
+            pl.col('day').is_between(*days_range)
         )
         .group_by('animal_id')
         .agg(
@@ -218,7 +210,7 @@ def prep_polar_df(
         store['chasings_df'].lazy()
         .filter(
             pl.col('phase').is_in(phase_type),
-            pl.col('day').is_between(days_range[0], days_range[-1])
+            pl.col('day').is_between(*days_range)
         )
         .group_by('chaser')
         .agg(
@@ -231,7 +223,7 @@ def prep_polar_df(
         store['chasings_df'].lazy()
         .filter(
             pl.col('phase').is_in(phase_type),
-            pl.col('day').is_between(days_range[0], days_range[-1])
+            pl.col('day').is_between(*days_range)
         )
         .group_by('chased')
         .agg(
@@ -244,7 +236,7 @@ def prep_polar_df(
         store['activity_df'].lazy()
         .filter(
             pl.col('phase').is_in(phase_type),
-            pl.col('day').is_between(days_range[0], days_range[-1])
+            pl.col('day').is_between(*days_range)
         )
         .group_by('animal_id')
         .agg(
@@ -258,13 +250,13 @@ def prep_polar_df(
                 store['pairwise_meetings'].lazy()
                     .filter(
                         pl.col('phase').is_in(phase_type),
-                        pl.col('day').is_between(days_range[0], days_range[-1])
+                        pl.col('day').is_between(*days_range)
                     )
                     .select('animal_id', 'time_together', 'pairwise_encounters'),
                 store['pairwise_meetings'].lazy()
                     .filter(
                         pl.col('phase').is_in(phase_type),
-                        pl.col('day').is_between(days_range[0], days_range[-1])
+                        pl.col('day').is_between(*days_range)
                     )
                     .select(pl.col('animal_id_2').alias('animal_id'), 'time_together', 'pairwise_encounters'),
             ], how='align',
@@ -282,34 +274,33 @@ def prep_polar_df(
         df.with_columns(
             (pl.col(columns) - pl.mean(columns)) / pl.std(columns)
         )
-    ).unpivot(index='animal_id', variable_name='metric').collect()
+    ).unpivot(index='animal_id', variable_name='metric').collect(engine='in-memory')
 
     return df
 
+
 def prep_ranking_distribution(
     store: dict[str, pl.DataFrame], 
-    animals: list[str], 
     days_range: list[int, int],
 ) -> pl.DataFrame:
     """Calculate normal probability density functions for animal rankings on the latest available day."""
-    data_dict = {}
-    x_axis = np.arange(-10, 50, 0.1)
-    
-    diff = (pl.col('day') -  days_range[-1]).abs()
-    
-    for animal in animals:
-        intermediate = store['ranking'].filter(
-            diff == diff.min(), # Get last valid day with update to rank
-            pl.col('animal_id') == animal,
-        ).select(['animal_id', 'mu', 'sigma']).to_numpy()[0]
+    x_df = pl.LazyFrame({"ranking": np.arange(-10, 50, 0.1)})
 
-        data_dict[animal] = norm.pdf(x_axis, intermediate[1], intermediate[2])
+    diff = (pl.col('day') -  days_range[-1]).abs()
+    pdf_expression = ( # probability density function
+        (1 / (pl.col("sigma") * math.sqrt(2 * math.pi))) *
+        (-0.5 * ((pl.col("ranking") - pl.col("mu")) / pl.col("sigma"))**2).exp()
+    )
 
     df = (
-        pl.DataFrame(data_dict)
-        .with_columns(ranking=x_axis)
-        .unpivot(variable_name='animal_id', value_name='probability_density', index='ranking')
-    )
+        store['ranking'].lazy()
+        .filter(diff == diff.min())
+        .group_by('animal_id').agg(pl.last('mu'), pl.last('sigma'))
+        .join(x_df, how="cross")
+        .with_columns(pdf_expression.alias('probability_density'))
+        .select('animal_id', 'ranking', 'probability_density')
+        .sort('animal_id')
+    ).collect(engine='in-memory')
 
     return df
 
@@ -323,28 +314,25 @@ def prep_network_dominance(
     join_df = pl.LazyFrame(
         data=(product(animals, animals)), 
         schema=[
-            ('chased', pl.Enum(animals)),
-            ('chaser', pl.Enum(animals)),
+            ('target', pl.Enum(animals)),
+            ('source', pl.Enum(animals)),
         ]
     )
-    
+
     connections = (
         store['chasings_df'].lazy()
-        .filter(
-            pl.col('day').is_between(days_range[0], days_range[-1]),
-        )
+        .filter(pl.col('day').is_between(*days_range))
         .group_by('chased', 'chaser')
         .agg(pl.sum('chasings'))
         .join(
             join_df,
-            on=['chaser', 'chased'],
-            how='full',
+            left_on=['chaser', 'chased'],
+            right_on=['source', 'target'],
+            how='right',
         )
-        .drop('chaser', 'chased')
-        .rename({'chaser_right': 'source', 'chased_right': 'target'})
-        .sort('target', 'source') # Order is necesarry for deterministic result of node position
         .fill_null(0)
-    ).collect()
+        .sort('target', 'source') # necessary for deterministic output
+    ).collect(engine='in-memory')
     
     diff = (pl.col('day') -  days_range[-1]).abs()
     
@@ -357,6 +345,7 @@ def prep_network_dominance(
     
     return connections, nodes
 
+
 def prep_chasings_heatmap(
     store: dict[str, pl.DataFrame], 
     animals: list[str], 
@@ -365,14 +354,8 @@ def prep_chasings_heatmap(
     agg_switch: Literal['mean', 'sum'],
 ) -> pl.DataFrame:
     """Pivot chasing interactions into a chaser-vs-chased matrix for heatmap visualization."""
-    lf = store['chasings_df'].lazy()
-    
     join_df = pl.LazyFrame(
-        (product(
-            animals,
-            animals,
-            )
-        ), 
+        (product(animals, animals)), 
         schema=[
             ('chased', pl.Enum(animals)),
             ('chaser', pl.Enum(animals)),
@@ -386,11 +369,11 @@ def prep_chasings_heatmap(
             agg_func = pl.mean('chasings').alias('mean')
 
     img = (
-        lf
+        store['chasings_df'].lazy()
         .sort('chased', 'chaser')
         .filter(
             pl.col('phase').is_in(phase_type),
-            pl.col('day').is_between(days_range[0], days_range[-1])
+            pl.col('day').is_between(*days_range)
         )
         .group_by(['chaser', 'chased'], maintain_order=True)
         .agg(
@@ -399,19 +382,19 @@ def prep_chasings_heatmap(
         .join(
             join_df,
             on=['chaser', 'chased'],
-            how='full',
-        )
-        .drop('chaser', 'chased').collect()
+            how='right'
+        ).collect(engine='in-memory')
         .pivot(
-            on='chaser_right',
-            index='chased_right',
+            on='chaser',
+            index='chased',
             values=agg_switch,
         )
-        .drop('chased_right')
+        .drop('chased')
         .select(animals)
     )
     
     return img
+
 
 def prep_chasings_line(
     store: dict[str, pl.DataFrame], 
@@ -419,7 +402,7 @@ def prep_chasings_line(
     days_range: list[int, int],
 ) -> pl.DataFrame:  
     """Calculate hourly chasing aggregates including mean and SEM for time-series plotting."""
-    n_days = len(range(days_range[0], days_range[-1])) + 1
+    n_days = len(range(*days_range)) + 1
 
     join_df = pl.LazyFrame(
         (product(
@@ -437,21 +420,16 @@ def prep_chasings_line(
         ]
     )
 
-    lf = store['chasings_df'].lazy()
     df = (
-        lf
-        .filter(pl.col('day').is_between(days_range[0], days_range[1]))
+        store['chasings_df'].lazy()
+        .filter(pl.col('day').is_between(*days_range))
         .join(
             join_df,
             on=['chaser', 'chased', 'hour', 'day'],
-            how='full',
+            how='right',
         )
-        .drop(["hour", "chaser", "chased", "day"])
-        .rename({"hour_right": "hour", "chaser_right": "chaser", "chased_right": "chased", "day_right": "day"})
         .group_by('day', 'hour', 'chaser')
-        .agg(
-            pl.sum('chasings')
-        )
+        .agg(pl.sum('chasings'))
         .group_by('hour', 'chaser')
         .agg(
             pl.sum('chasings').alias('total'),
@@ -463,7 +441,7 @@ def prep_chasings_line(
             (pl.col('mean') + pl.col('sem')).alias('upper')
         )
         .sort('chaser', 'hour')
-    ).collect()
+    ).collect(engine='in-memory')
     
     return df
 
@@ -472,22 +450,44 @@ def prep_activity(
     store: dict[str, pl.DataFrame], 
     days_range: list[int, int],
     phase_type: list[str],
+    animals: list[str],
+    positions: list[str],
 ) -> pl.DataFrame:
     """Aggregate visits and time spent per position, animal, and day."""
-    lf = store['activity_df'].lazy()
+    join_df = pl.LazyFrame(
+        (product(
+            animals,
+            list(range(days_range[0], days_range[1] + 1)),
+            positions,
+            )
+        ), 
+        schema=[
+            ('animal_id', pl.Enum(animals)),
+            ('day', pl.Int16()),
+            ('position', pl.String),
+        ]
+    )
+
     df = (
-        lf
+        store['activity_df'].lazy()
+        .with_columns(pl.col('position').cast(pl.String))
         .filter(
             pl.col('phase').is_in(phase_type),
-            pl.col('day').is_between(days_range[0], days_range[-1])
+            pl.col('day').is_between(*days_range)
         )
         .group_by(['day', 'animal_id', 'position'])
         .agg(
             pl.sum('visits_to_position').alias('visits'),
             pl.sum('time_in_position').alias('time'),
         )
+        .join(
+            join_df,
+            on=['animal_id', 'position', 'day'],
+            how='right',
+        )
         .sort(['animal_id', 'position'])
-    ).collect()
+        .fill_null(0)
+    ).collect(engine='in-memory')
     
     return df
 
@@ -498,7 +498,7 @@ def prep_activity_line(
     days_range: list[int, int],
 ) -> pl.DataFrame:
     """Calculate hourly detection rates and SEM to track activity levels over time."""
-    n_days = len(range(days_range[0], days_range[-1])) + 1
+    n_days = len(range(*days_range)) + 1
     
     join_df = pl.LazyFrame(
         (product(
@@ -516,17 +516,13 @@ def prep_activity_line(
 
     df = (
         store['padded_df'].lazy()
-        .filter(pl.col('day').is_between(days_range[0], days_range[1]))
+        .filter(pl.col('day').is_between(*days_range))
+        .group_by("day", "hour", "animal_id")
+        .agg(pl.len().alias('n_detections'))
         .join(
             join_df,
             on=['animal_id', 'hour', 'day'],
-            how='full',
-        )
-        .drop(["hour", "animal_id", "day"])
-        .rename({"hour_right": "hour", "animal_id_right": "animal_id", "day_right": "day"})
-        .group_by("day", "hour", "animal_id")
-        .agg(
-            pl.len().alias('n_detections'),
+            how='right',
         )
         .group_by('hour', 'animal_id')
         .agg(
@@ -540,7 +536,7 @@ def prep_activity_line(
             (pl.col('mean') + pl.col('sem')).alias('upper')
         )
         .sort('animal_id', 'hour')
-    ).collect()
+    ).collect(engine='in-memory')
     
     return df
 
@@ -553,8 +549,6 @@ def prep_time_per_cage(
     cages: list[str],
 ) -> pl.DataFrame:
     """Pivot time spent in specific cages into an hourly format for heatmaps plots."""
-    lf = store["cage_occupancy"].lazy()
-    
     join_df = pl.LazyFrame(
         (product(
             list(range(24)),
@@ -571,31 +565,28 @@ def prep_time_per_cage(
     
     match agg_switch:
         case 'sum':
-            agg = pl.sum('time_spent'),
+            agg_func = pl.sum('time_spent'),
         case 'mean':
-            agg = pl.mean('time_spent'),
+            agg_func = pl.mean('time_spent'),
     
     img = (
-        lf
-        .filter(pl.col('day').is_between(days_range[0], days_range[-1]))
+        store["cage_occupancy"].lazy()
+        .filter(pl.col('day').is_between(*days_range))
         .sort('day', 'hour')
         .group_by(['cage', 'animal_id', 'hour'], maintain_order=True)
-        .agg(
-            agg  
-        )
+        .agg(agg_func)
         .join(
             join_df,
             on=['hour', 'cage', 'animal_id'],
-            how='full',
+            how='right',
         )
-        .drop('hour', 'cage', 'animal_id')
-        .collect()
+        .collect(engine='in-memory')
         .pivot(
-            on='hour_right',
-            index=['cage_right', 'animal_id_right'],
+            on='hour',
+            index=['cage', 'animal_id'],
             values='time_spent',
         )
-        .drop('cage_right', 'animal_id_right')
+        .drop('cage', 'animal_id')
     )
     
     return img
@@ -611,14 +602,8 @@ def prep_pairwise_sociability(
     cages: list[str],
 ) -> pl.DataFrame:
     """Generate a pivot table of pairwise encounters or shared time between animals per location."""
-    lf = store['pairwise_meetings'].lazy()
     join_df = pl.LazyFrame(
-        (product(
-            cages, 
-            animals,
-            animals,
-            )
-        ), 
+        (product(cages, animals, animals)), 
         schema=[
             ('position', pl.Categorical()), 
             ('animal_id', pl.Enum(animals)),
@@ -627,11 +612,11 @@ def prep_pairwise_sociability(
     )
 
     img = (
-        lf
+        store['pairwise_meetings'].lazy()
         .with_columns(pl.col(pairwise_switch).round(2))
         .filter(
             pl.col('phase').is_in(phase_type),
-            pl.col('day').is_between(days_range[0], days_range[-1]),
+            pl.col('day').is_between(*days_range),
         )
         .group_by(['animal_id', 'animal_id_2', 'position'], maintain_order=True)
         .agg(
@@ -641,16 +626,15 @@ def prep_pairwise_sociability(
         .join(
             join_df,
             on=['position', 'animal_id', 'animal_id_2'],
-            how='full',
+            how='right',
         )
-        .drop('position', 'animal_id', 'animal_id_2')
-        .collect()
+        .collect(engine='in-memory')
         .pivot(
-            on='animal_id_2_right',
-            index=['position_right', 'animal_id_right'],
+            on='animal_id_2',
+            index=['position', 'animal_id'],
             values=agg_switch,
         )
-        .drop('position_right', 'animal_id_right')
+        .drop('position', 'animal_id')
     )
     
     return img
@@ -663,46 +647,37 @@ def prep_within_cohort_sociability(
     days_range: list[int, int],
 ) -> pl.DataFrame:
     """Calculate and pivot the mean sociability scores between all animal pairs within a cohort."""
-    lf = store['incohort_sociability'].lazy()
-
     join_df = pl.LazyFrame(
-        (product(
-            animals,
-            animals,
-            )
-        ), 
+        (product(animals, animals)), 
         schema=[
             ('animal_id', pl.Enum(animals)),
             ('animal_id_2', pl.Enum(animals)),
         ]
     )
     img = (
-        lf
+        store['incohort_sociability'].lazy()
         .with_columns(pl.col('sociability').round(3))
         .filter(
             pl.col('phase').is_in(phase_type),
-            pl.col('day').is_between(days_range[0], days_range[-1]),
+            pl.col('day').is_between(*days_range),
         )
         .group_by(['animal_id', 'animal_id_2'], maintain_order=True)
-        .agg(
-            pl.mean('sociability').alias('mean')
-        )
+        .agg(pl.mean('sociability').alias('mean'))
         .join(
             join_df,
             on=['animal_id', 'animal_id_2'],
-            how='full',
+            how='right',
         )
-        .drop('animal_id', 'animal_id_2')
-        .collect()
+        .collect(engine='in-memory')
         .pivot(
-            on='animal_id_2_right',
-            index='animal_id_right',
+            on='animal_id_2',
+            index='animal_id',
             values='mean',
-        )
-        .drop('animal_id_right')
+        ).drop('animal_id')
     )
     
     return img
+
 
 def prep_time_alone(
     store: dict[str, pl.DataFrame], 
@@ -714,11 +689,13 @@ def prep_time_alone(
         store['time_alone']
         .filter(
             pl.col('phase').is_in(phase_type),
-            pl.col('day').is_between(days_range[0], days_range[-1]),
+            pl.col('day').is_between(*days_range),
         )
+        .sort('cage')
     )
     
     return df
+
 
 def prep_network_sociability(
     store: dict[str, pl.DataFrame], 
@@ -729,27 +706,24 @@ def prep_network_sociability(
     join_df = pl.LazyFrame(
         data=((combinations(animals, 2))),
         schema=[
-            ('animal_id', pl.Enum(animals)),
-            ('animal_id_2', pl.Enum(animals)),
+            ('source', pl.Enum(animals)),
+            ('target', pl.Enum(animals)),
         ],
     )
 
     connections = (
         store['pairwise_meetings'].lazy()
-        .filter(
-            pl.col('day').is_between(days_range[0], days_range[-1]),
-        )
+        .filter(pl.col('day').is_between(*days_range))
         .group_by('animal_id', 'animal_id_2')
         .agg(pl.sum('time_together'))
         .join(
             join_df,
-            on=['animal_id', 'animal_id_2'],
-            how='full',
+            left_on=['animal_id', 'animal_id_2'],
+            right_on=['source', 'target'],
+            how='right',
         )
-        .drop('animal_id', 'animal_id_2')
-        .rename({'animal_id_right': 'source', 'animal_id_2_right': 'target'})
         .sort('source', 'target') # Order is necesarry for deterministic result of node position
         .fill_null(0)
-    ).collect()
+    ).collect(engine='in-memory')
     
     return connections
