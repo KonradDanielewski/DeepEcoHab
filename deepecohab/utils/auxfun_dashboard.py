@@ -163,7 +163,7 @@ def generate_comparison_block(side: str, slider_range: list[int, int]) -> html.D
             html.Label("Select Plot", style={"fontWeight": "bold"}),
             dcc.Dropdown(
                 id={"type": "plot-dropdown", "side": side},
-                options=get_options_from_ids(plot_registry.list_names()),
+                options=get_options_from_ids(plot_registry.list_available()),
                 value="ranking-line",
             ),
             html.Div(

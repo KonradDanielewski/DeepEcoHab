@@ -85,7 +85,7 @@ class PlotRegistry:
             return {}
         return plotter(config)
     
-    def list_names(self) -> list[str]:
+    def list_available(self) -> list[str]:
         return list(self._registry.keys())
     
 
