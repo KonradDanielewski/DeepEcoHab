@@ -31,9 +31,6 @@ def calculate_time_alone(
 
     results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
     
-    animal_ids = cfg["animal_ids"]
-    cages = cfg["cages"]
-    
     binary_df = auxfun.load_ecohab_data(config_path, "binary_df")
 
     group_cols = ["datetime", "cage"]
@@ -47,16 +44,12 @@ def calculate_time_alone(
             auxfun.get_phase(cfg).alias("phase"),
         )
         .unique()
-        .sort(["day", "phase"])
     )
 
-    animals_lf = auxfun.get_lf_from_enum(animal_ids, 'animal_id', sorted = True, col_type=pl.Enum(animal_ids))
-    cages_lf = auxfun.get_lf_from_enum(cages, 'cage', col_type=pl.Categorical)
 
     full_group_list = (
         time_lf
-        .join(animals_lf, how='cross')
-        .join(cages_lf, how='cross')
+        .join(auxfun.get_animal_cage_grid(cfg), how="cross")
     )
 
     time_alone = (

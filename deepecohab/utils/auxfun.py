@@ -179,6 +179,18 @@ def get_lf_from_enum(
 
     return res.sort(col_name) if sorted else res
 
+def get_animal_cage_grid(
+        cfg: dict    
+    ) -> pl.LazyFrame:
+    """Auxfun to prepare LazyFrame of all animal x cage combos"""
+
+    animal_ids = cfg["animal_ids"]
+    cages = cfg["cages"]
+    animals_lf = get_lf_from_enum(
+        animal_ids, "animal_id", sorted=True, col_type=pl.Enum(animal_ids)
+    )
+    cages_lf = get_lf_from_enum(cages, "cage", col_type=pl.Categorical)
+    return animals_lf.join(cages_lf, how="cross")
 
 def set_animal_ids(
     config_path: str | Path | dict[str, Any],

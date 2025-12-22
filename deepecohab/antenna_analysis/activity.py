@@ -32,9 +32,6 @@ def calculate_cage_occupancy(
 
     binary_lf = auxfun.load_ecohab_data(config_path, "binary_df")
 
-    animal_ids = cfg["animal_ids"]
-    cages = cfg["cages"]
-
     cols = ["day", "hour", "cage", "animal_id"]
 
     bounds = (
@@ -51,32 +48,30 @@ def calculate_cage_occupancy(
     time_lf = (
         pl.LazyFrame()
         .select(pl.datetime_range(pl.lit(start), pl.lit(end), "1h").alias("datetime"))
-    )
-
-    animals_lf = auxfun.get_lf_from_enum(animal_ids, 'animal_id', sorted = True, col_type=pl.Enum(animal_ids))
-    cages_lf = auxfun.get_lf_from_enum(cages, 'cage', col_type=pl.Categorical)
-
-    full_group_list = (
-        time_lf
-        .join(animals_lf, how='cross')
-        .join(cages_lf, how='cross')
         .with_columns(
             auxfun.get_hour(),
             auxfun.get_day()
             )
         .drop('datetime')
     )
-    cage_occupancy = (
+    
+    full_group_list = (
+        time_lf
+        .join(auxfun.get_animal_cage_grid(cfg), how="cross")
+    )
+
+    agg = (
         binary_lf
-        .sort('animal_id', 'datetime')
-        .with_columns(
-            auxfun.get_hour(),
-            auxfun.get_day()
-            )
+        .with_columns(auxfun.get_hour(), auxfun.get_day())
         .group_by(cols)
-        .agg(pl.len().alias('time_spent'))
-        .join(full_group_list, on=cols, how = 'right').fill_null(0)
-        )
+        .agg(pl.len().alias("time_spent"))
+    )
+
+    cage_occupancy = (
+        full_group_list
+        .join(agg, on=cols, how="left")
+        .fill_null(0)
+    )
 
     if save_data:
         cage_occupancy.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')

@@ -168,7 +168,7 @@ def generate_comparison_block(side: str, slider_range: list[int, int]) -> html.D
             ),
             html.Div(
                 [
-                    dcc.Graph(id={"figure": "comparison-plot", "side": side}),
+                    dcc.Graph(id={"figure": "comparison-plot", "side": side}, config=COMMON_CFG),
                     dcc.Store(id={"store": "comparison-plot", "side": side}),
                 ]
             ),
