@@ -71,13 +71,19 @@ class PlotRegistry:
     """Registry for dashboard plots."""
     def __init__(self):
         self._registry: Dict[str, Callable[[PlotConfig], Any]] = {}
+        self._plot_dependencies: Dict[str, list[str]] = {}
 
-    def register(self, name: str):
+    def register(self, name: str, dependencies: list[str] = None):
         """Decorator to register a new plot type."""
         def wrapper(func: Callable[[PlotConfig], Any]):
             self._registry[name] = func
+            self._plot_dependencies[name] = dependencies
             return func
         return wrapper
+    
+    def get_dependencies(self, name: str) -> list[str]:
+        """Returns the list of PlotConfig attributes used by a specific plot."""
+        return self._plot_dependencies.get(name, list())
 
     def get_plot(self, name: str, config: PlotConfig):
         plotter = self._registry.get(name)
@@ -712,10 +718,10 @@ def prep_network_sociability(
     )
 
     connections = (
-        store['pairwise_meetings'].lazy()
+        store['incohort_sociability'].lazy()
         .filter(pl.col('day').is_between(*days_range))
         .group_by('animal_id', 'animal_id_2')
-        .agg(pl.sum('time_together'))
+        .agg(pl.sum('sociability'))
         .join(
             join_df,
             left_on=['animal_id', 'animal_id_2'],

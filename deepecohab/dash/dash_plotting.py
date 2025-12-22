@@ -7,7 +7,7 @@ from deepecohab.utils.auxfun_plots import PlotConfig, PlotRegistry
 
 plot_registry = PlotRegistry()
 
-@plot_registry.register("ranking-line")
+@plot_registry.register("ranking-line", dependencies=["store", 'animals', 'animal_colors'])
 def ranking_over_time(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a line plot showing the evolution of animal rankings over time.
 
@@ -22,7 +22,7 @@ def ranking_over_time(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.plot_ranking_line(df, cfg.animal_colors, cfg.animals)
 
 
-@plot_registry.register("metrics-polar-line")
+@plot_registry.register("metrics-polar-line", dependencies=["store", 'days_range', 'phase_type', 'animals', 'animal_colors'])
 def polar_metrics(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a polar (radar) plot comparing various social dominance metrics.
 
@@ -37,7 +37,7 @@ def polar_metrics(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.plot_metrics_polar(df, cfg.animals, cfg.animal_colors)
 
 
-@plot_registry.register("ranking-distribution-line")
+@plot_registry.register("ranking-distribution-line", dependencies=["store", 'days_range', 'animals', 'animal_colors'])
 def ranking_distribution(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a line plot of the ranking probability distributions.
 
@@ -52,7 +52,7 @@ def ranking_distribution(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.plot_ranking_distribution(df, cfg.animals, cfg.animal_colors)
    
     
-@plot_registry.register("network-dominance")
+@plot_registry.register("network-dominance", dependencies=["store", 'animals', 'days_range', 'animal_colors'])
 def network_dominance(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a social dominance network graph of animal interactions.
 
@@ -67,7 +67,7 @@ def network_dominance(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.plot_network_graph(connections, nodes, cfg.animals, cfg.animal_colors, 'chasings')
     
 
-@plot_registry.register("chasings-heatmap")    
+@plot_registry.register("chasings-heatmap", dependencies=["store", 'animals', 'days_range', 'phase_type', 'agg_switch'])    
 def chasings_heatmap(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a chaser-vs-chased interaction heatmap.
 
@@ -83,7 +83,7 @@ def chasings_heatmap(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.plot_chasings_heatmap(img, cfg.animals)
 
 
-@plot_registry.register("chasings-line")   
+@plot_registry.register("chasings-line", dependencies=["store", 'animals', 'days_range', 'animal_colors'])   
 def chasings_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a line plot of chasing frequency per hour.
 
@@ -106,7 +106,7 @@ def chasings_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
             )
 
 
-@plot_registry.register("activity-bar")   
+@plot_registry.register("activity-bar", dependencies=["store", 'animals', 'days_range', 'animal_colors', 'phase_type', 'positions', 'position_colors', 'position_switch', 'agg_switch'])   
 def activity(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a bar or box plot of animal activity levels by position.
 
@@ -121,7 +121,7 @@ def activity(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.plot_activity(df, cfg.position_colors, cfg.position_switch, cfg.agg_switch)
 
 
-@plot_registry.register("activity-line")   
+@plot_registry.register("activity-line", dependencies=["store", 'animals', 'days_range', 'animal_colors', 'agg_switch'])   
 def activity_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a line plot of diurnal activity based on antenna crossings.
 
@@ -151,7 +151,7 @@ def activity_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
             )
 
 
-@plot_registry.register("time-per-cage-heatmap")   
+@plot_registry.register("time-per-cage-heatmap", dependencies=["store", 'animals', 'days_range', 'cages', 'agg_switch'])   
 def time_per_cage(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a grid of heatmaps showing cage occupancy over 24 hours.
 
@@ -169,7 +169,7 @@ def time_per_cage(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.time_spent_per_cage(img, cfg.animals, cfg.cages)
 
 
-@plot_registry.register("sociability-heatmap")   
+@plot_registry.register("sociability-heatmap", dependencies=["store", 'animals', 'phase_type', 'days_range', 'cages', 'agg_switch', 'pairwise_switch'])   
 def pairwise_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates heatmaps of pairwise sociability per cage.
 
@@ -187,7 +187,7 @@ def pairwise_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.plot_sociability_heatmap(img, cfg.pairwise_switch, cfg.animals, cfg.cages)
 
 
-@plot_registry.register("cohort-heatmap")   
+@plot_registry.register("cohort-heatmap", dependencies=["store", 'animals', 'phase_type', 'days_range'])   
 def within_cohort_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a normalized heatmap of sociability within the entire cohort.
 
@@ -205,7 +205,7 @@ def within_cohort_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]
     return plot_factory.plot_within_cohort_heatmap(img, cfg.animals)
 
 
-@plot_registry.register("time-alone-bar")   
+@plot_registry.register("time-alone-bar", dependencies=["store", 'phase_type', 'days_range', 'agg_switch', 'position_colors'])   
 def time_alone(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a stacked bar plot of time spent alone.
 
@@ -223,7 +223,7 @@ def time_alone(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.plot_time_alone(df, cfg.position_colors, cfg.agg_switch)
 
 
-@plot_registry.register("network-sociability")   
+@plot_registry.register("network-sociability", dependencies=["store", 'animals', 'animal_colors', 'days_range'])   
 def network_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a social dominance network graph of animal interactions.
 

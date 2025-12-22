@@ -416,19 +416,19 @@ def plot_network_graph(
             graph = nx.DiGraph
             title = '<b>Dominance network graph</b>'
         case 'sociability':
-            edge_weight = 'time_together'
+            edge_weight = 'sociability'
             graph = nx.Graph
             title = '<b>Sociability network graph</b>'
     
     G = nx.from_pandas_edgelist(connections, create_using=graph, edge_attr=edge_weight)
-    pos = nx.spring_layout(G, k=None, iterations=200, seed=42, weight=edge_weight, method='energy')
+    pos = nx.spring_layout(G, k=0.1, iterations=200, seed=42, weight=edge_weight, method='energy')
     
     for animal in animals:
         match graph_type:
             case 'chasings':
                 ordinal = nodes.filter(pl.col('animal_id') == animal).select('ordinal').item()
             case 'sociability':
-                ordinal=20
+                ordinal = 20
         pos[animal] = np.append(pos[animal], ordinal)
     
     edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_weight=edge_weight)

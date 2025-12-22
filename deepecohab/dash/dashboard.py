@@ -6,7 +6,7 @@ import dash
 import dash_bootstrap_components as dbc
 import polars as pl
 import plotly.graph_objects as go
-from dash import ctx, dcc, html
+from dash import ctx, dcc, html, no_update
 from dash.dependencies import ALL, MATCH, Input, Output, State
 
 from deepecohab.dash import dash_layouts, dash_plotting
@@ -97,16 +97,20 @@ if __name__ == "__main__":
             Output({"type": "store", "name": MATCH}, "data"),
         ],
         [
-            Input("phase-slider", "value"),
-            Input("mode-switch", "value"),
-            Input("aggregate-stats-switch", "value"),
-            Input("position-switch", "value"),
-            Input("pairwise-switch", "value"),
+            Input("days_range", "value"),
+            Input("phase_type", "value"),
+            Input("agg_switch", "value"),
+            Input("position_switch", "value"),
+            Input("pairwise_switch", "value"),
         ],
     )
     def update_plots(days_range, phase_type, agg_switch, pos_switch, pair_switch) -> tuple[go.Figure, dict]:
         plot_name = ctx.outputs_grouping[0]['id']['name']
-
+        plot_attributes = dash_plotting.plot_registry.get_dependencies(plot_name)
+        
+        if ctx.triggered_id is not None and ctx.triggered_id not in plot_attributes:
+            return no_update, no_update
+        
         phase_list = [phase_type] if phase_type != 'all' else ['dark_phase', 'light_phase']
         
         plot_cfg = auxfun_plots.PlotConfig(
@@ -137,22 +141,24 @@ if __name__ == "__main__":
     )
     def update_comparison_plot(switches: list[Any]) -> tuple[go.Figure, dict]:
         """Render plots in the comparisons tab"""
-        phase_type = ([switches[1]] if not switches[1] == 'all' else ['dark_phase', 'light_phase'])
+        input_dict = {item['id']['type']: val for item, val in zip(ctx.inputs_list[0], switches)}
+        
+        phase_type = (input_dict['phase_type'] if not input_dict['phase_type'] == 'all' else ['dark_phase', 'light_phase'])
            
         plot_cfg = auxfun_plots.PlotConfig(
             store=store, 
-            days_range=switches[3], 
+            days_range=input_dict['days_range'], 
             phase_type=phase_type, 
-            agg_switch=switches[2],
-            position_switch=switches[4], 
-            pairwise_switch=switches[5], 
+            agg_switch=input_dict['agg_switch'],
+            position_switch=input_dict['position_switch'], 
+            pairwise_switch=input_dict['pairwise_switch'], 
             animals=ANIMALS, 
             animal_colors=ANIMAL_COLORS, 
             cages=CAGES, 
             positions=POSITIONS,
             position_colors=POSITION_COLORS,
         )
-        fig, data = dash_plotting.plot_registry.get_plot(switches[0], plot_cfg)
+        fig, data = dash_plotting.plot_registry.get_plot(input_dict['plot-dropdown'], plot_cfg)
 
         return fig, auxfun_dashboard.to_store_json(data)
 
@@ -179,8 +185,8 @@ if __name__ == "__main__":
         [
             State("data-keys-checklist", "value"),
             State("plot-checklist", "value"),
-            State("mode-switch", "value"),
-            State("phase-slider", "value"),
+            State("phase_type", "value"),
+            State("days_range", "value"),
             State({"type": "graph", "name": ALL}, "figure"),
             State({"type": "graph", "name": ALL}, "id"),
             State({"type": "store", "name": ALL}, "data"),
@@ -223,7 +229,7 @@ if __name__ == "__main__":
             Input({"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"),
         [
             State({"figure": "comparison-plot", "side": MATCH}, "figure"),
-            State({"figure": "comparison-plot", "side": MATCH}, "id"),
+            # State({"figure": "comparison-plot", "side": MATCH}, "id"),
             State({"store": "comparison-plot", "side": MATCH}, "data"),
             State({"type": "plot-dropdown", "side": MATCH}, "value"),
         ],

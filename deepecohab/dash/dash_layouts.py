@@ -9,12 +9,12 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
     return html.Div(
         [
             auxfun_dashboard.generate_settings_block(
-                phase_type_id = "mode-switch",
-                aggregate_stats_id = "aggregate-stats-switch",
-                slider_id = "phase-slider",
-                position_switch_id = "position-switch",
-                pairwise_switch_id = "pairwise-switch",
-                slider_range = days_range,
+                phase_type_id="phase_type",
+                aggregate_stats_id="agg_switch",
+                slider_id="days_range",
+                position_switch_id="position_switch",
+                pairwise_switch_id="pairwise_switch",
+                days_range=days_range,
                 include_download=True,
             ),
             dbc.Container(
@@ -78,7 +78,7 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
                         [
                             dbc.Col(
                                 dcc.RadioItems(
-                                    id="position-switch",
+                                    id="position_switch",
                                     options=[
                                         {"label": "Visits", "value": "visits"},
                                         {"label": "Time", "value": "time"},
@@ -125,7 +125,7 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
                         [
                             dbc.Col(
                                 dcc.RadioItems(
-                                    id="pairwise-switch",
+                                    id="pairwise_switch",
                                     options=[
                                         {"label": "Visits", "value": "pairwise_encounters"},
                                         {"label": "Time", "value": "time_together"},

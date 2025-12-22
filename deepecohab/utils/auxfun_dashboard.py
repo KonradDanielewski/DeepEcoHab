@@ -20,7 +20,7 @@ def generate_settings_block(
     phase_type_id: dict | str,  
     aggregate_stats_id: dict | str,  
     slider_id: dict | str,  
-    slider_range: list[int, int],  
+    days_range: list[int, int],  
     position_switch_id: dict | str | None = None, 
     pairwise_switch_id: dict | str| None = None, 
     include_download: bool = False,
@@ -69,12 +69,12 @@ def generate_settings_block(
                             html.Label("Days of experiment", className="slider-label"),
                             dcc.RangeSlider(
                                 id=slider_id,
-                                min=slider_range[0],
-                                max=slider_range[1],
-                                value=[slider_range[0], slider_range[1]],
+                                min=days_range[0],
+                                max=days_range[1],
+                                value=[*days_range],
                                 step=1,
                                 count=1,
-                                marks={i: str(i) for i in slider_range},
+                                marks={i: str(i) for i in days_range},
                                 tooltip={
                                     "placement": "bottom",
                                     "always_visible": True,
@@ -156,7 +156,7 @@ def generate_settings_block(
     return block
 
 
-def generate_comparison_block(side: str, slider_range: list[int, int]) -> html.Div:
+def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div:
     """"Generates a side of a comparisons block"""
     return html.Div(
         [
@@ -173,12 +173,12 @@ def generate_comparison_block(side: str, slider_range: list[int, int]) -> html.D
                 ]
             ),
             generate_settings_block(
-                phase_type_id = {"type": "mode-switch", "side": side},
-                aggregate_stats_id = {"type": "aggregate-switch", "side": side},
-                slider_id = {"type": "phase-slider", "side": side},
-                slider_range = slider_range,
-                position_switch_id = {"type": "position-switch", "side": side},
-                pairwise_switch_id = {"type": "pairwise-switch", "side": side},
+                phase_type_id = {"type": "phase_type", "side": side},
+                aggregate_stats_id = {"type": "agg_switch", "side": side},
+                slider_id = {"type": "days_range", "side": side},
+                days_range = days_range,
+                position_switch_id = {"type": "position_switch", "side": side},
+                pairwise_switch_id = {"type": "pairwise_switch", "side": side},
                 comparison_layout=True,
             ),
             get_fmt_download_buttons(
