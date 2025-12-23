@@ -6,6 +6,14 @@ Our backend is built on [Polars](https://pola.rs/) - Extremely fast Query Engine
 
 ## Installation
 
+We keep DeepEcoHab lean to ensure easy integration and fast installation.
+
+<b>Existing Environments</b>: 
+
+If your environment is already running `python>=3.9`, run: `pip install deepecohab`
+
+<b>New Installations</b>: If you are starting from scratch, please follow our guide below:
+
 In the spirit of open-source we suggest usage of [uv](https://docs.astral.sh/uv/). 
 
 To install `uv` copy-paste the command below:
@@ -27,6 +35,7 @@ uv venv
 .venv\Scripts\activate
 uv pip install .
 ```
+
 We recommend using [VSCode](https://code.visualstudio.com/download) with the Jupter extension to run the example notebooks provided in the repository.
 
 ## Example data
