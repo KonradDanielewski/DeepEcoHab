@@ -300,16 +300,19 @@ def run_dashboard(config_path: str | Path | dict[str, Any]):
 
     path_to_dashboard = importlib.util.find_spec("deepecohab.dash.dashboard").origin
 
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            path_to_dashboard,
-            "--results-path",
-            data_path,
-            "--config-path",
-            cfg_path,
-        ]
-    )
+    try:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                path_to_dashboard,
+                "--results-path",
+                data_path,
+                "--config-path",
+                cfg_path,
+            ]
+        )
+    except Exception as e:
+        print(e)
 
     return process
 
