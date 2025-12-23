@@ -12,6 +12,7 @@ import polars as pl
 from dash import dcc, exceptions, html
 
 from deepecohab.dash.dash_plotting import plot_registry
+from deepecohab.utils.auxfun import df_registry
 
 COMMON_CFG = {"displayModeBar": False}
 
@@ -116,12 +117,12 @@ def generate_settings_block(
                     ),
                     *(
                         [
+                            html.Div(className="divider"),
                             html.Div(
                                 id={"container" : position_switch_id["type"], "side": position_switch_id["side"]},
                                 hidden=True,
                                 className="flex-container",
                                 children = [
-                                    html.Div(className="divider"),
                                     html.Div(
                                         dcc.RadioItems(
                                             id=position_switch_id,
@@ -141,7 +142,6 @@ def generate_settings_block(
                                 hidden=False,
                                 className="flex-container",
                                 children = [
-                                    html.Div(className="divider"),
                                     html.Div(
                                         dcc.RadioItems(
                                             id=pairwise_switch_id,
@@ -242,15 +242,7 @@ def generate_plot_download_tab() -> dcc.Tab:
 
 def generate_csv_download_tab() -> dcc.Tab:
     """Generates DataFrames download tab in the Downloads modal component"""
-    options = [
-        {"label": "Main DF", "value": "main_df"},
-        {"label": "Chasing", "value": "chasings_df"},
-        {"label": "Activity", "value": "activity_df"},
-        {"label": "Pairwise meetings", "value": "pairwise_meetings"},
-        {"label": "Incohort sociability", "value": "incohort_sociability"},
-        {"label": "Time alone", "value": "time_alone"},
-        {"label": "Ranking", "value": "ranking"},
-    ]
+    options = get_options_from_ids(df_registry.list_available(), "_")
 
     return dcc.Tab(
         label="DataFrames",
@@ -332,9 +324,9 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450") -> html.
     )
 
 
-def get_options_from_ids(obj_ids: list[str]) -> list[dict[str, str]]:
+def get_options_from_ids(obj_ids: list[str], sep: str = "-") -> list[dict[str, str]]:
     """Generate options in the Downloads -> Plots tab from available IDs"""
-    return [{"label": get_display_name(obj_id), "value": obj_id} for obj_id in obj_ids]
+    return [{"label": get_display_name(obj_id, sep), "value": obj_id} for obj_id in obj_ids]
 
 
 def get_display_name(name: str, sep: str = "-") -> str:
