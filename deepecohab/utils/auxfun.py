@@ -4,8 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import (
-    Callable,
-    Any,
+	Callable,
+	Any,
 )
 
 import polars as pl
@@ -13,344 +13,327 @@ import toml
 
 
 class DataFrameRegistry:
-    def __init__(self):
-        self._registry: dict[str, Callable] = {}
+	def __init__(self):
+		self._registry: dict[str, Callable] = {}
 
-    def register(self, name: str):
-        """Decorator to register a new plot type."""
+	def register(self, name: str):
+		"""Decorator to register a new plot type."""
 
-        def wrapper(func: Callable):
-            self._registry[name] = func
-            return func
+		def wrapper(func: Callable):
+			self._registry[name] = func
+			return func
 
-        return wrapper
+		return wrapper
 
-    def get_function(self, name: str) -> Callable:
-        """Retrieve a function by its registered name."""
-        if name not in self._registry:
-            available = ", ".join(self._registry.keys())
-            raise ValueError(f"'{name}' not found. Available: {available}")
-        return self._registry[name]
+	def get_function(self, name: str) -> Callable:
+		"""Retrieve a function by its registered name."""
+		if name not in self._registry:
+			available = ", ".join(self._registry.keys())
+			raise ValueError(f"'{name}' not found. Available: {available}")
+		return self._registry[name]
 
-    def list_available(self) -> list[str]:
-        """Returns a list of all registered function names."""
-        return list(self._registry.keys())
+	def list_available(self) -> list[str]:
+		"""Returns a list of all registered function names."""
+		return list(self._registry.keys())
 
 
 df_registry = DataFrameRegistry()
 
 
 def read_config(config_path: str | Path | dict[str, Any]) -> dict:
-    """Auxfun to check validity of the passed config_path variable (config path or dict)"""
-    if isinstance(config_path, dict):
-        return config_path
+	"""Auxfun to check validity of the passed config_path variable (config path or dict)"""
+	if isinstance(config_path, dict):
+		return config_path
 
-    elif isinstance(config_path, (str, Path)):
-        with open(config_path, "r") as f:
-            config = toml.load(f)
-        return config
+	elif isinstance(config_path, (str, Path)):
+		with open(config_path, "r") as f:
+			config = toml.load(f)
+		return config
 
-    else:
-        raise TypeError(
-            f"config_path should be either a dict, Path or str, but {type(config_path)} provided."
-        )
+	else:
+		raise TypeError(
+			f"config_path should be either a dict, Path or str, but {type(config_path)} provided."
+		)
 
 
 def load_ecohab_data(
-    config_path: str | Path | dict[str, Any], key: str, return_df: bool = False
+	config_path: str | Path | dict[str, Any], key: str, return_df: bool = False
 ) -> pl.LazyFrame | pl.DataFrame:
-    """Loads already analyzed main data structure
+	"""Loads already analyzed main data structure
 
-    Args:
-        config_path: config file path
-        key: name of the parquet file where data is stored.
+	Args:
+	    config_path: config file path
+	    key: name of the parquet file where data is stored.
 
-    Raises:
-        KeyError: raised if the key not found in file.
+	Raises:
+	    KeyError: raised if the key not found in file.
 
-    Returns:
-        Desired data structure loaded from the file.
-    """
-    if key not in df_registry.list_available():
-        raise KeyError(
-            f"{key} not found. Available keys: {df_registry.list_available()}"
-        )
+	Returns:
+	    Desired data structure loaded from the file.
+	"""
+	if key not in df_registry.list_available():
+		raise KeyError(f"{key} not found. Available keys: {df_registry.list_available()}")
 
-    cfg = read_config(config_path)
-    results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
+	cfg = read_config(config_path)
+	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 
-    if not results_path.is_file():
-        return None
+	if not results_path.is_file():
+		return None
 
-    return pl.read_parquet(results_path) if return_df else pl.scan_parquet(results_path)
+	return pl.read_parquet(results_path) if return_df else pl.scan_parquet(results_path)
 
 
 def make_project_path(project_location: str, experiment_name: str) -> str:
-    """Auxfun to make a name of the project directory using its name and time of creation"""
-    project_name = experiment_name + "_" + dt.datetime.today().strftime("%Y-%m-%d")
-    project_location = project_location / project_name
+	"""Auxfun to make a name of the project directory using its name and time of creation"""
+	project_name = experiment_name + "_" + dt.datetime.today().strftime("%Y-%m-%d")
+	project_location = project_location / project_name
 
-    return project_location
+	return project_location
 
 
 @df_registry.register("phase_durations")
 def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """Auxfun to calculate approximate phase durations.
-    Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
-    """
-    return (
-        lf.group_by(["phase", "phase_count"])
-        .agg(
-            duration_s=(
-                (
-                    pl.col("datetime").last() - pl.col("datetime").first()
-                ).dt.total_seconds()
-            )
-        )
-        .with_columns(
-            ((pl.col("duration_s") / 3600).round(0).clip(1, 12) * 3600)
-            .cast(pl.Int64)
-            .alias("duration_seconds")
-        )
-        .select("phase", "phase_count", "duration_seconds")
-        .sort(["phase", "phase_count"])
-    )
+	"""Auxfun to calculate approximate phase durations.
+	Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
+	"""
+	return (
+		lf.group_by(["phase", "phase_count"])
+		.agg(
+			duration_s=((pl.col("datetime").last() - pl.col("datetime").first()).dt.total_seconds())
+		)
+		.with_columns(
+			((pl.col("duration_s") / 3600).round(0).clip(1, 12) * 3600)
+			.cast(pl.Int64)
+			.alias("duration_seconds")
+		)
+		.select("phase", "phase_count", "duration_seconds")
+		.sort(["phase", "phase_count"])
+	)
 
 
 def get_day() -> pl.Expr:
-    """Auxfun for getting the day"""
-    start_midnight = pl.col("datetime").min().dt.truncate("1d")
+	"""Auxfun for getting the day"""
+	start_midnight = pl.col("datetime").min().dt.truncate("1d")
 
-    return (
-        (pl.col("datetime") - start_midnight)
-        .dt.total_days()
-        .floor()
-        .cast(pl.Int16)
-        .add(1)
-        .alias("day")
-    )
+	return (
+		(pl.col("datetime") - start_midnight)
+		.dt.total_days()
+		.floor()
+		.cast(pl.Int16)
+		.add(1)
+		.alias("day")
+	)
 
 
 def get_phase(cfg: dict[str, Any]) -> pl.Expr:
-    """Auxfun for getting the phase"""
-    start_str, end_str = list(cfg["phase"].values())
-    phase_names = list(cfg["phase"].keys())
-    start_t = dt.time.fromisoformat(start_str)
-    end_t = dt.time.fromisoformat(end_str)
+	"""Auxfun for getting the phase"""
+	start_str, end_str = list(cfg["phase"].values())
+	phase_names = list(cfg["phase"].keys())
+	start_t = dt.time.fromisoformat(start_str)
+	end_t = dt.time.fromisoformat(end_str)
 
-    return (
-        pl.when(pl.col("datetime").dt.time().is_between(start_t, end_t, closed="both"))
-        .then(pl.lit("light_phase"))
-        .otherwise(pl.lit("dark_phase"))
-        .cast(pl.Enum(phase_names))
-        .alias("phase")
-    )
+	return (
+		pl.when(pl.col("datetime").dt.time().is_between(start_t, end_t, closed="both"))
+		.then(pl.lit("light_phase"))
+		.otherwise(pl.lit("dark_phase"))
+		.cast(pl.Enum(phase_names))
+		.alias("phase")
+	)
 
 
 def get_hour(dt_col: str = "datetime") -> pl.Expr:
-    return pl.col(dt_col).dt.hour().cast(pl.Int8).alias("hour")
+	return pl.col(dt_col).dt.hour().cast(pl.Int8).alias("hour")
 
 
 def get_phase_count() -> pl.Expr:
-    """Auxfun used to count phases"""
+	"""Auxfun used to count phases"""
 
-    run_id = (
-        (pl.col("phase") != pl.col("phase").shift(1))
-        .fill_null(True)
-        .cast(pl.Int8)
-        .cum_sum()
-    )
+	run_id = (pl.col("phase") != pl.col("phase").shift(1)).fill_null(True).cast(pl.Int8).cum_sum()
 
-    return run_id.rank(method="dense").over("phase").cast(pl.Int16).alias("phase_count")
+	return run_id.rank(method="dense").over("phase").cast(pl.Int16).alias("phase_count")
 
 
 def get_lf_from_enum(
-    values: list, col_name: str, col_type: pl.DataType, sorted: bool = False
+	values: list, col_name: str, col_type: pl.DataType, sorted: bool = False
 ) -> pl.LazyFrame:
-    """Auxfun for creating LazyFrames from lists of values"""
+	"""Auxfun for creating LazyFrames from lists of values"""
 
-    res = pl.LazyFrame(
-        {col_name: values},
-        schema={col_name: col_type},
-    )
+	res = pl.LazyFrame(
+		{col_name: values},
+		schema={col_name: col_type},
+	)
 
-    return res.sort(col_name) if sorted else res
+	return res.sort(col_name) if sorted else res
 
 
 def get_animal_cage_grid(cfg: dict) -> pl.LazyFrame:
-    """Auxfun to prepare LazyFrame of all animal x cage combos"""
+	"""Auxfun to prepare LazyFrame of all animal x cage combos"""
 
-    animal_ids = cfg["animal_ids"]
-    cages = cfg["cages"]
-    animals_lf = get_lf_from_enum(
-        animal_ids, "animal_id", sorted=True, col_type=pl.Enum(animal_ids)
-    )
-    cages_lf = get_lf_from_enum(cages, "cage", col_type=pl.Categorical)
-    return animals_lf.join(cages_lf, how="cross")
+	animal_ids = cfg["animal_ids"]
+	cages = cfg["cages"]
+	animals_lf = get_lf_from_enum(
+		animal_ids, "animal_id", sorted=True, col_type=pl.Enum(animal_ids)
+	)
+	cages_lf = get_lf_from_enum(cages, "cage", col_type=pl.Categorical)
+	return animals_lf.join(cages_lf, how="cross")
 
 
 def set_animal_ids(
-    config_path: str | Path | dict[str, Any],
-    lf: pl.LazyFrame,
-    sanitize_animal_ids: bool,
-    min_antenna_crossings: int,
-    animal_ids: list | None = None,
+	config_path: str | Path | dict[str, Any],
+	lf: pl.LazyFrame,
+	sanitize_animal_ids: bool,
+	min_antenna_crossings: int,
+	animal_ids: list | None = None,
 ) -> pl.LazyFrame:
-    """Auxfun to infer animal ids from data, optionally removing ghost tags (random radio noise reads)."""
-    cfg = read_config(config_path)
-    dropped_ids = []
+	"""Auxfun to infer animal ids from data, optionally removing ghost tags (random radio noise reads)."""
+	cfg = read_config(config_path)
+	dropped_ids = []
 
-    if isinstance(animal_ids, list):
-        lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
-    else:
-        animal_detections = lf.group_by("animal_id").len().collect()
+	if isinstance(animal_ids, list):
+		lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
+	else:
+		animal_detections = lf.group_by("animal_id").len().collect()
 
-        if sanitize_animal_ids:
-            is_ghost = pl.col("len") < min_antenna_crossings
+		if sanitize_animal_ids:
+			is_ghost = pl.col("len") < min_antenna_crossings
 
-            dropped_ids = animal_detections.filter(is_ghost)["animal_id"].to_list()
-            animal_ids = animal_detections.filter(~is_ghost)["animal_id"].to_list()
+			dropped_ids = animal_detections.filter(is_ghost)["animal_id"].to_list()
+			animal_ids = animal_detections.filter(~is_ghost)["animal_id"].to_list()
 
-            if dropped_ids:
-                print(f"IDs dropped from dataset {dropped_ids}")
-            else:
-                print("No ghost tags detected :)")
-        else:
-            animal_ids = animal_detections["animal_id"].to_list()
+			if dropped_ids:
+				print(f"IDs dropped from dataset {dropped_ids}")
+			else:
+				print("No ghost tags detected :)")
+		else:
+			animal_ids = animal_detections["animal_id"].to_list()
 
-        animal_ids = sorted(animal_ids)
-        lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
+		animal_ids = sorted(animal_ids)
+		lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
 
-    cfg.update({"animal_ids": animal_ids, "dropped_ids": dropped_ids})
-    with config_path.open("w") as f:
-        toml.dump(cfg, f)
+	cfg.update({"animal_ids": animal_ids, "dropped_ids": dropped_ids})
+	with config_path.open("w") as f:
+		toml.dump(cfg, f)
 
-    return lf
+	return lf
 
 
 def append_start_end_to_config(
-    config_path: str | Path | dict[str, Any], lf: pl.LazyFrame
+	config_path: str | Path | dict[str, Any], lf: pl.LazyFrame
 ) -> dict[str, Any]:
-    """Auxfun to append start and end datetimes of the experiment if not user provided.
+	"""Auxfun to append start and end datetimes of the experiment if not user provided.
 
-    Returns:
-        Config with updated start and end datetimes
-    """
-    cfg = read_config(config_path)
-    bounds = (
-        lf.sort("datetime")
-        .select(
-            [
-                pl.col("datetime").first().alias("start_time"),
-                pl.col("datetime").last().alias("end_time"),
-            ]
-        )
-        .collect()
-    )
+	Returns:
+	    Config with updated start and end datetimes
+	"""
+	cfg = read_config(config_path)
+	bounds = (
+		lf.sort("datetime")
+		.select(
+			[
+				pl.col("datetime").first().alias("start_time"),
+				pl.col("datetime").last().alias("end_time"),
+			]
+		)
+		.collect()
+	)
 
-    start_time = str(bounds["start_time"][0])
-    end_time = str(bounds["end_time"][0])
+	start_time = str(bounds["start_time"][0])
+	end_time = str(bounds["end_time"][0])
 
-    with open(config_path, "w") as config:
-        cfg["days_range"] = [
-            1,
-            (bounds["end_time"] - bounds["start_time"]).item().days + 1,
-        ]
-        cfg["experiment_timeline"] = {
-            "start_date": start_time,
-            "finish_date": end_time,
-        }
-        toml.dump(cfg, config)
+	with open(config_path, "w") as config:
+		cfg["days_range"] = [
+			1,
+			(bounds["end_time"] - bounds["start_time"]).item().days + 1,
+		]
+		cfg["experiment_timeline"] = {
+			"start_date": start_time,
+			"finish_date": end_time,
+		}
+		toml.dump(cfg, config)
 
-    print(
-        f"Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True"
-    )
+	print(
+		f"Start of the experiment established as: {start_time} and end as {end_time}.\nIf you wish to set specific start and end, please change them in the config file and create the data structure again setting overwrite=True"
+	)
 
-    return cfg, start_time, end_time
+	return cfg, start_time, end_time
 
 
 def add_cages_to_config(config_path: str | Path | dict[str, Any]) -> None:
-    """Auxfun to add cage names to config for reading convenience"""
-    cfg = read_config(config_path)
+	"""Auxfun to add cage names to config for reading convenience"""
+	cfg = read_config(config_path)
 
-    positions = list(set(cfg["antenna_combinations"].values()))
-    cages = [pos for pos in positions if "cage" in pos]
+	positions = list(set(cfg["antenna_combinations"].values()))
+	cages = [pos for pos in positions if "cage" in pos]
 
-    with open(config_path, "w") as config:
-        cfg["cages"] = sorted(cages)
-        toml.dump(cfg, config)
+	with open(config_path, "w") as config:
+		cfg["cages"] = sorted(cages)
+		toml.dump(cfg, config)
 
 
-def add_days_to_config(
-    config_path: str | Path | dict[str, Any], lf: pl.LazyFrame
-) -> None:
-    """Auxfun to add days range to config for reading convenience"""
-    cfg = read_config(config_path)
+def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFrame) -> None:
+	"""Auxfun to add days range to config for reading convenience"""
+	cfg = read_config(config_path)
 
-    days = lf.collect().get_column("day").unique(maintain_order=True).to_list()
+	days = lf.collect().get_column("day").unique(maintain_order=True).to_list()
 
-    with open(config_path, "w") as config:
-        cfg["days_range"] = [days[0], days[-1]]
-        toml.dump(cfg, config)
+	with open(config_path, "w") as config:
+		cfg["days_range"] = [days[0], days[-1]]
+		toml.dump(cfg, config)
 
 
 def run_dashboard(config_path: str | Path | dict[str, Any]):
-    """Auxfun to open dashboard for experiment from provided config"""
-    cfg = read_config(config_path)
+	"""Auxfun to open dashboard for experiment from provided config"""
+	cfg = read_config(config_path)
 
-    project_loc = Path(cfg["project_location"])
-    data_path = project_loc / "results"
-    cfg_path = project_loc / "config.toml"
+	project_loc = Path(cfg["project_location"])
+	data_path = project_loc / "results"
+	cfg_path = project_loc / "config.toml"
 
-    path_to_dashboard = importlib.util.find_spec("deepecohab.dash.dashboard").origin
+	path_to_dashboard = importlib.util.find_spec("deepecohab.dash.dashboard").origin
 
-    cmd = [
-        sys.executable,
-        str(path_to_dashboard),
-        "--results-path",
-        str(data_path),
-        "--config-path",
-        str(cfg_path),
-    ]
+	cmd = [
+		sys.executable,
+		str(path_to_dashboard),
+		"--results-path",
+		str(data_path),
+		"--config-path",
+		str(cfg_path),
+	]
 
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    try:
-        output, _ = process.communicate(timeout=1)
-        print(output)
-    except subprocess.TimeoutExpired:
-        pass
+	process = subprocess.Popen(
+		cmd,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.STDOUT,
+		text=True,
+	)
+	try:
+		output, _ = process.communicate(timeout=1)
+		print(output)
+	except subprocess.TimeoutExpired:
+		pass
 
 
 def get_time_spent_expression(
-    time_col: str = "datetime",
-    group_col: str = "animal_id",
-    alias: str | None = "time_spent",
+	time_col: str = "datetime",
+	group_col: str = "animal_id",
+	alias: str | None = "time_spent",
 ) -> pl.Expr:
-    """Auxfun to build a polars expression object to perform timedelta calculation on a dataframe with specified column names"""
-    expr = (
-        (pl.col(time_col) - pl.col(time_col).shift(1))
-        .over(group_col)
-        .dt.total_seconds(fractional=True)
-        .fill_null(0)
-        .cast(pl.Float64)
-        .round(2)
-    )
-    return expr.alias(alias) if alias is not None else expr
+	"""Auxfun to build a polars expression object to perform timedelta calculation on a dataframe with specified column names"""
+	expr = (
+		(pl.col(time_col) - pl.col(time_col).shift(1))
+		.over(group_col)
+		.dt.total_seconds(fractional=True)
+		.fill_null(0)
+		.cast(pl.Float64)
+		.round(2)
+	)
+	return expr.alias(alias) if alias is not None else expr
 
 
 def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
-    """Auxfun to map directional tunnels in a LazyFrame to undirected ones"""
-    tunnels = cfg["tunnels"]
+	"""Auxfun to map directional tunnels in a LazyFrame to undirected ones"""
+	tunnels = cfg["tunnels"]
 
-    return lf.with_columns(
-        pl.col("position")
-        .cast(pl.Utf8)
-        .replace(tunnels)
-        .cast(pl.Categorical)
-        .alias("position")
-    )
+	return lf.with_columns(
+		pl.col("position").cast(pl.Utf8).replace(tunnels).cast(pl.Categorical).alias("position")
+	)

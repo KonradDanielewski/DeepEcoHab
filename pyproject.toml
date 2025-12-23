@@ -51,3 +51,11 @@ namespaces = true
 [tool.setuptools.package-data]
 "*" = ["*.css", "*.zip", "*.txt"]
 "deepecohab.dash.assets" = ["style.css"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "tab"
+docstring-code-format = true
