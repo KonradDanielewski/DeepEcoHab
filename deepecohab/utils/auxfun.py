@@ -83,10 +83,10 @@ def load_ecohab_data(
 	return pl.read_parquet(results_path) if return_df else pl.scan_parquet(results_path)
 
 
-def make_project_path(project_location: str, experiment_name: str) -> str:
+def make_project_path(project_location: str, experiment_name: str) -> Path:
 	"""Auxfun to make a name of the project directory using its name and time of creation"""
 	project_name = experiment_name + "_" + dt.datetime.today().strftime("%Y-%m-%d")
-	project_location = project_location / project_name
+	project_location: Path = project_location / project_name
 
 	return project_location
 
@@ -169,8 +169,8 @@ def get_lf_from_enum(
 def get_animal_cage_grid(cfg: dict) -> pl.LazyFrame:
 	"""Auxfun to prepare LazyFrame of all animal x cage combos"""
 
-	animal_ids = cfg["animal_ids"]
-	cages = cfg["cages"]
+	animal_ids: list[str] = cfg["animal_ids"]
+	cages: list[str] = cfg["cages"]
 	animals_lf = get_lf_from_enum(
 		animal_ids, "animal_id", sorted=True, col_type=pl.Enum(animal_ids)
 	)
@@ -186,8 +186,8 @@ def set_animal_ids(
 	animal_ids: list | None = None,
 ) -> pl.LazyFrame:
 	"""Auxfun to infer animal ids from data, optionally removing ghost tags (random radio noise reads)."""
-	cfg = read_config(config_path)
-	dropped_ids = []
+	cfg: dict[str, Any] = read_config(config_path)
+	dropped_ids: list[str] = []
 
 	if isinstance(animal_ids, list):
 		lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
@@ -205,7 +205,7 @@ def set_animal_ids(
 			else:
 				print("No ghost tags detected :)")
 		else:
-			animal_ids = animal_detections["animal_id"].to_list()
+			animal_ids: list[str] = animal_detections["animal_id"].to_list()
 
 		animal_ids = sorted(animal_ids)
 		lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
@@ -225,7 +225,7 @@ def append_start_end_to_config(
 	Returns:
 	    Config with updated start and end datetimes
 	"""
-	cfg = read_config(config_path)
+	cfg: dict[str, Any] = read_config(config_path)
 	bounds = (
 		lf.sort("datetime")
 		.select(
@@ -260,10 +260,10 @@ def append_start_end_to_config(
 
 def add_cages_to_config(config_path: str | Path | dict[str, Any]) -> None:
 	"""Auxfun to add cage names to config for reading convenience"""
-	cfg = read_config(config_path)
+	cfg: dict[str, Any] = read_config(config_path)
 
-	positions = list(set(cfg["antenna_combinations"].values()))
-	cages = [pos for pos in positions if "cage" in pos]
+	positions: list[str] = list(set(cfg["antenna_combinations"].values()))
+	cages: list[str] = [pos for pos in positions if "cage" in pos]
 
 	with open(config_path, "w") as config:
 		cfg["cages"] = sorted(cages)
@@ -272,28 +272,28 @@ def add_cages_to_config(config_path: str | Path | dict[str, Any]) -> None:
 
 def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFrame) -> None:
 	"""Auxfun to add days range to config for reading convenience"""
-	cfg = read_config(config_path)
+	cfg: dict[str, Any] = read_config(config_path)
 
-	days = lf.collect().get_column("day").unique(maintain_order=True).to_list()
+	days: list[int] = lf.collect().get_column("day").unique(maintain_order=True).to_list()
 
 	with open(config_path, "w") as config:
-		cfg["days_range"] = [days[0], days[-1]]
+		cfg["days_range"] = [*days]
 		toml.dump(cfg, config)
 
 
 def run_dashboard(config_path: str | Path | dict[str, Any]):
 	"""Auxfun to open dashboard for experiment from provided config"""
-	cfg = read_config(config_path)
+	cfg: dict[str, Any] = read_config(config_path)
 
 	project_loc = Path(cfg["project_location"])
 	data_path = project_loc / "results"
 	cfg_path = project_loc / "config.toml"
 
-	path_to_dashboard = importlib.util.find_spec("deepecohab.dash.dashboard").origin
+	path_to_dashboard: str = importlib.util.find_spec("deepecohab.dash.dashboard").origin
 
-	cmd = [
+	cmd: list[str] = [
 		sys.executable,
-		str(path_to_dashboard),
+		path_to_dashboard,
 		"--results-path",
 		str(data_path),
 		"--config-path",
@@ -332,7 +332,7 @@ def get_time_spent_expression(
 
 def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 	"""Auxfun to map directional tunnels in a LazyFrame to undirected ones"""
-	tunnels = cfg["tunnels"]
+	tunnels: list[str] = cfg["tunnels"]
 
 	return lf.with_columns(
 		pl.col("position").cast(pl.Utf8).replace(tunnels).cast(pl.Categorical).alias("position")

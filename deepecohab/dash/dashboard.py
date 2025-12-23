@@ -32,10 +32,10 @@ app = dash.Dash(
 app.title = "EcoHAB Dashboard"
 if __name__ == "__main__":
 	args = auxfun_dashboard.parse_arguments()
-	results_path = args.results_path
-	config_path = args.config_path
+	results_path: str = args.results_path
+	config_path: str = args.config_path
 
-	cfg = auxfun.read_config(config_path)
+	cfg: dict[str, Any] = auxfun.read_config(config_path)
 
 	if not Path(results_path).is_dir():
 		FileNotFoundError(f"{results_path} not found.")
@@ -50,12 +50,12 @@ if __name__ == "__main__":
 		if "binary" not in str(file)
 	}
 
-	DAYS_RANGE = cfg["days_range"]
-	CAGES = cfg["cages"]
-	POSITIONS = sorted(store["activity_df"]["position"].unique().to_list())
-	ANIMALS = cfg["animal_ids"]
-	ANIMAL_COLORS = auxfun_plots.color_sampling(ANIMALS)
-	POSITION_COLORS = auxfun_plots.color_sampling(POSITIONS)
+	DAYS_RANGE: list[int, int] = cfg["days_range"]
+	CAGES: list[str] = cfg["cages"]
+	POSITIONS: list[str] = sorted(store["activity_df"]["position"].unique().to_list())
+	ANIMALS: list[str] = cfg["animal_ids"]
+	ANIMAL_COLORS: list[str] = auxfun_plots.color_sampling(ANIMALS)
+	POSITION_COLORS: list[str] = auxfun_plots.color_sampling(POSITIONS)
 
 	# Dashboard layout
 	dashboard_layout = dash_layouts.generate_graphs_layout(DAYS_RANGE)
@@ -110,13 +110,15 @@ if __name__ == "__main__":
 	def update_plots(
 		days_range, phase_type, agg_switch, pos_switch, pair_switch
 	) -> tuple[go.Figure, dict]:
-		plot_name = ctx.outputs_grouping[0]["id"]["name"]
+		plot_name: str = ctx.outputs_grouping[0]["id"]["name"]
 		plot_attributes = dash_plotting.plot_registry.get_dependencies(plot_name)
 
 		if ctx.triggered_id is not None and ctx.triggered_id not in plot_attributes:
 			return no_update, no_update
 
-		phase_list = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
+		phase_list: list[str] = (
+			[phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
+		)
 
 		plot_cfg = auxfun_plots.PlotConfig(
 			store=store,
@@ -147,10 +149,12 @@ if __name__ == "__main__":
 	)
 	def update_comparison_plot(switches: list[Any]) -> tuple[go.Figure, dict]:
 		"""Render plots in the comparisons tab"""
-		input_dict = {item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches)}
+		input_dict: dict[str, Any] = {
+			item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches)
+		}
 		plot_attributes = dash_plotting.plot_registry.get_dependencies(input_dict["plot-dropdown"])
 
-		phase_type = (
+		phase_type: list[str] = (
 			[input_dict["phase_type"]]
 			if not input_dict["phase_type"] == "all"
 			else ["dark_phase", "light_phase"]

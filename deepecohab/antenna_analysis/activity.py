@@ -1,4 +1,6 @@
+import datetime as dt
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 from deepecohab.utils import auxfun
@@ -21,21 +23,23 @@ def calculate_cage_occupancy(
 	Returns:
 	    LazyFrame of time spent in each cage with 1s resolution.
 	"""
-	cfg = auxfun.read_config(config_path)
-
-	results_path = Path(cfg["project_location"]) / "results"
+	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "cage_occupancy"
 
-	cage_occupancy = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	cage_occupancy: pl.LazyFrame | None = (
+		None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	)
 
 	if isinstance(cage_occupancy, pl.LazyFrame):
 		return cage_occupancy
 
-	binary_lf = auxfun.load_ecohab_data(config_path, "binary_df")
+	results_path = Path(cfg["project_location"]) / "results"
+
+	binary_lf: pl.LazyFrame = auxfun.load_ecohab_data(config_path, "binary_df")
 
 	cols = ["day", "hour", "cage", "animal_id"]
 
-	bounds = (
+	bounds: tuple[dt.datetime, dt.datetime] = (
 		binary_lf.select(
 			pl.col("datetime").min().dt.truncate("1h").alias("start"),
 			pl.col("datetime").max().dt.truncate("1h").alias("end"),
@@ -44,10 +48,9 @@ def calculate_cage_occupancy(
 		.row(0)
 	)
 
-	start, end = bounds
 	time_lf = (
 		pl.LazyFrame()
-		.select(pl.datetime_range(pl.lit(start), pl.lit(end), "1h").alias("datetime"))
+		.select(pl.datetime_range(pl.lit(bounds[0]), pl.lit(bounds[1]), "1h").alias("datetime"))
 		.with_columns(auxfun.get_hour(), auxfun.get_day())
 		.drop("datetime")
 	)
@@ -86,17 +89,19 @@ def calculate_activity(
 	Returns:
 	    LazyFrame of time and visits
 	"""
-	cfg = auxfun.read_config(config_path)
-
-	results_path = Path(cfg["project_location"]) / "results"
+	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "activity_df"
 
-	time_per_position_lf = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	time_per_position_lf: pl.LazyFrame | None = (
+		None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	)
 
 	if isinstance(time_per_position_lf, pl.LazyFrame):
 		return time_per_position_lf
 
-	padded_lf = auxfun.load_ecohab_data(cfg, key="padded_df")
+	results_path: Path = Path(cfg["project_location"]) / "results"
+
+	padded_lf: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="padded_df")
 	padded_lf = auxfun.remove_tunnel_directionality(padded_lf, cfg)
 
 	per_position_lf = padded_lf.group_by(

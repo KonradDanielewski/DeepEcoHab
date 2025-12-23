@@ -370,7 +370,7 @@ def get_display_name(name: str, sep: str = "-") -> str:
 
 def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool = True) -> dbc.Row:
 	"""Generate buttons for Downloads -> Plot tab"""
-	buttons = []
+	buttons: list[dbc.Col] = []
 	width_col = 12
 	if not is_vertical:
 		width_col = 12 // len(fmts)
@@ -422,7 +422,7 @@ def download_plots(
 	if not selected_plots or not fmt:
 		raise exceptions.PreventUpdate
 
-	files = []
+	files: list[bytes] = []
 
 	for fig_id, fig, data in zip(all_ids, all_figures, all_stores):
 		plot_id = fig_id["name"]
@@ -450,15 +450,15 @@ def download_plots(
 
 
 def build_filter_expr(
-	columns: list,
-	days_range: list = None,
-	phase_type: str = None,
+	columns: list[str],
+	days_range: list[int, int] = None,
+	phase_type: list[str] = None,
 ) -> pl.Expr:
 	"Builds filtering expressions for DF download by checking column presence"
 	exprs: list[pl.Expr] = []
 
 	if days_range is not None and "day" in columns:
-		exprs.append(pl.col("day").is_between(days_range[0], days_range[-1]))
+		exprs.append(pl.col("day").is_between(*days_range))
 
 	if phase_type is not None and "phase" in columns:
 		exprs.append(pl.col("phase").is_in(phase_type))
@@ -468,7 +468,7 @@ def build_filter_expr(
 
 def download_dataframes(
 	selected_dfs: list[pl.DataFrame],
-	phase_type: str,
+	phase_type: list[str],
 	days_range: list[int, int],
 	store: dict,
 ) -> dict[str, Any | None]:

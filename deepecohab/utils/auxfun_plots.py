@@ -43,7 +43,7 @@ def color_sampling(
 ) -> list[str]:  # TODO: Expose the cmap choice to the dashboard
 	"""Samples colors from a colormap for given values."""
 	x = np.linspace(0, 1, len(values))
-	colors = px.colors.sample_colorscale(cmap, x)
+	colors: list[str] = px.colors.sample_colorscale(cmap, x)
 
 	return colors
 
@@ -111,16 +111,16 @@ def create_edges_trace(
 	"""Auxfun to create edges trace with color mapping based on edge width"""
 	edge_widths = np.array([G.edges[e][edge_weight] for e in G.edges()])
 
-	min_w = edge_widths.min()
-	max_w = edge_widths.max()
+	min_w: float = edge_widths.min()
+	max_w: float = edge_widths.max()
 
 	if max_w == min_w:
 		normalized_widths = np.zeros_like(edge_widths)
 	else:
 		normalized_widths = (edge_widths - min_w) / (max_w - min_w)
-		colorscale = px.colors.sample_colorscale(cmap, normalized_widths)
+		colorscale: list[str] = px.colors.sample_colorscale(cmap, normalized_widths)
 
-	edge_trace = []
+	edge_trace: list[go.Scatter] = []
 
 	for i, edge in enumerate(G.edges()):
 		if edge[0] == edge[1]:
@@ -171,7 +171,7 @@ def create_node_trace(
 		),
 	)
 
-	ranking_score_list = []
+	ranking_score_list: list[float] = []
 	for node in animals:
 		x, y, score = pos[node]
 		node_trace["x"] += (x,)
@@ -291,7 +291,7 @@ def prep_polar_df(
 	df = pl.concat([time_alone, n_chasing, n_chased, activity, pairwise_meetings], how="align")
 
 	df = (
-		(df.with_columns((pl.col(columns) - pl.mean(columns)) / pl.std(columns)))
+		df.with_columns((pl.col(columns) - pl.mean(columns)) / pl.std(columns))
 		.unpivot(index="animal_id", variable_name="metric")
 		.collect(engine="in-memory")
 	)
@@ -375,7 +375,7 @@ def prep_chasings_heatmap(
 	days_range: list[int, int],
 	phase_type: list[str],
 	agg_switch: Literal["mean", "sum"],
-) -> pl.DataFrame:
+) -> np.ndarray:
 	"""Pivot chasing interactions into a chaser-vs-chased matrix for heatmap visualization."""
 	join_df = pl.LazyFrame(
 		(product(animals, animals)),
@@ -565,7 +565,7 @@ def prep_time_per_cage(
 	days_range: list[int, int],
 	agg_switch: Literal["mean", "sum"],
 	cages: list[str],
-) -> pl.DataFrame:
+) -> np.ndarray:
 	"""Pivot time spent in specific cages into an hourly format for heatmaps plots."""
 	join_df = pl.LazyFrame(
 		(
@@ -620,7 +620,7 @@ def prep_pairwise_sociability(
 	agg_switch: Literal["mean", "sum"],
 	pairwise_switch: Literal["pairwise_encounters", "time_together"],
 	cages: list[str],
-) -> pl.DataFrame:
+) -> np.ndarray:
 	"""Generate a pivot table of pairwise encounters or shared time between animals per location."""
 	join_df = pl.LazyFrame(
 		(product(cages, animals, animals)),
@@ -666,7 +666,7 @@ def prep_within_cohort_sociability(
 	phase_type: list[str],
 	animals: list[str],
 	days_range: list[int, int],
-) -> pl.DataFrame:
+) -> np.ndarray:
 	"""Calculate and pivot the mean sociability scores between all animal pairs within a cohort."""
 	join_df = pl.LazyFrame(
 		(product(animals, animals)),

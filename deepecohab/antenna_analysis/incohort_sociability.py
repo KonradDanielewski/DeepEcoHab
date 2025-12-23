@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -23,16 +24,18 @@ def calculate_time_alone(
 	Returns:
 	    DataFrame containing time spent alone in seconds.
 	"""
-	cfg = auxfun.read_config(config_path)
+	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "time_alone"
 
-	time_alone = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	time_alone: pl.LazyFrame | None = (
+		None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	)
 	if isinstance(time_alone, pl.LazyFrame):
 		return time_alone
 
 	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 
-	binary_df = auxfun.load_ecohab_data(config_path, "binary_df")
+	binary_df: pl.LazyFrame = auxfun.load_ecohab_data(config_path, "binary_df")
 
 	group_cols = ["datetime", "cage"]
 	result_cols = ["phase", "day", "animal_id", "cage"]
@@ -81,10 +84,12 @@ def calculate_pairwise_meetings(
 	Returns:
 	    LazyFrame of time spent together per phase, per cage.
 	"""
-	cfg = auxfun.read_config(config_path)
+	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "pairwise_meetings"
 
-	pairwise_meetings = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	pairwise_meetings: pl.LazyFrame | None = (
+		None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	)
 
 	if isinstance(pairwise_meetings, pl.DataFrame):
 		return pairwise_meetings
@@ -92,7 +97,7 @@ def calculate_pairwise_meetings(
 	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 	padded_path = Path(cfg["project_location"]) / "results" / "padded_df.parquet"
 
-	cages = cfg["cages"]
+	cages: list[str] = cfg["cages"]
 
 	lf = (
 		pl.scan_parquet(padded_path)
@@ -164,25 +169,27 @@ def calculate_incohort_sociability(
 	Returns:
 	    Long format LazyFrame of in-cohort sociability per phase for each possible pair of mice.
 	"""
-	cfg = auxfun.read_config(config_path)
+	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "incohort_sociability"
 
-	incohort_sociability = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	incohort_sociability: pl.LazyFrame | None = (
+		None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	)
 
 	if isinstance(incohort_sociability, pl.LazyFrame):
 		return incohort_sociability
 
 	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 
-	padded_df = auxfun.load_ecohab_data(cfg, key="padded_df")
+	padded_df: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="padded_df")
 
-	phase_durations = auxfun.get_phase_durations(padded_df)
+	phase_durations: pl.LazyFrame = auxfun.get_phase_durations(padded_df)
 
 	# Get time spent together in cages
-	time_together_df = calculate_pairwise_meetings(cfg, minimum_time=minimum_time)
+	time_together_df: pl.LazyFrame = calculate_pairwise_meetings(cfg, minimum_time=minimum_time)
 
 	# Get time per position
-	activity_df = activity.calculate_activity(cfg)
+	activity_df: pl.LazyFrame = activity.calculate_activity(cfg)
 
 	core_columns = ["phase", "day", "phase_count", "animal_id", "animal_id_2"]
 

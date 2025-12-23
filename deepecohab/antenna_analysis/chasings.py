@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 from openskill.models import PlackettLuce
@@ -15,7 +16,6 @@ def calculate_ranking(
 	ranking: dict | None = None,
 ) -> pl.LazyFrame:
 	"""Calculate ranking using Plackett Luce algortihm. Each chasing event is a match
-	    TODO: handling of previous rankings
 	Args:
 	    config_path: path to project config file.
 	    save_data: toogles whether to save data.
@@ -26,22 +26,23 @@ def calculate_ranking(
 	Returns:
 	    LazyFrame of ranking
 	"""
-	cfg = auxfun.read_config(config_path)
-	results_path = Path(cfg["project_location"]) / "results"
+	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "ranking"
 
-	ranking = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	ranking: pl.LazyFrame | None = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
 	if isinstance(ranking, pl.LazyFrame):
 		return ranking
 
-	match_df = auxfun.load_ecohab_data(cfg, "match_df").sort("datetime").collect()
-	animal_ids = cfg["animal_ids"]
+	results_path: Path = Path(cfg["project_location"]) / "results"
+
+	match_df: pl.LazyFrame = auxfun.load_ecohab_data(cfg, "match_df").sort("datetime").collect()
+	animal_ids: list[str] = cfg["animal_ids"]
 
 	model = PlackettLuce(limit_sigma=True, balance=True)
-	ranking = {player: model.rating() for player in animal_ids}
+	ranking: dict[str, dict[str, float]] = {player: model.rating() for player in animal_ids}
 
-	rows = []
+	rows: list[dict[str, Any]] = []
 
 	for loser_name, winner_name, dtime in match_df.iter_rows():
 		new_ratings = model.rate(
@@ -109,19 +110,20 @@ def calculate_chasings(
 	Returns:
 	    LazyFrame of chasings
 	"""
-	cfg = auxfun.read_config(config_path)
-	results_path = Path(cfg["project_location"]) / "results"
+	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "chasings_df"
 
-	chasings = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	chasings: pl.LazyFrame | None = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
 	if isinstance(chasings, pl.LazyFrame):
 		return chasings
 
-	lf = auxfun.load_ecohab_data(cfg, key="main_df")
+	results_path = Path(cfg["project_location"]) / "results"
 
-	cages = cfg["cages"]
-	tunnels = cfg["tunnels"]
+	lf: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="main_df")
+
+	cages: list[str] = cfg["cages"]
+	tunnels: list[str] = cfg["tunnels"]
 
 	chased = lf.filter(
 		pl.col("position").is_in(tunnels),
@@ -140,7 +142,7 @@ def calculate_chasings(
 		(pl.col("datetime") - pl.col("tunnel_entry"))
 		.dt.total_seconds(fractional=True)
 		.is_between(0.1, 1.2, "none"),
-		(pl.col("datetime") < pl.col("datetime_chasing")),
+		pl.col("datetime") < pl.col("datetime_chasing"),
 	)
 
 	get_matches(intermediate, results_path, save_data)
