@@ -11,10 +11,10 @@ from deepecohab.utils.auxfun import df_registry
 
 def load_data(
     config_path: str | Path,
+    fname_prefix: str,
     custom_layout: bool,
     sanitize_animal_ids: bool,
-    fname_prefix: str,
-    min_antenna_crossings: int = 100,
+    min_antenna_crossings: int,
     animal_ids: list | None = None,
 ) -> pl.LazyFrame:
     """Auxfun to load and combine text files into a LazyFrame"""
@@ -302,13 +302,13 @@ def create_binary_df(
 @df_registry.register('main_df')
 def get_ecohab_data_structure(
     config_path: str,
-    sanitize_animal_ids: bool = True,
     fname_prefix: Literal["COM", "20"] = "COM",
+    sanitize_animal_ids: bool = True,
     min_antenna_crossings: int = 100,
     custom_layout: bool = False,
+    timezone: str | None = None,
     overwrite: bool = False,
     save_data: bool = True,
-    timezone: str | None = None,
 ) -> pl.LazyFrame:
     """Prepares EcoHab data for further analysis
 
@@ -321,7 +321,6 @@ def get_ecohab_data_structure(
         overwrite: toggles whether to overwrite existing data file.
         save_data: toogles whether to save data.
         timezone: Timezone in IANA format i.e. 'Europe/Warsaw'. If not provided timezone of the computer running the analysis is used.
-        animal_ids: list of animal RFID tags. If provided sanitation is not performed based on antenna crossings - only provided IDs will be used.
 
     Returns:
         EcoHab data structure as a pl.LazyFrame
@@ -344,16 +343,14 @@ def get_ecohab_data_structure(
 
     lf = load_data(
         config_path=config_path,
+        fname_prefix=fname_prefix,
         custom_layout=custom_layout,
         sanitize_animal_ids=sanitize_animal_ids,
-        fname_prefix=fname_prefix,
         min_antenna_crossings=min_antenna_crossings,
         animal_ids=animal_ids,
     )
 
-    cfg = auxfun.read_config(
-        config_path
-    )  # reload config potential animal_id changes due to sanitation
+    cfg = auxfun.read_config(config_path)  # reload config potential animal_id changes due to sanitation
 
     if not isinstance(timezone, str):
         timezone = get_localzone()
@@ -386,12 +383,12 @@ def get_ecohab_data_structure(
         .with_columns(
             auxfun.get_phase_count()
         )
-        )
+    )
+    
     lf = calculate_time_spent(lf)
     lf = get_animal_position(lf, antenna_pairs)
     lf = correct_phases_dst(cfg, lf)
     lf = lf.drop("COM")
-
 
     sorted_cols = sorted(lf.collect_schema().keys())
     lf_sorted = lf.select(sorted_cols)
@@ -399,6 +396,10 @@ def get_ecohab_data_structure(
     phase_durations_lf = auxfun.get_phase_durations(lf)
     
     auxfun.add_cages_to_config(config_path)
+    try:
+        cfg["days_range"]
+    except KeyError:
+        auxfun.add_days_to_config(config_path, lf)
 
     create_padded_df(config_path, lf_sorted, save_data, overwrite)
     create_binary_df(config_path, lf_sorted, save_data, overwrite)

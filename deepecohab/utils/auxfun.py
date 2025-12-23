@@ -43,7 +43,9 @@ def read_config(config_path: str | Path | dict[str, Any]) -> dict:
         return config_path
     
     elif isinstance(config_path, (str, Path)):
-        return toml.load(config_path)
+        with open(config_path, "r") as f:
+            config = toml.load(f)
+        return config
     
     else:
         raise TypeError(f"config_path should be either a dict, Path or str, but {type(config_path)} provided.")
@@ -195,42 +197,36 @@ def get_animal_cage_grid(
 def set_animal_ids(
     config_path: str | Path | dict[str, Any],
     lf: pl.LazyFrame,
+    sanitize_animal_ids: bool,
+    min_antenna_crossings: int,
     animal_ids: list | None = None,
-    sanitize_animal_ids: bool = False,
-    min_antenna_crossings: int = 100,
 ) -> pl.LazyFrame:
     """Auxfun to infer animal ids from data, optionally removing ghost tags (random radio noise reads)."""
     cfg = read_config(config_path)
+    dropped_ids = []
 
     if isinstance(animal_ids, list):
         lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
     else:
-        animal_ids = (
-            lf.select(pl.col("animal_id").unique().alias("animal_id"))
-            .collect()["animal_id"]
-            .to_list()
-        )
-
+        animal_detections = lf.group_by("animal_id").len().collect()
+        
         if sanitize_animal_ids:
-            antenna_crossings = lf.group_by(pl.col("animal_id")).len().collect()
-
-            animals_to_drop = (
-                antenna_crossings.filter(pl.col("len") < min_antenna_crossings)
-                .get_column("animal_id")
-                .to_list()
-            )
-
-            if animals_to_drop:
-                print(f"IDs dropped from dataset {animals_to_drop}")
-                drop = set(animals_to_drop)
-                animal_ids = sorted(set(animal_ids) - drop)
-                lf = lf.filter(pl.col("animal_id").is_in(pl.lit(animal_ids)))
-
-            cfg["dropped_ids"] = animals_to_drop
+            is_ghost = pl.col("len") < min_antenna_crossings
+            
+            dropped_ids = animal_detections.filter(is_ghost)["animal_id"].to_list()
+            animal_ids = animal_detections.filter(~is_ghost)["animal_id"].to_list()
+            
+            if dropped_ids:
+                print(f"IDs dropped from dataset {dropped_ids}")
+            else:
+                print("No ghost tags detected :)")
         else:
-            print("No ghost tags detected :)")
+            animal_ids = animal_detections["animal_id"].to_list()
 
-    cfg["animal_ids"] = animal_ids
+        animal_ids = sorted(animal_ids)
+        lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
+
+    cfg.update({"animal_ids": animal_ids, "dropped_ids": dropped_ids})
     with config_path.open("w") as f:
         toml.dump(cfg, f)
 
@@ -253,7 +249,7 @@ def append_start_end_to_config(config_path: str | Path | dict[str, Any], lf: pl.
     
     start_time = str(bounds["start_time"][0])
     end_time = str(bounds["end_time"][0])
-
+    
     with open(config_path, "w") as config:
         cfg['days_range'] = [1, (bounds['end_time'] - bounds['start_time']).item().days + 1]
         cfg["experiment_timeline"] = {
@@ -288,7 +284,7 @@ def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFram
     days = lf.collect().get_column('day').unique(maintain_order=True).to_list()
 
     with open(config_path, "w") as config:
-        cfg["days"] = [days[0], days[-1]]
+        cfg["days_range"] = [days[0], days[-1]]
         toml.dump(cfg, config)
 
 
@@ -318,7 +314,7 @@ def run_dashboard(config_path: str | Path | dict[str, Any]):
         text=True,
     )
     try:
-        output, _ = process.communicate(timeout=0.5)   
+        output, _ = process.communicate(timeout=1)   
         print(output)
     except subprocess.TimeoutExpired:
         pass

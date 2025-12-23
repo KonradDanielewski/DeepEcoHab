@@ -17,6 +17,8 @@ from deepecohab.utils.auxfun import (
     load_ecohab_data,
     run_dashboard,
 )
+from deepecohab.utils.auxfun import df_registry
+from deepecohab.dash.dash_plotting import plot_registry
 from deepecohab.utils.auxfun_plots import set_default_theme
 from deepecohab.version import VERSION, __version__
 
