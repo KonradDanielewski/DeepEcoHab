@@ -8,7 +8,7 @@ version = "0.4"
 description = "EcoHab with some machine learning"
 readme = "README.md"
 requires-python = ">=3.13"
-license = { file = "LICENSE" }
+license = "MIT"
 authors = [
     {name = "Konrad Danielewski", email = "k.danielewski@nencki.edu.pl"},
     {name = "Ula Włodkowska", email = "u.wlodkowska@nencki.edu.pl"},
@@ -16,13 +16,14 @@ authors = [
 keywords = ["ecology", "dash", "data-visualization"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "MIT",
     "Operating System :: OS Independent",
 ]
 
 dependencies = [
     "dash",
     "dash-bootstrap-components",
+    "ipykernel",
     "kaleido",
     "nbformat",
     "networkx",
@@ -35,5 +36,7 @@ dependencies = [
     "tzlocal",
 ]
 
-[tool.setuptools]
-packages = ["deepecohab"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["deepecohab*"]
+namespaces = true
