@@ -234,8 +234,6 @@ def create_padded_df(
 
     return padded_lf
 
-
-@df_registry.register('binary_df')
 def create_binary_df(
     config_path: str | Path | dict,
     lf: pl.LazyFrame,

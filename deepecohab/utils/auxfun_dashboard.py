@@ -411,6 +411,22 @@ def download_plots(
     else:
         raise exceptions.PreventUpdate
 
+def build_filter_expr(
+    columns: list,
+    days_range: list = None,
+    phase_type: str = None,
+) -> pl.Expr:
+    "Builds filtering expressions for DF download by checking column presence"
+    exprs: list[pl.Expr] = []
+
+    if days_range is not None and "day" in columns:
+        exprs.append(pl.col("day").is_between(days_range[0], days_range[-1]))
+
+    if phase_type is not None and "phase" in columns:
+        exprs.append(pl.col("phase").is_in(phase_type))
+
+
+    return exprs
 
 def download_dataframes(
     selected_dfs: list[pl.DataFrame], phase_type: str, days_range: list[int, int], store: dict
@@ -424,9 +440,9 @@ def download_dataframes(
     if len(selected_dfs) == 1:
         name = selected_dfs[0]
         if name in store:
-            df = store[name].filter(
-                pl.col('day').is_between(days_range[0], days_range[-1]),
-                pl.col('phase').is_in(phase_type),
+            df = store[name]
+            df = df.filter(
+                build_filter_expr(df.schema, days_range, phase_type)
             )
             return dcc.send_string(df.write_csv, f"{name}.csv")
         return None
@@ -435,9 +451,9 @@ def download_dataframes(
     with zipfile.ZipFile(zip_buffer, "w") as zf:
         for name in selected_dfs:
             if name in store:
-                df = store[name].filter(
-                    pl.col('day').is_between(days_range[0], days_range[-1]),
-                    pl.col('phase').is_in(phase_type),
+                df = store[name]
+                df = df.filter(
+                    build_filter_expr(df.schema, days_range, phase_type)
                 )
                 csv_bytes = df.write_csv().encode("utf-8")
                 zf.writestr(f"{name}.csv", csv_bytes)
