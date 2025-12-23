@@ -1,7 +1,5 @@
 *.pyc
-*.h5
-test*/
-!test_data*/
-build/
 *.egg-info/
-training*
+test*/
+build/
+dist/

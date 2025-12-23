@@ -1,327 +1,120 @@
 from pathlib import Path
 
-import pandas as pd
-import numpy as np
-from tqdm import tqdm
-
+import polars as pl
 from deepecohab.utils import auxfun
-from deepecohab.core import create_data_structure
+from deepecohab.utils.auxfun import df_registry
 
-def _split_datetime(phase_start: str) -> tuple[str, ...]:
-    """Auxfun to split datetime string.
-    """    
-    hour = int(phase_start.split(':')[0])
-    minute = int(phase_start.split(':')[1])
-    second = int(phase_start.split(':')[2].split('.')[0])
-    
-    return hour, minute, second
-
-def _extract_phase_switch_indices(animal_df: pd.DataFrame):
-    """Auxfun to find indices of phase switching.
-    """    
-    animal_df['phase_map'] = animal_df.phase.map({'dark_phase': 0, 'light_phase': 1})
-    shift = animal_df['phase_map'].astype('int').diff()
-    shift.loc[0] = 0
-    indices = shift[shift != 0]
-    
-    return indices
-
-def _correct_padded_info(animal_df: pd.DataFrame, location: int) -> pd.DataFrame:
-    """Auxfun to correct information in duplicated indices to match the previous phase.
-    """    
-    hour_col, day_col, phase_col, phase_count_col = (
-        animal_df.columns.get_loc('hour'), 
-        animal_df.columns.get_loc('day'), 
-        animal_df.columns.get_loc('phase'), 
-        animal_df.columns.get_loc('phase_count')
-    )
-   
-    animal_df.iloc[location, hour_col] = animal_df.iloc[location-1, hour_col]
-    animal_df.iloc[location, day_col] = animal_df.iloc[location-1, day_col]
-    animal_df.iloc[location, phase_col] = animal_df.iloc[location-1, phase_col]
-    animal_df.iloc[location, phase_count_col] = animal_df.iloc[location-1, phase_count_col]
-    
-    return animal_df
-
+@df_registry.register('cage_occupancy')
 def calculate_cage_occupancy(
-    cfp: str | Path | dict, 
+    config_path: str | Path | dict,
     save_data: bool = True,
-    overwrite: bool = False, 
-) -> pd.DataFrame:
-    cfg = auxfun.read_config(cfp)
-    
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    key = 'cage_occupancy'
-    
-    cage_occupancy = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
-    
-    if isinstance(cage_occupancy, pd.DataFrame):
-        return cage_occupancy
-    
-    binary_df = create_binary_df(cfp, save_data, overwrite, return_df=True)
-    
-    print('Calculating per hour cage time...')
-    day = ((binary_df.index.get_level_values('datetime') 
-             - binary_df.index.get_level_values('datetime')[0]) + pd.Timedelta(str(binary_df.index.get_level_values('datetime').time[0]))).days + 1
-    hours = binary_df.index.get_level_values('datetime').hour
-    
-    binary_df.index = pd.MultiIndex.from_arrays([day, hours], names=['day', 'hours'])
-    binary_df = binary_df.stack(0, future_stack=True)
-    binary_df.index = binary_df.index.set_names(['day', 'hours', 'cage'])
-    binary_df.columns = binary_df.columns.set_names(['animal_id'])
+    overwrite: bool = False,
+) -> pl.LazyFrame:
+    """Calculates time spent per animal per phase in every cage.
 
-    cage_occupancy = binary_df.stack().groupby(level=['day', 'hours', 'cage', 'animal_id']).sum().reset_index()
-    cage_occupancy.columns = ['day', 'hours', 'cage', 'animal_id', 'time_sum']
+    Args:
+        config_path: path to projects' config file or dict with the config.
+        save_data: toogles whether to save data.
+        overwrite: toggles whether to overwrite the data.
+
+    Returns:
+        LazyFrame of time spent in each cage with 1s resolution.
+    """
+    cfg = auxfun.read_config(config_path)
+
+    results_path = Path(cfg["project_location"]) / "results"
+    key = "cage_occupancy"
+
+    cage_occupancy = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+
+    if isinstance(cage_occupancy, pl.LazyFrame):
+        return cage_occupancy
+
+    binary_lf = auxfun.load_ecohab_data(config_path, "binary_df")
+
+    cols = ["day", "hour", "cage", "animal_id"]
+
+    bounds = (
+        binary_lf
+        .select(
+            pl.col("datetime").min().dt.truncate("1h").alias("start"),
+            pl.col("datetime").max().dt.truncate("1h").alias("end")
+            )
+            .collect()
+            .row(0)
+        )
+
+    start, end = bounds
+    time_lf = (
+        pl.LazyFrame()
+        .select(pl.datetime_range(pl.lit(start), pl.lit(end), "1h").alias("datetime"))
+        .with_columns(
+            auxfun.get_hour(),
+            auxfun.get_day()
+            )
+        .drop('datetime')
+    )
     
+    full_group_list = (
+        time_lf
+        .join(auxfun.get_animal_cage_grid(cfg), how="cross")
+    )
+
+    agg = (
+        binary_lf
+        .with_columns(auxfun.get_hour(), auxfun.get_day())
+        .group_by(cols)
+        .agg(pl.len().alias("time_spent"))
+    )
+
+    cage_occupancy = (
+        full_group_list
+        .join(agg, on=cols, how="left")
+        .fill_null(0)
+    )
+
     if save_data:
-        cage_occupancy.to_hdf(results_path, key=key, mode='a', format='table')
-        
+        cage_occupancy.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+
     return cage_occupancy
 
-def create_padded_df(
-    cfp: Path | str | dict,
-    df: pd.DataFrame,
-    save_data: bool = True, 
+@df_registry.register('activity_df')
+def calculate_activity(
+    config_path: str | Path | dict,
+    save_data: bool = True,
     overwrite: bool = False,
-    ) ->  pd.DataFrame:
-    """Creates a padded DataFrame based on the original main_df. Duplicates indices where the lenght of the detection crosses between phases.
-       Timedeltas for those are changed such that that the detection ends at the very end of the phase and starts again in the next phase as a new detection.
+) -> pl.LazyFrame:
+    """Calculates time spent and visits to every possible position per phase for every mouse.
 
     Args:
-        cfg: dictionary with the project config.
-        df: main_df calculated by get_ecohab_data_structure.
+        config_path: path to projects' config file or dict with the config.
         save_data: toogles whether to save data.
         overwrite: toggles whether to overwrite the data.
 
     Returns:
-        Padded DataFrame of the main_df.
+        LazyFrame of time and visits
     """
-    cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    key='padded_df'
-    
-    padded_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
-    
-    if isinstance(padded_df, pd.DataFrame):
-        return padded_df
-    
-    animals = cfg['animal_ids']
-    phases = list(cfg['phase'].keys())
+    cfg = auxfun.read_config(config_path)
 
-    animal_dfs = []
+    results_path = Path(cfg["project_location"]) / "results"
+    key = "activity_df"
 
-    for animal in animals:
-        animal_df = df.query('animal_id == @animal').copy()
+    time_per_position_lf = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
-        indices = _extract_phase_switch_indices(animal_df)
+    if isinstance(time_per_position_lf, pl.LazyFrame):
+        return time_per_position_lf
 
-        light_phase_starts = indices[indices == 1].index
-        dark_phase_starts = indices[indices == -1].index
+    padded_lf = auxfun.load_ecohab_data(cfg, key="padded_df")
+    padded_lf = auxfun.remove_tunnel_directionality(padded_lf, cfg)
 
-        for phase in phases:
-            if phase == 'light_phase':
-                idx = light_phase_starts
-            else:
-                idx = dark_phase_starts
-            
-            # Duplicate indices where phase change is happening
-            animal_df = pd.concat([animal_df, animal_df.loc[idx]]).sort_index()
-            # Indices are duplicated so take every second value
-            times = animal_df.loc[idx].index[::2] 
-            
-            # Phase start time split
-            phase_start = cfg['phase'][phase]
-            hour, minute, second = _split_datetime(phase_start)
-
-            for i in times: 
-                location = animal_df.index.get_loc(animal_df.loc[i, 'datetime'].index[0]).start # iloc of the duplicated index for data assignement purposes
-                # Get timedelta between the start of phase and first datetime. Subtract this time + 1 microsecond to create a datetime in the previuous phase
-                phase_start_diff = animal_df.iloc[location, 2] - animal_df.iloc[location, 2].replace(hour=hour, minute=minute, second=second, microsecond=0) + pd.Timedelta(microseconds=1)
-                animal_df.iloc[location, 2] = animal_df.iloc[location, 2] - phase_start_diff
-                
-                # Correct also day, phase and phase_count
-                animal_df = _correct_padded_info(animal_df, location)
-        
-        animal_dfs.append(animal_df)
-
-    padded_df = (
-        pd.concat(animal_dfs)
-        .sort_values('datetime')
-        .reset_index(drop=True)
-        .drop('phase_map', axis=1)
+    per_position_lf = padded_lf.group_by(
+        ["phase", "day", "phase_count", "position", "animal_id"]
+    ).agg(
+        pl.sum("time_spent").alias("time_in_position"),
+        pl.len().alias("visits_to_position"),
     )
 
-    # Overwrite with new timedelta
-    padded_df = create_data_structure.calculate_timedelta(padded_df)
-    
     if save_data:
-        padded_df.to_hdf(results_path, key=key, mode='a', format='table')
-    
-    return padded_df
+        per_position_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
 
-def calculate_time_spent_per_position(
-    cfp: str | Path | dict, 
-    save_data: bool = True, 
-    overwrite: bool = False,
-    ) -> pd.DataFrame:
-    """Calculates time spent in each possible position per phase for every mouse.
-
-    Args:
-        cfp: path to projects' config file or dict with the config.
-        save_data: toogles whether to save data.
-        overwrite: toggles whether to overwrite the data.
-
-    Returns:
-        Multiindex DataFrame of time spent per position in seconds.
-    """
-    cfg = auxfun.read_config(cfp)
-    
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    key='time_per_position'
-    
-    time_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
-    
-    if isinstance(time_per_position, pd.DataFrame):
-        return time_per_position
-    
-    tunnels = cfg['tunnels']
-    
-    df = auxfun.load_ecohab_data(cfg, key='main_df')
-    padded_df = create_padded_df(cfp, df, overwrite=overwrite)
-    
-    # Map directional tunnel position to non-directional
-    mapper = padded_df.position.isin(tunnels.keys())
-    padded_df.position = padded_df.position.astype(str)
-    padded_df.loc[mapper, 'position'] = padded_df.loc[mapper, 'position'].map(tunnels).values
-    
-    # Calculate time spent per position per phase
-    time_per_position = (
-        padded_df
-        .groupby(['phase', 'day', 'phase_count', 'position', 'animal_id'], observed=True)['timedelta']
-        .sum()
-        .unstack('animal_id')
-    )
-    
-    if save_data:
-        time_per_position.to_hdf(results_path, key=key, mode='a', format='table')
-    
-    return time_per_position
-
-def calculate_visits_per_position(
-    cfp: str | Path | dict, 
-    save_data: bool = True, 
-    overwrite: bool = False
-    ) -> pd.DataFrame:
-    """Calculates number of visits to each possible position per phase for every mouse.
-
-    Args:
-        cfp: path to projects' config file or dict with the config.
-        save_data: toogles whether to save data.
-        overwrite: toggles whether to overwrite the data.
-
-    Returns:
-        Multiindex DataFrame with number of visits per position.
-    """
-    cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    key='visits_per_position'
-    
-    visits_per_position = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
-    
-    if isinstance(visits_per_position, pd.DataFrame):
-        return visits_per_position
-    
-    tunnels = cfg['tunnels']
-    
-    df = auxfun.load_ecohab_data(cfg, key='main_df')
-    padded_df = create_padded_df(cfp, df)
-    
-    # Map directional tunnel position to non-directional
-    padded_df.position = padded_df.position.astype(str)
-    mapper = padded_df.position.isin(tunnels.keys())
-    padded_df.loc[mapper, 'position'] = padded_df.loc[mapper, 'position'].map(tunnels).values
-    
-    # Calculate visits to each position
-    visits_per_position = (
-        padded_df
-        .groupby(['phase', 'day', 'phase_count', 'hour', 'position', 'animal_id'], observed=True)['animal_id']
-        .agg('count')
-        .unstack('animal_id')
-        .fillna(0)
-        .astype(int)
-    )
-    
-    if save_data:
-        visits_per_position.to_hdf(results_path, key=key, mode='a', format='table')
-    
-    return visits_per_position
-
-def create_binary_df(
-    cfp: str | Path | dict, 
-    save_data: bool = True, 
-    overwrite: bool = False,
-    return_df: bool = False,
-    precision: int = 1,
-    ) -> pd.DataFrame:
-    """Creates a binary DataFrame of the position of the animals. Multiindexed on the columns, for each position, each animal. 
-       Indexed with datetime for easy time-based slicing.
-
-    Args:
-        cfp: path to project config file.
-        save_data: toogles whether to save data.
-        overwrite: toggles whether to overwrite the data.
-        precision: Multiplier of the time. Time is in seconds, multiplied by 10 gives index per 100ms, 5 per 200 ms etc. 
-
-    Returns:
-        Binary dataframe (True/False) of position of each animal per second (by default) per cage. 
-    """
-    cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    key='binary_df'
-    
-    binary_df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
-    
-    if isinstance(binary_df, pd.DataFrame):
-        return binary_df
-    
-    if precision > 20:
-        print('Warning! High precision may result in a very large DataFrame and potential python kernel crash!')
-    
-    df = auxfun.load_ecohab_data(cfg, key='main_df')
-    animals = cfg['animal_ids']
-    positions = list(set(cfg['antenna_combinations'].values()))
-    positions = [pos for pos in positions if 'cage' in pos]
-
-    # Prepare empty DF
-    index_len = np.ceil((df.datetime.iloc[-1] - df.datetime.iloc[0]).total_seconds()*precision).astype(int)
-    cols = pd.MultiIndex.from_product([positions, animals])
-    idx = pd.date_range(df.datetime.iloc[0], df.datetime.iloc[-1], index_len).round('ms')
-
-    binary_df = pd.DataFrame(False, index=idx, columns=cols, dtype=bool)
-    df_cages = df.query('position in @positions')
-
-    print('Creating binary DataFrame...')
-    for animal in tqdm(animals):
-        data_slice = df_cages.query('animal_id == @animal').iloc[1:]
-        starts = data_slice.datetime - pd.to_timedelta(data_slice.timedelta, 's') 
-        stops = data_slice.datetime
-        ending_pos = data_slice.position
-        
-        for i in range(len(starts)):
-            binary_df.loc[starts.iloc[i]:stops.iloc[i], (ending_pos.iloc[i], animal)] = True
-
-    indices = np.searchsorted(df.datetime.to_numpy(), binary_df.index.to_numpy())
-    new_index = df.loc[indices, ['phase', 'day', 'phase_count']]
-    new_index['datetime'] = idx
-    new_index = pd.MultiIndex.from_frame(new_index)
-    binary_df.index = new_index
-    binary_df.columns.names = ['cage', 'animal_id']
-    binary_df.columns = ['.'.join(map(str, col)).strip() for col in binary_df.columns.values]
-
-    if save_data:
-        binary_df.to_hdf(results_path, key=key, format='table', index=False)
-    
-    binary_df.columns = pd.MultiIndex.from_tuples([c.split('.') for c in binary_df.columns])
-    
-    if return_df:
-        return binary_df
+    return per_position_lf

@@ -1,26 +1,55 @@
 [build-system]
-requires = ['setuptools']
-build-backend = 'setuptools.build_meta'
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = 'deepecohab'
-version = '0.3'
-requires-python = '>=3.13'
-dependencies = [
-    'numpy',
-    'plotly',
-    'matplotlib',
-    'scipy',
-    'pandas==2.2.3',
-    'tables',
-    'toml',
-    'openskill',
-    'networkx',
-    'nbformat',
-    'kaleido',
-    'joblib',
-    'tqdm',
-    'tzlocal',
-    'dash',
-    'dash-bootstrap-components',
+name = "deepecohab"
+version = "0.4"
+description = "EcoHab with some machine learning"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [
+    {name = "Konrad Danielewski", email = "k.danielewski@nencki.edu.pl"},
+    {name = "Ula Włodkowska", email = "u.wlodkowska@nencki.edu.pl"},
 ]
+keywords = ["neuroscience", "ecology", "dash", "data-visualization"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "MIT",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "dash",
+    "dash-bootstrap-components",
+    "ipykernel",
+    "kaleido",
+    "nbformat",
+    "networkx",
+    "numpy",
+    "openskill",
+    "plotly",
+    "polars",
+    "toml",
+    "scipy",
+    "tzlocal",
+]
+
+[project.urls]
+Homepage = "https://github.com/KonradDanielewski/DeepEcoHab"
+Issues = "https://github.com/KonradDanielewski/DeepEcoHab/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["deepecohab*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"*" = ["*.css", "*.zip", "*.txt"]
+
+# OR be specific to your package
+"deepecohab.dash.assets" = ["style.css"]

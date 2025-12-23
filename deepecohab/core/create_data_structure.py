@@ -1,280 +1,411 @@
+import datetime as dt
 from pathlib import Path
+from typing import Literal
 
-import numpy as np
-import pandas as pd
-import pytz
+import polars as pl
 from tzlocal import get_localzone
 
 from deepecohab.utils import auxfun
+from deepecohab.utils.auxfun import df_registry
 
-def load_data(cfp: str | Path, custom_layout: bool, sanitize_animal_ids: bool, min_antenna_crossings: int = 100, animal_ids: list | None = None) -> pd.DataFrame:
-    """Auxfum to load and combine text files into a pandas dataframe
-    """    
-    cfg = auxfun.read_config(cfp)   
-    data_path = Path(cfg['data_path'])
-    
-    data_files = auxfun.get_data_paths(data_path)
 
-    dfs = []
-    for file in data_files:
-        df = pd.read_csv(file, sep='\t', names=['ind', 'date', 'time', 'antenna', 'time_under', 'animal_id'])
-        comport = Path(file).name.split('_')[0]
-        df['COM'] = comport
-        dfs.append(df)
+def load_data(
+    config_path: str | Path,
+    fname_prefix: str,
+    custom_layout: bool,
+    sanitize_animal_ids: bool,
+    min_antenna_crossings: int,
+    animal_ids: list | None = None,
+) -> pl.LazyFrame:
+    """Auxfun to load and combine text files into a LazyFrame"""
+    cfg = auxfun.read_config(config_path)
+    data_path = Path(cfg["data_path"])
 
-    df = pd.concat(dfs, ignore_index=True).drop('ind', axis=1)
+    lf = pl.scan_csv(
+        source=data_path / f"{fname_prefix}*.txt",
+        separator="\t",
+        has_header=False,
+        new_columns=["ind", "date", "time", "antenna", "time_under", "animal_id"],
+        include_file_paths="file",
+        glob=True,
+        infer_schema=True,
+        infer_schema_length=10,
+    )
+
+    lf = lf.with_columns(
+        pl.col("file")
+        .str.extract(r"([^/\\]+)$")
+        .str.split("_")
+        .list.get(0)
+        .alias("COM")
+    ).drop(["ind", "file"])
+
     
-    if sanitize_animal_ids:
-        df = auxfun._sanitize_animal_ids(cfp, df, min_antenna_crossings)
-        
-    if isinstance(animal_ids, list):
-        df = df[df.animal_id.isin(animal_ids)].reset_index(drop=True)
-    
+    lf = auxfun.set_animal_ids(
+        config_path, lf, animal_ids, sanitize_animal_ids, min_antenna_crossings
+    )
+
     if custom_layout:
-        rename_dicts = cfg['antenna_rename_scheme']
-        for com_name in rename_dicts.keys():
-            df = _rename_antennas(df, com_name, rename_dicts)
-    
-    return df
+        rename_dicts = cfg["antenna_rename_scheme"]
+        lf = _rename_antennas(lf, rename_dicts)
 
-def check_for_dst(df: pd.DataFrame) -> tuple[int, int]:
-    zone_offset = df.datetime.dt.strftime('%z').map(lambda x: x[1:3]).astype(int)
-    time_change_happened = len(np.where((zone_offset != zone_offset[0]))[0]) > 0
-    if time_change_happened:
-        time_change_ind = np.where((zone_offset != zone_offset[0]))[0][0]
-        time_change = zone_offset[time_change_ind] - zone_offset[time_change_ind-1]
-        return int(time_change), int(time_change_ind)
-    else:
-        return None, None
+    auxfun.add_cages_to_config(config_path)
 
-def correct_phases_dst(cfg: dict, df: pd.DataFrame, time_change: int, time_change_index: int) -> pd.DataFrame:
-    """Auxfun to correct phase start and end when daylight saving happens during the recording
-    """    
-    start_time, end_time = cfg['phase'].values()
+    return lf
 
-    start_time = (':').join(
-        (str(int(start_time.split(':')[0]) + time_change), 
-            start_time.split(':')[1], 
-            start_time.split(':')[2])
-    )
-    end_time = (':').join(
-        (str(int(end_time.split(':')[0]) + time_change), 
-            end_time.split(':')[1], 
-            end_time.split(':')[2])
+
+def correct_phases_dst(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Auxfun to adjust phase start/end to dayligh saving time shift"""
+    start_time, end_time = cfg["phase"].values()
+    start_time = dt.time.fromisoformat(start_time)
+    end_time = dt.time.fromisoformat(end_time)
+
+    time_offset = (
+        pl.col("datetime").dt.dst_offset() - pl.col("datetime").first().dt.dst_offset()
     )
 
-    temp_df = df.loc[time_change_index:].copy()
-
-    index = pd.DatetimeIndex(temp_df['datetime'])
-    temp_df.loc[index.indexer_between_time(start_time, end_time) + time_change_index, 'phase'] = 'light_phase'
-    temp_df['phase'] = temp_df.phase.fillna('dark_phase')
-
-    df.loc[time_change_index:, 'phase'] = temp_df['phase'].values
-
-    return df
-
-def calculate_timedelta(df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun to calculate timedelta between positions i.e. time spent in each state, rounded to 10s of miliseconds
-    """    
-    df.loc[:, 'timedelta'] = (
-        df
-        .loc[:, ['datetime', 'animal_id']]
-        .groupby('animal_id', observed=False)
-        .diff()
-        .iloc[:, 0]
-        .dt.total_seconds()
-        .fillna(0)
-        .round(2)
+    lf = (
+        lf.with_columns((pl.col("datetime") + time_offset).alias("datetime_shifted"))
+        .with_columns(
+            pl.when(pl.col("datetime") != pl.col("datetime_shifted"))
+            .then(
+                pl.when(
+                    pl.col("datetime_shifted")
+                    .dt.time()
+                    .is_between(start_time, end_time, closed="both")
+                )
+                .then(pl.lit("light_phase"))
+                .otherwise(pl.lit("dark_phase"))
+            )
+            .otherwise(pl.col("phase"))
+            .alias("phase")
+        )
+        .drop("datetime_shifted")
     )
-    return df
 
-def get_day(df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun for getting the day
-    """    
-    df['day'] = ((df.datetime - df.datetime.iloc[0]) + pd.Timedelta(str(df.datetime.dt.time[0]))).dt.days + 1
-    return df
+    return lf
 
-def get_hour(df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun for getting the hour
-    """    
-    hour = (df.datetime - df.datetime[0]).dt.total_seconds()/3600
-    hour[0] = 0.01
-    df['hour'] = np.ceil(hour).astype(int)
-    return df
 
-def get_phase(cfg: dict, df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun for getting the phase
+def calculate_time_spent(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Auxfun to calculate timedelta between positions i.e. time spent in each state, rounded to 10s of miliseconds"""
+
+    lf = lf.with_columns(auxfun.get_time_spent_expression())
+    return lf
+
+
+def get_animal_position(lf: pl.LazyFrame, antenna_pairs: dict) -> pl.LazyFrame:
+    """Auxfun, groupby mapping of antenna pairs to position"""
+    prev_ant = pl.col("antenna").shift(1).over("animal_id").fill_null(0).cast(pl.Utf8)
+    curr_ant = pl.col("antenna").cast(pl.Utf8)
+
+    pair = pl.concat_str([prev_ant, pl.lit("_"), curr_ant])
+
+    return lf.with_columns(
+        [
+            pair.replace(antenna_pairs, default="undefined")
+            .alias("position")
+            .cast(pl.Categorical)
+        ]
+    )
+
+
+def _rename_antennas(lf: pl.LazyFrame, rename_dicts: dict) -> pl.LazyFrame:
+    """Auxfun for antenna name mapping when custom layout is used"""
+    lf = lf.with_columns(
+        pl.coalesce(
+            pl.when(pl.col("COM") == com).then(pl.col("antenna").replace(d))
+            for com, d in rename_dicts.items()
+        )
+    )
+
+    return lf
+
+
+def _prepare_columns(
+    cfg: dict, lf: pl.LazyFrame, timezone: str | None = None
+) -> pl.LazyFrame:
+    """Auxfun to prepare the df, adding new columns"""
+    animal_ids = list(cfg["animal_ids"])
+
+    datetime_df = (
+        pl.concat_str([pl.col("date"), pl.col("time")], separator=" ")
+        .str.strptime(pl.Datetime, strict=False)
+        .dt.replace_time_zone(timezone.key)
+    )
+
+    return (
+        lf.with_columns(
+            pl.col("animal_id").cast(pl.Enum(animal_ids)).alias("animal_id"),
+            datetime_df.alias("datetime"),
+            pl.col("antenna").cast(pl.Int8).alias("antenna"),
+            pl.col("time_under").cast(pl.Int32).alias("time_under"),
+        )
+        .with_columns(pl.col("datetime").dt.hour().cast(pl.Int8).alias("hour"))
+        .drop(["date", "time"])
+        .unique(subset=["datetime", "animal_id"], keep="first")
+    )
+
+
+def _split_datetime(phase_start: str) -> dt.datetime:
+    """Auxfun to split datetime string."""
+    return dt.datetime.strptime(phase_start, "%H:%M:%S")
+
+
+@df_registry.register('padded_df')
+def create_padded_df(
+    config_path: Path | str | dict,
+    df: pl.LazyFrame,
+    save_data: bool = True,
+    overwrite: bool = False,
+) -> pl.LazyFrame:
+    """Creates a padded DataFrame based on the original main_df. Duplicates indices where the lenght of the detection crosses between phases.
+       Timedeltas for those are changed such that that the detection ends at the very end of the phase and starts again in the next phase as a new detection.
+
+    Args:
+        cfg: dictionary with the project config.
+        df: main_df calculated by get_ecohab_data_structure.
+        save_data: toogles whether to save data.
+        overwrite: toggles whether to overwrite the data.
+
+    Returns:
+        Padded DataFrame of the main_df.
     """
-    start_time, end_time = cfg['phase'].values()
+    cfg = auxfun.read_config(config_path)
+    results_path = Path(cfg["project_location"]) / "results"
+    key = "padded_df"
 
-    index = pd.DatetimeIndex(df['datetime'])
-    df.loc[index.indexer_between_time(start_time, end_time), 'phase'] = 'light_phase'
-    df['phase'] = df.phase.fillna('dark_phase')
-    
-    return df
+    padded_df = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
-def get_phase_count(cfg: dict, df: pd.DataFrame) -> pd.DataFrame:
-    """Auxfun used to count phases
-    """   
-    df['phase_count'] = None
-    phases = list(cfg['phase'].keys())
-    
-    for phase in phases:
-        phase_bool = df['phase'].eq(phase)
-        shift = phase_bool.shift()
-        indices = df.phase.loc[df.phase == phase].index
-        df.loc[indices, 'phase_count'] = (phase_bool.ne(shift & phase_bool).cumsum()).loc[indices].values
-    df.phase_count = df.phase_count.astype(int)
-    return df
+    if isinstance(padded_df, pl.LazyFrame):
+        return padded_df
 
-def map_antenna2position(antenna_column: pd.Series, positions: dict) -> pd.Series:
-    """Auxfun to map antenna pairs to animal position
-    """    
-    arr1 = np.insert(antenna_column, 0, 0).astype(str)
-    arr2 = np.insert(antenna_column, len(antenna_column), 0).astype(str)
+    dark_start = _split_datetime(cfg["phase"]["dark_phase"])
+    light_start = _split_datetime(cfg["phase"]["light_phase"])
 
-    antenna_pairs = (pd.Series(arr1) + '_' + pd.Series(arr2))[:-1]
-    antenna_pairs.index = antenna_column.index
-    
-    location = antenna_pairs.map(positions)
-
-    return location
-
-def get_animal_position(df: pd.DataFrame, positions: dict) -> pd.DataFrame:
-    """Auxfun, groupby mapping of antenna pairs to position
-    """    
-    df.loc[:, 'position'] = (
-        df
-        .loc[:, ['animal_id', 'antenna']]
-        .groupby('animal_id', observed=False)
-        .apply(map_antenna2position, positions=positions, include_groups=False)
-        .fillna('undefined')
-        .droplevel(level=0, axis=0)
-        .sort_index()
-        .values
+    dark_offset = pl.duration(
+        hours=dark_start.hour,
+        minutes=dark_start.minute,
+        seconds=dark_start.second,
+        microseconds=-1,
     )
 
-    return df
+    light_offset = pl.duration(
+        hours=24 if light_start.hour == 0 else light_start.hour,
+        minutes=light_start.minute,
+        seconds=light_start.second,
+        microseconds=-1,
+    )
 
-def _rename_antennas(df: pd.DataFrame, com_name: str, rename_dicts: dict) -> pd.DataFrame:
-    """Auxfun for antenna name mapping when custom layout is used
-    """    
-    mapping = {int(k):v for k,v in rename_dicts[com_name].items()}
-    df.loc[df.COM == com_name, 'antenna'] = df.query('COM == @com_name')['antenna'].map(mapping)
-    return df
+    tz = df.collect_schema()["datetime"].time_zone
+    base_midnight = (
+        pl.col("datetime").dt.date().cast(pl.Datetime("us")).dt.replace_time_zone(tz)
+    )
 
-def _prepare_columns(cfg: dict, df: pd.DataFrame, positions: list, timezone: str | None = None) -> pd.DataFrame:
-    """Auxfun to prepare the df, adding new columns
-    """    
-    # Establish all possible categories for position
-    positions.append('undefined')
+    df = df.sort("datetime").with_columns(
+        (pl.col("phase") != pl.col("phase").shift(-1).over("animal_id")).alias("mask")
+    )
+
+    extension_df = df.filter(pl.col("mask")).with_columns(
+        pl.when(pl.col("phase") == "light_phase")
+        .then(base_midnight + dark_offset)
+        .otherwise(base_midnight + light_offset)
+        .alias("datetime")
+    )
+
+    padded_lf = pl.concat([df, extension_df]).sort(["datetime"])
+
+    padded_lf = padded_lf.with_columns(
+        pl.when(pl.col("mask"))
+        .then(auxfun.get_time_spent_expression(alias=None))
+        .otherwise(
+            pl.when(pl.col("mask").shift(1).over("animal_id"))
+            .then(auxfun.get_time_spent_expression(alias=None))
+            .otherwise(pl.col("time_spent"))
+        )
+        .alias("time_spent"),
+        pl.when(pl.col("mask"))
+        .then(pl.col("position").shift(-1).over("animal_id"))
+        .otherwise(pl.col("position"))
+        .alias("position"),
+    ).drop("mask")
+
+    if save_data:
+        padded_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+
+    return padded_lf
+
+
+@df_registry.register('binary_df')
+def create_binary_df(
+    config_path: str | Path | dict,
+    lf: pl.LazyFrame,
+    save_data: bool = True,
+    overwrite: bool = False,
+) -> pl.LazyFrame:
+    """Creates a long format binary DataFrame of the position of the animals.
+
+    Args:
+        config_path: path to project config file.
+        save_data: toogles whether to save data.
+        overwrite: toggles whether to overwrite the data.
+        return_df: toggles whether to return the LazyFrame.
+
+    Returns:
+        Binary LazyFrame (True/False) of position of each animal per second per cage.
+    """
+    cfg = auxfun.read_config(config_path)
+    results_path = Path(cfg["project_location"]) / "results"
+    key = "binary_df"
+
+    binary_lf = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+
+    if isinstance(binary_lf, pl.LazyFrame) :
+        return binary_lf
     
-    df['timedelta'] = np.nan
-    df['day'] = np.nan
-    
-    df['position'] = pd.Series(dtype='category').cat.set_categories(positions)
-    df['phase'] = pd.Series(dtype='category').cat.set_categories(cfg['phase'].keys())
+    cages = cfg["cages"]
+    animal_ids = list(cfg["animal_ids"])
 
-    df['animal_id'] = df['animal_id'].astype('category').cat.set_categories(cfg['animal_ids'])
-    df['datetime'] = df['date'] + ' ' + df['time']
-    
-    if not isinstance(timezone, str):
-        df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(get_localzone().key, ambiguous='infer', nonexistent='shift_backward')
-    else:
-        df['datetime'] = pd.to_datetime(df['datetime']).dt.tz_localize(timezone, ambiguous='infer', nonexistent='shift_backward')
+    animals_lf = auxfun.get_lf_from_enum(animal_ids, 'animal_id', sorted = True, col_type = pl.Enum(animal_ids))
 
-    df["hour"] = df.datetime.dt.hour.astype("category")
-    df['antenna'] = df.antenna.astype(int)
-    df = df.drop(['date', 'time'], axis=1)
-    df = df.drop_duplicates(['datetime', 'animal_id'])
-    
-    return df
+    lf = lf.select(['animal_id', 'datetime', 'position']).sort(["animal_id", "datetime"])
 
+    time_range = pl.datetime_range(
+        pl.col("datetime").min(),
+        pl.col("datetime").max(),
+        "1s",
+    ).alias("datetime")
+
+    range_lf = lf.select(time_range)
+
+    grid_lf = animals_lf.join(range_lf, how="cross", maintain_order='right_left')
+
+
+    binary_lf = grid_lf.join_asof(
+        lf,
+        on="datetime",
+        by="animal_id",
+        strategy="forward",
+        check_sortedness=False
+    )
+
+    binary_lf = binary_lf.filter(
+        pl.col('position').is_in(cages)
+    ).rename({'position':'cage'})
+
+    if save_data:
+        binary_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+
+    
+    return binary_lf
+
+
+@df_registry.register('main_df')
 def get_ecohab_data_structure(
-    cfp: str,
+    config_path: str,
+    fname_prefix: Literal["COM", "20"] = "COM",
     sanitize_animal_ids: bool = True,
     min_antenna_crossings: int = 100,
     custom_layout: bool = False,
-    overwrite: bool = False,
     timezone: str | None = None,
-    animal_ids: list | None = None,
-) -> pd.DataFrame:
+    overwrite: bool = False,
+    save_data: bool = True,
+) -> pl.LazyFrame:
     """Prepares EcoHab data for further analysis
 
     Args:
-        cfp: path to project config file
+        config_path: path to project config file
         sanitize_animal_ids: toggle whether to remove animals. Removes animals that had less than 10 antenna crossings during the whole experiment.
-        custom_layout: if multiple boards where added/antennas are in non-default location set to True
-        overwrite: toggles whether to overwrite existing data file
+        fname_prefix: Prefix in the raw data files - used to find correct files in the provided location.
+        min_antenna_crossings: Minimum number of antenna crossings - anything below is considered a ghost tag. Defaults to 100.
+        custom_layout: if multiple boards where added/antennas are in non-default location set to True.
+        overwrite: toggles whether to overwrite existing data file.
+        save_data: toogles whether to save data.
+        timezone: Timezone in IANA format i.e. 'Europe/Warsaw'. If not provided timezone of the computer running the analysis is used.
 
     Returns:
-        EcoHab data structure as a pd.DataFrame
+        EcoHab data structure as a pl.LazyFrame
     """
-    cfg = auxfun.read_config(cfp)
-    results_path = Path(cfg['project_location']) / 'results' / 'results.h5'
-    key = 'main_df'
-    
-    df = None if overwrite else auxfun.load_ecohab_data(cfp, key, verbose=False)
-    
-    if isinstance(df, pd.DataFrame):
+    cfg = auxfun.read_config(config_path)
+    results_path = Path(cfg["project_location"]) / "results"
+    key = "main_df"
+
+    df = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+
+    if isinstance(df, pl.LazyFrame):
         return df
+
+    antenna_pairs = cfg["antenna_combinations"]
     
-    antenna_pairs = cfg['antenna_combinations']
-    positions = list(set(antenna_pairs.values()))
-    
-    df = load_data(
-        cfp=cfp,
+    try:
+        animal_ids = cfg["animal_ids"]
+    except KeyError:
+        animal_ids = None
+
+    lf = load_data(
+        config_path=config_path,
+        fname_prefix=fname_prefix,
         custom_layout=custom_layout,
         sanitize_animal_ids=sanitize_animal_ids,
         min_antenna_crossings=min_antenna_crossings,
         animal_ids=animal_ids,
     )
-    
-    cfg = auxfun.read_config(cfp) # reload config potential animal_id changes due to sanitation
-    df = _prepare_columns(cfg, df, positions, timezone)
-    
+
+    cfg = auxfun.read_config(config_path)  # reload config potential animal_id changes due to sanitation
+
     if not isinstance(timezone, str):
-        timezone = get_localzone().key
+        timezone = get_localzone()
 
-    # Slice to start and end date
+    lf = _prepare_columns(cfg, lf, timezone)
+
     try:
-        start_date = cfg['experiment_timeline']['start_date']
-        finish_date = cfg['experiment_timeline']['finish_date']
-        if isinstance(start_date, str) & isinstance(finish_date, str): 
-            start, finish = pd.to_datetime(start_date), pd.to_datetime(finish_date)
-            timeframe = (
-                (df.datetime >= pytz.timezone(timezone).localize(start)) & 
-                (df.datetime <= pytz.timezone(timezone).localize(finish))
-            )
-            df = df.loc[timeframe, :].sort_values('datetime').reset_index(drop=True)
+        start_date = cfg["experiment_timeline"]["start_date"]
+        finish_date = cfg["experiment_timeline"]["finish_date"]
     except KeyError:
-        print('Start and end dates not provided. Extracting from data...')
-        auxfun._append_start_end_to_config(cfp, df)
-    
-    df = df.sort_values('datetime').reset_index(drop=True)
-    
-    df = calculate_timedelta(df)
-    df = get_day(df)
-    df = get_animal_position(df, antenna_pairs)
-    df = get_phase(cfg, df)
+        print("Start and end dates not provided. Extracting from data...")
+        cfg, start_date, finish_date = auxfun.append_start_end_to_config(config_path, lf)
 
-    time_change, time_change_ind = check_for_dst(df)
-    if isinstance(time_change, int):
-        print('Correcting for daylight savings...')
-        df = correct_phases_dst(cfg, df, time_change, time_change_ind)
+    if isinstance(start_date, str) and isinstance(finish_date, str):
+        start_date = dt.datetime.fromisoformat(start_date).astimezone(timezone)
+        finish_date = dt.datetime.fromisoformat(finish_date).astimezone(timezone)
 
-    df = get_phase_count(cfg, df)
+        lf = lf.filter(
+            (pl.col("datetime") >= start_date) & (pl.col("datetime") <= finish_date)
+        ).sort("datetime")
+
+    lf = lf.sort("datetime")
+    lf = (
+        lf
+        .with_columns([
+            auxfun.get_phase(cfg),
+            auxfun.get_day(), 
+            auxfun.get_hour()
+        ])
+        .with_columns(
+            auxfun.get_phase_count()
+        )
+    )
     
-    condition_map = {key: i+1 for i, key in enumerate(positions)}
-    df['position_keys'] = df.position.map(condition_map).astype(int).fillna(0)
+    lf = calculate_time_spent(lf)
+    lf = get_animal_position(lf, antenna_pairs)
+    lf = correct_phases_dst(cfg, lf)
+    lf = lf.drop("COM")
 
-    df = df.sort_index(axis=1).reset_index(drop=True)
+    sorted_cols = sorted(lf.collect_schema().keys())
+    lf_sorted = lf.select(sorted_cols)
 
-    df = df.drop('COM', axis=1)
+    phase_durations_lf = auxfun.get_phase_durations(lf)
     
-    df.to_hdf(results_path, key=key, mode='a', format='table')
-    
-    phase_durations = auxfun.get_phase_durations(cfg, df)
-    phase_durations.to_hdf(results_path, key='phase_durations', mode='a', format='table')
+    auxfun.add_cages_to_config(config_path)
+    try:
+        cfg["days_range"]
+    except KeyError:
+        auxfun.add_days_to_config(config_path, lf)
 
-    return df
+    create_padded_df(config_path, lf_sorted, save_data, overwrite)
+    create_binary_df(config_path, lf_sorted, save_data, overwrite)
+
+    if save_data:
+        lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet", engine='streaming')
+
+    return lf_sorted
