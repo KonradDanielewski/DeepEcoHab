@@ -16,7 +16,7 @@ authors = [
 keywords = ["neuroscience", "ecology", "dash", "data-visualization"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "MIT",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 
@@ -58,4 +58,5 @@ line-length = 100
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "tab"
+
 docstring-code-format = true
