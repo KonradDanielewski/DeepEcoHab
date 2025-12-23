@@ -11,7 +11,7 @@ from deepecohab.utils import auxfun_plots
 
 def plot_activity(
     df: pl.DataFrame, 
-    colors: np.array, 
+    colors: np.ndarray, 
     type_switch: Literal['visits', 'time'],
     agg_switch: Literal['sum', 'mean'],
 ) -> tuple[go.Figure, pl.DataFrame]:
@@ -262,11 +262,10 @@ def plot_ranking_distribution(
 def time_spent_per_cage(
     img: np.ndarray,
     animals: list[str], 
-    cages: list[str],
 ) -> tuple[go.Figure, pl.DataFrame]:
     """Plots N-cages of heatmaps with per hour time spent for each animal"""
     fig = px.imshow(
-        img.to_numpy().reshape(len(cages), len(animals), 24), # 24 hours in a day, 
+        img, # 24 hours in a day, 
         y=animals, 
         facet_col=0, 
         facet_col_wrap=2, 
@@ -295,7 +294,7 @@ def plot_chasings_heatmap(
     z_label = 'Number: %{z}'
 
     fig = px.imshow(
-        img.to_numpy(),
+        img,
         x=animals,
         y=animals,
         zmin=0, 
@@ -315,10 +314,9 @@ def plot_chasings_heatmap(
 
 
 def plot_sociability_heatmap(
-    img: np.array, 
+    img: np.ndarray, 
     type_switch: Literal['pairwise_encounters', 'time_together'], 
     animals: list[str],
-    cages: list[str],
 ) -> tuple[go.Figure, pl.DataFrame]:
     """Plots heatmaps for pairwise encounters or time spent together."""
     match type_switch:
@@ -330,7 +328,7 @@ def plot_sociability_heatmap(
             pairwise_z_label = 'Time [s]: %{z}'
     
     fig = px.imshow(
-        img.to_numpy().reshape(len(cages), len(animals), len(animals)),
+        img,
         zmin=0,
         x=animals,
         y=animals,
@@ -360,7 +358,7 @@ def plot_within_cohort_heatmap(
 ) -> tuple[go.Figure, pl.DataFrame]:
     """Plots heatmap for within-cohort sociability."""
     fig = px.imshow(
-        img.to_numpy().reshape(len(animals), len(animals)),
+        img,
         zmin=0, 
         x=animals,
         y=animals,

@@ -399,7 +399,7 @@ def prep_chasings_heatmap(
         .select(animals)
     )
     
-    return img
+    return img.to_numpy()
 
 
 def prep_chasings_line(
@@ -595,7 +595,7 @@ def prep_time_per_cage(
         .drop('cage', 'animal_id')
     )
     
-    return img
+    return img.to_numpy().reshape(len(cages), len(animals), 24)
 
 
 def prep_pairwise_sociability(
@@ -643,7 +643,7 @@ def prep_pairwise_sociability(
         .drop('position', 'animal_id')
     )
     
-    return img
+    return img.to_numpy().reshape(len(cages), len(animals), len(animals))
 
 
 def prep_within_cohort_sociability(
@@ -682,7 +682,7 @@ def prep_within_cohort_sociability(
         ).drop('animal_id')
     )
     
-    return img
+    return img.to_numpy().reshape(len(animals), len(animals))
 
 
 def prep_time_alone(

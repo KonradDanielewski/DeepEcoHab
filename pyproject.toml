@@ -1,26 +1,39 @@
 [build-system]
-requires = ['setuptools']
-build-backend = 'setuptools.build_meta'
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = 'deepecohab'
-version = '0.3'
-requires-python = '>=3.13'
-dependencies = [
-    'numpy',
-    'plotly',
-    'matplotlib',
-    'scipy',
-    'pandas==2.2.3',
-    'tables',
-    'toml',
-    'openskill',
-    'networkx',
-    'nbformat',
-    'kaleido',
-    'joblib',
-    'tqdm',
-    'tzlocal',
-    'dash',
-    'dash-bootstrap-components',
+name = "deepecohab"
+version = "0.4"
+description = "EcoHab with some machine learning"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { file = "LICENSE" }
+authors = [
+    {name = "Konrad Danielewski", email = "k.danielewski@nencki.edu.pl"},
+    {name = "Ula Włodkowska", email = "u.wlodkowska@nencki.edu.pl"},
 ]
+keywords = ["ecology", "dash", "data-visualization"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "dash",
+    "dash-bootstrap-components",
+    "kaleido",
+    "nbformat",
+    "networkx",
+    "numpy",
+    "openskill",
+    "plotly",
+    "polars",
+    "scipy",
+    "toml",
+    "tzlocal",
+]
+
+[tool.setuptools]
+packages = ["deepecohab"]

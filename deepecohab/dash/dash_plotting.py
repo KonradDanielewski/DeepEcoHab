@@ -83,7 +83,7 @@ def chasings_heatmap(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     return plot_factory.plot_chasings_heatmap(img, cfg.animals)
 
 
-@plot_registry.register("chasings-line", dependencies=["store", 'animals', 'days_range', 'animal_colors'])   
+@plot_registry.register("chasings-line", dependencies=["store", 'animals', 'days_range', 'animal_colors', 'agg_switch'])   
 def chasings_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """Generates a line plot of chasing frequency per hour.
 
@@ -166,7 +166,7 @@ def time_per_cage(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """
     img = auxfun_plots.prep_time_per_cage(cfg.store, cfg.animals, cfg.days_range, cfg.agg_switch, cfg.cages)
 
-    return plot_factory.time_spent_per_cage(img, cfg.animals, cfg.cages)
+    return plot_factory.time_spent_per_cage(img, cfg.animals)
 
 
 @plot_registry.register("sociability-heatmap", dependencies=["store", 'animals', 'phase_type', 'days_range', 'cages', 'agg_switch', 'pairwise_switch'])   
@@ -184,7 +184,7 @@ def pairwise_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
     """
     img = auxfun_plots.prep_pairwise_sociability(cfg.store, cfg.phase_type, cfg.animals, cfg.days_range, cfg.agg_switch, cfg.pairwise_switch, cfg.cages)
 
-    return plot_factory.plot_sociability_heatmap(img, cfg.pairwise_switch, cfg.animals, cfg.cages)
+    return plot_factory.plot_sociability_heatmap(img, cfg.pairwise_switch, cfg.animals)
 
 
 @plot_registry.register("cohort-heatmap", dependencies=["store", 'animals', 'phase_type', 'days_range'])   
