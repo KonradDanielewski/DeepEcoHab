@@ -7,7 +7,7 @@ from deepecohab.utils import auxfun
 from deepecohab.utils.auxfun import df_registry
 
 
-@df_registry.register('ranking')
+@df_registry.register("ranking")
 def calculate_ranking(
     config_path: str | Path | dict,
     overwrite: bool = False,
@@ -34,9 +34,9 @@ def calculate_ranking(
 
     if isinstance(ranking, pl.LazyFrame):
         return ranking
-    
-    match_df = auxfun.load_ecohab_data(cfg, 'match_df').sort('datetime').collect()
-    animal_ids = cfg['animal_ids']
+
+    match_df = auxfun.load_ecohab_data(cfg, "match_df").sort("datetime").collect()
+    animal_ids = cfg["animal_ids"]
 
     model = PlackettLuce(limit_sigma=True, balance=True)
     ranking = {player: model.rating() for player in animal_ids}
@@ -53,13 +53,15 @@ def calculate_ranking(
         ranking[winner_name] = new_ratings[1][0]
 
         for animal, rating in ranking.items():
-            rows.append({
-                "animal_id": animal,
-                "mu": rating.mu,
-                "sigma": rating.sigma,
-                "ordinal": round(rating.ordinal(), 3),
-                "datetime": dtime,
-            })
+            rows.append(
+                {
+                    "animal_id": animal,
+                    "mu": rating.mu,
+                    "sigma": rating.sigma,
+                    "ordinal": round(rating.ordinal(), 3),
+                    "datetime": dtime,
+                }
+            )
 
     ranking_df = pl.LazyFrame(rows).with_columns(
         auxfun.get_phase(cfg),
@@ -68,16 +70,17 @@ def calculate_ranking(
     )
 
     if save_data:
-        ranking_df.sink_parquet(results_path / "ranking.parquet", compression="lz4", engine='streaming')
+        ranking_df.sink_parquet(
+            results_path / "ranking.parquet", compression="lz4", engine="streaming"
+        )
 
     return ranking
 
-@df_registry.register('match_df')
+
+@df_registry.register("match_df")
 def get_matches(lf: pl.LazyFrame, results_path: Path, save_data: bool) -> None:
     """Creates a lazyframe of matches"""
-    matches = lf.select(
-        "animal_id", "animal_id_chasing", "datetime_chasing"
-    ).rename(
+    matches = lf.select("animal_id", "animal_id_chasing", "datetime_chasing").rename(
         {
             "animal_id": "loser",
             "animal_id_chasing": "winner",
@@ -85,10 +88,12 @@ def get_matches(lf: pl.LazyFrame, results_path: Path, save_data: bool) -> None:
         }
     )
     if save_data:
-        matches.sink_parquet(results_path / "match_df.parquet", compression="lz4", engine='streaming')
-    
-    
-@df_registry.register('chasings_df')
+        matches.sink_parquet(
+            results_path / "match_df.parquet", compression="lz4", engine="streaming"
+        )
+
+
+@df_registry.register("chasings_df")
 def calculate_chasings(
     config_path: str | Path | dict,
     overwrite: bool = False,
@@ -137,9 +142,9 @@ def calculate_chasings(
         .is_between(0.1, 1.2, "none"),
         (pl.col("datetime") < pl.col("datetime_chasing")),
     )
-    
+
     get_matches(intermediate, results_path, save_data)
-    
+
     chasings = (
         intermediate.group_by(
             ["phase", "day", "phase_count", "hour", "animal_id_chasing", "animal_id"]
@@ -149,6 +154,8 @@ def calculate_chasings(
     )
 
     if save_data:
-        chasings.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        chasings.sink_parquet(
+            results_path / f"{key}.parquet", compression="lz4", engine="streaming"
+        )
 
     return chasings

@@ -6,7 +6,8 @@ from deepecohab.antenna_analysis import activity
 from deepecohab.utils import auxfun
 from deepecohab.utils.auxfun import df_registry
 
-@df_registry.register('time_alone')
+
+@df_registry.register("time_alone")
 def calculate_time_alone(
     config_path: Path | str | dict,
     save_data: bool = True,
@@ -30,59 +31,40 @@ def calculate_time_alone(
         return time_alone
 
     results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
-    
+
     binary_df = auxfun.load_ecohab_data(config_path, "binary_df")
 
     group_cols = ["datetime", "cage"]
     result_cols = ["phase", "day", "animal_id", "cage"]
 
-    
-    time_lf = (
-        binary_df
-        .select(
-            auxfun.get_day().alias("day"),
-            auxfun.get_phase(cfg).alias("phase"),
-        )
-        .unique()
-    )
+    time_lf = binary_df.select(
+        auxfun.get_day().alias("day"),
+        auxfun.get_phase(cfg).alias("phase"),
+    ).unique()
 
-
-    full_group_list = (
-        time_lf
-        .join(auxfun.get_animal_cage_grid(cfg), how="cross")
-    )
+    full_group_list = time_lf.join(auxfun.get_animal_cage_grid(cfg), how="cross")
 
     time_alone = (
         binary_df.group_by(group_cols)
-        .agg(
-            pl.len().alias('n'),
-            pl.col('animal_id').first()
-        )
+        .agg(pl.len().alias("n"), pl.col("animal_id").first())
         .filter(pl.col("n") == 1)
-        .with_columns(
-            auxfun.get_phase(cfg),
-            auxfun.get_day())
+        .with_columns(auxfun.get_phase(cfg), auxfun.get_day())
         .group_by(result_cols)
-        .agg(pl.len().alias('time_alone'))
-        .with_columns(
-            auxfun.get_phase_count()
-        )
+        .agg(pl.len().alias("time_alone"))
+        .with_columns(auxfun.get_phase_count())
     )
 
-    time_alone = (
-        full_group_list.join(
-            time_alone,
-            on = result_cols,
-            how = 'left'
-        ).fill_null(0)
+    time_alone = full_group_list.join(time_alone, on=result_cols, how="left").fill_null(
+        0
     )
 
     if save_data:
-        time_alone.sink_parquet(results_path, compression="lz4", engine='streaming')
+        time_alone.sink_parquet(results_path, compression="lz4", engine="streaming")
 
     return time_alone
 
-@df_registry.register('pairwise_meetings')
+
+@df_registry.register("pairwise_meetings")
 def calculate_pairwise_meetings(
     config_path: str | Path | dict,
     minimum_time: int | float | None = 2,
@@ -103,15 +85,15 @@ def calculate_pairwise_meetings(
     """
     cfg = auxfun.read_config(config_path)
     key = "pairwise_meetings"
-    
+
     pairwise_meetings = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
     if isinstance(pairwise_meetings, pl.DataFrame):
         return pairwise_meetings
-    
+
     results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
     padded_path = Path(cfg["project_location"]) / "results" / "padded_df.parquet"
-    
+
     cages = cfg["cages"]
 
     lf = (
@@ -161,11 +143,14 @@ def calculate_pairwise_meetings(
     ).sort(["phase", "day", "phase_count", "position", "animal_id", "animal_id_2"])
 
     if save_data:
-        pairwise_meetings.sink_parquet(results_path, compression="lz4", engine='streaming')
+        pairwise_meetings.sink_parquet(
+            results_path, compression="lz4", engine="streaming"
+        )
 
     return pairwise_meetings
 
-@df_registry.register('incohort_sociability')
+
+@df_registry.register("incohort_sociability")
 def calculate_incohort_sociability(
     config_path: dict,
     save_data: bool = True,
@@ -186,13 +171,15 @@ def calculate_incohort_sociability(
     cfg = auxfun.read_config(config_path)
     key = "incohort_sociability"
 
-    incohort_sociability = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+    incohort_sociability = (
+        None if overwrite else auxfun.load_ecohab_data(config_path, key)
+    )
 
     if isinstance(incohort_sociability, pl.LazyFrame):
         return incohort_sociability
-    
+
     results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
-    
+
     padded_df = auxfun.load_ecohab_data(cfg, key="padded_df")
 
     phase_durations = auxfun.get_phase_durations(padded_df)
@@ -227,6 +214,8 @@ def calculate_incohort_sociability(
     )
 
     if save_data:
-        incohort_sociability.sink_parquet(results_path, compression="lz4", engine='streaming')
+        incohort_sociability.sink_parquet(
+            results_path, compression="lz4", engine="streaming"
+        )
 
     return incohort_sociability

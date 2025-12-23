@@ -40,7 +40,6 @@ def load_data(
         .alias("COM")
     ).drop(["ind", "file"])
 
-    
     lf = auxfun.set_animal_ids(
         config_path, lf, animal_ids, sanitize_animal_ids, min_antenna_crossings
     )
@@ -151,7 +150,7 @@ def _split_datetime(phase_start: str) -> dt.datetime:
     return dt.datetime.strptime(phase_start, "%H:%M:%S")
 
 
-@df_registry.register('padded_df')
+@df_registry.register("padded_df")
 def create_padded_df(
     config_path: Path | str | dict,
     df: pl.LazyFrame,
@@ -230,12 +229,14 @@ def create_padded_df(
     ).drop("mask")
 
     if save_data:
-        padded_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        padded_lf.sink_parquet(
+            results_path / f"{key}.parquet", compression="lz4", engine="streaming"
+        )
 
     return padded_lf
 
 
-@df_registry.register('binary_df')
+@df_registry.register("binary_df")
 def create_binary_df(
     config_path: str | Path | dict,
     lf: pl.LazyFrame,
@@ -259,15 +260,19 @@ def create_binary_df(
 
     binary_lf = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
-    if isinstance(binary_lf, pl.LazyFrame) :
+    if isinstance(binary_lf, pl.LazyFrame):
         return binary_lf
-    
+
     cages = cfg["cages"]
     animal_ids = list(cfg["animal_ids"])
 
-    animals_lf = auxfun.get_lf_from_enum(animal_ids, 'animal_id', sorted = True, col_type = pl.Enum(animal_ids))
+    animals_lf = auxfun.get_lf_from_enum(
+        animal_ids, "animal_id", sorted=True, col_type=pl.Enum(animal_ids)
+    )
 
-    lf = lf.select(['animal_id', 'datetime', 'position']).sort(["animal_id", "datetime"])
+    lf = lf.select(["animal_id", "datetime", "position"]).sort(
+        ["animal_id", "datetime"]
+    )
 
     time_range = pl.datetime_range(
         pl.col("datetime").min(),
@@ -277,29 +282,25 @@ def create_binary_df(
 
     range_lf = lf.select(time_range)
 
-    grid_lf = animals_lf.join(range_lf, how="cross", maintain_order='right_left')
-
+    grid_lf = animals_lf.join(range_lf, how="cross", maintain_order="right_left")
 
     binary_lf = grid_lf.join_asof(
-        lf,
-        on="datetime",
-        by="animal_id",
-        strategy="forward",
-        check_sortedness=False
+        lf, on="datetime", by="animal_id", strategy="forward", check_sortedness=False
     )
 
-    binary_lf = binary_lf.filter(
-        pl.col('position').is_in(cages)
-    ).rename({'position':'cage'})
+    binary_lf = binary_lf.filter(pl.col("position").is_in(cages)).rename(
+        {"position": "cage"}
+    )
 
     if save_data:
-        binary_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        binary_lf.sink_parquet(
+            results_path / f"{key}.parquet", compression="lz4", engine="streaming"
+        )
 
-    
     return binary_lf
 
 
-@df_registry.register('main_df')
+@df_registry.register("main_df")
 def get_ecohab_data_structure(
     config_path: str,
     fname_prefix: Literal["COM", "20"] = "COM",
@@ -335,7 +336,7 @@ def get_ecohab_data_structure(
         return df
 
     antenna_pairs = cfg["antenna_combinations"]
-    
+
     try:
         animal_ids = cfg["animal_ids"]
     except KeyError:
@@ -350,7 +351,9 @@ def get_ecohab_data_structure(
         animal_ids=animal_ids,
     )
 
-    cfg = auxfun.read_config(config_path)  # reload config potential animal_id changes due to sanitation
+    cfg = auxfun.read_config(
+        config_path
+    )  # reload config potential animal_id changes due to sanitation
 
     if not isinstance(timezone, str):
         timezone = get_localzone()
@@ -362,7 +365,9 @@ def get_ecohab_data_structure(
         finish_date = cfg["experiment_timeline"]["finish_date"]
     except KeyError:
         print("Start and end dates not provided. Extracting from data...")
-        cfg, start_date, finish_date = auxfun.append_start_end_to_config(config_path, lf)
+        cfg, start_date, finish_date = auxfun.append_start_end_to_config(
+            config_path, lf
+        )
 
     if isinstance(start_date, str) and isinstance(finish_date, str):
         start_date = dt.datetime.fromisoformat(start_date).astimezone(timezone)
@@ -373,18 +378,10 @@ def get_ecohab_data_structure(
         ).sort("datetime")
 
     lf = lf.sort("datetime")
-    lf = (
-        lf
-        .with_columns([
-            auxfun.get_phase(cfg),
-            auxfun.get_day(), 
-            auxfun.get_hour()
-        ])
-        .with_columns(
-            auxfun.get_phase_count()
-        )
-    )
-    
+    lf = lf.with_columns(
+        [auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour()]
+    ).with_columns(auxfun.get_phase_count())
+
     lf = calculate_time_spent(lf)
     lf = get_animal_position(lf, antenna_pairs)
     lf = correct_phases_dst(cfg, lf)
@@ -394,7 +391,7 @@ def get_ecohab_data_structure(
     lf_sorted = lf.select(sorted_cols)
 
     phase_durations_lf = auxfun.get_phase_durations(lf)
-    
+
     auxfun.add_cages_to_config(config_path)
     try:
         cfg["days_range"]
@@ -405,7 +402,11 @@ def get_ecohab_data_structure(
     create_binary_df(config_path, lf_sorted, save_data, overwrite)
 
     if save_data:
-        lf_sorted.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
-        phase_durations_lf.sink_parquet(results_path / "phase_durations.parquet", engine='streaming')
+        lf_sorted.sink_parquet(
+            results_path / f"{key}.parquet", compression="lz4", engine="streaming"
+        )
+        phase_durations_lf.sink_parquet(
+            results_path / "phase_durations.parquet", engine="streaming"
+        )
 
     return lf_sorted

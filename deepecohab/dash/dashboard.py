@@ -34,7 +34,7 @@ if __name__ == "__main__":
     args = auxfun_dashboard.parse_arguments()
     results_path = args.results_path
     config_path = args.config_path
-    
+
     cfg = auxfun.read_config(config_path)
 
     if not Path(results_path).is_dir():
@@ -44,12 +44,16 @@ if __name__ == "__main__":
         FileNotFoundError(f"{config_path} not found.")
         sys.exit(1)
 
-    store = {file.stem: pl.read_parquet(file) for file in Path(results_path).glob('*.parquet') if 'binary' not in str(file)}
-    
-    DAYS_RANGE = cfg['days_range']
-    CAGES = cfg['cages']
-    POSITIONS = sorted(store['activity_df']['position'].unique().to_list())
-    ANIMALS = cfg['animal_ids']
+    store = {
+        file.stem: pl.read_parquet(file)
+        for file in Path(results_path).glob("*.parquet")
+        if "binary" not in str(file)
+    }
+
+    DAYS_RANGE = cfg["days_range"]
+    CAGES = cfg["cages"]
+    POSITIONS = sorted(store["activity_df"]["position"].unique().to_list())
+    ANIMALS = cfg["animal_ids"]
     ANIMAL_COLORS = auxfun_plots.color_sampling(ANIMALS)
     POSITION_COLORS = auxfun_plots.color_sampling(POSITIONS)
 
@@ -89,7 +93,6 @@ if __name__ == "__main__":
             return dashboard_layout
         elif tab == "tab-other":
             return comparison_tab
-        
 
     @app.callback(
         [
@@ -104,78 +107,97 @@ if __name__ == "__main__":
             Input("pairwise_switch", "value"),
         ],
     )
-    def update_plots(days_range, phase_type, agg_switch, pos_switch, pair_switch) -> tuple[go.Figure, dict]:
-        plot_name = ctx.outputs_grouping[0]['id']['name']
+    def update_plots(
+        days_range, phase_type, agg_switch, pos_switch, pair_switch
+    ) -> tuple[go.Figure, dict]:
+        plot_name = ctx.outputs_grouping[0]["id"]["name"]
         plot_attributes = dash_plotting.plot_registry.get_dependencies(plot_name)
-        
+
         if ctx.triggered_id is not None and ctx.triggered_id not in plot_attributes:
             return no_update, no_update
-        
-        phase_list = [phase_type] if phase_type != 'all' else ['dark_phase', 'light_phase']
-        
+
+        phase_list = (
+            [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
+        )
+
         plot_cfg = auxfun_plots.PlotConfig(
             store=store,
-            days_range=days_range, 
-            phase_type=phase_list, 
+            days_range=days_range,
+            phase_type=phase_list,
             agg_switch=agg_switch,
-            position_switch=pos_switch, 
+            position_switch=pos_switch,
             pairwise_switch=pair_switch,
-            animals=ANIMALS, 
-            animal_colors=ANIMAL_COLORS, 
-            cages=CAGES, 
+            animals=ANIMALS,
+            animal_colors=ANIMAL_COLORS,
+            cages=CAGES,
             positions=POSITIONS,
             position_colors=POSITION_COLORS,
         )
 
         fig, data = dash_plotting.plot_registry.get_plot(plot_name, plot_cfg)
-        
+
         return fig, auxfun_dashboard.to_store_json(data)
 
-        
     @app.callback(
         [
             Output({"figure": "comparison-plot", "side": MATCH}, "figure"),
             Output({"store": "comparison-plot", "side": MATCH}, "data"),
-            Output({"container": "position_switch", "side":MATCH}, "hidden"),
-            Output({"container": "pairwise_switch", "side":MATCH}, "hidden"),
+            Output({"container": "position_switch", "side": MATCH}, "hidden"),
+            Output({"container": "pairwise_switch", "side": MATCH}, "hidden"),
         ],
-            Input({"type": ALL, "side": MATCH}, "value"),
+        Input({"type": ALL, "side": MATCH}, "value"),
     )
     def update_comparison_plot(switches: list[Any]) -> tuple[go.Figure, dict]:
         """Render plots in the comparisons tab"""
-        input_dict = {item['id']['type']: val for item, val in zip(ctx.inputs_list[0], switches)}
-        plot_attributes = dash_plotting.plot_registry.get_dependencies(input_dict['plot-dropdown'])
+        input_dict = {
+            item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches)
+        }
+        plot_attributes = dash_plotting.plot_registry.get_dependencies(
+            input_dict["plot-dropdown"]
+        )
 
-        phase_type = ([input_dict['phase_type']] if not input_dict['phase_type'] == 'all' else ['dark_phase', 'light_phase'])
+        phase_type = (
+            [input_dict["phase_type"]]
+            if not input_dict["phase_type"] == "all"
+            else ["dark_phase", "light_phase"]
+        )
 
         plot_cfg = auxfun_plots.PlotConfig(
-            store=store, 
-            days_range=input_dict['days_range'], 
-            phase_type=phase_type, 
-            agg_switch=input_dict['agg_switch'],
-            position_switch=input_dict['position_switch'], 
-            pairwise_switch=input_dict['pairwise_switch'], 
-            animals=ANIMALS, 
-            animal_colors=ANIMAL_COLORS, 
-            cages=CAGES, 
+            store=store,
+            days_range=input_dict["days_range"],
+            phase_type=phase_type,
+            agg_switch=input_dict["agg_switch"],
+            position_switch=input_dict["position_switch"],
+            pairwise_switch=input_dict["pairwise_switch"],
+            animals=ANIMALS,
+            animal_colors=ANIMAL_COLORS,
+            cages=CAGES,
             positions=POSITIONS,
             position_colors=POSITION_COLORS,
         )
 
-        fig, data = dash_plotting.plot_registry.get_plot(input_dict['plot-dropdown'], plot_cfg)
+        fig, data = dash_plotting.plot_registry.get_plot(
+            input_dict["plot-dropdown"], plot_cfg
+        )
 
-        pairwise_hidden = 'pairwise_switch' not in plot_attributes
-        position_hidden = 'position_switch' not in plot_attributes
+        pairwise_hidden = "pairwise_switch" not in plot_attributes
+        position_hidden = "position_switch" not in plot_attributes
 
-        return fig, auxfun_dashboard.to_store_json(data), position_hidden, pairwise_hidden
-
+        return (
+            fig,
+            auxfun_dashboard.to_store_json(data),
+            position_hidden,
+            pairwise_hidden,
+        )
 
     @app.callback(
         [Output("modal", "is_open"), Output("plot-checklist", "options")],
         [Input("open-modal", "n_clicks")],
         [State("modal", "is_open"), State({"type": "graph", "name": ALL}, "id")],
     )
-    def toggle_modal(open_click: bool, is_open: bool, graph_ids: list[dict[str, str]]) -> tuple[bool, list]:
+    def toggle_modal(
+        open_click: bool, is_open: bool, graph_ids: list[dict[str, str]]
+    ) -> tuple[bool, list]:
         """Opens and closes Downloads modal component"""
         if open_click:
             return not is_open, auxfun_dashboard.get_options_from_ids(
@@ -183,9 +205,8 @@ if __name__ == "__main__":
             )
         return is_open, []
 
-
     @app.callback(
-            Output("download-component", "data"),
+        Output("download-component", "data"),
         [
             Input({"type": "download-btn", "fmt": ALL, "side": ALL}, "n_clicks"),
         ],
@@ -198,7 +219,7 @@ if __name__ == "__main__":
             State({"type": "graph", "name": ALL}, "id"),
             State({"type": "store", "name": ALL}, "data"),
         ],
-            prevent_initial_call=True,
+        prevent_initial_call=True,
     )
     def download_selected_data(
         btn_clicks: int,
@@ -230,19 +251,22 @@ if __name__ == "__main__":
         else:
             raise dash.exceptions.PreventUpdate
 
-
     @app.callback(
-            Output({"downloader": "download-component-comparison", "side": MATCH}, "data"),
-            Input({"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"),
+        Output({"downloader": "download-component-comparison", "side": MATCH}, "data"),
+        Input(
+            {"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"
+        ),
         [
             State({"figure": "comparison-plot", "side": MATCH}, "figure"),
             # State({"figure": "comparison-plot", "side": MATCH}, "id"),
             State({"store": "comparison-plot", "side": MATCH}, "data"),
             State({"type": "plot-dropdown", "side": MATCH}, "value"),
         ],
-            prevent_initial_call=True,
+        prevent_initial_call=True,
     )
-    def download_comparison_data(btn_click: int, figure: dict, data_store: dict, plot_type: str) -> dict[str, Any | None]:
+    def download_comparison_data(
+        btn_click: int, figure: dict, data_store: dict, plot_type: str
+    ) -> dict[str, Any | None]:
         """Triggers download from the comparisons tab"""
         triggered = ctx.triggered_id
         if not triggered:

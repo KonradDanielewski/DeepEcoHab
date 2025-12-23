@@ -4,7 +4,8 @@ import polars as pl
 from deepecohab.utils import auxfun
 from deepecohab.utils.auxfun import df_registry
 
-@df_registry.register('cage_occupancy')
+
+@df_registry.register("cage_occupancy")
 def calculate_cage_occupancy(
     config_path: str | Path | dict,
     save_data: bool = True,
@@ -35,50 +36,41 @@ def calculate_cage_occupancy(
     cols = ["day", "hour", "cage", "animal_id"]
 
     bounds = (
-        binary_lf
-        .select(
+        binary_lf.select(
             pl.col("datetime").min().dt.truncate("1h").alias("start"),
-            pl.col("datetime").max().dt.truncate("1h").alias("end")
-            )
-            .collect()
-            .row(0)
+            pl.col("datetime").max().dt.truncate("1h").alias("end"),
         )
+        .collect()
+        .row(0)
+    )
 
     start, end = bounds
     time_lf = (
         pl.LazyFrame()
         .select(pl.datetime_range(pl.lit(start), pl.lit(end), "1h").alias("datetime"))
-        .with_columns(
-            auxfun.get_hour(),
-            auxfun.get_day()
-            )
-        .drop('datetime')
-    )
-    
-    full_group_list = (
-        time_lf
-        .join(auxfun.get_animal_cage_grid(cfg), how="cross")
+        .with_columns(auxfun.get_hour(), auxfun.get_day())
+        .drop("datetime")
     )
 
+    full_group_list = time_lf.join(auxfun.get_animal_cage_grid(cfg), how="cross")
+
     agg = (
-        binary_lf
-        .with_columns(auxfun.get_hour(), auxfun.get_day())
+        binary_lf.with_columns(auxfun.get_hour(), auxfun.get_day())
         .group_by(cols)
         .agg(pl.len().alias("time_spent"))
     )
 
-    cage_occupancy = (
-        full_group_list
-        .join(agg, on=cols, how="left")
-        .fill_null(0)
-    )
+    cage_occupancy = full_group_list.join(agg, on=cols, how="left").fill_null(0)
 
     if save_data:
-        cage_occupancy.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        cage_occupancy.sink_parquet(
+            results_path / f"{key}.parquet", compression="lz4", engine="streaming"
+        )
 
     return cage_occupancy
 
-@df_registry.register('activity_df')
+
+@df_registry.register("activity_df")
 def calculate_activity(
     config_path: str | Path | dict,
     save_data: bool = True,
@@ -99,7 +91,9 @@ def calculate_activity(
     results_path = Path(cfg["project_location"]) / "results"
     key = "activity_df"
 
-    time_per_position_lf = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+    time_per_position_lf = (
+        None if overwrite else auxfun.load_ecohab_data(config_path, key)
+    )
 
     if isinstance(time_per_position_lf, pl.LazyFrame):
         return time_per_position_lf
@@ -115,6 +109,8 @@ def calculate_activity(
     )
 
     if save_data:
-        per_position_lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine='streaming')
+        per_position_lf.sink_parquet(
+            results_path / f"{key}.parquet", compression="lz4", engine="streaming"
+        )
 
     return per_position_lf

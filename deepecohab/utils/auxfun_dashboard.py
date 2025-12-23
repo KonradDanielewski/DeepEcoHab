@@ -18,12 +18,12 @@ COMMON_CFG = {"displayModeBar": False}
 
 
 def generate_settings_block(
-    phase_type_id: dict | str,  
-    aggregate_stats_id: dict | str,  
-    slider_id: dict | str,  
-    days_range: list[int, int],  
-    position_switch_id: dict | str | None = None, 
-    pairwise_switch_id: dict | str| None = None, 
+    phase_type_id: dict | str,
+    aggregate_stats_id: dict | str,
+    slider_id: dict | str,
+    days_range: list[int, int],
+    position_switch_id: dict | str | None = None,
+    pairwise_switch_id: dict | str | None = None,
     include_download: bool = False,
     comparison_layout: bool = False,
 ) -> html.Div:
@@ -39,7 +39,7 @@ def generate_settings_block(
                                 options=[
                                     {"label": "Dark", "value": "dark_phase"},
                                     {"label": "Light", "value": "light_phase"},
-                                    {"label": "All", "value": 'all'},
+                                    {"label": "All", "value": "all"},
                                 ],
                                 value="dark_phase",
                                 labelStyle={"display": "block", "marginBottom": "5px"},
@@ -79,13 +79,16 @@ def generate_settings_block(
                                 tooltip={
                                     "placement": "bottom",
                                     "always_visible": True,
-                                    "style": {"color": "LightSteelBlue", "fontSize": "12px"},
+                                    "style": {
+                                        "color": "LightSteelBlue",
+                                        "fontSize": "12px",
+                                    },
                                 },
                                 updatemode="mouseup",
                                 included=True,
                                 vertical=False,
                                 persistence=True,
-                                persistence_type='session',
+                                persistence_type="session",
                                 className="slider",
                             ),
                         ],
@@ -119,10 +122,13 @@ def generate_settings_block(
                         [
                             html.Div(className="divider"),
                             html.Div(
-                                id={"container" : position_switch_id["type"], "side": position_switch_id["side"]},
+                                id={
+                                    "container": position_switch_id["type"],
+                                    "side": position_switch_id["side"],
+                                },
                                 hidden=True,
                                 className="flex-container",
-                                children = [
+                                children=[
                                     html.Div(
                                         dcc.RadioItems(
                                             id=position_switch_id,
@@ -132,30 +138,45 @@ def generate_settings_block(
                                                 {"label": "Time", "value": "time"},
                                             ],
                                             value="visits",
-                                            labelStyle={"display": "block", "marginBottom": "5px"},
+                                            labelStyle={
+                                                "display": "block",
+                                                "marginBottom": "5px",
+                                            },
                                         ),
                                     ),
-                                ]
+                                ],
                             ),
                             html.Div(
-                                id={"container" : pairwise_switch_id["type"], "side": pairwise_switch_id["side"]},
+                                id={
+                                    "container": pairwise_switch_id["type"],
+                                    "side": pairwise_switch_id["side"],
+                                },
                                 hidden=False,
                                 className="flex-container",
-                                children = [
+                                children=[
                                     html.Div(
                                         dcc.RadioItems(
                                             id=pairwise_switch_id,
                                             inline=True,
                                             options=[
-                                                {"label": "Visits", "value": "pairwise_encounters"},
-                                                {"label": "Time", "value": "time_together"},
+                                                {
+                                                    "label": "Visits",
+                                                    "value": "pairwise_encounters",
+                                                },
+                                                {
+                                                    "label": "Time",
+                                                    "value": "time_together",
+                                                },
                                             ],
                                             value="pairwise_encounters",
-                                            labelStyle={"display": "block", "marginBottom": "5px"},
+                                            labelStyle={
+                                                "display": "block",
+                                                "marginBottom": "5px",
+                                            },
                                         ),
                                     ),
-                                ]
-                            )
+                                ],
+                            ),
                         ]
                         if comparison_layout
                         else []
@@ -171,7 +192,7 @@ def generate_settings_block(
 
 
 def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div:
-    """"Generates a side of a comparisons block"""
+    """ "Generates a side of a comparisons block"""
     return html.Div(
         [
             html.Label("Select Plot", style={"fontWeight": "bold"}),
@@ -182,17 +203,20 @@ def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div
             ),
             html.Div(
                 [
-                    dcc.Graph(id={"figure": "comparison-plot", "side": side}, config=COMMON_CFG),
+                    dcc.Graph(
+                        id={"figure": "comparison-plot", "side": side},
+                        config=COMMON_CFG,
+                    ),
                     dcc.Store(id={"store": "comparison-plot", "side": side}),
                 ]
             ),
             generate_settings_block(
-                phase_type_id = {"type": "phase_type", "side": side},
-                aggregate_stats_id = {"type": "agg_switch", "side": side},
-                slider_id = {"type": "days_range", "side": side},
-                days_range = days_range,
-                position_switch_id = {"type": "position_switch", "side": side},
-                pairwise_switch_id = {"type": "pairwise_switch", "side": side},
+                phase_type_id={"type": "phase_type", "side": side},
+                aggregate_stats_id={"type": "agg_switch", "side": side},
+                slider_id={"type": "days_range", "side": side},
+                days_range=days_range,
+                position_switch_id={"type": "position_switch", "side": side},
+                pairwise_switch_id={"type": "pairwise_switch", "side": side},
                 comparison_layout=True,
             ),
             get_fmt_download_buttons(
@@ -201,7 +225,9 @@ def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div
                 side,
                 is_vertical=False,
             ),
-            dcc.Download(id={"downloader": "download-component-comparison", "side": side}),
+            dcc.Download(
+                id={"downloader": "download-component-comparison", "side": side}
+            ),
         ],
         className="h-100 p-2",
     )
@@ -242,7 +268,9 @@ def generate_plot_download_tab() -> dcc.Tab:
 
 def generate_csv_download_tab() -> dcc.Tab:
     """Generates DataFrames download tab in the Downloads modal component"""
-    options = get_options_from_ids(df_registry.list_available(), "_", delist=["binary_df"])
+    options = get_options_from_ids(
+        df_registry.list_available(), "_", delist=["binary_df"]
+    )
 
     return dcc.Tab(
         label="DataFrames",
@@ -318,15 +346,25 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450") -> html.
     """Generate Div that contains graph and corresponding data"""
     return html.Div(
         [
-            dcc.Graph(id={"type": "graph", "name": graph_id}, className=css_class, config=COMMON_CFG),
+            dcc.Graph(
+                id={"type": "graph", "name": graph_id},
+                className=css_class,
+                config=COMMON_CFG,
+            ),
             dcc.Store(id={"type": "store", "name": graph_id}),
         ]
     )
 
 
-def get_options_from_ids(obj_ids: list[str], sep: str = "-", delist: list[str] = []) -> list[dict[str, str]]:
+def get_options_from_ids(
+    obj_ids: list[str], sep: str = "-", delist: list[str] = []
+) -> list[dict[str, str]]:
     """Generate options in the Downloads -> Plots tab from available IDs"""
-    return [{"label": get_display_name(obj_id, sep), "value": obj_id} for obj_id in obj_ids if obj_id not in delist]
+    return [
+        {"label": get_display_name(obj_id, sep), "value": obj_id}
+        for obj_id in obj_ids
+        if obj_id not in delist
+    ]
 
 
 def get_display_name(name: str, sep: str = "-") -> str:
@@ -334,7 +372,9 @@ def get_display_name(name: str, sep: str = "-") -> str:
     return " ".join(word.capitalize() for word in name.split(sep))
 
 
-def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool = True) -> dbc.Row:
+def get_fmt_download_buttons(
+    type: str, fmts: list, side: str, is_vertical: bool = True
+) -> dbc.Row:
     """Generate buttons for Downloads -> Plot tab"""
     buttons = []
     width_col = 12
@@ -352,7 +392,12 @@ def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool
     return dbc.Row(buttons)
 
 
-def get_plot_file(df_data: pl.DataFrame, figure: go.Figure, fmt: Literal['csv', 'json', 'png', 'svg'], plot_name: str) -> bytes:
+def get_plot_file(
+    df_data: pl.DataFrame,
+    figure: go.Figure,
+    fmt: Literal["csv", "json", "png", "svg"],
+    plot_name: str,
+) -> bytes:
     """Helper for content download"""
     match fmt:
         case "svg":
@@ -382,7 +427,7 @@ def download_plots(
     """Downloads chosen plot/s related object via the browser"""
     if not selected_plots or not fmt:
         raise exceptions.PreventUpdate
-    
+
     files = []
 
     for fig_id, fig, data in zip(all_ids, all_figures, all_stores):
@@ -411,6 +456,7 @@ def download_plots(
     else:
         raise exceptions.PreventUpdate
 
+
 def build_filter_expr(
     columns: list,
     days_range: list = None,
@@ -425,25 +471,28 @@ def build_filter_expr(
     if phase_type is not None and "phase" in columns:
         exprs.append(pl.col("phase").is_in(phase_type))
 
-
     return exprs
 
+
 def download_dataframes(
-    selected_dfs: list[pl.DataFrame], phase_type: str, days_range: list[int, int], store: dict
+    selected_dfs: list[pl.DataFrame],
+    phase_type: str,
+    days_range: list[int, int],
+    store: dict,
 ) -> dict[str, Any | None]:
     """Downloads the selected DataFrame/s via the browser"""
     if not selected_dfs:
         raise exceptions.PreventUpdate
 
-    phase_type = ([phase_type] if not phase_type == 'all' else ['dark_phase', 'light_phase'])
+    phase_type = (
+        [phase_type] if not phase_type == "all" else ["dark_phase", "light_phase"]
+    )
 
     if len(selected_dfs) == 1:
         name = selected_dfs[0]
         if name in store:
             df = store[name]
-            df = df.filter(
-                build_filter_expr(df.schema, days_range, phase_type)
-            )
+            df = df.filter(build_filter_expr(df.schema, days_range, phase_type))
             return dcc.send_string(df.write_csv, f"{name}.csv")
         return None
 
@@ -452,9 +501,7 @@ def download_dataframes(
         for name in selected_dfs:
             if name in store:
                 df = store[name]
-                df = df.filter(
-                    build_filter_expr(df.schema, days_range, phase_type)
-                )
+                df = df.filter(build_filter_expr(df.schema, days_range, phase_type))
                 csv_bytes = df.write_csv().encode("utf-8")
                 zf.writestr(f"{name}.csv", csv_bytes)
 

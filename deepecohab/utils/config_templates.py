@@ -49,7 +49,7 @@ class ExperimentConfig(ABC):
         data["animal_ids"] = self.animal_ids
         data["phase"] = self.phase
         data["experiment_timeline"] = self.experiment_timeline
-        data['days_range'] = self.days_range
+        data["days_range"] = self.days_range
         data["antenna_combinations"] = self.antenna_combinations
         data["tunnels"] = self.tunnels
         try:

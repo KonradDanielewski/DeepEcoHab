@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import (
     Callable,
-    Any, 
+    Any,
 )
 
 import polars as pl
@@ -18,9 +18,11 @@ class DataFrameRegistry:
 
     def register(self, name: str):
         """Decorator to register a new plot type."""
+
         def wrapper(func: Callable):
             self._registry[name] = func
             return func
+
         return wrapper
 
     def get_function(self, name: str) -> Callable:
@@ -34,6 +36,7 @@ class DataFrameRegistry:
         """Returns a list of all registered function names."""
         return list(self._registry.keys())
 
+
 df_registry = DataFrameRegistry()
 
 
@@ -41,14 +44,16 @@ def read_config(config_path: str | Path | dict[str, Any]) -> dict:
     """Auxfun to check validity of the passed config_path variable (config path or dict)"""
     if isinstance(config_path, dict):
         return config_path
-    
+
     elif isinstance(config_path, (str, Path)):
         with open(config_path, "r") as f:
             config = toml.load(f)
         return config
-    
+
     else:
-        raise TypeError(f"config_path should be either a dict, Path or str, but {type(config_path)} provided.")
+        raise TypeError(
+            f"config_path should be either a dict, Path or str, but {type(config_path)} provided."
+        )
 
 
 def load_ecohab_data(
@@ -70,13 +75,13 @@ def load_ecohab_data(
         raise KeyError(
             f"{key} not found. Available keys: {df_registry.list_available()}"
         )
-    
+
     cfg = read_config(config_path)
     results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
-    
+
     if not results_path.is_file():
         return None
-    
+
     return pl.read_parquet(results_path) if return_df else pl.scan_parquet(results_path)
 
 
@@ -88,7 +93,7 @@ def make_project_path(project_location: str, experiment_name: str) -> str:
     return project_location
 
 
-@df_registry.register('phase_durations')
+@df_registry.register("phase_durations")
 def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Auxfun to calculate approximate phase durations.
     Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
@@ -126,7 +131,6 @@ def get_day() -> pl.Expr:
     )
 
 
-
 def get_phase(cfg: dict[str, Any]) -> pl.Expr:
     """Auxfun for getting the phase"""
     start_str, end_str = list(cfg["phase"].values())
@@ -151,29 +155,20 @@ def get_phase_count() -> pl.Expr:
     """Auxfun used to count phases"""
 
     run_id = (
-        (pl.col('phase') != pl.col('phase').shift(1))
+        (pl.col("phase") != pl.col("phase").shift(1))
         .fill_null(True)
         .cast(pl.Int8)
         .cum_sum()
     )
 
-    return (
-        run_id
-        .rank(method="dense")
-        .over('phase')
-        .cast(pl.Int16)
-        .alias("phase_count")
-    )
+    return run_id.rank(method="dense").over("phase").cast(pl.Int16).alias("phase_count")
 
 
 def get_lf_from_enum(
-        values: list,
-        col_name: str,
-        col_type: pl.DataType,
-        sorted: bool = False
-    ) -> pl.LazyFrame:
+    values: list, col_name: str, col_type: pl.DataType, sorted: bool = False
+) -> pl.LazyFrame:
     """Auxfun for creating LazyFrames from lists of values"""
-    
+
     res = pl.LazyFrame(
         {col_name: values},
         schema={col_name: col_type},
@@ -181,9 +176,8 @@ def get_lf_from_enum(
 
     return res.sort(col_name) if sorted else res
 
-def get_animal_cage_grid(
-        cfg: dict    
-    ) -> pl.LazyFrame:
+
+def get_animal_cage_grid(cfg: dict) -> pl.LazyFrame:
     """Auxfun to prepare LazyFrame of all animal x cage combos"""
 
     animal_ids = cfg["animal_ids"]
@@ -193,6 +187,7 @@ def get_animal_cage_grid(
     )
     cages_lf = get_lf_from_enum(cages, "cage", col_type=pl.Categorical)
     return animals_lf.join(cages_lf, how="cross")
+
 
 def set_animal_ids(
     config_path: str | Path | dict[str, Any],
@@ -209,13 +204,13 @@ def set_animal_ids(
         lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
     else:
         animal_detections = lf.group_by("animal_id").len().collect()
-        
+
         if sanitize_animal_ids:
             is_ghost = pl.col("len") < min_antenna_crossings
-            
+
             dropped_ids = animal_detections.filter(is_ghost)["animal_id"].to_list()
             animal_ids = animal_detections.filter(~is_ghost)["animal_id"].to_list()
-            
+
             if dropped_ids:
                 print(f"IDs dropped from dataset {dropped_ids}")
             else:
@@ -233,25 +228,34 @@ def set_animal_ids(
     return lf
 
 
-def append_start_end_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFrame) -> dict[str, Any]:
+def append_start_end_to_config(
+    config_path: str | Path | dict[str, Any], lf: pl.LazyFrame
+) -> dict[str, Any]:
     """Auxfun to append start and end datetimes of the experiment if not user provided.
 
     Returns:
         Config with updated start and end datetimes
     """
     cfg = read_config(config_path)
-    bounds = lf.sort('datetime').select(
-        [
-            pl.col("datetime").first().alias("start_time"),
-            pl.col("datetime").last().alias("end_time"),
-        ]
-    ).collect()
-    
+    bounds = (
+        lf.sort("datetime")
+        .select(
+            [
+                pl.col("datetime").first().alias("start_time"),
+                pl.col("datetime").last().alias("end_time"),
+            ]
+        )
+        .collect()
+    )
+
     start_time = str(bounds["start_time"][0])
     end_time = str(bounds["end_time"][0])
-    
+
     with open(config_path, "w") as config:
-        cfg['days_range'] = [1, (bounds['end_time'] - bounds['start_time']).item().days + 1]
+        cfg["days_range"] = [
+            1,
+            (bounds["end_time"] - bounds["start_time"]).item().days + 1,
+        ]
         cfg["experiment_timeline"] = {
             "start_date": start_time,
             "finish_date": end_time,
@@ -275,13 +279,15 @@ def add_cages_to_config(config_path: str | Path | dict[str, Any]) -> None:
     with open(config_path, "w") as config:
         cfg["cages"] = sorted(cages)
         toml.dump(cfg, config)
-    
-    
-def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFrame) -> None:
+
+
+def add_days_to_config(
+    config_path: str | Path | dict[str, Any], lf: pl.LazyFrame
+) -> None:
     """Auxfun to add days range to config for reading convenience"""
     cfg = read_config(config_path)
 
-    days = lf.collect().get_column('day').unique(maintain_order=True).to_list()
+    days = lf.collect().get_column("day").unique(maintain_order=True).to_list()
 
     with open(config_path, "w") as config:
         cfg["days_range"] = [days[0], days[-1]]
@@ -291,11 +297,11 @@ def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFram
 def run_dashboard(config_path: str | Path | dict[str, Any]):
     """Auxfun to open dashboard for experiment from provided config"""
     cfg = read_config(config_path)
-    
+
     project_loc = Path(cfg["project_location"])
     data_path = project_loc / "results"
     cfg_path = project_loc / "config.toml"
-    
+
     path_to_dashboard = importlib.util.find_spec("deepecohab.dash.dashboard").origin
 
     cmd = [
@@ -306,7 +312,7 @@ def run_dashboard(config_path: str | Path | dict[str, Any]):
         "--config-path",
         str(cfg_path),
     ]
-    
+
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -314,7 +320,7 @@ def run_dashboard(config_path: str | Path | dict[str, Any]):
         text=True,
     )
     try:
-        output, _ = process.communicate(timeout=1)   
+        output, _ = process.communicate(timeout=1)
         print(output)
     except subprocess.TimeoutExpired:
         pass

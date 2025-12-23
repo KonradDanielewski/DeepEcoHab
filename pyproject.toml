@@ -31,8 +31,8 @@ dependencies = [
     "openskill",
     "plotly",
     "polars",
-    "toml",
     "scipy",
+    "toml",
     "tzlocal",
 ]
 
@@ -50,6 +50,4 @@ namespaces = true
 
 [tool.setuptools.package-data]
 "*" = ["*.css", "*.zip", "*.txt"]
-
-# OR be specific to your package
 "deepecohab.dash.assets" = ["style.css"]

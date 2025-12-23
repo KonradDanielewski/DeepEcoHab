@@ -3,6 +3,7 @@ from pathlib import Path
 import toml
 from deepecohab.utils import auxfun, config_templates
 
+
 def create_ecohab_project(
     project_location: str | Path,
     data_path: str | Path,
@@ -19,14 +20,14 @@ def create_ecohab_project(
     """Creates the ecohab project directory and config."""
     project_root = Path(project_location)
     data_dir = Path(data_path)
-    
+
     full_project_path = auxfun.make_project_path(project_root, experiment_name)
     config_path = full_project_path / "config.toml"
 
     if config_path.exists():
         print(f"Project already exists! Loading: {config_path}")
         return config_path
-    
+
     if not any(data_dir.glob("*.txt")):
         raise FileNotFoundError(f"No .txt files found in {data_dir}")
 
@@ -35,12 +36,12 @@ def create_ecohab_project(
         dt_format = "%Y-%m-%d %H:%M:%S"
         start = dt.datetime.strptime(start_datetime, dt_format)
         finish = dt.datetime.strptime(finish_datetime, dt_format)
-        
+
         delta_days = (finish - start).days
-        
+
         if delta_days < 0:
             raise ValueError("Finish date before start date!")
-        
+
         days_range = [1, delta_days + 1]
 
     config_kwargs = {
@@ -55,12 +56,18 @@ def create_ecohab_project(
         "days_range": days_range,
     }
 
-    if (field_ecohab or custom_layout):
+    if field_ecohab or custom_layout:
         if not isinstance(antenna_rename_scheme, dict):
-            raise ValueError("Custom or field layout requires an antenna_rename_scheme dict.")
-        
+            raise ValueError(
+                "Custom or field layout requires an antenna_rename_scheme dict."
+            )
+
         config_kwargs["antenna_rename_scheme"] = antenna_rename_scheme
-        config_cls = config_templates.FieldConfig if field_ecohab else config_templates.CustomConfig
+        config_cls = (
+            config_templates.FieldConfig
+            if field_ecohab
+            else config_templates.CustomConfig
+        )
     else:
         config_cls = config_templates.DefaultConfig
 

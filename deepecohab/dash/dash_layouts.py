@@ -127,7 +127,10 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
                                 dcc.RadioItems(
                                     id="pairwise_switch",
                                     options=[
-                                        {"label": "Visits", "value": "pairwise_encounters"},
+                                        {
+                                            "label": "Visits",
+                                            "value": "pairwise_encounters",
+                                        },
                                         {"label": "Time", "value": "time_together"},
                                     ],
                                     value="pairwise_encounters",
@@ -146,25 +149,25 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
                             ),
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                        "network-sociability", css_class="plot-600"
-                                    ),
+                                    "network-sociability", css_class="plot-600"
+                                ),
                                 width=6,
                             ),
                         ],
                         className="g-3",
                     ),
                     dbc.Row(
-                        [                            
+                        [
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                        "cohort-heatmap", css_class="plot-500"
-                                    ),
+                                    "cohort-heatmap", css_class="plot-500"
+                                ),
                                 width=6,
                             ),
                             dbc.Col(
                                 auxfun_dashboard.generate_standard_graph(
-                                        "time-alone-bar", css_class="plot-500"
-                                    ),
+                                    "time-alone-bar", css_class="plot-500"
+                                ),
                                 width=6,
                             ),
                         ],
@@ -184,9 +187,7 @@ def generate_comparison_layout(phase_range: list[int, int]) -> html.Div:
             dbc.Row(
                 [
                     dbc.Col(
-                        auxfun_dashboard.generate_comparison_block(
-                            "left", phase_range
-                        ),
+                        auxfun_dashboard.generate_comparison_block("left", phase_range),
                         width=6,
                     ),
                     dbc.Col(
