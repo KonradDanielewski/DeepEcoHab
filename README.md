@@ -6,7 +6,15 @@ Our backend is built on [Polars](https://pola.rs/) - Extremely fast Query Engine
 
 ## Installation
 
-We suggest usage of [uv](https://docs.astral.sh/uv/). Installation instructions for both Windows and Linux/MacOS can be found [here](https://realpython.com/python-uv/#using-the-standalone-installer)
+In the spirit of open-source we suggest usage of [uv](https://docs.astral.sh/uv/). 
+
+To install `uv` copy-paste the command below:
+
+Windows:
+`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+
+Linux/MacOS:
+`$ curl -LsSf https://astral.sh/uv/install.sh | sh`
 
 To install DeepEcoHab please run the following commands line by line in the terminal:
 
@@ -51,6 +59,6 @@ To get the list of available keys simply call: `deepecohab.df_registry.list_avai
 
 ## Roadmap
 
-1. Full web-app style GUI, deployable via a docker container - no need coding at all
+1. Full web-app style GUI, deployable via a docker container.
 2. Group analysis - combined analysis of multiple cohort, comparing different groups of cohorts.
 3. Pose estimation based analysis of animal interactions and more detailed social structure analysis.

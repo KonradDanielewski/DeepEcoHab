@@ -10,20 +10,18 @@ used for analysis of data from the antennas only - a set of optimized, fast func
 used for analysis of pose estimation data - provides a detailed behavior analysis as well as it's effects on the social structure. Can be used for phenotyping, social behavior analysis, studies of social hierarchy formation etc. Analysis is performed on multiple levels - heuristics based on kinematics, unsupervised and supervised behavior segmentation. 
 
 ### 3. Visualization module
-you can quicky and easily visualize the most important results thanks of your analysis thanks to our dashboard with interactive plots and summary of the analysis results.
+you can quicky and easily visualize the most important results of your analysis thanks to our dashboard with interactive plots and summary of the analysis results.
 
 Analyze your data in steps, curating the analysis for your goals or take advantage of our 'one-step-approach' and just analyze all your data seamlessly with a click of button!
 
 ## Installation
 
-DeepEcoHab supplies users with a conda environment file. To install it with conda follow the steps below:
+In the spirit of open-source we recommend the [uv](https://docs.astral.sh/uv/) package and project manager to work with deepecohab. 
 
 ```
 cd location_to_clone_to
 git clone https://github.com/KonradDanielewski/DeepEcoHab.git
 cd DeepEcoHab
-conda env create -f conda_env/env.yaml
-conda activate deepecohab
 pip install .
 ```
 
