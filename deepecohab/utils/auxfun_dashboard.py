@@ -242,7 +242,7 @@ def generate_plot_download_tab() -> dcc.Tab:
 
 def generate_csv_download_tab() -> dcc.Tab:
     """Generates DataFrames download tab in the Downloads modal component"""
-    options = get_options_from_ids(df_registry.list_available(), "_")
+    options = get_options_from_ids(df_registry.list_available(), "_", delist=["binary_df"])
 
     return dcc.Tab(
         label="DataFrames",
@@ -324,9 +324,9 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450") -> html.
     )
 
 
-def get_options_from_ids(obj_ids: list[str], sep: str = "-") -> list[dict[str, str]]:
+def get_options_from_ids(obj_ids: list[str], sep: str = "-", delist: list[str] = []) -> list[dict[str, str]]:
     """Generate options in the Downloads -> Plots tab from available IDs"""
-    return [{"label": get_display_name(obj_id, sep), "value": obj_id} for obj_id in obj_ids]
+    return [{"label": get_display_name(obj_id, sep), "value": obj_id} for obj_id in obj_ids if obj_id not in delist]
 
 
 def get_display_name(name: str, sep: str = "-") -> str:

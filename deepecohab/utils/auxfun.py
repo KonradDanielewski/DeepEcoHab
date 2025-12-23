@@ -295,26 +295,33 @@ def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFram
 def run_dashboard(config_path: str | Path | dict[str, Any]):
     """Auxfun to open dashboard for experiment from provided config"""
     cfg = read_config(config_path)
-    data_path = Path(cfg["project_location"]) / "results"
-    cfg_path = Path(cfg["project_location"]) / "config.toml"
-
+    
+    project_loc = Path(cfg["project_location"])
+    data_path = project_loc / "results"
+    cfg_path = project_loc / "config.toml"
+    
     path_to_dashboard = importlib.util.find_spec("deepecohab.dash.dashboard").origin
 
+    cmd = [
+        sys.executable,
+        str(path_to_dashboard),
+        "--results-path",
+        str(data_path),
+        "--config-path",
+        str(cfg_path),
+    ]
+    
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
     try:
-        process = subprocess.Popen(
-            [
-                sys.executable,
-                path_to_dashboard,
-                "--results-path",
-                data_path,
-                "--config-path",
-                cfg_path,
-            ]
-        )
-    except Exception as e:
-        print(e)
-
-    return process
+        output, _ = process.communicate(timeout=0.5)   
+        print(output)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def get_time_spent_expression(
