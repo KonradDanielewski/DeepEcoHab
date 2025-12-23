@@ -116,32 +116,46 @@ def generate_settings_block(
                     ),
                     *(
                         [
-                            html.Div(className="divider"),
                             html.Div(
-                                dcc.RadioItems(
-                                    id=position_switch_id,
-                                    inline=True,
-                                    options=[
-                                        {"label": "Visits", "value": "visits"},
-                                        {"label": "Time", "value": "time"},
-                                    ],
-                                    value="visits",
-                                    labelStyle={"display": "block", "marginBottom": "5px"},
-                                ),
+                                id={"container" : position_switch_id["type"], "side": position_switch_id["side"]},
+                                hidden=True,
+                                className="flex-container",
+                                children = [
+                                    html.Div(className="divider"),
+                                    html.Div(
+                                        dcc.RadioItems(
+                                            id=position_switch_id,
+                                            inline=True,
+                                            options=[
+                                                {"label": "Visits", "value": "visits"},
+                                                {"label": "Time", "value": "time"},
+                                            ],
+                                            value="visits",
+                                            labelStyle={"display": "block", "marginBottom": "5px"},
+                                        ),
+                                    ),
+                                ]
                             ),
-                            html.Div(className="divider"),
                             html.Div(
-                                dcc.RadioItems(
-                                    id=pairwise_switch_id,
-                                    inline=True,
-                                    options=[
-                                        {"label": "Social - Visits", "value": "pairwise_encounters"},
-                                        {"label": "Social - Time", "value": "time_together"},
-                                    ],
-                                    value="pairwise_encounters",
-                                    labelStyle={"display": "block", "marginBottom": "5px"},
-                                ),
-                            ),
+                                id={"container" : pairwise_switch_id["type"], "side": pairwise_switch_id["side"]},
+                                hidden=False,
+                                className="flex-container",
+                                children = [
+                                    html.Div(className="divider"),
+                                    html.Div(
+                                        dcc.RadioItems(
+                                            id=pairwise_switch_id,
+                                            inline=True,
+                                            options=[
+                                                {"label": "Visits", "value": "pairwise_encounters"},
+                                                {"label": "Time", "value": "time_together"},
+                                            ],
+                                            value="pairwise_encounters",
+                                            labelStyle={"display": "block", "marginBottom": "5px"},
+                                        ),
+                                    ),
+                                ]
+                            )
                         ]
                         if comparison_layout
                         else []

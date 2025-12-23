@@ -136,15 +136,18 @@ if __name__ == "__main__":
         [
             Output({"figure": "comparison-plot", "side": MATCH}, "figure"),
             Output({"store": "comparison-plot", "side": MATCH}, "data"),
+            Output({"container": "position_switch", "side":MATCH}, "hidden"),
+            Output({"container": "pairwise_switch", "side":MATCH}, "hidden"),
         ],
             Input({"type": ALL, "side": MATCH}, "value"),
     )
     def update_comparison_plot(switches: list[Any]) -> tuple[go.Figure, dict]:
         """Render plots in the comparisons tab"""
         input_dict = {item['id']['type']: val for item, val in zip(ctx.inputs_list[0], switches)}
-        
-        phase_type = (input_dict['phase_type'] if not input_dict['phase_type'] == 'all' else ['dark_phase', 'light_phase'])
-           
+        plot_attributes = dash_plotting.plot_registry.get_dependencies(input_dict['plot-dropdown'])
+
+        phase_type = ([input_dict['phase_type']] if not input_dict['phase_type'] == 'all' else ['dark_phase', 'light_phase'])
+
         plot_cfg = auxfun_plots.PlotConfig(
             store=store, 
             days_range=input_dict['days_range'], 
@@ -158,9 +161,13 @@ if __name__ == "__main__":
             positions=POSITIONS,
             position_colors=POSITION_COLORS,
         )
+
         fig, data = dash_plotting.plot_registry.get_plot(input_dict['plot-dropdown'], plot_cfg)
 
-        return fig, auxfun_dashboard.to_store_json(data)
+        pairwise_hidden = 'pairwise_switch' not in plot_attributes
+        position_hidden = 'position_switch' not in plot_attributes
+
+        return fig, auxfun_dashboard.to_store_json(data), position_hidden, pairwise_hidden
 
 
     @app.callback(
