@@ -57,7 +57,7 @@ The dashboard contains visualization of the experiment analysis results. It is d
 All providing multiple plots controlled via the settings block located on top.
 
 <p align="center">
-  <img src="docs/dashboard_image.png" alt="Dashboard Preview" width="600">
+  <img src="https://raw.githubusercontent.com/KonradDanielewski/DeepEcoHab/main/docs/dashboard_image.png" alt="Dashboard Preview" width="800">
 </p>
 
 ## Data structure:

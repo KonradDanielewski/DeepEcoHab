@@ -4,20 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepecohab"
-version = "0.4.1"
+version = "0.4.1.1"
 description = "EcoHab with some machine learning"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Konrad Danielewski", email = "k.danielewski@nencki.edu.pl"},
     {name = "Ula Włodkowska", email = "u.wlodkowska@nencki.edu.pl"},
 ]
-keywords = ["neuroscience", "ecology", "dash", "data-visualization"]
+keywords = ["neuroscience", "ecology", "dash", "data-visualization", "data-analysis"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Visualization",
 ]
 
 dependencies = [
@@ -49,7 +52,6 @@ include = ["deepecohab*"]
 namespaces = true
 
 [tool.setuptools.package-data]
-"*" = ["*.css", "*.zip", "*.txt"]
 "deepecohab.dash.assets" = ["style.css"]
 
 [tool.ruff]
