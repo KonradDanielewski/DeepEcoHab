@@ -105,10 +105,11 @@ if __name__ == "__main__":
 			Input("agg_switch", "value"),
 			Input("position_switch", "value"),
 			Input("pairwise_switch", "value"),
+			input("ranking_switch", "value"),
 		],
 	)
 	def update_plots(
-		days_range, phase_type, agg_switch, pos_switch, pair_switch
+		days_range, phase_type, agg_switch, pos_switch, pair_switch, ranking_switch,
 	) -> tuple[go.Figure, dict]:
 		plot_name: str = ctx.outputs_grouping[0]["id"]["name"]
 		plot_attributes = dash_plotting.plot_registry.get_dependencies(plot_name)
@@ -127,6 +128,7 @@ if __name__ == "__main__":
 			agg_switch=agg_switch,
 			position_switch=pos_switch,
 			pairwise_switch=pair_switch,
+			ranking_switch=ranking_switch,
 			animals=ANIMALS,
 			animal_colors=ANIMAL_COLORS,
 			cages=CAGES,
