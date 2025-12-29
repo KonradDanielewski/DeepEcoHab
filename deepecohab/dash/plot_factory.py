@@ -226,6 +226,29 @@ def plot_ranking_line(
 
 	return fig, df
 
+def plot_ranking_over_days(
+	df: pl.DataFrame,
+	colors,
+	animals,
+) -> tuple[go.Figure, pl.DataFrame]:
+
+	fig = px.line(
+		df,
+		x="day",
+		y="ordinal",
+		color="animal_id",
+		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		line_shape="spline",
+	)
+
+	fig.update_layout(
+		title="<b>Social dominance ranking over days</b>",
+		xaxis=dict(title="Day"),
+		yaxis=dict(title="Mean rank"),
+	)
+
+	return fig, df
+
 
 def plot_ranking_distribution(
 	df: pl.DataFrame,
