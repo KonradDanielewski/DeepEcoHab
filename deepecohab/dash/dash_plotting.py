@@ -8,20 +8,29 @@ from deepecohab.utils.auxfun_plots import PlotConfig, PlotRegistry
 plot_registry = PlotRegistry()
 
 
-@plot_registry.register("ranking-line", dependencies=["store", "animals", "animal_colors"])
+@plot_registry.register(
+	"ranking-line",
+	dependencies=["store", "animals", "animal_colors", "ranking_switch"],
+)
 def ranking_over_time(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
-	"""Generates a line plot showing the evolution of animal rankings over time.
+	"""Generates ranking plots either over time or as day-to-day stability."""
+	
+	if cfg.ranking_switch == "intime":
+		df = auxfun_plots.prep_ranking_over_time(cfg.store)
+		fig = plot_factory.plot_ranking_line(
+			df, cfg.animal_colors, cfg.animals
+		)
 
-	Tracks the ordinal rank of each animal across days and hours to visualize
-	changes in social hierarchy.
+	elif cfg.ranking_switch == "stability":
+		df = auxfun_plots.prep_ranking_day_stability(cfg.store)
+		fig = plot_factory.plot_ranking_stability(
+			df, cfg.animal_colors, cfg.animals
+		)
 
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
-	"""
-	df = auxfun_plots.prep_ranking_over_time(cfg.store)
+	else:
+		raise ValueError(f"Unknown ranking_switch: {cfg.ranking_switch}")
 
-	return plot_factory.plot_ranking_line(df, cfg.animal_colors, cfg.animals)
-
+	return fig, df
 
 @plot_registry.register(
 	"metrics-polar-line",
