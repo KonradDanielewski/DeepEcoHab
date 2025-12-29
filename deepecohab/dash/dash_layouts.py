@@ -21,20 +21,23 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 				[
 					# Ranking, network graph, chasings
 					dbc.Row([dbc.Col(html.H2("Social hierarchy"), className="text-left my-4")]),
-					dbc.Row([]),
+			
 					dbc.Row(
 						[
 							dbc.Col(
-								[
-									auxfun_dashboard.generate_standard_graph(
-										"ranking-line", css_class="plot-500"
+								dcc.RadioItems(
+									id="ranking_switch",
+									options=[
+										{"label": "In time", "value": "intime"},
+										{"label": "Day stability", "value": "stability"},
+										],
+									value="intime",
+									labelStyle={"display": "inline-block"},
 									),
-									auxfun_dashboard.generate_standard_graph(
-										"ranking-distribution-line"
-									),
-								],
 								width=6,
 							),
+						]),
+
 							dbc.Col(
 								[
 									auxfun_dashboard.generate_standard_graph(
