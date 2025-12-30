@@ -37,8 +37,12 @@ def load_data(
 	).drop(["ind", "file"])
 
 	lf = auxfun.set_animal_ids(
-		config_path, lf, animal_ids, sanitize_animal_ids, min_antenna_crossings
-	)
+			config_path, 
+			lf = lf, 
+			sanitize_animal_ids = sanitize_animal_ids, 
+			min_antenna_crossings = min_antenna_crossings,
+			animal_ids = animal_ids, 
+		)
 
 	if custom_layout:
 		rename_dicts: list[dict[int, int]] = cfg["antenna_rename_scheme"]
@@ -117,7 +121,7 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str | None = None) -
 	datetime_df = (
 		pl.concat_str([pl.col("date"), pl.col("time")], separator=" ")
 		.str.strptime(pl.Datetime, strict=False)
-		.dt.replace_time_zone(timezone.key, ambiguous='earliest')
+		.dt.replace_time_zone(timezone.key, ambiguous='latest')
 	)
 
 	return (

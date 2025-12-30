@@ -113,16 +113,11 @@ def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 def get_day() -> pl.Expr:
 	"""Auxfun for getting the day"""
-	start_midnight = pl.col("datetime").min().dt.truncate("1d")
-
 	return (
-		(pl.col("datetime") - start_midnight)
-		.dt.total_days()
-		.floor()
-		.cast(pl.Int16)
-		.add(1)
-		.alias("day")
-	)
+		(
+			pl.col("datetime").dt.date() - pl.col("datetime").dt.date().min()
+		).dt.total_days()
+    ).add(1).cast(pl.Int16).alias('day')
 
 
 def get_phase(cfg: dict[str, Any]) -> pl.Expr:
