@@ -4,7 +4,9 @@ from typing import Literal, Any
 from zoneinfo import ZoneInfo
 
 import polars as pl
+from polars.exceptions import ComputeError
 from tzlocal import get_localzone
+from zoneinfo import ZoneInfo
 
 from deepecohab.utils import auxfun
 from deepecohab.utils.auxfun import df_registry
@@ -22,16 +24,20 @@ def load_data(
 	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	data_path = Path(cfg["data_path"])
 
-	lf = pl.scan_csv(
-		source=data_path / f"{fname_prefix}*.txt",
-		separator="\t",
-		has_header=False,
-		new_columns=["ind", "date", "time", "antenna", "time_under", "animal_id"],
-		include_file_paths="file",
-		glob=True,
-		infer_schema=True,
-		infer_schema_length=10,
-	)
+	try:
+		lf = pl.scan_csv(
+			source=data_path / f"{fname_prefix}*.txt",
+			separator="\t",
+			has_header=False,
+			new_columns=["ind", "date", "time", "antenna", "time_under", "animal_id"],
+			include_file_paths="file",
+			glob=True,
+			infer_schema=True,
+			infer_schema_length=10,
+		)
+	except ComputeError:
+		print("No data found with specified prefix!")
+		
 
 	lf = lf.with_columns(
 		pl.col("file").str.extract(r"([^/\\]+)$").str.split("_").list.get(0).alias("COM")
