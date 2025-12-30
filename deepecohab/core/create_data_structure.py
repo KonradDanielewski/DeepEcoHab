@@ -117,7 +117,7 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str | None = None) -
 	datetime_df = (
 		pl.concat_str([pl.col("date"), pl.col("time")], separator=" ")
 		.str.strptime(pl.Datetime, strict=False)
-		.dt.replace_time_zone(timezone.key)
+		.dt.replace_time_zone(timezone.key, ambiguous='earliest')
 	)
 
 	return (
@@ -365,9 +365,8 @@ def get_ecohab_data_structure(
 		).sort("datetime")
 
 	lf = lf.sort("datetime")
-	lf = lf.with_columns([auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour()]).with_columns(
-		auxfun.get_phase_count()
-	)
+	lf = lf.with_columns([auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour()])
+	lf = auxfun.get_phase_count(lf)
 
 	lf = calculate_time_spent(lf)
 	lf = get_animal_position(lf, antenna_pairs)

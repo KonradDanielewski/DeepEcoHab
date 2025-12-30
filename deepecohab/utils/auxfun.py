@@ -145,12 +145,14 @@ def get_hour(dt_col: str = "datetime") -> pl.Expr:
 	return pl.col(dt_col).dt.hour().cast(pl.Int8).alias("hour")
 
 
-def get_phase_count() -> pl.Expr:
+def get_phase_count(lf) -> pl.Expr:
 	"""Auxfun used to count phases"""
-
-	run_id = (pl.col("phase") != pl.col("phase").shift(1)).fill_null(True).cast(pl.Int8).cum_sum()
-
-	return run_id.rank(method="dense").over("phase").cast(pl.Int16).alias("phase_count")
+	lf = lf.with_columns(
+		pl.col("phase").rle_id().alias("run_id")
+	).with_columns(
+		pl.col("run_id").rank("dense").over("phase").alias("phase_count")
+	).drop("run_id")
+	return lf
 
 
 def get_lf_from_enum(

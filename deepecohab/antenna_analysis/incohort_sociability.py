@@ -54,8 +54,9 @@ def calculate_time_alone(
 		.with_columns(auxfun.get_phase(cfg), auxfun.get_day())
 		.group_by(result_cols)
 		.agg(pl.len().alias("time_alone"))
-		.with_columns(auxfun.get_phase_count())
 	)
+ 
+	time_alone = auxfun.get_phase_count(time_alone)
 
 	time_alone = full_group_list.join(time_alone, on=result_cols, how="left").fill_null(0)
 
