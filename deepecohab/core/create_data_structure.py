@@ -3,7 +3,9 @@ from pathlib import Path
 from typing import Literal, Any
 
 import polars as pl
+from polars.exceptions import ComputeError
 from tzlocal import get_localzone
+from zoneinfo import ZoneInfo
 
 from deepecohab.utils import auxfun
 from deepecohab.utils.auxfun import df_registry
@@ -21,23 +23,31 @@ def load_data(
 	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	data_path = Path(cfg["data_path"])
 
-	lf = pl.scan_csv(
-		source=data_path / f"{fname_prefix}*.txt",
-		separator="\t",
-		has_header=False,
-		new_columns=["ind", "date", "time", "antenna", "time_under", "animal_id"],
-		include_file_paths="file",
-		glob=True,
-		infer_schema=True,
-		infer_schema_length=10,
-	)
+	try:
+		lf = pl.scan_csv(
+			source=data_path / f"{fname_prefix}*.txt",
+			separator="\t",
+			has_header=False,
+			new_columns=["ind", "date", "time", "antenna", "time_under", "animal_id"],
+			include_file_paths="file",
+			glob=True,
+			infer_schema=True,
+			infer_schema_length=10,
+		)
+	except ComputeError:
+		print("No data found with specified prefix!")
+		
 
 	lf = lf.with_columns(
 		pl.col("file").str.extract(r"([^/\\]+)$").str.split("_").list.get(0).alias("COM")
 	).drop(["ind", "file"])
 
 	lf = auxfun.set_animal_ids(
-		config_path, lf, animal_ids, sanitize_animal_ids, min_antenna_crossings
+		config_path, 
+  		lf, 
+    	sanitize_animal_ids, 
+     	min_antenna_crossings,
+    	animal_ids, 
 	)
 
 	if custom_layout:
@@ -345,7 +355,9 @@ def get_ecohab_data_structure(
 	)  # reload config potential animal_id changes due to sanitation
 
 	if not isinstance(timezone, str):
-		timezone: str = get_localzone()
+		timezone: ZoneInfo = get_localzone()
+	else:
+		timezone = ZoneInfo(timezone)
 
 	lf = _prepare_columns(cfg, lf, timezone)
 
@@ -378,8 +390,10 @@ def get_ecohab_data_structure(
 	lf_sorted = lf.select(sorted_cols)
 
 	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf)
-
-	auxfun.add_cages_to_config(config_path)
+ 	
+	positions = auxfun.remove_tunnel_directionality(lf, cfg).collect()['position'].unique().to_list()
+	auxfun.add_positions_to_config(config_path, positions)
+ 
 	try:
 		cfg["days_range"]
 	except KeyError:

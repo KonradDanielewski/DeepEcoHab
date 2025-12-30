@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 import polars as pl
 
-from deepecohab.dash import plot_factory
+from deepecohab.plotting import plot_factory
 from deepecohab.utils import auxfun_plots
 from deepecohab.utils.auxfun_plots import PlotConfig, PlotRegistry
 
