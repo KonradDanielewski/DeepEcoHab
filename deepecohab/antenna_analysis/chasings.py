@@ -97,6 +97,7 @@ def get_matches(lf: pl.LazyFrame, results_path: Path, save_data: bool) -> None:
 @df_registry.register("chasings_df")
 def calculate_chasings(
 	config_path: str | Path | dict,
+	chasing_time_window: list[int, int] = [0.1, 1.2],
 	overwrite: bool = False,
 	save_data: bool = True,
 ) -> pl.LazyFrame:
@@ -104,6 +105,7 @@ def calculate_chasings(
 
 	Args:
 	    config_path: path to project config file.
+     	chasing_time_window: defines min and max length of the chasing event in seconds.
 	    save_data: toogles whether to save data.
 	    overwrite: toggles whether to overwrite the data.
 
@@ -141,7 +143,7 @@ def calculate_chasings(
 		pl.col("prev_position").is_in(cages),
 		(pl.col("datetime") - pl.col("tunnel_entry"))
 		.dt.total_seconds(fractional=True)
-		.is_between(0.1, 1.2, "none"),
+		.is_between(*chasing_time_window, "none"),
 		pl.col("datetime") < pl.col("datetime_chasing"),
 	)
 

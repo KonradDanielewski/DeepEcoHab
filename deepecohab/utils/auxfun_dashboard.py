@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 import polars as pl
 from dash import dcc, exceptions, html
 
-from deepecohab.dash.dash_plotting import plot_registry
+from deepecohab.plotting.dash_plotting import plot_registry
 from deepecohab.utils.auxfun import df_registry
 
 COMMON_CFG = {"displayModeBar": False}
@@ -42,11 +42,9 @@ def generate_settings_block(
 									{"label": "All", "value": "all"},
 								],
 								value="dark_phase",
-								labelStyle={"display": "block", "marginBottom": "5px"},
-								inputStyle={"marginRight": "6px"},
+								className="dash-radio",
 							)
 						],
-						className="control-radio-btns",
 					),
 					html.Div(className="divider"),
 					html.Div(
@@ -58,11 +56,9 @@ def generate_settings_block(
 									{"label": "Mean", "value": "mean"},
 								],
 								value="sum",
-								labelStyle={"display": "block", "marginBottom": "5px"},
-								inputStyle={"marginRight": "6px"},
+								className="dash-radio",
 							)
 						],
-						className="control-radio-btns",
 					),
 					html.Div(className="divider"),
 					html.Div(
@@ -89,7 +85,7 @@ def generate_settings_block(
 								vertical=False,
 								persistence=True,
 								persistence_type="session",
-								className="slider",
+								className="dash-slider",
 							),
 						],
 						className="flex-container",
@@ -103,7 +99,12 @@ def generate_settings_block(
 									dbc.Container(
 										[
 											html.Button(
-												"Downloads",
+												[
+													html.I(
+														className="fa-solid fa-download fa-lg me-2"
+													),
+													"Downloads",
+												],
 												id="open-modal",
 												n_clicks=0,
 												className="DownloadButton",

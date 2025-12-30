@@ -47,7 +47,7 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 								width=6,
 							),
 						],
-						className="g-3",
+						className="gx-3 gy-0",
 					),
 					dbc.Row(
 						[
@@ -60,10 +60,10 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 								width=6,
 							),
 						],
-						className="g-3",
+						className="gx-3 gy-0",
 					),
 					# Activity per hour line and per position bar
-					dbc.Row([dbc.Col(html.H2("Activity"), className="text-left my-4")]),
+					dbc.Row([dbc.Col(html.H2("Activity", className="text-left mb-2"))]),
 					dbc.Row(
 						[
 							dbc.Col(
@@ -74,10 +74,12 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 										{"label": "Time", "value": "time"},
 									],
 									value="visits",
+									className="dash-radio",
 								),
 								width=1,
 							),
-						]
+						],
+						className="mb-2",
 					),
 					dbc.Row(
 						[
@@ -90,7 +92,7 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 								width=6,
 							),
 						],
-						className="g-3",
+						className="gx-3 gy-0",
 					),
 					dbc.Row(
 						[
@@ -101,10 +103,14 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 								width=12,
 							),
 						],
-						className="g-3",
+						className="gx-3 gy-0",
 					),
 					# Pairwise and incohort heatmaps
-					dbc.Row([dbc.Col(html.H2("Sociability"), className="text-left my-4")]),
+					dbc.Row(
+						[
+							dbc.Col(html.H2("Sociability"), className="text-left mb-2"),
+						]
+					),
 					dbc.Row(
 						[
 							dbc.Col(
@@ -118,10 +124,12 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 										{"label": "Time", "value": "time_together"},
 									],
 									value="pairwise_encounters",
+									className="dash-radio",
 								),
 								width=1,
 							),
-						]
+						],
+						className="mb-2",
 					),
 					dbc.Row(
 						[
@@ -138,7 +146,7 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 								width=6,
 							),
 						],
-						className="g-3",
+						className="gx-3 gy-0",
 					),
 					dbc.Row(
 						[
