@@ -184,7 +184,7 @@ def calculate_incohort_sociability(
 
 	padded_df: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="padded_df")
 
-	phase_durations: pl.LazyFrame = auxfun.get_phase_durations(padded_df)
+	phase_durations: pl.LazyFrame = auxfun.get_phase_durations(padded_df, cfg)
 
 	# Get time spent together in cages
 	time_together_df: pl.LazyFrame = calculate_pairwise_meetings(cfg, minimum_time=minimum_time)

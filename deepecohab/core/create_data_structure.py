@@ -419,16 +419,16 @@ def get_ecohab_data_structure(
 	sorted_cols = sorted(lf.collect_schema().keys())
 	lf_sorted = lf.select(sorted_cols)
 
-	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf)
-
 	auxfun.add_cages_to_config(config_path)
 	try:
 		cfg["days_range"]
 	except KeyError:
 		auxfun.add_days_to_config(config_path, lf)
 
-	create_padded_df(config_path, lf_sorted, save_data, overwrite)
+	padded_lf = create_padded_df(config_path, lf_sorted, save_data, overwrite)
 	create_binary_df(config_path, lf_sorted, save_data, overwrite)
+
+	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(padded_lf, cfg)
 
 	if save_data:
 		lf_sorted.sink_parquet(

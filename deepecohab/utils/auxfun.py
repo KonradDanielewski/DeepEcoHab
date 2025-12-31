@@ -90,25 +90,65 @@ def make_project_path(project_location: str, experiment_name: str) -> Path:
 
 	return project_location
 
+def get_phase_lens(cfg: dict[str, Any]) -> pl.Int64:
+	"""Helper to extract default phase duration in seconds"""
+	SECONDS_PER_DAY = 24 * 3600
+	
+	start_time, end_time = cfg["phase"].values()
+
+	start_t = dt.time.fromisoformat(start_time)
+	end_t   = dt.time.fromisoformat(end_time)
+	
+	duration_light = (
+		(end_t.hour * 3600 + end_t.minute * 60 + end_t.second)
+		- (start_t.hour * 3600 + start_t.minute * 60 + start_t.second)
+	) % SECONDS_PER_DAY
+
+	duration_dark = SECONDS_PER_DAY - duration_light
+
+	return duration_light, duration_dark
 
 @df_registry.register("phase_durations")
-def get_phase_durations(lf: pl.LazyFrame) -> pl.LazyFrame:
+def get_phase_durations(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 	"""Auxfun to calculate approximate phase durations.
 	Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
 	"""
-	return (
-		lf.group_by(["phase", "phase_count"])
-		.agg(
-			duration_s=((pl.col("datetime").last() - pl.col("datetime").first()).dt.total_seconds())
+
+	duration_light, duration_dark = get_phase_lens(cfg)
+
+	edges = (
+        ((pl.col("datetime").max() - pl.col("datetime").min()).dt.total_seconds() / 3600)
+        .round(0, mode="half_away_from_zero")
+        .mul(3600)
+        .cast(pl.Int64)
+    )
+
+	phase_durations = (
+		(
+			lf.group_by(["phase", "phase_count"])
+			.agg(
+				edges.alias("duration_seconds")
+			)
+			.with_columns(
+				pl.when(
+					(pl.col("phase_count") == 1) | (pl.col("phase_count") == pl.col("phase_count").max()))
+					.then(pl.col("duration_seconds"))        
+					.otherwise(
+						pl.when((pl.col("phase") == 'light_phase'))
+							.then(duration_light)
+							.otherwise(duration_dark)
+							.alias("duration_seconds")
+							.cast(pl.Int64)
+						)
+					)
+				)
+				.select("phase", "phase_count", "duration_seconds")
+				.sort(["phase", "phase_count"])
 		)
-		.with_columns(
-			((pl.col("duration_s") / 3600).round(0).clip(1, 12) * 3600)
-			.cast(pl.Int64)
-			.alias("duration_seconds")
-		)
-		.select("phase", "phase_count", "duration_seconds")
-		.sort(["phase", "phase_count"])
-	)
+	
+	return phase_durations
+
+
 
 
 def get_day() -> pl.Expr:
