@@ -1,6 +1,7 @@
 import datetime as dt
 from pathlib import Path
 from typing import Literal, Any
+from zoneinfo import ZoneInfo
 
 import polars as pl
 from tzlocal import get_localzone
@@ -37,12 +38,12 @@ def load_data(
 	).drop(["ind", "file"])
 
 	lf = auxfun.set_animal_ids(
-			config_path, 
-			lf = lf, 
-			sanitize_animal_ids = sanitize_animal_ids, 
-			min_antenna_crossings = min_antenna_crossings,
-			animal_ids = animal_ids, 
-		)
+		config_path,
+		lf=lf,
+		sanitize_animal_ids=sanitize_animal_ids,
+		min_antenna_crossings=min_antenna_crossings,
+		animal_ids=animal_ids,
+	)
 
 	if custom_layout:
 		rename_dicts: list[dict[int, int]] = cfg["antenna_rename_scheme"]
@@ -114,24 +115,23 @@ def _rename_antennas(lf: pl.LazyFrame, rename_dicts: dict) -> pl.LazyFrame:
 	return lf
 
 
-def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str | None = None) -> pl.LazyFrame:
+def _prepare_columns(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Auxfun to prepare the df, adding new columns"""
 	animal_ids: list[str] = cfg["animal_ids"]
-
-	datetime_df = (
-		pl.concat_str([pl.col("date"), pl.col("time")], separator=" ")
-		.str.strptime(pl.Datetime, strict=False)
-		.dt.replace_time_zone(timezone.key, ambiguous='latest')
-	)
-
 	return (
 		lf.with_columns(
-			pl.col("animal_id").cast(pl.Enum(animal_ids)).alias("animal_id"),
-			datetime_df.alias("datetime"),
-			pl.col("antenna").cast(pl.Int8).alias("antenna"),
-			pl.col("time_under").cast(pl.Int32).alias("time_under"),
+			pl.col("animal_id").cast(pl.Enum(animal_ids)),
+			pl.col("antenna").cast(pl.Int8),
+			(pl.col("time_under") * 1000).cast(pl.Duration(time_unit="us")),
 		)
-		.with_columns(pl.col("datetime").dt.hour().cast(pl.Int8).alias("hour"))
+		.with_columns(
+			(
+				pl.concat_str([pl.col("date"), pl.col("time")], separator=" ").str.to_datetime(
+					"%Y.%m.%d %H:%M:%S%.f", time_unit="us"
+				)
+				+ pl.col("time_under")
+			).alias("datetime"),
+		)
 		.drop(["date", "time"])
 		.unique(subset=["datetime", "animal_id"], keep="first")
 	)
@@ -140,6 +140,30 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str | None = None) -
 def _split_datetime(phase_start: str) -> dt.datetime:
 	"""Auxfun to split datetime string."""
 	return dt.datetime.strptime(phase_start, "%H:%M:%S")
+
+
+def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -> pl.DataFrame:
+	"""Auxfun to handle winter DST due to time ambiguity. Finds a pivot point (time suddenly going backwards) and establishes it as DST onset."""
+	df = frame.collect() if isinstance(frame, pl.LazyFrame) else frame
+
+	diffs = df["datetime"].diff().fill_null(dt.timedelta(microseconds=0))
+
+	if diffs.min() >= dt.timedelta(microseconds=0):
+		return df.with_columns(pl.col("datetime").dt.replace_time_zone(timezone.key))
+
+	pivot_index = diffs.arg_min()
+
+	return (
+		df.with_row_index()
+		.with_columns(pl.col("index").ge(pivot_index).alias("is_after_jump"))
+		.with_columns(
+			(pl.col("time_under") / 1000).cast(pl.Int64()),
+			pl.when(pl.col("is_after_jump"))
+			.then(pl.col("datetime").dt.replace_time_zone(timezone.key, ambiguous="latest"))
+			.otherwise(pl.col("datetime").dt.replace_time_zone(timezone.key, ambiguous="earliest")),
+		)
+		.drop("is_after_jump", "index")
+	)
 
 
 @df_registry.register("padded_df")
@@ -349,9 +373,9 @@ def get_ecohab_data_structure(
 	)  # reload config potential animal_id changes due to sanitation
 
 	if not isinstance(timezone, str):
-		timezone: str = get_localzone()
+		timezone: ZoneInfo = get_localzone()
 
-	lf = _prepare_columns(cfg, lf, timezone)
+	lf = _prepare_columns(cfg, lf)
 
 	try:
 		start_date: str = cfg["experiment_timeline"]["start_date"]
@@ -360,16 +384,31 @@ def get_ecohab_data_structure(
 		print("Start and end dates not provided. Extracting from data...")
 		cfg, start_date, finish_date = auxfun.append_start_end_to_config(config_path, lf)
 
-	if isinstance(start_date, str) and isinstance(finish_date, str):
-		start_date: dt.datetime = dt.datetime.fromisoformat(start_date).astimezone(timezone)
-		finish_date: dt.datetime = dt.datetime.fromisoformat(finish_date).astimezone(timezone)
+	# Handle timezone, DST and trimming
+	has_com = not lf.filter(pl.col("COM").str.contains("COM")).collect().is_empty()
 
-		lf = lf.filter(
-			(pl.col("datetime") >= start_date) & (pl.col("datetime") <= finish_date)
-		).sort("datetime")
+	if not has_com:
+		lf = apply_timezone_fix(lf, timezone).lazy()
+	else:
+		dfs = [
+			apply_timezone_fix(lf.filter(pl.col("COM") == com), timezone)
+			for com in lf.select("COM").unique().collect()["COM"].to_list()
+		]
+		lf = pl.concat(dfs).lazy()
 
-	lf = lf.sort("datetime")
-	lf = lf.with_columns([auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour()])
+	start_date: dt.datetime = dt.datetime.fromisoformat(start_date).astimezone(timezone)
+	finish_date: dt.datetime = dt.datetime.fromisoformat(finish_date).astimezone(timezone)
+
+	lf = lf.filter((pl.col("datetime") >= start_date) & (pl.col("datetime") <= finish_date)).sort(
+		"datetime"
+	)
+
+	# After trimming get phases, days and phase count
+	lf = lf.with_columns(
+		auxfun.get_phase(cfg),
+		auxfun.get_day(),
+		auxfun.get_hour(),
+	)
 	lf = auxfun.get_phase_count(lf)
 
 	lf = calculate_time_spent(lf)

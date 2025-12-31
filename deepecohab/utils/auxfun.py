@@ -140,7 +140,7 @@ def get_hour(dt_col: str = "datetime") -> pl.Expr:
 	return pl.col(dt_col).dt.hour().cast(pl.Int8).alias("hour")
 
 
-def get_phase_count(lf) -> pl.Expr:
+def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Auxfun used to count phases"""
 	lf = lf.with_columns(
 		pl.col("phase").rle_id().alias("run_id")
@@ -165,7 +165,6 @@ def get_lf_from_enum(
 
 def get_animal_cage_grid(cfg: dict) -> pl.LazyFrame:
 	"""Auxfun to prepare LazyFrame of all animal x cage combos"""
-
 	animal_ids: list[str] = cfg["animal_ids"]
 	cages: list[str] = cfg["cages"]
 	animals_lf = get_lf_from_enum(
@@ -208,7 +207,7 @@ def set_animal_ids(
 		lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
 
 	cfg.update({"animal_ids": animal_ids, "dropped_ids": dropped_ids})
-	with config_path.open("w") as f:
+	with open(config_path, "w") as f:
 		toml.dump(cfg, f)
 
 	return lf
@@ -216,7 +215,7 @@ def set_animal_ids(
 
 def append_start_end_to_config(
 	config_path: str | Path | dict[str, Any], lf: pl.LazyFrame
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], str, str]:
 	"""Auxfun to append start and end datetimes of the experiment if not user provided.
 
 	Returns:
