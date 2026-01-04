@@ -137,11 +137,6 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
 	)
 
 
-def _split_datetime(phase_start: str) -> dt.datetime:
-	"""Auxfun to split datetime string."""
-	return dt.datetime.strptime(phase_start, "%H:%M:%S")
-
-
 def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -> pl.DataFrame:
 	"""Auxfun to handle winter DST due to time ambiguity. Finds a pivot point (time suddenly going backwards) and establishes it as DST onset."""
 	df = frame.collect() if isinstance(frame, pl.LazyFrame) else frame
@@ -197,25 +192,10 @@ def create_padded_df(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	dark_start = _split_datetime(cfg["phase"]["dark_phase"])
-	light_start = _split_datetime(cfg["phase"]["light_phase"])
+	dark_offset = auxfun.get_phase_offset(cfg["phase"]["dark_phase"])
+	light_offset = auxfun.get_phase_offset(cfg["phase"]["light_phase"])
 
-	dark_offset = pl.duration(
-		hours=dark_start.hour,
-		minutes=dark_start.minute,
-		seconds=dark_start.second,
-		microseconds=-1,
-	)
-
-	light_offset = pl.duration(
-		hours=24 if light_start.hour == 0 else light_start.hour,
-		minutes=light_start.minute,
-		seconds=light_start.second,
-		microseconds=-1,
-	)
-
-	tz: str = lf.collect_schema()["datetime"].time_zone
-	base_midnight = pl.col("datetime").dt.date().cast(pl.Datetime("us")).dt.replace_time_zone(tz)
+	base_midnight = pl.col("datetime").dt.truncate('1d')
 
 	lf = lf.sort("datetime").with_columns(
 		(pl.col("phase") != pl.col("phase").shift(-1).over("animal_id")).alias("mask")
@@ -416,8 +396,6 @@ def get_ecohab_data_structure(
 	lf = correct_phases_dst(cfg, lf)
 	lf = lf.drop("COM")
 
-	sorted_cols = sorted(lf.collect_schema().keys())
-	lf_sorted = lf.select(sorted_cols)
 
 	auxfun.add_cages_to_config(config_path)
 	try:
@@ -425,17 +403,17 @@ def get_ecohab_data_structure(
 	except KeyError:
 		auxfun.add_days_to_config(config_path, lf)
 
-	padded_lf = create_padded_df(config_path, lf_sorted, save_data, overwrite)
-	create_binary_df(config_path, lf_sorted, save_data, overwrite)
+	padded_lf = create_padded_df(config_path, lf, save_data, overwrite)
+	create_binary_df(config_path, lf, save_data, overwrite)
 
-	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(padded_lf, cfg)
+	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf, cfg)
 
 	if save_data:
-		lf_sorted.sink_parquet(
+		lf.sink_parquet(
 			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
 		)
 		phase_durations_lf.sink_parquet(
 			results_path / "phase_durations.parquet", engine="streaming"
 		)
 
-	return lf_sorted
+	return lf
