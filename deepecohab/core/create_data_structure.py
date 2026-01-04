@@ -54,36 +54,6 @@ def load_data(
 	return lf
 
 
-def correct_phases_dst(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
-	"""Auxfun to adjust phase start/end to dayligh saving time shift"""
-	start_time, end_time = cfg["phase"].values()
-	start_time: dt.time = dt.time.fromisoformat(start_time)
-	end_time: dt.time = dt.time.fromisoformat(end_time)
-
-	time_offset = pl.col("datetime").dt.dst_offset() - pl.col("datetime").first().dt.dst_offset()
-
-	lf = (
-		lf.with_columns((pl.col("datetime") + time_offset).alias("datetime_shifted"))
-		.with_columns(
-			pl.when(pl.col("datetime") != pl.col("datetime_shifted"))
-			.then(
-				pl.when(
-					pl.col("datetime_shifted")
-					.dt.time()
-					.is_between(start_time, end_time, closed="both")
-				)
-				.then(pl.lit("light_phase"))
-				.otherwise(pl.lit("dark_phase"))
-			)
-			.otherwise(pl.col("phase"))
-			.alias("phase")
-		)
-		.drop("datetime_shifted")
-	)
-
-	return lf
-
-
 def calculate_time_spent(lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Auxfun to calculate timedelta between positions i.e. time spent in each state, rounded to 10s of miliseconds"""
 
@@ -192,23 +162,42 @@ def create_padded_df(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	dark_offset = auxfun.get_phase_offset(cfg["phase"]["dark_phase"])
-	light_offset = auxfun.get_phase_offset(cfg["phase"]["light_phase"])
+	# dark_offset = auxfun.get_phase_offset(cfg["phase"]["dark_phase"])
+	# light_offset = auxfun.get_phase_offset(cfg["phase"]["light_phase"])
 
-	base_midnight = pl.col("datetime").dt.truncate('1d')
+	# base_midnight = pl.col("datetime").dt.truncate('1d')
+	# time_offset = (pl.col("datetime").dt.dst_offset() - pl.col("datetime").first().dt.dst_offset()).cast(pl.Duration("us"))
 
-	lf = lf.sort("datetime").with_columns(
+	animals_lf = lf.select("animal_id").unique()
+
+	full_phase_lf = auxfun.get_phase_edge_grid(lf, cfg)
+
+	grid_lf = animals_lf.join(full_phase_lf, how="cross")
+
+	full_lf = grid_lf.join(
+		lf, 
+		on=['animal_id', 'phase', 'phase_count'], 
+		how = "left"
+		).filter(
+			(pl.col('phase_end')<pl.col('phase_end').max()).over('animal_id')
+			| (pl.col('datetime').is_not_null())
+		).with_columns(
+			pl.coalesce([pl.col("datetime"), pl.col("phase_end")]).alias("datetime")
+		).sort(['animal_id', 'datetime'])
+
+	full_lf = full_lf.with_columns(
 		(pl.col("phase") != pl.col("phase").shift(-1).over("animal_id")).alias("mask")
 	)
 
-	extension_lf = lf.filter(pl.col("mask")).with_columns(
-		pl.when(pl.col("phase") == "light_phase")
-		.then(base_midnight + dark_offset)
-		.otherwise(base_midnight + light_offset)
+	extension_lf = full_lf.filter(
+			pl.col("mask"),
+			pl.col('datetime').ne(pl.col('phase_end'))
+		).with_columns(
+		pl.col('phase_end')
 		.alias("datetime")
 	)
 
-	padded_lf = pl.concat([lf, extension_lf]).sort(["datetime"])
+	padded_lf = pl.concat([full_lf, extension_lf]).sort(["datetime"])
 
 	padded_lf = padded_lf.with_columns(
 		pl.when(pl.col("mask"))
@@ -393,7 +382,6 @@ def get_ecohab_data_structure(
 
 	lf = calculate_time_spent(lf)
 	lf = get_animal_position(lf, antenna_pairs)
-	lf = correct_phases_dst(cfg, lf)
 	lf = lf.drop("COM")
 
 
@@ -403,7 +391,7 @@ def get_ecohab_data_structure(
 	except KeyError:
 		auxfun.add_days_to_config(config_path, lf)
 
-	padded_lf = create_padded_df(config_path, lf, save_data, overwrite)
+	create_padded_df(config_path, lf, save_data, overwrite)
 	create_binary_df(config_path, lf, save_data, overwrite)
 
 	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf, cfg)
