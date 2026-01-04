@@ -162,12 +162,6 @@ def create_padded_df(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	# dark_offset = auxfun.get_phase_offset(cfg["phase"]["dark_phase"])
-	# light_offset = auxfun.get_phase_offset(cfg["phase"]["light_phase"])
-
-	# base_midnight = pl.col("datetime").dt.truncate('1d')
-	# time_offset = (pl.col("datetime").dt.dst_offset() - pl.col("datetime").first().dt.dst_offset()).cast(pl.Duration("us"))
-
 	animals_lf = lf.select("animal_id").unique()
 
 	full_phase_lf = auxfun.get_phase_edge_grid(lf, cfg)
