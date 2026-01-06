@@ -282,6 +282,46 @@ def plot_ranking_distribution(
 
 	return fig, df
 
+def plot_ranking_stability(
+    df: pl.DataFrame,
+    colors: list[str],
+    animals: list[str],
+) -> tuple[go.Figure, pl.DataFrame]:
+    #Plot daily dominance rank trajectories (rank stability across days).
+
+    fig = go.Figure()
+
+    df = df.sort(["animal_id", "day"])
+
+    for animal, color in zip(animals, colors):
+        animal_df = df.filter(pl.col("animal_id") == animal)
+
+        fig.add_trace(
+            go.Scatter(
+                x=animal_df["day"].to_list(),
+                y=animal_df["rank"].to_list(),
+                mode="lines+markers",
+                name=animal,
+                line=dict(color=color),
+                legendgroup=animal,
+            )
+        )
+
+    fig.update_layout(
+        title="<b>Daily dominance rank trajectories</b>",
+        legend=dict(
+            title="animal_id",
+            tracegroupgap=0,
+        ),
+        xaxis=dict(title="Day"),
+        yaxis=dict(
+            title="Rank (1 = most dominant)",
+            autorange="reversed",
+        ),
+    )
+
+    return fig, df
+
 
 def time_spent_per_cage(
 	img: np.ndarray,
