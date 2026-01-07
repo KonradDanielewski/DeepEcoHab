@@ -1,6 +1,7 @@
 import datetime as dt
 from pathlib import Path
 from typing import Literal, Any
+from zoneinfo import ZoneInfo
 
 import polars as pl
 from tzlocal import get_localzone
@@ -37,7 +38,11 @@ def load_data(
 	).drop(["ind", "file"])
 
 	lf = auxfun.set_animal_ids(
-		config_path, lf, animal_ids, sanitize_animal_ids, min_antenna_crossings
+		config_path,
+		lf=lf,
+		sanitize_animal_ids=sanitize_animal_ids,
+		min_antenna_crossings=min_antenna_crossings,
+		animal_ids=animal_ids,
 	)
 
 	if custom_layout:
@@ -45,36 +50,6 @@ def load_data(
 		lf = _rename_antennas(lf, rename_dicts)
 
 	auxfun.add_cages_to_config(config_path)
-
-	return lf
-
-
-def correct_phases_dst(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
-	"""Auxfun to adjust phase start/end to dayligh saving time shift"""
-	start_time, end_time = cfg["phase"].values()
-	start_time: dt.time = dt.time.fromisoformat(start_time)
-	end_time: dt.time = dt.time.fromisoformat(end_time)
-
-	time_offset = pl.col("datetime").dt.dst_offset() - pl.col("datetime").first().dt.dst_offset()
-
-	lf = (
-		lf.with_columns((pl.col("datetime") + time_offset).alias("datetime_shifted"))
-		.with_columns(
-			pl.when(pl.col("datetime") != pl.col("datetime_shifted"))
-			.then(
-				pl.when(
-					pl.col("datetime_shifted")
-					.dt.time()
-					.is_between(start_time, end_time, closed="both")
-				)
-				.then(pl.lit("light_phase"))
-				.otherwise(pl.lit("dark_phase"))
-			)
-			.otherwise(pl.col("phase"))
-			.alias("phase")
-		)
-		.drop("datetime_shifted")
-	)
 
 	return lf
 
@@ -110,32 +85,50 @@ def _rename_antennas(lf: pl.LazyFrame, rename_dicts: dict) -> pl.LazyFrame:
 	return lf
 
 
-def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str | None = None) -> pl.LazyFrame:
+def _prepare_columns(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Auxfun to prepare the df, adding new columns"""
 	animal_ids: list[str] = cfg["animal_ids"]
-
-	datetime_df = (
-		pl.concat_str([pl.col("date"), pl.col("time")], separator=" ")
-		.str.strptime(pl.Datetime, strict=False)
-		.dt.replace_time_zone(timezone.key)
-	)
-
 	return (
 		lf.with_columns(
-			pl.col("animal_id").cast(pl.Enum(animal_ids)).alias("animal_id"),
-			datetime_df.alias("datetime"),
-			pl.col("antenna").cast(pl.Int8).alias("antenna"),
-			pl.col("time_under").cast(pl.Int32).alias("time_under"),
+			pl.col("animal_id").cast(pl.Enum(animal_ids)),
+			pl.col("antenna").cast(pl.Int8),
+			(pl.col("time_under") * 1000).cast(pl.Duration(time_unit="us")),
 		)
-		.with_columns(pl.col("datetime").dt.hour().cast(pl.Int8).alias("hour"))
+		.with_columns(
+			(
+				pl.concat_str([pl.col("date"), pl.col("time")], separator=" ").str.to_datetime(
+					"%Y.%m.%d %H:%M:%S%.f", time_unit="us"
+				)
+				+ pl.col("time_under")
+			).alias("datetime"),
+		)
 		.drop(["date", "time"])
 		.unique(subset=["datetime", "animal_id"], keep="first")
 	)
 
 
-def _split_datetime(phase_start: str) -> dt.datetime:
-	"""Auxfun to split datetime string."""
-	return dt.datetime.strptime(phase_start, "%H:%M:%S")
+def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -> pl.DataFrame:
+	"""Auxfun to handle winter DST due to time ambiguity. Finds a pivot point (time suddenly going backwards) and establishes it as DST onset."""
+	df = frame.collect() if isinstance(frame, pl.LazyFrame) else frame
+
+	diffs = df["datetime"].diff().fill_null(dt.timedelta(microseconds=0))
+
+	if diffs.min() >= dt.timedelta(microseconds=0):
+		return df.with_columns(pl.col("datetime").dt.replace_time_zone(timezone.key))
+
+	pivot_index = diffs.arg_min()
+
+	return (
+		df.with_row_index()
+		.with_columns(pl.col("index").ge(pivot_index).alias("is_after_jump"))
+		.with_columns(
+			(pl.col("time_under") / 1000).cast(pl.Int64()),
+			pl.when(pl.col("is_after_jump"))
+			.then(pl.col("datetime").dt.replace_time_zone(timezone.key, ambiguous="latest"))
+			.otherwise(pl.col("datetime").dt.replace_time_zone(timezone.key, ambiguous="earliest")),
+		)
+		.drop("is_after_jump", "index")
+	)
 
 
 @df_registry.register("padded_df")
@@ -169,38 +162,36 @@ def create_padded_df(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	dark_start = _split_datetime(cfg["phase"]["dark_phase"])
-	light_start = _split_datetime(cfg["phase"]["light_phase"])
+	animals_lf = lf.select("animal_id").unique()
 
-	dark_offset = pl.duration(
-		hours=dark_start.hour,
-		minutes=dark_start.minute,
-		seconds=dark_start.second,
-		microseconds=-1,
-	)
+	full_phase_lf = auxfun.get_phase_edge_grid(lf, cfg)
 
-	light_offset = pl.duration(
-		hours=24 if light_start.hour == 0 else light_start.hour,
-		minutes=light_start.minute,
-		seconds=light_start.second,
-		microseconds=-1,
-	)
+	grid_lf = animals_lf.join(full_phase_lf, how="cross")
 
-	tz: str = lf.collect_schema()["datetime"].time_zone
-	base_midnight = pl.col("datetime").dt.date().cast(pl.Datetime("us")).dt.replace_time_zone(tz)
+	full_lf = grid_lf.join(
+		lf, 
+		on=['animal_id', 'phase', 'phase_count'], 
+		how = "left"
+		).filter(
+			(pl.col('phase_end')<pl.col('phase_end').max()).over('animal_id')
+			| (pl.col('datetime').is_not_null())
+		).with_columns(
+			pl.coalesce([pl.col("datetime"), pl.col("phase_end")]).alias("datetime")
+		).sort(['animal_id', 'datetime'])
 
-	lf = lf.sort("datetime").with_columns(
+	full_lf = full_lf.with_columns(
 		(pl.col("phase") != pl.col("phase").shift(-1).over("animal_id")).alias("mask")
 	)
 
-	extension_lf = lf.filter(pl.col("mask")).with_columns(
-		pl.when(pl.col("phase") == "light_phase")
-		.then(base_midnight + dark_offset)
-		.otherwise(base_midnight + light_offset)
+	extension_lf = full_lf.filter(
+			pl.col("mask"),
+			pl.col('datetime').ne(pl.col('phase_end'))
+		).with_columns(
+		pl.col('phase_end')
 		.alias("datetime")
 	)
 
-	padded_lf = pl.concat([lf, extension_lf]).sort(["datetime"])
+	padded_lf = pl.concat([full_lf, extension_lf]).sort(["datetime"])
 
 	padded_lf = padded_lf.with_columns(
 		pl.when(pl.col("mask"))
@@ -345,9 +336,9 @@ def get_ecohab_data_structure(
 	)  # reload config potential animal_id changes due to sanitation
 
 	if not isinstance(timezone, str):
-		timezone: str = get_localzone()
+		timezone: ZoneInfo = get_localzone()
 
-	lf = _prepare_columns(cfg, lf, timezone)
+	lf = _prepare_columns(cfg, lf)
 
 	try:
 		start_date: str = cfg["experiment_timeline"]["start_date"]
@@ -356,28 +347,37 @@ def get_ecohab_data_structure(
 		print("Start and end dates not provided. Extracting from data...")
 		cfg, start_date, finish_date = auxfun.append_start_end_to_config(config_path, lf)
 
-	if isinstance(start_date, str) and isinstance(finish_date, str):
-		start_date: dt.datetime = dt.datetime.fromisoformat(start_date).astimezone(timezone)
-		finish_date: dt.datetime = dt.datetime.fromisoformat(finish_date).astimezone(timezone)
+	# Handle timezone, DST and trimming
+	has_com = not lf.filter(pl.col("COM").str.contains("COM")).collect().is_empty()
 
-		lf = lf.filter(
-			(pl.col("datetime") >= start_date) & (pl.col("datetime") <= finish_date)
-		).sort("datetime")
+	if not has_com:
+		lf = apply_timezone_fix(lf, timezone).lazy()
+	else:
+		dfs = [
+			apply_timezone_fix(lf.filter(pl.col("COM") == com), timezone)
+			for com in lf.select("COM").unique().collect()["COM"].to_list()
+		]
+		lf = pl.concat(dfs).lazy()
 
-	lf = lf.sort("datetime")
-	lf = lf.with_columns([auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour()]).with_columns(
-		auxfun.get_phase_count()
+	start_date: dt.datetime = dt.datetime.fromisoformat(start_date).astimezone(timezone)
+	finish_date: dt.datetime = dt.datetime.fromisoformat(finish_date).astimezone(timezone)
+
+	lf = lf.filter((pl.col("datetime") >= start_date) & (pl.col("datetime") <= finish_date)).sort(
+		"datetime"
 	)
+
+	# After trimming get phases, days and phase count
+	lf = lf.with_columns(
+		auxfun.get_phase(cfg),
+		auxfun.get_day(),
+		auxfun.get_hour(),
+	)
+	lf = auxfun.get_phase_count(lf)
 
 	lf = calculate_time_spent(lf)
 	lf = get_animal_position(lf, antenna_pairs)
-	lf = correct_phases_dst(cfg, lf)
 	lf = lf.drop("COM")
 
-	sorted_cols = sorted(lf.collect_schema().keys())
-	lf_sorted = lf.select(sorted_cols)
-
-	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf)
 
 	auxfun.add_cages_to_config(config_path)
 	try:
@@ -385,15 +385,17 @@ def get_ecohab_data_structure(
 	except KeyError:
 		auxfun.add_days_to_config(config_path, lf)
 
-	create_padded_df(config_path, lf_sorted, save_data, overwrite)
-	create_binary_df(config_path, lf_sorted, save_data, overwrite)
+	create_padded_df(config_path, lf, save_data, overwrite)
+	create_binary_df(config_path, lf, save_data, overwrite)
+
+	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf, cfg)
 
 	if save_data:
-		lf_sorted.sink_parquet(
+		lf.sink_parquet(
 			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
 		)
 		phase_durations_lf.sink_parquet(
 			results_path / "phase_durations.parquet", engine="streaming"
 		)
 
-	return lf_sorted
+	return lf
