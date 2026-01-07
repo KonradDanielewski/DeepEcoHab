@@ -15,23 +15,22 @@ plot_registry = PlotRegistry()
 def ranking_over_time(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 	"""Generates ranking plots either over time or as day-to-day stability."""
 
-match cfg.ranking_switch:
-    case "intime":
-        df = auxfun_plots.prep_ranking_over_time(cfg.store)
-        fig = plot_factory.plot_ranking_line(
-            df, cfg.animal_colors, cfg.animals
-        )
+	match cfg.ranking_switch:
+		case "intime":
+			df = auxfun_plots.prep_ranking_over_time(cfg.store)
+			return  plot_factory.plot_ranking_line(
+				df, cfg.animal_colors, cfg.animals
+			)
 
-    case "stability":
-        df = auxfun_plots.prep_ranking_day_stability(cfg.store)
-        fig = plot_factory.plot_ranking_stability(
-            df, cfg.animal_colors, cfg.animals
-        )
+		case "stability":
+			df = auxfun_plots.prep_ranking_day_stability(cfg.store)
+			return plot_factory.plot_ranking_stability(
+				df, cfg.animal_colors, cfg.animals
+			)
 
-    case _:
-        raise ValueError(f"Unknown ranking_switch: {cfg.ranking_switch}")
+		case _:
+			raise ValueError(f"Unknown ranking_switch: {cfg.ranking_switch}")
 
-return fig, df
 
 @plot_registry.register(
 	"metrics-polar-line",

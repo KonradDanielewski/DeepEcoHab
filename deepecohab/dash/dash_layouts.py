@@ -14,6 +14,7 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 				slider_id="days_range",
 				position_switch_id="position_switch",
 				pairwise_switch_id="pairwise_switch",
+				ranking_switch_id="ranking_switch",
 				days_range=days_range,
 				include_download=True,
 			),
@@ -32,12 +33,22 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 										{"label": "Day stability", "value": "stability"},
 										],
 									value="intime",
-									labelStyle={"display": "inline-block"},
 									),
-								width=6,
+								width=1,
 							),
 						]),
-
+					dbc.Row([
+							dbc.Col(
+								[
+									auxfun_dashboard.generate_standard_graph(
+										"ranking-line", css_class="plot-500"
+									),
+									auxfun_dashboard.generate_standard_graph(
+										"ranking-distribution-line"
+									),
+								],
+								width=6,
+							),
 							dbc.Col(
 								[
 									auxfun_dashboard.generate_standard_graph(

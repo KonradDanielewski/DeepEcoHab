@@ -105,7 +105,7 @@ if __name__ == "__main__":
 			Input("agg_switch", "value"),
 			Input("position_switch", "value"),
 			Input("pairwise_switch", "value"),
-			input("ranking_switch", "value"),
+			Input("ranking_switch", "value"),
 		],
 	)
 	def update_plots(
@@ -169,6 +169,7 @@ if __name__ == "__main__":
 			agg_switch=input_dict["agg_switch"],
 			position_switch=input_dict["position_switch"],
 			pairwise_switch=input_dict["pairwise_switch"],
+			ranking_switch=input_dict["ranking_switch"],
 			animals=ANIMALS,
 			animal_colors=ANIMAL_COLORS,
 			cages=CAGES,
