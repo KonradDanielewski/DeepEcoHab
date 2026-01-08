@@ -14,7 +14,7 @@ from deepecohab.antenna_analysis import (
 	calculate_ranking,
 	calculate_time_alone,
 )
-from deepecohab.utils.cache_config import launch_cache
+from deepecohab.utils.cache_config import launch_cache, get_project_data
 
 ANALYSIS_STEPS = [ # TODO: It should be taken from registry with delisting of some dataframes (the ones made at start of the project)
 	(calculate_incohort_sociability, "Sociability"),
@@ -267,6 +267,8 @@ def start_analysis(n_clicks, config, min_time, chasing_window):
 		launch_cache.set("analysis_status", {"percent": new_percent, "msg": f"Finished {name}"})
 
 	time.sleep(0.5)
+	get_project_data(config)
+ 
 	return True, True
 
 

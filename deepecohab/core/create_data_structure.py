@@ -343,6 +343,8 @@ def get_ecohab_data_structure(
 
 	if not isinstance(timezone, str):
 		timezone: ZoneInfo = get_localzone()
+	else:
+		timezone = ZoneInfo(timezone)
 
 	lf = _prepare_columns(cfg, lf)
 
@@ -395,6 +397,9 @@ def get_ecohab_data_structure(
 	create_binary_df(config_path, lf, save_data, overwrite)
 
 	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf, cfg)
+ 
+	positions = auxfun.remove_tunnel_directionality(lf, cfg).collect()['position'].unique().to_list()
+	auxfun.add_positions_to_config(config_path, positions)
 
 	if save_data:
 		lf.sink_parquet(
