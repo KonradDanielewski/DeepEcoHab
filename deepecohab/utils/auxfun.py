@@ -369,10 +369,6 @@ def append_start_end_to_config(
 	end_time = str(bounds["end_time"][0])
 
 	with open(config_path, "w") as config:
-		cfg["days_range"] = [
-			1,
-			(bounds["end_time"] - bounds["start_time"]).item().days + 1,
-		]
 		cfg["experiment_timeline"] = {
 			"start_date": start_time,
 			"finish_date": end_time,
@@ -402,10 +398,10 @@ def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFram
 	"""Auxfun to add days range to config for reading convenience"""
 	cfg: dict[str, Any] = read_config(config_path)
 
-	days: list[int] = lf.collect().get_column("day").unique(maintain_order=True).to_list()
+	days: list[int] = lf.collect().get_column("day").unique(maintain_order=True)
 
 	with open(config_path, "w") as config:
-		cfg["days_range"] = [*days]
+		cfg["days_range"] = [days.min(), days.max()]
 		toml.dump(cfg, config)
 
 

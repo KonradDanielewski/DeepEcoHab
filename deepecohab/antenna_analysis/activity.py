@@ -50,7 +50,7 @@ def calculate_cage_occupancy(
 
 	time_lf = (
 		pl.LazyFrame()
-		.select(pl.datetime_range(pl.lit(bounds[0]), pl.lit(bounds[1]), "1h").alias("datetime"))
+		.select(pl.datetime_range(bounds[0], bounds[1], "1h").alias("datetime"))
 		.with_columns(auxfun.get_hour(), auxfun.get_day())
 		.drop("datetime")
 	)

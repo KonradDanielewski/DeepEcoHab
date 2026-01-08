@@ -96,53 +96,49 @@ def calculate_pairwise_meetings(
 		return pairwise_meetings
 
 	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
-	padded_path = Path(cfg["project_location"]) / "results" / "padded_df.parquet"
+	padded_df = auxfun.load_ecohab_data(cfg, key="padded_df")
 
 	cages: list[str] = cfg["cages"]
 
 	lf = (
-		pl.scan_parquet(padded_path)
+		padded_df
 		.filter(pl.col("position").is_in(cages))
 		.with_columns(
-			[
-				(pl.col("datetime") - pl.duration(seconds=pl.col("time_spent"))).alias(
-					"event_start"
-				),
-				pl.col("datetime").alias("event_end"),
-			]
+			(
+       			pl.col("datetime") 
+          		- pl.duration(seconds=pl.col("time_spent"))
+            ).alias("event_start")
 		)
+		.rename({'datetime': 'event_end'})
 	)
 
 	joined = (
 		lf.join(
 			lf,
-			on=["position", "phase", "day", "phase_count"],
+			on=["phase", "day", "phase_count", "position"],
 			how="inner",
 			suffix="_2",
 		)
-		.filter(pl.col("animal_id") < pl.col("animal_id_2"))
+		.filter(
+      		pl.col("animal_id") < pl.col("animal_id_2"),
+        )
 		.with_columns(
-			[
-				(
-					pl.min_horizontal(["event_end", "event_end_2"])
-					- pl.max_horizontal(["event_start", "event_start_2"])
-				)
-				.dt.total_seconds(fractional=True)
-				.round(3)
-				.alias("overlap_duration")
-			]
+			(
+				pl.min_horizontal(["event_end", "event_end_2"])
+				- pl.max_horizontal(["event_start", "event_start_2"])
+			)
+			.dt.total_seconds(fractional=True)
+			.round(3)
+			.alias("overlap_duration")
 		)
 		.filter(pl.col("overlap_duration") > minimum_time)
 	)
 
 	pairwise_meetings = (
-		joined.group_by(
-			["phase", "day", "phase_count", "position", "animal_id", "animal_id_2"]
-		).agg(
-			[
-				pl.sum("overlap_duration").alias("time_together"),
-				pl.len().alias("pairwise_encounters"),
-			]
+		joined.group_by("phase", "day", "phase_count", "position", "animal_id", "animal_id_2")
+  		.agg(
+			pl.sum("overlap_duration").alias("time_together"),
+			pl.len().alias("pairwise_encounters"),
 		)
 	).sort(["phase", "day", "phase_count", "position", "animal_id", "animal_id_2"])
 
@@ -179,7 +175,7 @@ def calculate_incohort_sociability(
 
 	if isinstance(incohort_sociability, pl.LazyFrame):
 		return incohort_sociability
-
+ 
 	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 
 	padded_df: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="padded_df")
@@ -211,7 +207,7 @@ def calculate_incohort_sociability(
 		.group_by(core_columns)
 		.agg((pl.col("time_together") - pl.col("chance")).sum().alias("sociability"))
 		.sort(core_columns)
-	)
+		)
 
 	if save_data:
 		incohort_sociability.sink_parquet(results_path, compression="lz4", engine="streaming")
