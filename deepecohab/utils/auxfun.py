@@ -395,6 +395,15 @@ def add_cages_to_config(config_path: str | Path | dict[str, Any]) -> None:
 		toml.dump(cfg, config)
 
 
+def add_positions_to_config(config_path: str | Path | dict[str, Any], positions: list[str]) -> None:
+	"""Auxfun to add cage names to config for reading convenience"""
+	cfg: dict[str, Any] = read_config(config_path)
+
+	with open(config_path, "w") as config:
+		cfg["positions"] = sorted(positions)
+		toml.dump(cfg, config)
+
+
 def add_days_to_config(config_path: str | Path | dict[str, Any], lf: pl.LazyFrame) -> None:
 	"""Auxfun to add days range to config for reading convenience"""
 	cfg: dict[str, Any] = read_config(config_path)
