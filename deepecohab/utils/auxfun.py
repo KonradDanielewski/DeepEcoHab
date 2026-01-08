@@ -161,7 +161,7 @@ def get_phase_edge_grid(lf : pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 		.select(['phase', 'phase_end'])
 		.sort("phase_end")
 		.pipe(get_phase_count)
-	).join(lf, on=['phase', 'phase_count'], how = 'semi')
+	)
 
 	return full_phase_lf
 
