@@ -24,6 +24,7 @@ def generate_settings_block(
 	days_range: list[int, int],
 	position_switch_id: dict | str | None = None,
 	pairwise_switch_id: dict | str | None = None,
+	ranking_switch_id: dict | str | None = None,
 	include_download: bool = False,
 	comparison_layout: bool = False,
 ) -> html.Div:
@@ -151,7 +152,7 @@ def generate_settings_block(
 									"container": pairwise_switch_id["type"],
 									"side": pairwise_switch_id["side"],
 								},
-								hidden=False,
+								hidden=True,
 								className="flex-container",
 								children=[
 									html.Div(
@@ -159,16 +160,35 @@ def generate_settings_block(
 											id=pairwise_switch_id,
 											inline=True,
 											options=[
-												{
-													"label": "Visits",
-													"value": "pairwise_encounters",
-												},
-												{
-													"label": "Time",
-													"value": "time_together",
-												},
+												{"label": "Visits", "value": "pairwise_encounters"},
+												{"label": "Time", "value": "time_together"},
 											],
 											value="pairwise_encounters",
+											labelStyle={
+												"display": "block",
+												"marginBottom": "5px",
+											},
+										),
+									),
+								],
+							),
+							html.Div(
+								id={
+									"container": ranking_switch_id["type"],
+									"side": ranking_switch_id["side"],
+								},
+								hidden=True,
+								className="flex-container",
+								children=[
+									html.Div(
+										dcc.RadioItems(
+											id=ranking_switch_id,
+											inline=True,
+											options=[
+												{"label": "In time", "value": "intime"},
+												{"label": "Day stability", "value": "stability"},
+											],
+											value="intime",
 											labelStyle={
 												"display": "block",
 												"marginBottom": "5px",
@@ -217,6 +237,7 @@ def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div
 				days_range=days_range,
 				position_switch_id={"type": "position_switch", "side": side},
 				pairwise_switch_id={"type": "pairwise_switch", "side": side},
+				ranking_switch_id={"type": "ranking_switch", "side": side},
 				comparison_layout=True,
 			),
 			get_fmt_download_buttons(
