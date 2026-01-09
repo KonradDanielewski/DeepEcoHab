@@ -446,7 +446,7 @@ def plot_network_graph(
 		layout=go.Layout(
 			showlegend=False,
 			hovermode="closest",
-			title=dict(text=title, x=0.01, y=0.95),
+			title=dict(text=title, x=0.5, y=0.95),
 		),
 	)
 
