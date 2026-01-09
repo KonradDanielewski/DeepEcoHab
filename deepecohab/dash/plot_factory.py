@@ -54,7 +54,7 @@ def plot_activity(
 	fig.update_xaxes(title_text="<b>Animal ID</b>")
 	fig.update_yaxes(title_text=position_y_title)
 
-	return fig, df
+	return fig
 
 
 def plot_time_alone(
@@ -92,7 +92,7 @@ def plot_time_alone(
 	fig.update_yaxes(title_text="<b>Time alone [s]</b>")
 	fig.update_layout(barcornerradius=10)
 
-	return fig, df
+	return fig
 
 
 def plot_sum_line_per_hour(
@@ -126,7 +126,7 @@ def plot_sum_line_per_hour(
 	fig.update_yaxes(title=y_axes_label)
 	fig.update_xaxes(title="<b>Hours</b>", range=[0, 23])
 
-	return fig, df
+	return fig
 
 
 def plot_mean_line_per_hour(
@@ -195,7 +195,7 @@ def plot_mean_line_per_hour(
 	fig.update_yaxes(title=y_axes_label)
 	fig.update_xaxes(title="<b>Hours</b>")
 
-	return fig, df
+	return fig
 
 
 def plot_ranking_line(
@@ -224,7 +224,7 @@ def plot_ranking_line(
 		),
 	)
 
-	return fig, df
+	return fig
 
 
 def plot_ranking_distribution(
@@ -257,7 +257,7 @@ def plot_ranking_distribution(
 		),
 	)
 
-	return fig, df
+	return fig
 
 
 def time_spent_per_cage(
@@ -286,7 +286,7 @@ def time_spent_per_cage(
 		)
 	)
 
-	return fig, img
+	return fig
 
 
 def plot_chasings_heatmap(
@@ -315,7 +315,7 @@ def plot_chasings_heatmap(
 		)
 	)
 
-	return fig, img
+	return fig
 
 
 def plot_sociability_heatmap(
@@ -356,7 +356,7 @@ def plot_sociability_heatmap(
 		)
 	)
 
-	return fig, img
+	return fig
 
 
 def plot_within_cohort_heatmap(
@@ -382,7 +382,7 @@ def plot_within_cohort_heatmap(
 		)
 	)
 
-	return fig, img
+	return fig
 
 
 def plot_metrics_polar(
@@ -406,7 +406,7 @@ def plot_metrics_polar(
 	fig.update_polars(bgcolor="rgba(0,0,0,0)")
 	fig.update_layout(title_y=0.95, title_x=0.45)
 
-	return fig, df
+	return fig
 
 
 def plot_network_graph(
@@ -461,4 +461,4 @@ def plot_network_graph(
 		zeroline=False,
 	)
 
-	return fig, connections
+	return fig

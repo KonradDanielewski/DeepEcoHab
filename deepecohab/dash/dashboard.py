@@ -95,10 +95,7 @@ if __name__ == "__main__":
 			return comparison_tab
 
 	@app.callback(
-		[
 			Output({"type": "graph", "name": MATCH}, "figure"),
-			Output({"type": "store", "name": MATCH}, "data"),
-		],
 		[
 			Input("days_range", "value"),
 			Input("phase_type", "value"),
@@ -110,7 +107,7 @@ if __name__ == "__main__":
 	def update_plots(
 		days_range, phase_type, agg_switch, pos_switch, pair_switch
 	) -> tuple[go.Figure, dict]:
-		plot_name: str = ctx.outputs_grouping[0]["id"]["name"]
+		plot_name: str = ctx.outputs_grouping["id"]["name"]
 		plot_attributes = dash_plotting.plot_registry.get_dependencies(plot_name)
 
 		if ctx.triggered_id is not None and ctx.triggered_id not in plot_attributes:
@@ -134,14 +131,13 @@ if __name__ == "__main__":
 			position_colors=POSITION_COLORS,
 		)
 
-		fig, data = dash_plotting.plot_registry.get_plot(plot_name, plot_cfg)
+		fig = dash_plotting.plot_registry.get_plot(plot_name, plot_cfg)
 
-		return fig, auxfun_dashboard.to_store_json(data)
+		return fig
 
 	@app.callback(
 		[
 			Output({"figure": "comparison-plot", "side": MATCH}, "figure"),
-			Output({"store": "comparison-plot", "side": MATCH}, "data"),
 			Output({"container": "position_switch", "side": MATCH}, "hidden"),
 			Output({"container": "pairwise_switch", "side": MATCH}, "hidden"),
 		],
@@ -174,14 +170,13 @@ if __name__ == "__main__":
 			position_colors=POSITION_COLORS,
 		)
 
-		fig, data = dash_plotting.plot_registry.get_plot(input_dict["plot-dropdown"], plot_cfg)
+		fig = dash_plotting.plot_registry.get_plot(input_dict["plot-dropdown"], plot_cfg)
 
 		pairwise_hidden = "pairwise_switch" not in plot_attributes
 		position_hidden = "position_switch" not in plot_attributes
 
 		return (
 			fig,
-			auxfun_dashboard.to_store_json(data),
 			position_hidden,
 			pairwise_hidden,
 		)
@@ -213,7 +208,6 @@ if __name__ == "__main__":
 			State("days_range", "value"),
 			State({"type": "graph", "name": ALL}, "figure"),
 			State({"type": "graph", "name": ALL}, "id"),
-			State({"type": "store", "name": ALL}, "data"),
 		],
 		prevent_initial_call=True,
 	)
@@ -225,7 +219,6 @@ if __name__ == "__main__":
 		days_range: list[int, int],
 		all_figures: list[dict],
 		all_ids: list[dict],
-		all_stores: list[dict],
 	) -> dict[str, Any | None]:
 		"""Triggers download from the Downloads modal component"""
 		triggered = ctx.triggered_id
@@ -240,7 +233,6 @@ if __name__ == "__main__":
 				triggered["fmt"],
 				all_figures,
 				all_ids,
-				all_stores,
 			)
 		else:
 			raise dash.exceptions.PreventUpdate
@@ -250,14 +242,12 @@ if __name__ == "__main__":
 		Input({"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"),
 		[
 			State({"figure": "comparison-plot", "side": MATCH}, "figure"),
-			# State({"figure": "comparison-plot", "side": MATCH}, "id"),
-			State({"store": "comparison-plot", "side": MATCH}, "data"),
 			State({"type": "plot-dropdown", "side": MATCH}, "value"),
 		],
 		prevent_initial_call=True,
 	)
 	def download_comparison_data(
-		btn_click: int, figure: dict, data_store: dict, plot_type: str
+		btn_click: int, figure: dict, plot_type: str
 	) -> dict[str, Any | None]:
 		"""Triggers download from the comparisons tab"""
 		triggered = ctx.triggered_id
@@ -265,12 +255,10 @@ if __name__ == "__main__":
 			raise dash.exceptions.PreventUpdate
 
 		figure = go.Figure(figure)
-		if (figure is None) or (data_store is None):
-			raise dash.exceptions.PreventUpdate
 
 		plot_name = f"comparison_{plot_type}"
 		fname, content = auxfun_dashboard.get_plot_file(
-			data_store, figure, triggered["fmt"], plot_name
+			figure, triggered["fmt"], plot_name
 		)
 		return dcc.send_bytes(lambda b: b.write(content), filename=fname)
 
