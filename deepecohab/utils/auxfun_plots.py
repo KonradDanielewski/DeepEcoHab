@@ -533,7 +533,7 @@ def prep_activity_line(
 	)
 
 	df = (
-		store["padded_df"]
+		store["main_df"]
 		.lazy()
 		.filter(pl.col("day").is_between(*days_range))
 		.group_by("day", "hour", "animal_id")

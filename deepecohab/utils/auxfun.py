@@ -160,8 +160,9 @@ def get_phase_edge_grid(lf : pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 		)
 		.select(['phase', 'phase_end'])
 		.sort("phase_end")
+		.with_columns(get_day('phase_end'))
 		.pipe(get_phase_count)
-	).join(lf, on=['phase', 'phase_count'], how = 'semi')
+	)
 
 	return full_phase_lf
 
@@ -241,11 +242,11 @@ def get_phase_durations(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 
 
 
-def get_day() -> pl.Expr:
+def get_day(timestamp_colname : str = "datetime") -> pl.Expr:
 	"""Auxfun for getting the day"""
 	return (
 		(
-			pl.col("datetime").dt.date() - pl.col("datetime").dt.date().min()
+			pl.col(timestamp_colname).dt.date() - pl.col(timestamp_colname).dt.date().min()
 		).dt.total_days()
     ).add(1).cast(pl.Int16).alias('day')
 

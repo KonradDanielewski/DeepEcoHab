@@ -162,6 +162,10 @@ def create_padded_df(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
+	relevant_cols = ['animal_id', 'datetime', 'phase', 'phase_count', 'time_spent', 'position']
+
+	lf = lf.select(relevant_cols)
+
 	animals_lf = lf.select("animal_id").unique()
 
 	full_phase_lf = auxfun.get_phase_edge_grid(lf, cfg)
@@ -177,8 +181,13 @@ def create_padded_df(
 			| (pl.col('datetime').is_not_null())
 		).with_columns(
 			pl.coalesce([pl.col("datetime"), pl.col("phase_end")]).alias("datetime")
-		).sort(['animal_id', 'datetime'])
-
+		).sort(
+			['animal_id', 'datetime']
+		).with_columns(
+			pl.col('position')
+			.fill_null(strategy="backward")
+			.over("animal_id")
+		)
 	full_lf = full_lf.with_columns(
 		(pl.col("phase") != pl.col("phase").shift(-1).over("animal_id")).alias("mask")
 	)
