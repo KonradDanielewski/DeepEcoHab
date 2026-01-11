@@ -10,21 +10,21 @@ We keep DeepEcoHab lean to ensure easy integration and fast installation.
 
 <b>Existing Environments</b>: 
 
-If your environment is already running `python>=3.9`, run: `pip install deepecohab`
+If your environment is already running `python>=3.10`, run: `pip install deepecohab`
 
 <b>New Installations</b>: If you are starting from scratch, please follow our guide below:
 
-In the spirit of open-source we suggest usage of [uv](https://docs.astral.sh/uv/). 
+In the spirit of open-source we suggest usage of [uv](https://docs.astral.sh/uv/). To install `uv` copy-paste the command below:
 
-To install `uv` copy-paste the command below:
-
-Windows:
-`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
-
-Linux/MacOS:
-`$ curl -LsSf https://astral.sh/uv/install.sh | sh`
-
-To install DeepEcoHab please run the following commands line by line in the terminal:
+<b>Windows</b>:
+```
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+<b>Linux/MacOS</b>:
+```
+$ curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+### To install DeepEcoHab please run the following commands line by line in the terminal:
 
 Turn slashes the other way for Linux and MacOS
 ```
@@ -69,5 +69,5 @@ To get the list of available keys simply call: `deepecohab.df_registry.list_avai
 ## Roadmap
 
 1. Full web-app style GUI, deployable via a docker container.
-2. Group analysis - combined analysis of multiple cohort, comparing different groups of cohorts.
+2. Group analysis - combined analysis of multiple cohorts, comparing different groups of cohorts.
 3. Pose estimation based analysis of animal interactions and more detailed social structure analysis.
