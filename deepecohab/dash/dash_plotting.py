@@ -130,11 +130,9 @@ def chasings_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 	"activity-bar",
 	dependencies=[
 		"store",
-		"animals",
 		"days_range",
 		"animal_colors",
 		"phase_type",
-		"positions",
 		"position_colors",
 		"position_switch",
 		"agg_switch",
@@ -149,9 +147,7 @@ def activity(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 	Returns:
 	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
-	df = auxfun_plots.prep_activity(
-		cfg.store, cfg.days_range, cfg.phase_type, cfg.animals, cfg.positions
-	)
+	df = auxfun_plots.prep_activity(cfg.store, cfg.days_range, cfg.phase_type)
 
 	return plot_factory.plot_activity(df, cfg.position_colors, cfg.position_switch, cfg.agg_switch)
 

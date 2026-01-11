@@ -445,7 +445,7 @@ def prep_chasings_line(
 			join_df,
 			on=["chaser", "chased", "hour", "day"],
 			how="right",
-		)
+		).fill_null(0)
 		.group_by("day", "hour", "chaser")
 		.agg(pl.sum("chasings"))
 		.group_by("hour", "chaser")
@@ -468,8 +468,6 @@ def prep_activity(
 	store: dict[str, pl.DataFrame],
 	days_range: list[int, int],
 	phase_type: list[str],
-	animals: list[str],
-	positions: list[str],
 ) -> pl.DataFrame:
 	"""Aggregate visits and time spent per position, animal, and day."""
 	df = (
@@ -522,7 +520,7 @@ def prep_activity_line(
 			join_df,
 			on=["animal_id", "hour", "day"],
 			how="right",
-		)
+		).fill_null(0)
 		.group_by("hour", "animal_id")
 		.agg(
 			pl.sum("n_detections").alias("total"),
