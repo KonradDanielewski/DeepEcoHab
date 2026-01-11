@@ -2,6 +2,7 @@ import datetime as dt
 import importlib
 import subprocess
 import sys
+from itertools import product
 from pathlib import Path
 from typing import (
 	Callable,
@@ -90,15 +91,16 @@ def make_project_path(project_location: str, experiment_name: str) -> Path:
 
 	return project_location
 
+
 def get_phase_lens(cfg: dict[str, Any]) -> tuple[int, int]:
 	"""Helper to extract default phase duration in seconds"""
 	SECONDS_PER_DAY = 24 * 3600
-	
+
 	start_time, end_time = cfg["phase"].values()
 
 	start_t = dt.time.fromisoformat(start_time)
-	end_t   = dt.time.fromisoformat(end_time)
-	
+	end_t = dt.time.fromisoformat(end_time)
+
 	duration_light = (
 		(end_t.hour * 3600 + end_t.minute * 60 + end_t.second)
 		- (start_t.hour * 3600 + start_t.minute * 60 + start_t.second)
@@ -108,12 +110,14 @@ def get_phase_lens(cfg: dict[str, Any]) -> tuple[int, int]:
 
 	return duration_light, duration_dark
 
+
 def _split_datetime(phase_start: str) -> dt.datetime:
 	"""Auxfun to split datetime string."""
 	return dt.datetime.strptime(phase_start, "%H:%M:%S")
 
+
 def get_phase_offset(time_str: str) -> pl.Duration:
-	"Helper to return offset from midnight for given hh:mm:ss string" 
+	"Helper to return offset from midnight for given hh:mm:ss string"
 	start = _split_datetime(time_str)
 	offset = pl.duration(
 		hours=24 if start.hour == 0 else start.hour,
@@ -124,85 +128,91 @@ def get_phase_offset(time_str: str) -> pl.Duration:
 
 	return offset
 
-def get_phase_edge_grid(lf : pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
+
+def get_phase_edge_grid(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 	"Auxfun that creates a LazyFrame with all phases of the experiment and their ends"
 
 	dark_offset = get_phase_offset(cfg["phase"]["dark_phase"])
 	light_offset = get_phase_offset(cfg["phase"]["light_phase"])
 
-	exp_start = lf.select(
-			pl.col("datetime").min()
-		).collect().item()
+	exp_start = lf.select(pl.col("datetime").min()).collect().item()
 
 	days_lf = lf.select(
-			pl.datetime_range(
-				pl.col("datetime").min().dt.truncate("1d"),
-				pl.col("datetime").max().dt.truncate("1d"),
-				interval="24h",
-			).alias("phase_end")
-			.explode()
+		pl.datetime_range(
+			pl.col("datetime").min().dt.truncate("1d"),
+			pl.col("datetime").max().dt.truncate("1d"),
+			interval="24h",
 		)
+		.alias("phase_end")
+		.explode()
+	)
 
 	light_ends_lf = days_lf.select(
-		pl.lit("light_phase").alias("phase"),
-		(pl.col("phase_end") + dark_offset).alias("phase_end")
+		pl.lit("light_phase").alias("phase"), (pl.col("phase_end") + dark_offset).alias("phase_end")
 	)
 
 	dark_ends_lf = days_lf.select(
-		pl.lit("dark_phase").alias("phase"),
-		(pl.col("phase_end") + light_offset).alias("phase_end")
+		pl.lit("dark_phase").alias("phase"), (pl.col("phase_end") + light_offset).alias("phase_end")
 	)
 	full_phase_lf = (
 		pl.concat([light_ends_lf, dark_ends_lf])
-		.with_columns(pl.col('phase').cast(pl.Enum(['light_phase', 'dark_phase'])))
-		.filter(
-			pl.col('phase_end') >= exp_start
-		)
-		.select(['phase', 'phase_end'])
+		.with_columns(pl.col("phase").cast(pl.Enum(["light_phase", "dark_phase"])))
+		.filter(pl.col("phase_end") >= exp_start)
+		.select(["phase", "phase_end"])
 		.sort("phase_end")
-		.with_columns(get_day('phase_end'))
+		.with_columns(get_day("phase_end"))
 		.pipe(get_phase_count)
 	)
 
 	return full_phase_lf
 
-def get_phase_edges(lf : pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
+
+def get_phase_edges(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 	"Helper to return durations of edge phases of the experiment"
 	base_midnight = pl.col("datetime").dt.truncate("1d")
 	time_offset = pl.col("datetime").dt.dst_offset()
-	time_diff  = (pl.col("utc_off") - pl.col("utc_off").first()).dt.total_seconds()
+	time_diff = (pl.col("utc_off") - pl.col("utc_off").first()).dt.total_seconds()
 
 	dark_offset = get_phase_offset(cfg["phase"]["dark_phase"])
 	light_offset = get_phase_offset(cfg["phase"]["light_phase"])
 
-	start = lf.filter(
-		pl.col('datetime') == pl.col('datetime').min()
-	).with_columns(
-		time_offset.alias('utc_off'),
-		pl.when(pl.col("phase") == "light_phase")
-		.then(base_midnight + dark_offset)
-		.otherwise(base_midnight + light_offset)
-		.alias("datetime_")).with_columns(
-			(pl.col('datetime_') - pl.col('datetime')).dt.total_seconds().alias("duration_seconds"),
-			time_offset.alias('utc_off')
+	start = (
+		lf.filter(pl.col("datetime") == pl.col("datetime").min())
+		.with_columns(
+			time_offset.alias("utc_off"),
+			pl.when(pl.col("phase") == "light_phase")
+			.then(base_midnight + dark_offset)
+			.otherwise(base_midnight + light_offset)
+			.alias("datetime_"),
 		)
-
-	stop = lf.filter(
-		pl.col('datetime') == pl.col('datetime').max()
-	).with_columns(
-		time_offset.alias('utc_off'),
-		pl.when(pl.col("phase") == "light_phase")
-		.then(base_midnight + light_offset)
-		.otherwise(base_midnight + dark_offset)
-		.alias("datetime_")).with_columns(
-			(pl.col('datetime') - pl.col('datetime_')).dt.total_seconds().alias("duration_seconds")
+		.with_columns(
+			(pl.col("datetime_") - pl.col("datetime")).dt.total_seconds().alias("duration_seconds"),
+			time_offset.alias("utc_off"),
 		)
+	)
 
-	edges = pl.concat([start, stop]).with_columns(
-		(pl.col('duration_seconds')- time_diff).alias('duration_seconds')
-	).select(["phase", "phase_count", "duration_seconds"])
+	stop = (
+		lf.filter(pl.col("datetime") == pl.col("datetime").max())
+		.with_columns(
+			time_offset.alias("utc_off"),
+			pl.when(pl.col("phase") == "light_phase")
+			.then(base_midnight + light_offset)
+			.otherwise(base_midnight + dark_offset)
+			.alias("datetime_"),
+		)
+		.with_columns(
+			(pl.col("datetime") - pl.col("datetime_")).dt.total_seconds().alias("duration_seconds")
+		)
+	)
+
+	edges = (
+		pl.concat([start, stop])
+		.with_columns((pl.col("duration_seconds") - time_diff).alias("duration_seconds"))
+		.select(["phase", "phase_count", "duration_seconds"])
+	)
 
 	return edges
+
 
 @df_registry.register("phase_durations")
 def get_phase_durations(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
@@ -214,41 +224,37 @@ def get_phase_durations(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 
 	edges = get_phase_edges(lf, cfg)
 
-	inner_phases = lf.select(
-    	['phase', 'phase_count']
-    ).unique()
+	inner_phases = lf.select(["phase", "phase_count"]).unique()
 
 	phase_durations = inner_phases.join(
-		edges, 
-		on=["phase", "phase_count"], 
-		how='left').with_columns(
-			pl.when(
-				pl.col('duration_seconds').is_null()
-			).then(
-				pl.when(
-					pl.col('phase') == 'light_phase'
-				).then(
-					pl.lit(duration_light)
-				).otherwise(
-					pl.lit(duration_dark)
-				)
-			).otherwise(
-				pl.col('duration_seconds')
-			).alias("duration_seconds").cast(pl.Int64)
+		edges, on=["phase", "phase_count"], how="left"
+	).with_columns(
+		pl.when(pl.col("duration_seconds").is_null())
+		.then(
+			pl.when(pl.col("phase") == "light_phase")
+			.then(pl.lit(duration_light))
+			.otherwise(pl.lit(duration_dark))
 		)
-		
+		.otherwise(pl.col("duration_seconds"))
+		.alias("duration_seconds")
+		.cast(pl.Int64)
+	)
+
 	return phase_durations
 
 
-
-
-def get_day(timestamp_colname : str = "datetime") -> pl.Expr:
+def get_day(timestamp_colname: str = "datetime") -> pl.Expr:
 	"""Auxfun for getting the day"""
 	return (
 		(
-			pl.col(timestamp_colname).dt.date() - pl.col(timestamp_colname).dt.date().min()
-		).dt.total_days()
-    ).add(1).cast(pl.Int16).alias('day')
+			(
+				pl.col(timestamp_colname).dt.date() - pl.col(timestamp_colname).dt.date().min()
+			).dt.total_days()
+		)
+		.add(1)
+		.cast(pl.Int16)
+		.alias("day")
+	)
 
 
 def get_phase(cfg: dict[str, Any]) -> pl.Expr:
@@ -261,7 +267,9 @@ def get_phase(cfg: dict[str, Any]) -> pl.Expr:
 	time_offset = pl.col("datetime").dt.dst_offset() - pl.col("datetime").first().dt.dst_offset()
 
 	return (
-		pl.when((pl.col("datetime")-time_offset).dt.time().is_between(start_t, end_t, closed="left"))
+		pl.when(
+			(pl.col("datetime") - time_offset).dt.time().is_between(start_t, end_t, closed="left")
+		)
 		.then(pl.lit("light_phase"))
 		.otherwise(pl.lit("dark_phase"))
 		.cast(pl.Enum(phase_names))
@@ -275,11 +283,11 @@ def get_hour(dt_col: str = "datetime") -> pl.Expr:
 
 def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Auxfun used to count phases"""
-	lf = lf.with_columns(
-		pl.col("phase").rle_id().alias("run_id")
-	).with_columns(
-		pl.col("run_id").rank("dense").over("phase").alias("phase_count")
-	).drop("run_id")
+	lf = (
+		lf.with_columns(pl.col("phase").rle_id().alias("run_id"))
+		.with_columns(pl.col("run_id").rank("dense").over("phase").alias("phase_count"))
+		.drop("run_id")
+	)
 	return lf
 
 
@@ -462,3 +470,12 @@ def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.La
 	return lf.with_columns(
 		pl.col("position").cast(pl.Utf8).replace(tunnels).cast(pl.Categorical).alias("position")
 	)
+
+
+def add_positions_to_config(config_path: str | Path | dict[str, Any], positions: list[str]) -> None:
+	"""Auxfun to add cage names to config for reading convenience"""
+	cfg: dict[str, Any] = read_config(config_path)
+
+	with open(config_path, "w") as config:
+		cfg["positions"] = sorted(positions)
+		toml.dump(cfg, config)

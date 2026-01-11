@@ -162,7 +162,7 @@ def create_padded_df(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	relevant_cols = ['animal_id', 'datetime', 'phase', 'phase_count', 'time_spent', 'position']
+	relevant_cols = ["animal_id", "datetime", "phase", "phase_count", "time_spent", "position"]
 
 	lf = lf.select(relevant_cols)
 
@@ -172,33 +172,23 @@ def create_padded_df(
 
 	grid_lf = animals_lf.join(full_phase_lf, how="cross")
 
-	full_lf = grid_lf.join(
-		lf, 
-		on=['animal_id', 'phase', 'phase_count'], 
-		how = "left"
-		).filter(
-			(pl.col('phase_end')<pl.col('phase_end').max()).over('animal_id')
-			| (pl.col('datetime').is_not_null())
-		).with_columns(
-			pl.coalesce([pl.col("datetime"), pl.col("phase_end")]).alias("datetime")
-		).sort(
-			['animal_id', 'datetime']
-		).with_columns(
-			pl.col('position')
-			.fill_null(strategy="backward")
-			.over("animal_id")
+	full_lf = (
+		grid_lf.join(lf, on=["animal_id", "phase", "phase_count"], how="left")
+		.filter(
+			(pl.col("phase_end") < pl.col("phase_end").max()).over("animal_id")
+			| (pl.col("datetime").is_not_null())
 		)
+		.with_columns(pl.coalesce([pl.col("datetime"), pl.col("phase_end")]).alias("datetime"))
+		.sort(["animal_id", "datetime"])
+		.with_columns(pl.col("position").fill_null(strategy="backward").over("animal_id"))
+	)
 	full_lf = full_lf.with_columns(
 		(pl.col("phase") != pl.col("phase").shift(-1).over("animal_id")).alias("mask")
 	)
 
 	extension_lf = full_lf.filter(
-			pl.col("mask"),
-			pl.col('datetime').ne(pl.col('phase_end'))
-		).with_columns(
-		pl.col('phase_end')
-		.alias("datetime")
-	)
+		pl.col("mask"), pl.col("datetime").ne(pl.col("phase_end"))
+	).with_columns(pl.col("phase_end").alias("datetime"))
 
 	padded_lf = pl.concat([full_lf, extension_lf]).sort(["datetime"])
 
@@ -387,7 +377,6 @@ def get_ecohab_data_structure(
 	lf = get_animal_position(lf, antenna_pairs)
 	lf = lf.drop("COM")
 
-
 	auxfun.add_cages_to_config(config_path)
 	try:
 		cfg["days_range"]
@@ -399,10 +388,13 @@ def get_ecohab_data_structure(
 
 	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf, cfg)
 
+	positions = (
+		auxfun.remove_tunnel_directionality(lf, cfg).collect()["position"].unique().to_list()
+	)
+	auxfun.add_positions_to_config(config_path, positions)
+
 	if save_data:
-		lf.sink_parquet(
-			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
-		)
+		lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine="streaming")
 		phase_durations_lf.sink_parquet(
 			results_path / "phase_durations.parquet", engine="streaming"
 		)
