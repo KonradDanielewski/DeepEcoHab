@@ -207,6 +207,7 @@ def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div
 						id={"figure": "comparison-plot", "side": side},
 						config=COMMON_CFG,
 					),
+					dcc.Store(id={"store": "comparison-plot", "side": side}),
 				]
 			),
 			generate_settings_block(
@@ -220,7 +221,7 @@ def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div
 			),
 			get_fmt_download_buttons(
 				"download-btn-comparison",
-				["svg", "png", "json"],
+				["svg", "png", "json", "csv"],
 				side,
 				is_vertical=False,
 			),
@@ -252,7 +253,7 @@ def generate_plot_download_tab() -> dcc.Tab:
 					),
 					dbc.Col(
 						get_fmt_download_buttons(
-							"download-btn", ["svg", "png", "json"], "plots"
+							"download-btn", ["svg", "png", "json", "csv"], "plots"
 						),
 						width=4,
 						className="d-flex flex-column align-items-start",
@@ -346,6 +347,7 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450") -> html.
 				className=css_class,
 				config=COMMON_CFG,
 			),
+			dcc.Store(id={"type": "store", "name": graph_id}),
 		]
 	)
 
@@ -385,8 +387,9 @@ def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool
 
 
 def get_plot_file(
+	df_data: pl.DataFrame,
 	figure: go.Figure,
-	fmt: Literal["json", "png", "svg"],
+	fmt: Literal["csv", "json", "png", "svg"],
 	plot_name: str,
 ) -> bytes:
 	"""Helper for content download"""
@@ -400,6 +403,10 @@ def get_plot_file(
 		case "json":
 			content = json.dumps(figure.to_plotly_json()).encode("utf-8")
 			return (f"{plot_name}.json", content)
+		case "csv":
+			df = pl.read_json(io.StringIO(df_data)).explode(pl.all())
+			csv_bytes = df.write_csv().encode("utf-8")
+			return (f"{plot_name}.csv", csv_bytes)
 		case _:
 			raise exceptions.PreventUpdate
 
@@ -409,6 +416,7 @@ def download_plots(
 	fmt: str,
 	all_figures: list[go.Figure],
 	all_ids: list[dict],
+	all_stores: list[dict],
 ) -> dict[str, Any | None]:
 	"""Downloads chosen plot/s related object via the browser"""
 	if not selected_plots or not fmt:
@@ -416,13 +424,13 @@ def download_plots(
 
 	files: list[bytes] = []
 
-	for fig_id, fig in zip(all_ids, all_figures):
+	for fig_id, fig, data in zip(all_ids, all_figures, all_stores):
 		plot_id = fig_id["name"]
-		if plot_id not in selected_plots or fig is None:
+		if plot_id not in selected_plots or fig is None or data is None:
 			continue
 		figure = go.Figure(fig)
 		plot_name = f"plot_{plot_id}"
-		plt_file = get_plot_file(figure, fmt, plot_name)
+		plt_file = get_plot_file(data, figure, fmt, plot_name)
 		files.append(plt_file)
 
 	if len(files) == 1:
@@ -515,3 +523,8 @@ def open_browser() -> None:
 	"""Opens browser with dashboard."""
 	webbrowser.open_new("http://127.0.0.1:8050/")
 
+
+def to_store_json(df: pl.DataFrame | None) -> dict | None:
+	if not isinstance(df, pl.DataFrame):
+		return None
+	return json.dumps(df.to_dict(as_series=False), default=str)
