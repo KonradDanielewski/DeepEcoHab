@@ -464,7 +464,7 @@ def prep_chasings_line(
 			join_df,
 			on=["chaser", "chased", "hour", "day"],
 			how="right",
-		)
+		).fill_null(0)
 		.group_by("day", "hour", "chaser")
 		.agg(pl.sum("chasings"))
 		.group_by("hour", "chaser")
@@ -487,25 +487,8 @@ def prep_activity(
 	store: dict[str, pl.DataFrame],
 	days_range: list[int, int],
 	phase_type: list[str],
-	animals: list[str],
-	positions: list[str],
 ) -> pl.DataFrame:
 	"""Aggregate visits and time spent per position, animal, and day."""
-	join_df = pl.LazyFrame(
-		(
-			product(
-				animals,
-				list(range(days_range[0], days_range[1] + 1)),
-				positions,
-			)
-		),
-		schema=[
-			("animal_id", pl.Enum(animals)),
-			("day", pl.Int16()),
-			("position", pl.String),
-		],
-	)
-
 	df = (
 		store["activity_df"]
 		.lazy()
@@ -515,11 +498,6 @@ def prep_activity(
 		.agg(
 			pl.sum("visits_to_position").alias("visits"),
 			pl.sum("time_in_position").alias("time"),
-		)
-		.join(
-			join_df,
-			on=["animal_id", "position", "day"],
-			how="right",
 		)
 		.sort(["animal_id", "position"])
 		.fill_null(0)
@@ -561,7 +539,7 @@ def prep_activity_line(
 			join_df,
 			on=["animal_id", "hour", "day"],
 			how="right",
-		)
+		).fill_null(0)
 		.group_by("hour", "animal_id")
 		.agg(
 			pl.sum("n_detections").alias("total"),
@@ -642,7 +620,7 @@ def prep_pairwise_sociability(
 ) -> np.ndarray:
 	"""Generate a pivot table of pairwise encounters or shared time between animals per location."""
 	join_df = pl.LazyFrame(
-		(product(cages, animals, animals)),
+		product(cages, animals, animals),
 		schema=[
 			("position", pl.Categorical()),
 			("animal_id", pl.Enum(animals)),
@@ -660,7 +638,7 @@ def prep_pairwise_sociability(
 		)
 		.group_by(["animal_id", "animal_id_2", "position"], maintain_order=True)
 		.agg(
-			pl.when(pl.len() > 0).then(pl.sum(pairwise_switch)).alias("sum"),
+			pl.sum(pairwise_switch).alias("sum"),
 			pl.mean(pairwise_switch).alias("mean"),
 		)
 		.join(
@@ -685,10 +663,11 @@ def prep_within_cohort_sociability(
 	phase_type: list[str],
 	animals: list[str],
 	days_range: list[int, int],
+	sociability_switch: Literal["raw", "normalized"] = "sociability",
 ) -> np.ndarray:
 	"""Calculate and pivot the mean sociability scores between all animal pairs within a cohort."""
 	join_df = pl.LazyFrame(
-		(product(animals, animals)),
+		product(animals, animals),
 		schema=[
 			("animal_id", pl.Enum(animals)),
 			("animal_id_2", pl.Enum(animals)),
@@ -697,13 +676,13 @@ def prep_within_cohort_sociability(
 	img = (
 		store["incohort_sociability"]
 		.lazy()
-		.with_columns(pl.col("sociability").round(3))
+		.with_columns(pl.col(sociability_switch).round(3))
 		.filter(
 			pl.col("phase").is_in(phase_type),
 			pl.col("day").is_between(*days_range),
 		)
 		.group_by(["animal_id", "animal_id_2"], maintain_order=True)
-		.agg(pl.mean("sociability").alias("mean"))
+		.agg(pl.mean(sociability_switch).alias("mean"))
 		.join(
 			join_df,
 			on=["animal_id", "animal_id_2"],

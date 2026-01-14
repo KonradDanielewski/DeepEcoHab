@@ -111,6 +111,22 @@ def calculate_activity(
 		pl.len().alias("visits_to_position"),
 	)
 
+	# Perform empty join
+	animal_df = pl.LazyFrame(
+		cfg["animal_ids"],
+		schema={
+			"animal_id": pl.Enum(cfg["animal_ids"]),
+		},
+	)
+
+	cages_df = pl.LazyFrame(cfg["positions"], schema={"position": pl.Categorical})
+	time_grid = per_position_lf.select("phase", "day", "phase_count").unique()
+	full_grid = time_grid.join(cages_df, how="cross").join(animal_df, how="cross")
+
+	per_position_lf = full_grid.join(
+		per_position_lf, on=["phase", "day", "phase_count", "position", "animal_id"], how="left"
+	).fill_null(0)
+
 	if save_data:
 		per_position_lf.sink_parquet(
 			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
