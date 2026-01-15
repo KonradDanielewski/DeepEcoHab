@@ -64,6 +64,7 @@ class PlotConfig:
 	agg_switch: Literal["sum", "mean"]
 	position_switch: Literal["visits", "time"]
 	pairwise_switch: Literal["time_together", "pairwise_encounters"]
+	ranking_switch: Literal["intime", "stability"]
 	animals: list[str]
 	animal_colors: list[str]
 	cages: list[str]
@@ -197,6 +198,24 @@ def prep_ranking_over_time(store: dict[str, pl.DataFrame]) -> pl.DataFrame:
 	).collect(engine="in-memory")
 
 	return df
+
+def prep_ranking_day_stability(store):
+	"""Prep daily dominance ranking using last hour of each day."""
+	ranking = store["ranking"]
+	daily_rank = (
+		ranking.sort(["day", "animal_id", "hour"])
+		.group_by(["day", "animal_id"])
+		.agg(
+			pl.col("ordinal").last(),
+			pl.col("hour").last()
+		)
+	)
+
+	daily_rank = daily_rank.with_columns(
+		pl.col("ordinal").rank(method="average", descending=True).over("day").alias("rank")
+	)
+	return daily_rank
+
 
 
 def prep_polar_df(
