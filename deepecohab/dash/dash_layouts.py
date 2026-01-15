@@ -14,6 +14,7 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 				slider_id="days_range",
 				position_switch_id="position_switch",
 				pairwise_switch_id="pairwise_switch",
+				sociability_switch_id="sociability_switch",
 				days_range=days_range,
 				include_download=True,
 			),
@@ -21,7 +22,6 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 				[
 					# Ranking, network graph, chasings
 					dbc.Row([dbc.Col(html.H2("Social hierarchy"), className="text-left my-4")]),
-					dbc.Row([]),
 					dbc.Row(
 						[
 							dbc.Col(
@@ -111,10 +111,7 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 								dcc.RadioItems(
 									id="pairwise_switch",
 									options=[
-										{
-											"label": "Visits",
-											"value": "pairwise_encounters",
-										},
+										{"label": "Visits", "value": "pairwise_encounters"},
 										{"label": "Time", "value": "time_together"},
 									],
 									value="pairwise_encounters",
@@ -139,6 +136,21 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 							),
 						],
 						className="g-3",
+					),
+					dbc.Row(
+						[
+							dbc.Col(
+								dcc.RadioItems(
+									id="sociability_switch",
+									options=[
+										{"label": "Time together", "value": "proportion_together"},
+										{"label": "Incohort sociability", "value": "sociability"},
+									],
+									value="proportion_together",
+								),
+								width=2,
+							),
+						], className="mt-5"
 					),
 					dbc.Row(
 						[
