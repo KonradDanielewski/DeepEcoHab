@@ -693,7 +693,7 @@ def prep_time_alone(
 			pl.col("phase").is_in(phase_type),
 			pl.col("day").is_between(*days_range),
 		)
-		.sort("cage")
+		.sort("animal_id", "cage")
 	)
 
 	return df
