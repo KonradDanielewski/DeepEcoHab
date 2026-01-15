@@ -200,8 +200,8 @@ def plot_mean_line_per_hour(
 
 def plot_ranking_line(
 	df: pl.DataFrame,
-	colors,
-	animals,
+	animals: list[str],
+	colors: list[tuple[int, int, int, float]],
 ) -> tuple[go.Figure, pl.DataFrame]:
 	"""Plots line graph of ranking over time."""
 	fig = px.line(
@@ -222,29 +222,6 @@ def plot_ranking_line(
 		yaxis=dict(
 			title="Ranking",
 		),
-	)
-
-	return fig, df
-
-def plot_ranking_over_days(
-	df: pl.DataFrame,
-	colors,
-	animals,
-) -> tuple[go.Figure, pl.DataFrame]:
-
-	fig = px.line(
-		df,
-		x="day",
-		y="ordinal",
-		color="animal_id",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
-		line_shape="spline",
-	)
-
-	fig.update_layout(
-		title="<b>Social dominance ranking over days</b>",
-		xaxis=dict(title="Day"),
-		yaxis=dict(title="Mean rank"),
 	)
 
 	return fig, df
@@ -282,45 +259,36 @@ def plot_ranking_distribution(
 
 	return fig, df
 
+
 def plot_ranking_stability(
-    df: pl.DataFrame,
-    colors: list[str],
-    animals: list[str],
+	df: pl.DataFrame,
+	animals: list[str],
+	colors: list[tuple[int, int, int, float]],
 ) -> tuple[go.Figure, pl.DataFrame]:
-    #Plot daily dominance rank trajectories (rank stability across days).
+	"""Plots animal rank on a per day basis"""
+	fig = px.line(
+		df,
+		x="day",
+		y="rank",
+		color="animal_id",
+		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		markers=True,
+		title="<b>Daily dominance rank Trajectories</b>",
+	)
 
-    fig = go.Figure()
+	fig.update_layout(
+		title_x=0.5,
+		legend_title_text="Animal ID",
+		yaxis=dict(
+			title="Rank",
+			autorange="reversed",
+		),
+		xaxis=dict(
+			title="Day",
+		),
+	)
 
-    df = df.sort(["animal_id", "day"])
-
-    for animal, color in zip(animals, colors):
-        animal_df = df.filter(pl.col("animal_id") == animal)
-
-        fig.add_trace(
-            go.Scatter(
-                x=animal_df["day"].to_list(),
-                y=animal_df["rank"].to_list(),
-                mode="lines+markers",
-                name=animal,
-                line=dict(color=color),
-                legendgroup=animal,
-            )
-        )
-
-    fig.update_layout(
-        title="<b>Daily dominance rank trajectories</b>",
-        legend=dict(
-            title="animal_id",
-            tracegroupgap=0,
-        ),
-        xaxis=dict(title="Day"),
-        yaxis=dict(
-            title="Rank (1 = most dominant)",
-            autorange="reversed",
-        ),
-    )
-
-    return fig, df
+	return fig, df
 
 
 def time_spent_per_cage(

@@ -199,23 +199,26 @@ def prep_ranking_over_time(store: dict[str, pl.DataFrame]) -> pl.DataFrame:
 
 	return df
 
-def prep_ranking_day_stability(store):
-	"""Prep daily dominance ranking using last hour of each day."""
-	ranking = store["ranking"]
-	daily_rank = (
-		ranking.sort(["day", "animal_id", "hour"])
-		.group_by(["day", "animal_id"])
-		.agg(
-			pl.col("ordinal").last(),
-			pl.col("hour").last()
-		)
-	)
 
-	daily_rank = daily_rank.with_columns(
-		pl.col("ordinal").rank(method="average", descending=True).over("day").alias("rank")
-	)
-	return daily_rank
+def prep_ranking_day_stability(store: dict[str, pl.DataFrame]) -> pl.DataFrame:
+    """Prepare daily dominance ranking using the last hour of each day."""
+    ranking = store['ranking']
+    daily_rank = (
+        ranking
+        .group_by(["day", "animal_id"])
+        .agg(
+            pl.col("ordinal").last(),
+        )
+        .with_columns(
+            pl.col("ordinal")
+            .rank(method="average", descending=True)
+            .over("day")
+            .alias("rank")
+        )
+		.sort("day")
+    )
 
+    return daily_rank
 
 
 def prep_polar_df(

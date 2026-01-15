@@ -19,19 +19,19 @@ def ranking_over_time(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 		case "intime":
 			df = auxfun_plots.prep_ranking_over_time(cfg.store)
 			return  plot_factory.plot_ranking_line(
-				df, cfg.animal_colors, cfg.animals
+				df, cfg.animals, cfg.animal_colors
 			)
 
 		case "stability":
 			df = auxfun_plots.prep_ranking_day_stability(cfg.store)
 			return plot_factory.plot_ranking_stability(
-				df, cfg.animal_colors, cfg.animals
+				df, cfg.animals, cfg.animal_colors
 			)
 
 		case _:
 			raise ValueError(f"Unknown ranking_switch: {cfg.ranking_switch}")
 
-return fig, df
+	return fig, df
 
 @plot_registry.register(
 	"metrics-polar-line",

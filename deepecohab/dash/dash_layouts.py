@@ -22,7 +22,6 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 				[
 					# Ranking, network graph, chasings
 					dbc.Row([dbc.Col(html.H2("Social hierarchy"), className="text-left my-4")]),
-			
 					dbc.Row(
 						[
 							dbc.Col(
@@ -36,17 +35,20 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 									),
 								width=1,
 							),
-						]),
+						]
+					),
 					dbc.Row([
 							dbc.Col(
 								[
 									auxfun_dashboard.generate_standard_graph(
 										"ranking-line", css_class="plot-500"
 									),
+									auxfun_dashboard.generate_standard_graph(
+										"ranking-distribution-line", css_class="plot-500"
+									),
+								],
 								width=6,
 							),
-						]),
-
 							dbc.Col(
 								[
 									auxfun_dashboard.generate_standard_graph(
@@ -168,10 +170,9 @@ def generate_graphs_layout(days_range: list[int, int]) -> html.Div:
 							),
 						],
 					),
-				],
-				fluid=True,
+				],	fluid=True,
 			),
-		]
+		],
 	)
 
 
