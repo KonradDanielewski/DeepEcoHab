@@ -19,6 +19,7 @@ from deepecohab.core.create_project import (
 )
 from deepecohab.utils.auxfun import (
 	load_ecohab_data as load_ecohab_data,
+	read_config as read_config,
 	run_dashboard as run_dashboard,
 )
 from deepecohab.utils.auxfun import df_registry as df_registry
