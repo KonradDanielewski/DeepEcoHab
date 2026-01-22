@@ -1,7 +1,7 @@
 import datetime as dt
 from pathlib import Path
 from typing import Literal, Any
-from zoneinfo import ZoneInfo
+from zoneinfo import available_timezones, ZoneInfo
 
 import polars as pl
 from tzlocal import get_localzone
@@ -131,6 +131,21 @@ def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -
 	)
 
 
+def sanitize_timezone(timezone: str) -> ZoneInfo:
+	"""Auxfun to check timezone correctness"""
+	if not isinstance(timezone, str) or timezone is None:
+		raise TypeError(f"timezone has to be str or None but {type(timezone)} passed!")
+
+	if timezone is None:
+		return get_localzone()
+	elif isinstance(timezone, str) and timezone in available_timezones():
+		return ZoneInfo(timezone)
+	else:
+		raise ValueError(
+			"Provided timezone not in available timezones. To check available timezones run zoneinfo.available_timezones()"
+		)
+
+
 @df_registry.register("padded_df")
 def create_padded_df(
 	config_path: Path | str | dict,
@@ -162,7 +177,15 @@ def create_padded_df(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	relevant_cols = ["animal_id", "datetime", "phase", "phase_count", "time_spent", "position"]
+	relevant_cols = [
+		"animal_id",
+		"datetime",
+		"phase",
+		"phase_count",
+		"time_spent",
+		"position",
+		"antenna",
+	]
 
 	lf = lf.select(relevant_cols)
 
@@ -205,7 +228,7 @@ def create_padded_df(
 		.then(pl.col("position").shift(-1).over("animal_id"))
 		.otherwise(pl.col("position"))
 		.alias("position"),
-	).drop("mask")
+	).drop("mask", "phase_end")
 
 	if save_data:
 		padded_lf.sink_parquet(
@@ -334,8 +357,7 @@ def get_ecohab_data_structure(
 		config_path
 	)  # reload config potential animal_id changes due to sanitation
 
-	if not isinstance(timezone, str):
-		timezone: ZoneInfo = get_localzone()
+	timezone = sanitize_timezone(timezone)
 
 	lf = _prepare_columns(cfg, lf)
 
