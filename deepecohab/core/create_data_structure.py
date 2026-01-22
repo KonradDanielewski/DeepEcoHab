@@ -133,16 +133,13 @@ def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -
 
 def sanitize_timezone(timezone: str) -> ZoneInfo:
 	"""Auxfun to check timezone correctness"""
-	if not isinstance(timezone, str) or timezone is None:
-		raise TypeError(f"timezone has to be str or None but {type(timezone)} passed!")
-
 	if timezone is None:
 		return get_localzone()
 	elif isinstance(timezone, str) and timezone in available_timezones():
 		return ZoneInfo(timezone)
 	else:
 		raise ValueError(
-			"Provided timezone not in available timezones. To check available timezones run zoneinfo.available_timezones()"
+			"Provided timezone not in available timezones or wrong type. To check available timezones run zoneinfo.available_timezones()"
 		)
 
 
