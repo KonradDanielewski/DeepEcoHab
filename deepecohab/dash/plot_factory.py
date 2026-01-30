@@ -282,6 +282,7 @@ def plot_ranking_stability(
 		yaxis=dict(
 			title="Rank",
 			autorange="reversed",
+   			type='category',
 		),
 		xaxis=dict(
 			title="Day",

@@ -64,7 +64,7 @@ class PlotConfig:
 	agg_switch: Literal["sum", "mean"]
 	position_switch: Literal["visits", "time"]
 	pairwise_switch: Literal["time_together", "pairwise_encounters"]
-  sociability_switch: Literal["proportion_together", "sociability"]
+	sociability_switch: Literal["proportion_together", "sociability"]
 	ranking_switch: Literal["intime", "stability"]
 	animals: list[str]
 	animal_colors: list[str]
@@ -216,7 +216,7 @@ def prep_ranking_day_stability(store: dict[str, pl.DataFrame]) -> pl.DataFrame:
             .over("day")
             .alias("rank")
         )
-		.sort("day")
+		.sort("day", "rank")
     )
 
     return daily_rank

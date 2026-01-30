@@ -105,7 +105,7 @@ if __name__ == "__main__":
 			Input("agg_switch", "value"),
 			Input("position_switch", "value"),
 			Input("pairwise_switch", "value"),
-      Input("sociability_switch", "value"),
+      		Input("sociability_switch", "value"),
 			Input("ranking_switch", "value"),
 		],
 	)
