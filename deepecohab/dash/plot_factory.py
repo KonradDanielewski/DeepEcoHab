@@ -66,9 +66,9 @@ def plot_time_alone(
 		case "sum":
 			fig = px.histogram(
 				df,
-				x="animal_id",
+				x="cage",
 				y="time_alone",
-				color="cage",
+				color="animal_id",
 				color_discrete_sequence=colors,
 				hover_data=["animal_id", "cage", "day", "time_alone"],
 				title="Time spent alone",
@@ -77,9 +77,9 @@ def plot_time_alone(
 		case "mean":
 			fig = px.box(
 				df,
-				x="animal_id",
+				x="cage",
 				y="time_alone",
-				color="cage",
+				color="animal_id",
 				color_discrete_sequence=colors,
 				hover_data=["animal_id", "cage", "day", "time_alone"],
 				title="Time spent alone",
@@ -282,7 +282,7 @@ def plot_ranking_stability(
 		yaxis=dict(
 			title="Rank",
 			autorange="reversed",
-   			type='category',
+			type="category",
 		),
 		xaxis=dict(
 			title="Day",

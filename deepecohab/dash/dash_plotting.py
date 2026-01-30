@@ -28,11 +28,6 @@ def ranking_over_time(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 				df, cfg.animals, cfg.animal_colors
 			)
 
-		case _:
-			raise ValueError(f"Unknown ranking_switch: {cfg.ranking_switch}")
-
-	return fig, df
-
 @plot_registry.register(
 	"metrics-polar-line",
 	dependencies=["store", "days_range", "phase_type", "animals", "animal_colors"],
@@ -141,7 +136,6 @@ def chasings_line(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 	dependencies=[
 		"store",
 		"days_range",
-		"animal_colors",
 		"phase_type",
 		"position_colors",
 		"position_switch",
@@ -252,7 +246,7 @@ def pairwise_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 		cfg.cages,
 	)
 
-	return plot_factory.plot_sociability_heatmap(img, cfg.pairwise_switch, cfg.animals)
+	return plot_factory.plot_sociability_heatmap(img, cfg.pairwise_switch, cfg.animals, cfg.cages)
 
 
 @plot_registry.register(
@@ -279,7 +273,7 @@ def within_cohort_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]
 
 @plot_registry.register(
 	"time-alone-bar",
-	dependencies=["store", "phase_type", "days_range", "agg_switch", "position_colors"],
+	dependencies=["store", "phase_type", "days_range", "agg_switch", "animal_colors"],
 )
 def time_alone(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 	"""Generates a stacked bar plot of time spent alone.
@@ -295,7 +289,7 @@ def time_alone(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 	"""
 	df = auxfun_plots.prep_time_alone(cfg.store, cfg.phase_type, cfg.days_range)
 
-	return plot_factory.plot_time_alone(df, cfg.position_colors, cfg.agg_switch)
+	return plot_factory.plot_time_alone(df, cfg.animal_colors, cfg.agg_switch)
 
 
 @plot_registry.register(
