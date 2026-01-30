@@ -64,6 +64,7 @@ class PlotConfig:
 	agg_switch: Literal["sum", "mean"]
 	position_switch: Literal["visits", "time"]
 	pairwise_switch: Literal["time_together", "pairwise_encounters"]
+  sociability_switch: Literal["proportion_together", "sociability"]
 	ranking_switch: Literal["intime", "stability"]
 	animals: list[str]
 	animal_colors: list[str]
@@ -666,7 +667,7 @@ def prep_within_cohort_sociability(
 	phase_type: list[str],
 	animals: list[str],
 	days_range: list[int, int],
-	sociability_switch: Literal["raw", "normalized"] = "sociability",
+	sociability_switch: Literal["proportion_together", "sociability"],
 ) -> np.ndarray:
 	"""Calculate and pivot the mean sociability scores between all animal pairs within a cohort."""
 	join_df = pl.LazyFrame(
@@ -715,7 +716,7 @@ def prep_time_alone(
 			pl.col("phase").is_in(phase_type),
 			pl.col("day").is_between(*days_range),
 		)
-		.sort("cage")
+		.sort("animal_id", "cage")
 	)
 
 	return df

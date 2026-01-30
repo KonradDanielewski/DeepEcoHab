@@ -256,7 +256,7 @@ def pairwise_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 
 
 @plot_registry.register(
-	"cohort-heatmap", dependencies=["store", "animals", "phase_type", "days_range"]
+	"cohort-heatmap", dependencies=["store", "animals", "phase_type", "days_range", "sociability_switch"]
 )
 def within_cohort_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 	"""Generates a normalized heatmap of sociability within the entire cohort.
@@ -271,7 +271,7 @@ def within_cohort_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]
 	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	img = auxfun_plots.prep_within_cohort_sociability(
-		cfg.store, cfg.phase_type, cfg.animals, cfg.days_range
+		cfg.store, cfg.phase_type, cfg.animals, cfg.days_range, cfg.sociability_switch
 	)
 
 	return plot_factory.plot_within_cohort_heatmap(img, cfg.animals)

@@ -24,6 +24,7 @@ def generate_settings_block(
 	days_range: list[int, int],
 	position_switch_id: dict | str | None = None,
 	pairwise_switch_id: dict | str | None = None,
+  sociability_switch_id: dict | str | None = None,
 	ranking_switch_id: dict | str | None = None,
 	include_download: bool = False,
 	comparison_layout: bool = False,
@@ -172,7 +173,32 @@ def generate_settings_block(
 									),
 								],
 							),
-							html.Div(
+              html.Div(
+								id={
+									"container": sociability_switch_id["type"],
+									"side": sociability_switch_id["side"],
+								},
+								hidden=True,
+								className="flex-container",
+								children=[
+									html.Div(
+										dcc.RadioItems(
+											id=sociability_switch_id,
+											inline=True,
+											options=[
+												{"label": "Time together", "value": "proportion_together"},
+												{"label": "Incohort sociability", "value": "sociability"},
+											],
+											value="proportion_together",
+											labelStyle={
+												"display": "block",
+												"marginBottom": "5px",
+											},
+										),
+									),
+								],
+							),
+              html.Div(
 								id={
 									"container": ranking_switch_id["type"],
 									"side": ranking_switch_id["side"],
@@ -237,6 +263,7 @@ def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div
 				days_range=days_range,
 				position_switch_id={"type": "position_switch", "side": side},
 				pairwise_switch_id={"type": "pairwise_switch", "side": side},
+        sociability_switch_id={"type": "sociability_switch", "side": side},
 				ranking_switch_id={"type": "ranking_switch", "side": side},
 				comparison_layout=True,
 			),

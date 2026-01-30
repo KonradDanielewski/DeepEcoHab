@@ -1,3 +1,4 @@
+from itertools import product
 from pathlib import Path
 from typing import Any
 
@@ -154,6 +155,27 @@ def calculate_chasings(
 		.len(name="chasings")
 		.rename({"animal_id": "chased", "animal_id_chasing": "chaser"})
 	)
+ 
+	# Perform empty join
+	all_pairs = [(a1, a2) for a1, a2 in list(product(cfg["animal_ids"], cfg['animal_ids'])) if a1 != a2]
+	pairs_df = pl.LazyFrame(
+		all_pairs,
+		schema={
+			"chaser": pl.Enum(cfg["animal_ids"]),
+			"chased": pl.Enum(cfg["animal_ids"]),
+		},
+		orient="row",
+	)
+
+	time_grid = chasings.select("phase", "day", "phase_count").unique()
+
+	full_grid = time_grid.join(pairs_df, how="cross")
+
+	chasings = full_grid.join(
+		chasings,
+		on=["phase", "day", "phase_count", "chaser", "chased"],
+		how="left",
+	).fill_null(0)
 
 	if save_data:
 		chasings.sink_parquet(

@@ -105,11 +105,12 @@ if __name__ == "__main__":
 			Input("agg_switch", "value"),
 			Input("position_switch", "value"),
 			Input("pairwise_switch", "value"),
+      Input("sociability_switch", "value"),
 			Input("ranking_switch", "value"),
 		],
 	)
 	def update_plots(
-		days_range, phase_type, agg_switch, pos_switch, pair_switch, ranking_switch,
+		days_range, phase_type, agg_switch, pos_switch, pair_switch, sociability_switch, ranking_switch
 	) -> tuple[go.Figure, dict]:
 		plot_name: str = ctx.outputs_grouping[0]["id"]["name"]
 		plot_attributes = dash_plotting.plot_registry.get_dependencies(plot_name)
@@ -128,6 +129,7 @@ if __name__ == "__main__":
 			agg_switch=agg_switch,
 			position_switch=pos_switch,
 			pairwise_switch=pair_switch,
+      sociability_switch=sociability_switch,
 			ranking_switch=ranking_switch,
 			animals=ANIMALS,
 			animal_colors=ANIMAL_COLORS,
@@ -169,7 +171,8 @@ if __name__ == "__main__":
 			agg_switch=input_dict["agg_switch"],
 			position_switch=input_dict["position_switch"],
 			pairwise_switch=input_dict["pairwise_switch"],
-			ranking_switch=input_dict["ranking_switch"],
+			sociability_switch=input_dict["sociability_switch"],
+      ranking_switch=input_dict["ranking_switch"],
 			animals=ANIMALS,
 			animal_colors=ANIMAL_COLORS,
 			cages=CAGES,
@@ -253,7 +256,6 @@ if __name__ == "__main__":
 		Input({"type": "download-btn-comparison", "fmt": ALL, "side": MATCH}, "n_clicks"),
 		[
 			State({"figure": "comparison-plot", "side": MATCH}, "figure"),
-			# State({"figure": "comparison-plot", "side": MATCH}, "id"),
 			State({"store": "comparison-plot", "side": MATCH}, "data"),
 			State({"type": "plot-dropdown", "side": MATCH}, "value"),
 		],

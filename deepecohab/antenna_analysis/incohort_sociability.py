@@ -4,7 +4,6 @@ from typing import Any
 
 import polars as pl
 
-from deepecohab.antenna_analysis import activity
 from deepecohab.utils import auxfun
 from deepecohab.utils.auxfun import df_registry
 
@@ -49,11 +48,11 @@ def calculate_time_alone(
 	full_group_list = time_lf.join(auxfun.get_animal_cage_grid(cfg), how="cross")
 
 	time_alone = (
-		binary_df.group_by(group_cols)
+		binary_df.group_by(group_cols, maintain_order=True)
 		.agg(pl.len().alias("n"), pl.col("animal_id").first())
 		.filter(pl.col("n") == 1)
 		.with_columns(auxfun.get_phase(cfg), auxfun.get_day())
-		.group_by(result_cols)
+		.group_by(result_cols, maintain_order=True)
 		.agg(pl.len().alias("time_alone"))
 	)
 

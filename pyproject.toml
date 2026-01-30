@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepecohab"
-version = "0.4.2.1"
+version = "0.4.2.2"
 description = "EcoHab with some machine learning"
 readme = "README.md"
 requires-python = ">=3.10"
