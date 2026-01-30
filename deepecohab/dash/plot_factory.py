@@ -200,8 +200,8 @@ def plot_mean_line_per_hour(
 
 def plot_ranking_line(
 	df: pl.DataFrame,
-	colors,
-	animals,
+	animals: list[str],
+	colors: list[tuple[int, int, int, float]],
 ) -> tuple[go.Figure, pl.DataFrame]:
 	"""Plots line graph of ranking over time."""
 	fig = px.line(
@@ -254,6 +254,37 @@ def plot_ranking_distribution(
 		legend=dict(
 			title="animal_id",
 			tracegroupgap=0,
+		),
+	)
+
+	return fig, df
+
+
+def plot_ranking_stability(
+	df: pl.DataFrame,
+	animals: list[str],
+	colors: list[tuple[int, int, int, float]],
+) -> tuple[go.Figure, pl.DataFrame]:
+	"""Plots animal rank on a per day basis"""
+	fig = px.line(
+		df,
+		x="day",
+		y="rank",
+		color="animal_id",
+		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		markers=True,
+		title="<b>Daily dominance rank Trajectories</b>",
+	)
+
+	fig.update_layout(
+		title_x=0.5,
+		legend_title_text="Animal ID",
+		yaxis=dict(
+			title="Rank",
+			autorange="reversed",
+		),
+		xaxis=dict(
+			title="Day",
 		),
 	)
 
