@@ -378,7 +378,7 @@ def network_sociability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 	"social-stability",
 	dependencies=["store", "animals", "animal_colors", "phase_type", "days_range"],
 )
-def social_stability(cfg: PlotConfig) -> tuple(go.Figure, pl.DataFrame):
+def social_stability(cfg: PlotConfig) -> tuple[go.Figure, pl.DataFrame]:
 	"""Generates a social stability scatter plot.
 
 	Visualizes stability of a relationship of every pair across chosen days
