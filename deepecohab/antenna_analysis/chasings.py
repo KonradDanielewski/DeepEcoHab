@@ -213,28 +213,6 @@ def calculate_tube_tests(
 	lf: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="main_df")
 
 	cages: list[str] = cfg["cages"]
-	tunnels: list[str] = cfg["tunnels"]
-
-	chased = lf.filter(
-		pl.col("position").is_in(tunnels),
-	)
-	chasing = lf.with_columns(
-		pl.col("datetime").shift(1).over("animal_id").alias("tunnel_entry"),
-		pl.col("position").shift(1).over("animal_id").alias("prev_position"),
-	)
-
-	
-	intermediate = chased.join(
-		chasing, on=["phase", "day", "hour", "phase_count"], suffix="_chasing"
-	).filter(
-		pl.col("animal_id") != pl.col("animal_id_chasing"),
-		pl.col("position") == pl.col("position_chasing"),
-		pl.col("prev_position").is_in(cages),
-		(pl.col("datetime") - pl.col("tunnel_entry"))
-		.dt.total_seconds(fractional=True)
-		.is_between(0.1, 1.2, "none"),
-		pl.col("datetime") < pl.col("datetime_chasing"),
-	)
 
 	lf = auxfun.update_repeat_antenna_position(lf)
 	lf = auxfun.remove_tunnel_directionality(lf, cfg)
