@@ -184,7 +184,7 @@ def calculate_chasings(
 
 	return chasings
 
-
+@df_registry.register("tube_test_df")
 def calculate_tube_tests(
 	config_path: str | Path | dict,
 	overwrite: bool = False,
