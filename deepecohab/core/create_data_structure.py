@@ -91,7 +91,7 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
 	return (
 		lf.with_columns(
 			pl.col("animal_id").cast(pl.Enum(animal_ids)),
-			pl.col("antenna").cast(pl.Int8),
+			pl.col("antenna").cast(pl.UInt8),
 			(pl.col("time_under") * 1000).cast(pl.Duration(time_unit="us")),
 		)
 		.with_columns(
