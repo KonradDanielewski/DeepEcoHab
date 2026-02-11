@@ -251,7 +251,7 @@ def get_day(timestamp_colname: str = "datetime") -> pl.Expr:
 			).dt.total_days()
 		)
 		.add(1)
-		.cast(pl.Int16)
+		.cast(pl.UInt16)
 		.alias("day")
 	)
 
@@ -277,14 +277,14 @@ def get_phase(cfg: dict[str, Any]) -> pl.Expr:
 
 
 def get_hour(dt_col: str = "datetime") -> pl.Expr:
-	return pl.col(dt_col).dt.hour().cast(pl.Int8).alias("hour")
+	return pl.col(dt_col).dt.hour().cast(pl.UInt8).alias("hour")
 
 
 def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Auxfun used to count phases"""
 	lf = (
 		lf.with_columns(pl.col("phase").rle_id().alias("run_id"))
-		.with_columns(pl.col("run_id").rank("dense").over("phase").alias("phase_count"))
+		.with_columns(pl.col("run_id").rank("dense").over("phase").cast(pl.UInt16).alias("phase_count"))
 		.drop("run_id")
 	)
 	return lf
