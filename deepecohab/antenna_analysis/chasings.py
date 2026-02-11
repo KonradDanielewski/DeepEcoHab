@@ -1,6 +1,6 @@
 from itertools import product
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 from openskill.models import PlackettLuce
@@ -185,8 +185,10 @@ def calculate_chasings(
 	return chasings
 
 
+@df_registry.register("tube_test_df")
 def calculate_tube_tests(
 	config_path: str | Path | dict,
+	winner_behavior: Literal["CHASE", "GUARD", "BOTH"] = "BOTH",
 	overwrite: bool = False,
 	save_data: bool = True,
 ) -> pl.LazyFrame:
@@ -194,6 +196,8 @@ def calculate_tube_tests(
 
 	Args:
 	    config_path: path to project config file.
+	    winner_behavior: specifies whether to include events where the winning mouse followed the loser 
+						or returned to the guarded resource
 	    save_data: toogles whether to save data.
 	    overwrite: toggles whether to overwrite the data.
 
@@ -216,21 +220,19 @@ def calculate_tube_tests(
 
 	lf = auxfun.update_repeat_antenna_position(lf)
 	lf = auxfun.remove_tunnel_directionality(lf, cfg)
-	loser = lf.with_columns(
+	lf = lf.with_columns(
 		(pl.col('datetime') - pl.duration(seconds=pl.col("time_spent"))).alias("tunnel_entry"),
-		pl.col("position").shift(1).over("animal_id").alias("prev_position")
-	).filter(
-		~pl.col("position").is_in(cages),
-		(pl.col("prev_position") == pl.col("position").shift(-1).over("animal_id"))
+		pl.col("position").shift(1).over("animal_id").alias("prev_position"),
+		pl.col("position").shift(-1).over("animal_id").alias("next_position")
 	)
 
-	winner = lf.with_columns(
-		(pl.col('datetime') - pl.duration(seconds=pl.col("time_spent"))).alias("tunnel_entry"),
-		pl.col("position").shift(1).over("animal_id").alias("prev_position")
+	loser = lf.filter(
+		~pl.col("position").is_in(cages),
+		pl.col("prev_position") == pl.col("next_position")
 	)
 
 	intermediate = loser.join(
-		winner, on=["phase", "day", "phase_count", "position"], suffix="_winner" 
+		lf, on=["phase", "day", "phase_count", "position"], suffix="_winner" 
 	).filter(
 		pl.col("animal_id") != pl.col("animal_id_winner"),
 		pl.col("prev_position") != pl.col("prev_position_winner"),
@@ -243,6 +245,15 @@ def calculate_tube_tests(
 		.dt.total_seconds(fractional=True)
 		.alias("overlap_duration")
 	).filter(pl.col("overlap_duration") > 0)
+
+	if winner_behavior == 'CHASE':
+		intermediate = intermediate.filter(
+			pl.col("next_position") == pl.col("next_position_winner"),
+		)
+	elif winner_behavior == 'GUARD':
+		intermediate = intermediate.filter(
+			pl.col("next_position") != pl.col("next_position_winner"),
+		)
 
 	tube_tests = (
 		intermediate.group_by(

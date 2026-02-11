@@ -353,8 +353,15 @@ def set_animal_ids(
 	return lf
 
 
-def update_repeat_antenna_position(lf: pl.LazyFrame):
-
+def update_repeat_antenna_position(lf: pl.LazyFrame) -> pl.LazyFrame:
+	"""Auxfun to map repeat registrations under the same antenna to repeated movement
+	between the corresponding cage and tunnel.
+	Args:
+		lf: a LazyFrame containing mouse position data
+	
+	Returns:
+	    lf: a LazyFrame with updated positions
+	"""
 	#TODO
 	tunnel_dict = {
 		"1": 'c1_c2',
