@@ -346,6 +346,7 @@ def calculate_tube_tests(
 	winner_behavior: Literal["CHASE", "GUARD", "BOTH"] = "BOTH",
 	overwrite: bool = False,
 	save_data: bool = True,
+	**kwargs,
 ) -> pl.LazyFrame:
 	"""Calculates tube test events per pair of mice for each hour
 

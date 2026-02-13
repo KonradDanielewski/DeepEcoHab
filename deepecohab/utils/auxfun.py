@@ -19,6 +19,7 @@ class DataFrameRegistry:
             "activity_df",
             "cage_occupancy",
             "chasings_df",
+            "tube_test_df",
             "ranking",
             "pairwise_meetings",
             "incohort_sociability",
