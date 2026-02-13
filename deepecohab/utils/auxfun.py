@@ -361,6 +361,46 @@ def set_animal_ids(
 	return lf
 
 
+def update_repeat_antenna_position(lf: pl.LazyFrame) -> pl.LazyFrame:
+	"""Auxfun to map repeat registrations under the same antenna to repeated movement
+	between the corresponding cage and tunnel.
+	Args:
+		lf: a LazyFrame containing mouse position data
+	
+	Returns:
+	    lf: a LazyFrame with updated positions
+	"""
+	#TODO
+	tunnel_dict = {
+		"1": 'c1_c2',
+		"2": 'c2_c1',
+		"3": 'c2_c3',
+		"4": 'c3_c2',
+		"5": 'c3_c4',
+		"6": 'c4_c3',
+		"7": 'c4_c1',
+		"8": 'c1_c4',
+	}
+	
+	lf = lf.with_columns(
+			pl.struct("position", "antenna").rle_id().over('animal_id').alias('run_id')
+		).with_columns(
+			pl.cum_count("position").over(
+				["animal_id",'run_id']
+			).alias('consecutive_antenna_readout')
+		)
+	lf = lf.with_columns(
+		pl.when(
+			pl.col('consecutive_antenna_readout').mod(2) == 0
+		).then(
+			pl.col("antenna").cast(pl.Utf8).replace(tunnel_dict).cast(pl.Categorical)
+		).otherwise(
+			pl.col('position')
+		).alias('position')
+	)
+
+	return lf
+
 def append_start_end_to_config(
 	config_path: str | Path, lf: pl.LazyFrame
 ) -> tuple[dict[str, Any], str, str]:
