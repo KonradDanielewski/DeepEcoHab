@@ -271,28 +271,37 @@ def plot_ranking_stability(
 	colors: list[tuple[int, int, int, float]],
 ) -> tuple[go.Figure, pl.DataFrame]:
 	"""Plots animal rank on a per day basis"""
-	fig = px.line(
-		df,
-		x="day",
-		y="rank",
-		color="animal_id",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
-		markers=True,
-		title="<b>Daily dominance rank Trajectories</b>",
+	color_map = {animal: color for animal, color in zip(animals, colors)}
+ 
+	fig = go.Figure(
+		layout=dict(
+			title_x=0.5,
+			title="<b>Daily dominance rank Trajectories</b>",
+			legend_title_text="<b>Animal IDs</b>",
+			yaxis=dict(
+				title="<b>Rank</b>",
+				autorange="reversed",
+				type="category",
+				categoryorder="array",
+            	categoryarray=df["rank"].unique().sort(),
+			),
+			xaxis=dict(
+				title="<b>Day</b>",
+			),
+		)
 	)
-
-	fig.update_layout(
-		title_x=0.5,
-		legend_title_text="<b>Animal IDs</b>",
-		yaxis=dict(
-			title="<b>Rank</b>",
-			autorange="reversed",
-			type="category",
-		),
-		xaxis=dict(
-			title="<b>Day</b>",
-		),
-	)
+	for animal in animals:
+		temp = df.filter(pl.col("animal_id") == animal).sort("day")
+		fig.add_trace(
+			go.Scatter(
+				x=temp["day"],
+				y=temp["rank"],
+				mode="lines+markers",
+				name=animal,
+				line=dict(color=color_map[animal]),
+            	marker=dict(color=color_map[animal]),
+			)
+		)
 
 	return fig
 
