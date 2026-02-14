@@ -24,6 +24,18 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 			),
 			dbc.Container(
 				[
+					dbc.Row([dbc.Col(html.H2("Cohort overview"), className="text-left my-4")]),
+					dbc.Row(
+						[
+							dbc.Col(
+								[
+									auxfun_dashboard.generate_standard_graph(
+										"metrics-polar-line", css_class="plot-500"
+									),
+								]
+							)
+						]
+					),
 					# Ranking, network graph, chasings
 					dbc.Row([dbc.Col(html.H2("Social hierarchy"), className="text-left my-4")]),
 					dbc.Row(
@@ -47,24 +59,26 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 							dbc.Col(
 								[
 									auxfun_dashboard.generate_standard_graph(
-										"ranking-line", css_class="plot-500"
-									),
-									auxfun_dashboard.generate_standard_graph(
-										"ranking-distribution-line", css_class="plot-500"
+										"ranking-line", css_class="plot-400"
 									),
 								],
-								width=6,
+								width=4,
 							),
 							dbc.Col(
 								[
 									auxfun_dashboard.generate_standard_graph(
-										"metrics-polar-line", css_class="plot-500"
-									),
-									auxfun_dashboard.generate_standard_graph(
-										"network-dominance", css_class="plot-500"
+										"ranking-distribution-line", css_class="plot-400"
 									),
 								],
-								width=6,
+								width=4,
+							),
+							dbc.Col(
+								[
+									auxfun_dashboard.generate_standard_graph(
+										"network-dominance", css_class="plot-400"
+									),
+								],
+								width=4,
 							),
 						],
 						className="gx-3 gy-0",
@@ -73,11 +87,11 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 						[
 							dbc.Col(
 								auxfun_dashboard.generate_standard_graph("chasings-heatmap"),
-								width=6,
+								width=4,
 							),
 							dbc.Col(
 								auxfun_dashboard.generate_standard_graph("chasings-line"),
-								width=6,
+								width=8,
 							),
 						],
 						className="gx-3 gy-0",
@@ -188,25 +202,21 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								auxfun_dashboard.generate_standard_graph(
 									"cohort-heatmap", css_class="plot-500"
 								),
-								width=6,
+								width=4,
 							),
 							dbc.Col(
 								auxfun_dashboard.generate_standard_graph(
 									"social-stability", css_class="plot-500"
 								),
-								width=6,
+								width=4,
 							),
-						],
-					),
-					dbc.Row(
-						[
 							dbc.Col(
 								auxfun_dashboard.generate_standard_graph(
 									"time-alone-bar", css_class="plot-500"
 								),
-								width=6,
-							)
-						]
+								width=4,
+							),
+						],
 					),
 				],
 				fluid=True,
