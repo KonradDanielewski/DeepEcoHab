@@ -36,7 +36,9 @@ def color_sampling(
 	values: list[str], cmap: str = "Phase"
 ) -> list[str]:  # TODO: Expose the cmap choice to the dashboard
 	"""Samples colors from a colormap for given values."""
-	x = np.linspace(0, 1, len(values) + 1) # TODO: Temporary fix until we have a default color map with same colors but non-cyclical
+	x = np.linspace(
+		0, 1, len(values) + 1
+	)  # TODO: Temporary fix until we have a default color map with same colors but non-cyclical
 	colors: list[str] = px.colors.sample_colorscale(cmap, x)
 
 	return colors
@@ -759,6 +761,8 @@ def prep_cage_preference(
 			pl.col("position").cast(pl.String),
 			pl.col("time_in_position") / 3600,
 		)
+		.group_by("day", "animal_id", "position")
+		.agg(pl.sum("time_in_position"))
 		.filter(pl.col("position").str.contains("cage"))
 		.sort("position")
 	).collect(engine="in-memory")
