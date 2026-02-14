@@ -14,7 +14,7 @@ def plot_activity(
 	colors: np.ndarray,
 	type_switch: Literal["visits", "time"],
 	agg_switch: Literal["sum", "mean"],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots bar graph of sum of cage and tunnel visits or time spent."""
 	match type_switch:
 		case "visits":
@@ -60,7 +60,7 @@ def plot_activity(
 
 def plot_time_alone(
 	df: pl.DataFrame, colors: list[str], agg_switch: Literal["mean", "sum"]
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plot time alone as a relative bar plot TODO: consider normalization
 	for visualization and hover info with real value"""
 	match agg_switch:
@@ -101,7 +101,7 @@ def plot_sum_line_per_hour(
 	animals: list[str],
 	colors: list[tuple[int, int, int]],
 	input_type: Literal["activity", "chasings"],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots line graph for activity or chasings."""
 
 	match input_type:
@@ -139,7 +139,7 @@ def plot_mean_line_per_hour(
 	animals: list[str],
 	colors: list[str],
 	input_type: Literal["activity", "chasings"],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots line graph for activity or chasings with SEM shading."""
 
 	match input_type:
@@ -207,7 +207,7 @@ def plot_ranking_line(
 	df: pl.DataFrame,
 	animals: list[str],
 	colors: list[tuple[int, int, int, float]],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots line graph of ranking over time."""
 	fig = px.line(
 		df,
@@ -236,7 +236,7 @@ def plot_ranking_distribution(
 	df: pl.DataFrame,
 	animals: list[str],
 	colors: list[tuple[int, int, int, float]],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots line graph of ranking distribution with shaded area."""
 	fig = px.line(
 		df,
@@ -269,10 +269,10 @@ def plot_ranking_stability(
 	df: pl.DataFrame,
 	animals: list[str],
 	colors: list[tuple[int, int, int, float]],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots animal rank on a per day basis"""
 	color_map = {animal: color for animal, color in zip(animals, colors)}
- 
+
 	fig = go.Figure(
 		layout=dict(
 			title_x=0.5,
@@ -283,7 +283,7 @@ def plot_ranking_stability(
 				autorange="reversed",
 				type="category",
 				categoryorder="array",
-            	categoryarray=df["rank"].unique().sort(),
+				categoryarray=df["rank"].unique().sort(),
 			),
 			xaxis=dict(
 				title="<b>Day</b>",
@@ -299,7 +299,7 @@ def plot_ranking_stability(
 				mode="lines+markers",
 				name=animal,
 				line=dict(color=color_map[animal]),
-            	marker=dict(color=color_map[animal]),
+				marker=dict(color=color_map[animal]),
 			)
 		)
 
@@ -309,7 +309,7 @@ def plot_ranking_stability(
 def time_spent_per_cage(
 	img: np.ndarray,
 	animals: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots N-cages of heatmaps with per hour time spent for each animal"""
 	fig = px.imshow(
 		img,  # 24 hours in a day,
@@ -338,7 +338,7 @@ def time_spent_per_cage(
 def plot_chasings_heatmap(
 	img: np.ndarray,
 	animals: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots heatmap for number of chasings."""
 	z_label = "Number: %{z}"
 
@@ -368,7 +368,7 @@ def plot_sociability_heatmap(
 	img: np.ndarray,
 	type_switch: Literal["pairwise_encounters", "time_together"],
 	animals: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots heatmaps for pairwise encounters or time spent together."""
 	match type_switch:
 		case "pairwise_encounters":
@@ -409,7 +409,7 @@ def plot_within_cohort_heatmap(
 	img: np.ndarray,
 	animals: list[str],
 	sociability_switch: Literal["proportion_together", "sociability"],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots heatmap for within-cohort sociability."""
 	match sociability_switch:
 		case "proportion_together":
@@ -443,7 +443,7 @@ def plot_metrics_polar(
 	df: pl.DataFrame,
 	animals: list[str],
 	colors: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots a polar line with different metrics per animal."""
 	fig = px.line_polar(
 		df,
@@ -468,16 +468,16 @@ def plot_network_graph(
 	nodes: pl.DataFrame | None,
 	animals: list[str],
 	colors: list[str],
-	graph_type: Literal["chasings", "sociability"],
-) -> tuple[go.Figure, pl.DataFrame]:
+	graph_type: Literal["chasings", "proportion_together"],
+) -> go.Figure:
 	"""Plots network graph of social structure."""
 	match graph_type:
 		case "chasings":
 			edge_weight = "chasings"
 			graph = nx.DiGraph
 			title = "<b>Dominance network graph</b>"
-		case "sociability":
-			edge_weight = "sociability"
+		case "proportion_together":
+			edge_weight = "proportion_together"
 			graph = nx.Graph
 			title = "<b>Sociability network graph</b>"
 
@@ -488,7 +488,7 @@ def plot_network_graph(
 		match graph_type:
 			case "chasings":
 				ordinal = nodes.filter(pl.col("animal_id") == animal).select("ordinal").item()
-			case "sociability":
+			case "proportion_together":
 				ordinal = 20
 		pos[animal] = np.append(pos[animal], ordinal)
 
@@ -522,7 +522,7 @@ def plot_social_stability(
 	df: pl.DataFrame | None,
 	animals: list[str],
 	colors: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots the stability of a social relationship based on time spent together."""
 	fig = px.scatter(
 		df,
@@ -542,5 +542,30 @@ def plot_social_stability(
 		yaxis=dict(title="<b>Median proportion together</b>"),
 	)
 	fig.update_traces(marker_size=12)
+
+	return fig
+
+
+def plot_cage_preference(
+	df: pl.DataFrame | None,
+	cages: list[str],
+	colors: list[str],
+) -> go.Figure:
+	"""Plots cage preference on a per cage basis (cohort preference summary)."""
+	fig = px.box(
+		df,
+		x="position",
+		y="time_in_position",
+		color="position",
+		points="outliers",
+		hover_data={"animal_id", "day"},
+		color_discrete_map={cage: color for cage, color in zip(cages, colors)},
+		title="<b>Cage preference</b>",
+	)
+
+	fig.update_traces(boxmean=True)
+	fig.update_yaxes(title_text="<b>Avg time per day [h]</b>")
+	fig.update_xaxes(title_text="<b>Cages</b>")
+	fig.update_layout(legend=dict(title=""))
 
 	return fig

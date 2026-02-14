@@ -73,6 +73,18 @@ plot_registry = PlotRegistry()
 
 
 @plot_registry.register(
+	"cage-preference",
+	dependencies=["store", "cages", "position_colors", "phase_type", "days_range"],
+)
+def cage_preference(cfg: PlotConfig) -> go.Figure:
+	"""Generates a cage preference box plot."""
+
+	df = auxfun_plots.prep_cage_preference(cfg.store, cfg.phase_type, cfg.days_range)
+
+	return plot_factory.plot_cage_preference(df, cfg.cages, cfg.position_colors)
+
+
+@plot_registry.register(
 	"ranking-line",
 	dependencies=["store", "days_range", "animals", "animal_colors", "ranking_switch"],
 )
@@ -98,9 +110,6 @@ def polar_metrics(cfg: PlotConfig) -> go.Figure:
 
 	Visualizes z-scored values for chasing behavior, activity levels, and social
 	proximity (time alone vs. together) for each animal on a unified circular scale.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	df = auxfun_plots.prep_polar_df(cfg.store, cfg.days_range, cfg.phase_type)
 
@@ -116,9 +125,6 @@ def ranking_distribution(cfg: PlotConfig) -> go.Figure:
 
 	Fits and displays the probability density functions (PDF) for each animal's
 	ranking based on Mu and Sigma values for the final day in the selected range.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	df = auxfun_plots.prep_ranking_distribution(cfg.store, cfg.days_range)
 
@@ -134,9 +140,6 @@ def network_dominance(cfg: PlotConfig) -> go.Figure:
 
 	Visualizes hierarchy and aggression where node size represents ranking
 	and edges represent the sum of chasing events in a directional fashion.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	connections, nodes = auxfun_plots.prep_network_dominance(cfg.store, cfg.animals, cfg.days_range)
 
@@ -155,9 +158,6 @@ def chasings_heatmap(cfg: PlotConfig) -> go.Figure:
 	Displays a matrix of agonistic interactions, where rows and columns represent
 	individual animals and cells show the sum or mean of chasing events. Columns
 	represent Chasers and rows represent Chased.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	img = auxfun_plots.prep_chasings_heatmap(
 		cfg.store, cfg.animals, cfg.days_range, cfg.phase_type, cfg.agg_switch
@@ -175,9 +175,6 @@ def chasings_line(cfg: PlotConfig) -> go.Figure:
 
 	Shows the diurnal rhythm of aggression. For mean includes a shaded area representing
 	the Standard Error of the Mean (SEM) across the selected days.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	df = auxfun_plots.prep_chasings_line(cfg.store, cfg.animals, cfg.days_range)
 
@@ -208,9 +205,6 @@ def activity(cfg: PlotConfig) -> go.Figure:
 
 	Quantifies behavior either by the number of visits to specific locations
 	or the total time spent in those locations.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	df = auxfun_plots.prep_activity(cfg.store, cfg.days_range, cfg.phase_type)
 
@@ -227,9 +221,6 @@ def activity_line(cfg: PlotConfig) -> go.Figure:
 	Plots the number of antenna detections per hour, allowing for
 	comparison of circadian rhythms between animals. For mean includes a shaded area
 	representing the Standard Error of the Mean (SEM) across the selected days.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	df = auxfun_plots.prep_activity_line(cfg.store, cfg.animals, cfg.days_range)
 
@@ -259,12 +250,6 @@ def time_per_cage(cfg: PlotConfig) -> go.Figure:
 
 	Creates a subplot for each cage, visualizing when and for how long specific animals
 	occupy that space throughout the day.
-
-	Args:
-	    cfg: Configuration object with 'cage_occupancy' data and 'agg_switch'.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	img = auxfun_plots.prep_time_per_cage(
 		cfg.store, cfg.animals, cfg.days_range, cfg.agg_switch, cfg.cages
@@ -290,12 +275,6 @@ def pairwise_sociability(cfg: PlotConfig) -> go.Figure:
 
 	Visualizes how often pairs of animals meet or spend time together,
 	broken down by physical location (cages).
-
-	Args:
-	    cfg: Configuration object defining 'pairwise_switch' (visits vs. time).
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	img = auxfun_plots.prep_pairwise_sociability(
 		cfg.store,
@@ -319,12 +298,6 @@ def within_cohort_sociability(cfg: PlotConfig) -> go.Figure:
 
 	Provides a high-level view of social bonds by calculating the mean
 	sociability index between all animal pairs across the specified range.
-
-	Args:
-	    cfg: Configuration object containing 'incohort_sociability' data.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	img = auxfun_plots.prep_within_cohort_sociability(
 		cfg.store, cfg.phase_type, cfg.animals, cfg.days_range, cfg.sociability_switch
@@ -342,12 +315,6 @@ def time_alone(cfg: PlotConfig) -> go.Figure:
 
 	Shows the duration each animal spent without any other animals present,
 	segmented by the specific cages where this behavior occurred.
-
-	Args:
-	    cfg: Configuration object with 'time_alone' data and color preferences.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	df = auxfun_plots.prep_time_alone(cfg.store, cfg.phase_type, cfg.days_range)
 
@@ -363,14 +330,11 @@ def network_sociability(cfg: PlotConfig) -> go.Figure:
 
 	Visualizes hierarchy and aggression where node size represents ranking
 	and edges represent the sum of chasing events in a directional fashion.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 	connections = auxfun_plots.prep_network_sociability(cfg.store, cfg.animals, cfg.days_range)
 
 	return plot_factory.plot_network_graph(
-		connections, None, cfg.animals, cfg.animal_colors, "sociability"
+		connections, None, cfg.animals, cfg.animal_colors, "proportion_together"
 	)
 
 
@@ -384,9 +348,6 @@ def social_stability(cfg: PlotConfig) -> go.Figure:
 	Visualizes stability of a relationship of every pair across chosen days
 	based on proportional time spent together and coefficient of variation like metric
 	calculated through median absolute deviation.
-
-	Returns:
-	    A tuple containing the Plotly Figure and the processed Polars DataFrame.
 	"""
 
 	df = auxfun_plots.prep_social_stability(cfg.store, cfg.phase_type, cfg.days_range)

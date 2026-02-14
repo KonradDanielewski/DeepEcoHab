@@ -28,12 +28,17 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 					dbc.Row(
 						[
 							dbc.Col(
-								[
-									auxfun_dashboard.generate_standard_graph(
-										"metrics-polar-line", css_class="plot-500"
-									),
-								]
-							)
+								auxfun_dashboard.generate_standard_graph(
+									"cage-preference", css_class="plot-500"
+								),
+								width=6,
+							),
+							dbc.Col(
+								auxfun_dashboard.generate_standard_graph(
+									"metrics-polar-line", css_class="plot-500"
+								),
+								width=6,
+							),
 						]
 					),
 					# Ranking, network graph, chasings

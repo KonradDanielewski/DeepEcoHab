@@ -131,7 +131,7 @@ def prep_ranking_over_time(store: dict[str, pl.DataFrame], days_range: list[int]
 	df = (
 		store["ranking"]
 		.lazy()
-		.filter(pl.col('day').is_between(*days_range))
+		.filter(pl.col("day").is_between(*days_range))
 		.sort("datetime")
 		.group_by("day", "hour", "animal_id", "datetime", maintain_order=True)
 		.agg(pl.when(pl.first("day") == 1).then(pl.first("ordinal")).otherwise(pl.last("ordinal")))
@@ -140,14 +140,15 @@ def prep_ranking_over_time(store: dict[str, pl.DataFrame], days_range: list[int]
 	return df
 
 
-def prep_ranking_day_stability(store: dict[str, pl.DataFrame], days_range: list[int]) -> pl.DataFrame:
+def prep_ranking_day_stability(
+	store: dict[str, pl.DataFrame], days_range: list[int]
+) -> pl.DataFrame:
 	"""Prepare daily dominance ranking using the last hour of each day."""
 	ranking = store["ranking"]
 	daily_rank = (
-		ranking
-		.lazy()
-		.filter(pl.col('day').is_between(*days_range))
-  		.group_by(["day", "animal_id"])
+		ranking.lazy()
+		.filter(pl.col("day").is_between(*days_range))
+		.group_by(["day", "animal_id"])
 		.agg(pl.col("ordinal").last())
 		.with_columns(
 			pl.col("ordinal").rank(method="average", descending=True).over("day").alias("rank")
@@ -252,7 +253,7 @@ def prep_polar_df(
 	df = (
 		df.with_columns((pl.col(columns) - pl.mean(columns)) / pl.std(columns))
 		.unpivot(index="animal_id", variable_name="metric")
-		.collect(engine="in-memory")
+		.collect()
 	)
 
 	return df
@@ -354,8 +355,13 @@ def prep_chasings_heatmap(
 		store["chasings_df"]
 		.lazy()
 		.sort("chased", "chaser")
-		.filter(pl.col("phase").is_in(phase_type), pl.col("day").is_between(*days_range))
-		.group_by(["chaser", "chased"], maintain_order=True)
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(*days_range),
+		)
+		.group_by("day", "chaser", "chased")
+		.agg(pl.sum("chasings"))
+		.group_by("chaser", "chased", maintain_order=True)
 		.agg(agg_func)
 		.join(join_df, on=["chaser", "chased"], how="right")
 		.collect(engine="in-memory")
@@ -679,7 +685,7 @@ def prep_network_sociability(
 		.lazy()
 		.filter(pl.col("day").is_between(*days_range))
 		.group_by("animal_id", "animal_id_2")
-		.agg(pl.sum("sociability"))
+		.agg(pl.sum("proportion_together"))
 		.join(
 			join_df,
 			left_on=["animal_id", "animal_id_2"],
@@ -731,6 +737,30 @@ def prep_social_stability(
 			pl.median("proportion_together"),
 		)
 		.sort("animal_id")
+	).collect(engine="in-memory")
+
+	return df
+
+
+def prep_cage_preference(
+	store: dict[str, pl.DataFrame],
+	phase_type: list[str],
+	days_range: list[int, int],
+) -> pl.DataFrame:
+	"""Return a dataframe showing cage preference of the cohort"""
+	df = (
+		store["activity_df"]
+		.lazy()
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(*days_range),
+		)
+		.with_columns(
+			pl.col("position").cast(pl.String),
+			pl.col("time_in_position") / 3600,
+		)
+		.filter(pl.col("position").str.contains("cage"))
+		.sort("position")
 	).collect(engine="in-memory")
 
 	return df
