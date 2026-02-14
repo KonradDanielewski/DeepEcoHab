@@ -369,7 +369,7 @@ def generate_download_block() -> dbc.Modal:
 	return modal
 
 
-def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str]):
+def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]):
 	return html.Div(
 		[
 			html.Div("MENU", className="sidebar-label"),
@@ -378,13 +378,13 @@ def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str]):
 					dcc.Link(
 						html.Button(
 							html.I(className=icon_map.get(page["relative_path"], "fas fa-file")),
-							title="",
+							title=tooltip,
 							className="icon-btn",
 						),
 						href=page["relative_path"],
 						className="nav-link-wrapper",
 					)
-					for page in page_registry.values()
+					for page, tooltip in zip(page_registry.values(), tooltips)
 				],
 				className="tab-buttons",
 			),

@@ -2,14 +2,16 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
-from deepecohab.utils.auxfun_dashboard import generate_sidebar
-from deepecohab.utils.cache_config import background_manager
+from deepecohab.utils import (
+	auxfun_dashboard,
+	cache_config,
+)
 
 app = dash.Dash(
 	__name__,
 	use_pages=True,
 	suppress_callback_exceptions=True,
-	background_callback_manager=background_manager,
+	background_callback_manager=cache_config.background_manager,
 	external_stylesheets=[
 		"/assets/styles.css",
 		dbc.icons.FONT_AWESOME,
@@ -24,10 +26,12 @@ icon_map = {
 	"/group_dashboard": "fas fa-chart-column",
 }
 
+tooltips = ["Home", "Analysis", "Cohort Dashboard", "Group Dashboard"]
+
 app.layout = html.Div(
 	[
 		dcc.Location(id="url", refresh=False),
-		generate_sidebar(icon_map, dash.page_registry),
+		auxfun_dashboard.generate_sidebar(icon_map, dash.page_registry, tooltips),
 		html.Div(
 			[
 				dbc.Container(
