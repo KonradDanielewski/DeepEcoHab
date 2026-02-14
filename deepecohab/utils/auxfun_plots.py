@@ -36,7 +36,7 @@ def color_sampling(
 	values: list[str], cmap: str = "Phase"
 ) -> list[str]:  # TODO: Expose the cmap choice to the dashboard
 	"""Samples colors from a colormap for given values."""
-	x = np.linspace(0, 1, len(values))
+	x = np.linspace(0, 1, len(values) + 1) # TODO: Temporary fix until we have a default color map with same colors but non-cyclical
 	colors: list[str] = px.colors.sample_colorscale(cmap, x)
 
 	return colors
