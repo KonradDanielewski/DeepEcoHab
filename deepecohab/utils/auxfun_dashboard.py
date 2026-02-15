@@ -28,8 +28,6 @@ def generate_settings_block(
 	comparison_layout: bool = False,
 ) -> html.Div:
 	"""Generates settings block for the dashboard tabs"""
-	if isinstance(slider_id, dict):
-		slider_id = 'days'
 	block = html.Div(
 		[
 			html.Div(
@@ -62,13 +60,35 @@ def generate_settings_block(
 							)
 						],
 					),
+					*(
+						[
+							html.Div(className="divider"),
+							html.Div(
+								dcc.RadioItems(
+									id=slider_switch_id,
+									options=[
+										{"label": "Range", "value": f"{slider_id}_range"},
+										{"label": "Single", "value": f"{slider_id}_single"},
+									],
+									value=f"{slider_id}_range",
+									className="dash-radio",
+								),
+							),
+						]
+						if not comparison_layout
+						else []
+					),
 					html.Div(className="divider"),
 					html.Div(
-						id=f"{slider_id}_range_container" if isinstance(slider_id, str) else slider_id[0],
+						id=f"{slider_id}_range_container"
+						if isinstance(slider_id, str)
+						else slider_id[0],
 						children=[
 							html.Label("Days of experiment", className="slider-label"),
 							dcc.RangeSlider(
-								id=f"{slider_id}_range" if isinstance(slider_id, str) else slider_id[1],
+								id=f"{slider_id}_range"
+								if isinstance(slider_id, str)
+								else slider_id[1],
 								min=days_range[0],
 								max=days_range[1],
 								value=[*days_range],
@@ -149,27 +169,6 @@ def generate_settings_block(
 					),
 					*(
 						[
-							html.Div(
-								id={
-									"container": slider_switch_id["type"],
-									"side": slider_switch_id["side"],
-								},
-								hidden=True,
-								className="flex-container",
-								children=[
-									html.Div(
-										dcc.RadioItems(
-											id=slider_switch_id,
-											options=[
-												{"label": "Range", "value": f"{slider_id}_range"},
-												{"label": "Single", "value": f"{slider_id}_single"},
-											],
-											value=f"{slider_id}_range",
-											className="dash-radio",
-										),
-									),
-								],
-							),
 							html.Div(className="divider"),
 							html.Div(
 								id={
@@ -300,7 +299,10 @@ def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
 			generate_settings_block(
 				phase_type_id={"type": "phase_type", "side": side},
 				aggregate_stats_id={"type": "agg_switch", "side": side},
-				slider_id=[{"type": "days_range_container", "side": side}, {"type": "days_range", "side": side}],
+				slider_id=[
+					{"type": "days_range_container", "side": side},
+					{"type": "days_range", "side": side},
+				],
 				slider_switch_id={"type": "slider_switch", "side": side},
 				days_range=days_range,
 				position_switch_id={"type": "position_switch", "side": side},
