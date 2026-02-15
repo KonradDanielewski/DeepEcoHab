@@ -18,6 +18,7 @@ def generate_settings_block(
 	phase_type_id: dict | str,
 	aggregate_stats_id: dict | str,
 	slider_id: dict | str,
+	slider_switch_id: dict | str,
 	days_range: list[int],
 	position_switch_id: dict | str | None = None,
 	pairwise_switch_id: dict | str | None = None,
@@ -27,6 +28,8 @@ def generate_settings_block(
 	comparison_layout: bool = False,
 ) -> html.Div:
 	"""Generates settings block for the dashboard tabs"""
+	if isinstance(slider_id, dict):
+		slider_id = 'days'
 	block = html.Div(
 		[
 			html.Div(
@@ -61,13 +64,15 @@ def generate_settings_block(
 					),
 					html.Div(className="divider"),
 					html.Div(
-						[
+						id=f"{slider_id}_range_container" if isinstance(slider_id, str) else slider_id[0],
+						children=[
 							html.Label("Days of experiment", className="slider-label"),
 							dcc.RangeSlider(
-								id=slider_id,
+								id=f"{slider_id}_range" if isinstance(slider_id, str) else slider_id[1],
 								min=days_range[0],
 								max=days_range[1],
 								value=[*days_range],
+								pushable=1,
 								step=1,
 								marks={i: str(i) for i in days_range},
 								tooltip={
@@ -84,6 +89,34 @@ def generate_settings_block(
 							),
 						],
 						className="flex-container",
+						hidden=False,
+					),
+					html.Div(
+						id=f"{slider_id}_single_container",
+						children=[
+							html.Label("Days of experiment", className="slider-label"),
+							dcc.Slider(
+								id=f"{slider_id}_single",
+								min=days_range[0],
+								max=days_range[1],
+								value=days_range[0],
+								step=1,
+								marks={i: str(i) for i in days_range},
+								tooltip={
+									"placement": "bottom",
+									"always_visible": True,
+								},
+								updatemode="mouseup",
+								included=False,
+								vertical=False,
+								persistence=True,
+								persistence_type="session",
+								allow_direct_input=False,
+								className="dash-slider",
+							),
+						],
+						className="flex-container",
+						hidden=True,
 					),
 					# Conditional block
 					*(
@@ -116,6 +149,27 @@ def generate_settings_block(
 					),
 					*(
 						[
+							html.Div(
+								id={
+									"container": slider_switch_id["type"],
+									"side": slider_switch_id["side"],
+								},
+								hidden=True,
+								className="flex-container",
+								children=[
+									html.Div(
+										dcc.RadioItems(
+											id=slider_switch_id,
+											options=[
+												{"label": "Range", "value": f"{slider_id}_range"},
+												{"label": "Single", "value": f"{slider_id}_single"},
+											],
+											value=f"{slider_id}_range",
+											className="dash-radio",
+										),
+									),
+								],
+							),
 							html.Div(className="divider"),
 							html.Div(
 								id={
@@ -246,7 +300,8 @@ def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
 			generate_settings_block(
 				phase_type_id={"type": "phase_type", "side": side},
 				aggregate_stats_id={"type": "agg_switch", "side": side},
-				slider_id={"type": "days_range", "side": side},
+				slider_id=[{"type": "days_range_container", "side": side}, {"type": "days_range", "side": side}],
+				slider_switch_id={"type": "slider_switch", "side": side},
 				days_range=days_range,
 				position_switch_id={"type": "position_switch", "side": side},
 				pairwise_switch_id={"type": "pairwise_switch", "side": side},
@@ -392,12 +447,14 @@ def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], to
 	)
 
 
-def generate_standard_graph(graph_id: str, css_class: str = "plot-450") -> html.Div:
+def generate_standard_graph(graph_id: str, css_class: str = "plot-450", **kwargs) -> html.Div:
 	"""Generate Div that contains graph and corresponding data"""
+	animate = kwargs.get("animate", False)
 	return html.Div(
 		[
 			dcc.Graph(
 				id={"type": "graph", "name": graph_id},
+				animate=animate,
 				className=css_class,
 				config=COMMON_CFG,
 			),

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 import dash
 import plotly.graph_objects as go
@@ -65,6 +65,7 @@ def render_graphs_layout(cfg):
 	Output({"type": "graph", "name": MATCH}, "figure"),
 	[
 		Input("days_range", "value"),
+		Input("days_single", "value"),
 		Input("phase_type", "value"),
 		Input("agg_switch", "value"),
 		Input("position_switch", "value"),
@@ -76,6 +77,7 @@ def render_graphs_layout(cfg):
 )
 def update_plots(
 	days_range: list[int],
+	days_single: int,
 	phase_type: str,
 	agg_switch: str,
 	pos_switch: str,
@@ -87,8 +89,15 @@ def update_plots(
 	plot_name: str = ctx.outputs_grouping["id"]["name"]
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(plot_name)
 
-	if ctx.triggered_id is not None and ctx.triggered_id not in plot_attributes:
+	check_id = "days_range" if ctx.triggered_id == "days_single" else ctx.triggered_id
+
+	if check_id is not None and check_id not in plot_attributes:
 		return no_update
+
+	if ctx.triggered_id == "days_range":
+		pass
+	else:
+		days_range = [days_single, days_single]
 
 	phase_list: list[str] = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
 
@@ -127,6 +136,7 @@ def update_plots(
 		Output({"container": "pairwise_switch", "side": MATCH}, "hidden"),
 		Output({"container": "sociability_switch", "side": MATCH}, "hidden"),
 		Output({"container": "ranking_switch", "side": MATCH}, "hidden"),
+		Output({"container": "slider_switch", "side": MATCH}, "hidden"),
 	],
 	Input({"type": ALL, "side": MATCH}, "value"),
 	State("project-config-store", "data"),
@@ -137,7 +147,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 		item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches)
 	}
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(input_dict["plot-dropdown"])
-
+ 
 	phase_type: list[str] = (
 		[input_dict["phase_type"]]
 		if not input_dict["phase_type"] == "all"
@@ -180,6 +190,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 		pairwise_hidden,
 		sociability_hidden,
 		ranking_hidden,
+		True,
 	)
 
 
@@ -264,3 +275,26 @@ def download_comparison_data(btn_click: int, figure: dict, plot_type: str) -> di
 	plot_name = f"comparison_{plot_type}"
 	fname, content = auxfun_dashboard.get_plot_file(figure, triggered["fmt"], plot_name)
 	return dcc.send_bytes(lambda b: b.write(content), filename=fname)
+
+
+@callback(
+	[
+		Output("days_range_container", "hidden"),
+		Output("days_single_container", "hidden"),
+	],
+	Input("slider_switch", "value"),
+)
+def toggle_slider_visibility(mode: Literal["days_range", "days_single"]):
+	if mode == "days_range":
+		return False, True
+	return True, False
+
+
+@callback(
+	[Output("agg_switch", "disabled"), Output("agg_switch", "className")],
+	Input("days_single_container", "hidden"),
+)
+def disable_agg_switch(is_single_hidden):
+	if is_single_hidden:
+		return False, "dash-radio"
+	return True, "dash-radio switch-disabled"

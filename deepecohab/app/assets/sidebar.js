@@ -10,7 +10,7 @@ function waitForSidebar() {
 
     const rect = sidebar.getBoundingClientRect();
 
-    if (e.clientX <= 10) {
+    if (e.clientX <= 25) {
       sidebar.classList.add("visible");
     } else if (
       e.clientX > 100 || 

@@ -341,7 +341,7 @@ def calculate_chasings(
 
 
 @df_registry.register("tube_test_df")
-def calculate_tube_tests(
+def calculate_tube_test(
 	config_path: str | Path | dict,
 	winner_behavior: Literal["CHASE", "GUARD", "BOTH"] = "BOTH",
 	overwrite: bool = False,
@@ -363,10 +363,10 @@ def calculate_tube_tests(
 	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "tube_test_df"
 
-	tube_tests: pl.LazyFrame | None = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	tube_test: pl.LazyFrame | None = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
-	if isinstance(tube_tests, pl.LazyFrame):
-		return tube_tests
+	if isinstance(tube_test, pl.LazyFrame):
+		return tube_test
 
 	results_path = Path(cfg["project_location"]) / "results"
 
@@ -411,11 +411,11 @@ def calculate_tube_tests(
 			pl.col("next_position") != pl.col("next_position_winner"),
 		)
 
-	tube_tests = (
+	tube_test = (
 		intermediate.group_by(
 			["phase", "day", "phase_count", "hour", "animal_id", "animal_id_winner"]
 		)
-		.len(name="tube_tests")
+		.len(name="tube_test")
 		.rename({"animal_id": "loser", "animal_id_winner": "winner"})
 	)
 	
@@ -430,23 +430,23 @@ def calculate_tube_tests(
 		orient="row",
 	)
 
-	time_grid = tube_tests.select("phase", "day", "phase_count").unique()
+	time_grid = tube_test.select("phase", "day", "phase_count").unique()
 
 	full_grid = time_grid.join(pairs_df, how="cross")
 
-	tube_tests = full_grid.join(
-		tube_tests,
+	tube_test = full_grid.join(
+		tube_test,
 		on=["phase", "day", "phase_count", "winner", "loser"],
 		how="left",
 	).fill_null(0)
 
 
 	if save_data:
-		tube_tests.sink_parquet(
+		tube_test.sink_parquet(
 			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
 		)
 
-	return tube_tests
+	return tube_test
 
 
 @df_registry.register("time_alone")

@@ -280,7 +280,7 @@ def plot_ranking_stability(
 	fig = go.Figure(
 		layout=dict(
 			title_x=0.5,
-			title="<b>Daily dominance rank Trajectories</b>",
+			title="<b>Daily dominance rank trajectories</b>",
 			legend_title_text="<b>Animal ID</b>",
 			yaxis=dict(
 				title="<b>Rank</b>",
@@ -341,11 +341,22 @@ def time_spent_per_cage(
 	return fig
 
 
-def plot_chasings_heatmap(
+def plot_heatmap(
 	img: np.ndarray,
 	animals: list[str],
+	input_type: Literal["chasings", "tube_test"],
 ) -> go.Figure:
 	"""Plots heatmap for number of chasings."""
+	match input_type:
+		case "chasings":
+			title = "<b>Chasings</b>"
+			hover_x = "Chaser: %{x}"
+			hover_y = "Chased: %{y}"
+		case "tube_test":
+			title = "<b>Spontaneous tube-test</b>"
+			hover_x = "Winner: %{x}"
+			hover_y = "Loser: %{y}"
+
 	z_label = "Number: %{z}"
 
 	fig = px.imshow(
@@ -354,14 +365,14 @@ def plot_chasings_heatmap(
 		y=animals,
 		zmin=0,
 		color_continuous_scale="Viridis",
-		title="<b>Number of chasings</b>",
+		title=title,
 	)
 
 	fig.update_traces(
 		hovertemplate="<br>".join(
 			[
-				"Chaser: %{x}",
-				"Chased: %{y}",
+				hover_x,
+				hover_y,
 				z_label,
 			]
 		)

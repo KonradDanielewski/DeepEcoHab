@@ -12,7 +12,8 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 				auxfun_dashboard.generate_settings_block(
 					phase_type_id="phase_type",
 					aggregate_stats_id="agg_switch",
-					slider_id="days_range",
+					slider_id="days",
+					slider_switch_id="slider_switch",
 					position_switch_id="position_switch",
 					pairwise_switch_id="pairwise_switch",
 					ranking_switch_id="ranking_switch",
@@ -64,26 +65,22 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 							dbc.Col(
 								[
 									auxfun_dashboard.generate_standard_graph(
-										"ranking-line", css_class="plot-400"
+										"ranking-line", css_class="plot-350"
+									),
+									auxfun_dashboard.generate_standard_graph(
+										"ranking-distribution-line", css_class="plot-300"
 									),
 								],
-								width=4,
+								width=6,
 							),
 							dbc.Col(
 								[
 									auxfun_dashboard.generate_standard_graph(
-										"ranking-distribution-line", css_class="plot-400"
+										"network-dominance",
+										css_class="plot-650",
 									),
 								],
-								width=4,
-							),
-							dbc.Col(
-								[
-									auxfun_dashboard.generate_standard_graph(
-										"network-dominance", css_class="plot-400"
-									),
-								],
-								width=4,
+								width=6,
 							),
 						],
 						className="gx-3 gy-0",
@@ -91,12 +88,16 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 					dbc.Row(
 						[
 							dbc.Col(
+								auxfun_dashboard.generate_standard_graph("tube-test-heatmap"),
+								width=3,
+							),
+							dbc.Col(
 								auxfun_dashboard.generate_standard_graph("chasings-heatmap"),
-								width=4,
+								width=3,
 							),
 							dbc.Col(
 								auxfun_dashboard.generate_standard_graph("chasings-line"),
-								width=8,
+								width=6,
 							),
 						],
 						className="gx-3 gy-0",
@@ -177,7 +178,8 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 							),
 							dbc.Col(
 								auxfun_dashboard.generate_standard_graph(
-									"network-sociability", css_class="plot-600"
+									"network-sociability",
+									css_class="plot-600",
 								),
 								width=6,
 							),

@@ -122,7 +122,11 @@ def create_node_trace(
 		node_trace["text"] += ("<b>" + node + "</b>",)
 		ranking_score = score if score > 0 else 0.1
 		ranking_score_list.append(ranking_score)
-		node_trace["hovertext"] += (f"Mouse ID: {node}<br>Ranking: {ranking_score}",) if include_ranking else (f"Mouse ID: {node}",)
+		node_trace["hovertext"] += (
+			(f"Mouse ID: {node}<br>Ranking: {ranking_score}",)
+			if include_ranking
+			else (f"Mouse ID: {node}",)
+		)
 
 	node_trace["marker"]["color"] = colors
 	node_trace["marker"]["size"] = [rank for rank in ranking_score_list]
@@ -770,3 +774,51 @@ def prep_cage_preference(
 	).collect(engine="in-memory")
 
 	return df
+
+
+def prep_tube_test_heatmap(
+	store: dict[str, pl.DataFrame],
+	animals: list[str],
+	days_range: list[int, int],
+	phase_type: list[str],
+	agg_switch: Literal["mean", "sum"],
+) -> np.ndarray:
+	"""Pivot tube test-like encounters into a winner-vs-loser matrix for heatmap visualization."""
+	join_df = pl.LazyFrame(
+		(product(animals, animals)),
+		schema=[
+			("loser", pl.Enum(animals)),
+			("winner", pl.Enum(animals)),
+		],
+	)
+
+	match agg_switch:
+		case "sum":
+			agg_func = pl.when(pl.len() > 0).then(pl.sum("tube_tests")).alias("sum")
+		case "mean":
+			agg_func = pl.mean("tube_tests").round(2).alias("mean")
+
+	img = (
+		store["tube_test_df"]
+		.lazy()
+		.sort("loser", "winner")
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(*days_range),
+		)
+		.group_by("day", "winner", "loser")
+		.agg(pl.sum("tube_tests"))
+		.group_by("winner", "loser", maintain_order=True)
+		.agg(agg_func)
+		.join(join_df, on=["winner", "loser"], how="right")
+		.collect(engine="in-memory")
+		.pivot(
+			on="winner",
+			index="loser",
+			values=agg_switch,
+		)
+		.drop("loser")
+		.select(animals)
+	)
+
+	return img.to_numpy()

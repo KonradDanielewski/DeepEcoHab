@@ -25,6 +25,7 @@ class PlotConfig:
 
 	store: dict | None = None
 	days_range: list[int] | None = None
+	days_single: int | None = None # NOTE: compatibility for slider / range slider - find better solution on frontend
 	phase_type: list[str] | None = None
 	agg_switch: Literal["sum", "mean"] | None = None
 	position_switch: Literal["visits", "time"] | None = None
@@ -85,6 +86,21 @@ def cage_preference(cfg: PlotConfig) -> go.Figure:
 
 
 @plot_registry.register(
+	"metrics-polar-line",
+	dependencies=["store", "days_range", "phase_type", "animals", "animal_colors"],
+)
+def polar_metrics(cfg: PlotConfig) -> go.Figure:
+	"""Generates a polar (radar) plot comparing various social dominance metrics.
+
+	Visualizes z-scored values for chasing behavior, activity levels, and social
+	proximity (time alone vs. together) for each animal on a unified circular scale.
+	"""
+	df = auxfun_plots.prep_polar_df(cfg.store, cfg.days_range, cfg.phase_type)
+
+	return plot_factory.plot_metrics_polar(df, cfg.animals, cfg.animal_colors)
+
+
+@plot_registry.register(
 	"ranking-line",
 	dependencies=["store", "days_range", "animals", "animal_colors", "ranking_switch"],
 )
@@ -99,21 +115,6 @@ def ranking_over_time(cfg: PlotConfig) -> go.Figure:
 		case "stability":
 			df = auxfun_plots.prep_ranking_day_stability(cfg.store, cfg.days_range)
 			return plot_factory.plot_ranking_stability(df, cfg.animals, cfg.animal_colors)
-
-
-@plot_registry.register(
-	"metrics-polar-line",
-	dependencies=["store", "days_range", "phase_type", "animals", "animal_colors"],
-)
-def polar_metrics(cfg: PlotConfig) -> go.Figure:
-	"""Generates a polar (radar) plot comparing various social dominance metrics.
-
-	Visualizes z-scored values for chasing behavior, activity levels, and social
-	proximity (time alone vs. together) for each animal on a unified circular scale.
-	"""
-	df = auxfun_plots.prep_polar_df(cfg.store, cfg.days_range, cfg.phase_type)
-
-	return plot_factory.plot_metrics_polar(df, cfg.animals, cfg.animal_colors)
 
 
 @plot_registry.register(
@@ -149,6 +150,24 @@ def network_dominance(cfg: PlotConfig) -> go.Figure:
 
 
 @plot_registry.register(
+	"tube-test-heatmap",
+	dependencies=["store", "animals", "days_range", "phase_type", "agg_switch"],
+)
+def chasings_heatmap(cfg: PlotConfig) -> go.Figure:
+	"""Generates a chaser-vs-chased interaction heatmap.
+
+	Displays a matrix of agonistic interactions, where rows and columns represent
+	individual animals and cells show the sum or mean of chasing events. Columns
+	represent Chasers and rows represent Chased.
+	"""
+	img = auxfun_plots.prep_tube_test_heatmap(
+		cfg.store, cfg.animals, cfg.days_range, cfg.phase_type, cfg.agg_switch
+	)
+
+	return plot_factory.plot_heatmap(img, cfg.animals, input_type="tube_test")
+
+
+@plot_registry.register(
 	"chasings-heatmap",
 	dependencies=["store", "animals", "days_range", "phase_type", "agg_switch"],
 )
@@ -163,7 +182,7 @@ def chasings_heatmap(cfg: PlotConfig) -> go.Figure:
 		cfg.store, cfg.animals, cfg.days_range, cfg.phase_type, cfg.agg_switch
 	)
 
-	return plot_factory.plot_chasings_heatmap(img, cfg.animals)
+	return plot_factory.plot_heatmap(img, cfg.animals, input_type="chasings")
 
 
 @plot_registry.register(

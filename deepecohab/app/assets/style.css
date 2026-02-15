@@ -172,9 +172,23 @@ p,
   color: #e0e6f0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   width: fit-content;
   text-align: left;
+  transition: opacity 0.3s ease;
+  margin-right: 0px;
+  margin-left: 0px;
+}
+
+.dash-radio.switch-disabled {
+  opacity: 0.4;
+  pointer-events: none; 
+  cursor: not-allowed;
+}
+
+.dash-radio.switch-disabled input[type="radio"],
+.dash-radio.switch-disabled label {
+  cursor: not-allowed !important;
 }
 
 .dash-radio>div {
@@ -187,11 +201,11 @@ p,
 .dash-radio input[type="radio"] {
   appearance: none;
   -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  border: 2px solid #4fc3f7;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #4fc3f7;
   border-radius: 50%;
-  margin-right: 8px;
+  margin-right: 15px;
   position: relative;
   cursor: pointer;
   flex-shrink: 0;
@@ -203,15 +217,15 @@ p,
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0);
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background-color: #4fc3f7;
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .dash-radio input[type="radio"]:checked {
-  box-shadow: 0 0 8px rgba(79, 195, 247, 0.6);
+  box-shadow: 0 0 6px rgba(79, 195, 247, 0.6);
 }
 
 .dash-radio input[type="radio"]:checked::after {
@@ -225,7 +239,9 @@ p,
   cursor: pointer;
   width: fit-content;
   white-space: nowrap;
-  color: #ffffff
+  color: #ffffff;
+  font-size: 0.90rem;
+  font-weight: bold;
 }
 
 .dash-radio input[type="radio"]:hover {
@@ -562,8 +578,9 @@ a:hover {
 .divider {
   width: 1px;
   background-color: #5a6b8c;
-  height: 40px;
-  margin: 0 20px;
+  height: 70px;
+  margin-left: 0px;
+  margin-right: 0px;
 }
 
 .slider-label {
@@ -599,6 +616,14 @@ a:hover {
 }
 
 /* Graph sizing */
+.plot-300 {
+  height: 300px !important;
+}
+
+.plot-350 {
+  height: 350px !important;
+}
+
 .plot-500 {
   height: 500px !important;
 }
@@ -609,6 +634,14 @@ a:hover {
 
 .plot-600 {
   height: 600px !important;
+}
+
+.plot-650 {
+  height: 600px !important;
+}
+
+.plot-700 {
+  height: 700px !important;
 }
 
 .plot-800 {
