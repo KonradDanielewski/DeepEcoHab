@@ -476,10 +476,12 @@ def plot_network_graph(
 			edge_weight = "chasings"
 			graph = nx.DiGraph
 			title = "<b>Dominance network graph</b>"
+			include_ranking = True
 		case "proportion_together":
 			edge_weight = "proportion_together"
 			graph = nx.Graph
 			title = "<b>Sociability network graph</b>"
+			include_ranking = False
 
 	G = nx.from_pandas_edgelist(connections, create_using=graph, edge_attr=edge_weight)
 	pos = nx.spring_layout(G, k=0.1, iterations=200, seed=42, weight=edge_weight, method="energy")
@@ -489,11 +491,11 @@ def plot_network_graph(
 			case "chasings":
 				ordinal = nodes.filter(pl.col("animal_id") == animal).select("ordinal").item()
 			case "proportion_together":
-				ordinal = 20
+				ordinal = 30
 		pos[animal] = np.append(pos[animal], ordinal)
 
 	edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_weight=edge_weight)
-	node_trace = auxfun_plots.create_node_trace(pos, colors, animals)
+	node_trace = auxfun_plots.create_node_trace(pos, colors, animals, include_ranking)
 
 	fig = go.Figure(
 		data=edge_trace + [node_trace],

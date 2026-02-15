@@ -69,7 +69,6 @@ def generate_settings_block(
 								max=days_range[1],
 								value=[*days_range],
 								step=1,
-								count=1,
 								marks={i: str(i) for i in days_range},
 								tooltip={
 									"placement": "bottom",
@@ -135,7 +134,7 @@ def generate_settings_block(
 												{"label": "Time", "value": "time"},
 											],
 											value="visits",
-											className="dash-radio"
+											className="dash-radio",
 										),
 									),
 								],
@@ -157,7 +156,7 @@ def generate_settings_block(
 												{"label": "Time", "value": "time_together"},
 											],
 											value="pairwise_encounters",
-											className="dash-radio"
+											className="dash-radio",
 										),
 									),
 								],
@@ -185,7 +184,7 @@ def generate_settings_block(
 												},
 											],
 											value="proportion_together",
-											className="dash-radio"
+											className="dash-radio",
 										),
 									),
 								],
@@ -207,7 +206,7 @@ def generate_settings_block(
 												{"label": "Day stability", "value": "stability"},
 											],
 											value="intime",
-											className="dash-radio"
+											className="dash-radio",
 										),
 									),
 								],

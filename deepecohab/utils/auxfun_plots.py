@@ -94,6 +94,7 @@ def create_node_trace(
 	pos: dict[str, list[float]],
 	colors: list[str],
 	animals: list[str],
+	include_ranking: bool,
 ) -> go.Scatter:
 	"""Auxfun to create node trace"""
 	node_trace = go.Scatter(
@@ -121,7 +122,7 @@ def create_node_trace(
 		node_trace["text"] += ("<b>" + node + "</b>",)
 		ranking_score = score if score > 0 else 0.1
 		ranking_score_list.append(ranking_score)
-		node_trace["hovertext"] += (f"Mouse ID: {node}<br>Ranking: {ranking_score}",)
+		node_trace["hovertext"] += (f"Mouse ID: {node}<br>Ranking: {ranking_score}",) if include_ranking else (f"Mouse ID: {node}",)
 
 	node_trace["marker"]["color"] = colors
 	node_trace["marker"]["size"] = [rank for rank in ranking_score_list]
@@ -351,7 +352,7 @@ def prep_chasings_heatmap(
 		case "sum":
 			agg_func = pl.when(pl.len() > 0).then(pl.sum("chasings")).alias("sum")
 		case "mean":
-			agg_func = pl.mean("chasings").alias("mean")
+			agg_func = pl.mean("chasings").round(2).alias("mean")
 
 	img = (
 		store["chasings_df"]
@@ -419,7 +420,7 @@ def prep_chasings_line(
 		.group_by("hour", "chaser")
 		.agg(
 			pl.sum("chasings").alias("total"),
-			pl.mean("chasings").alias("mean"),
+			pl.mean("chasings").alias("mean").round(2),
 			(pl.std("chasings") / math.sqrt(n_days)).alias("sem"),
 		)
 		.with_columns(
@@ -493,7 +494,7 @@ def prep_activity_line(
 		.group_by("hour", "animal_id")
 		.agg(
 			pl.sum("n_detections").alias("total"),
-			pl.mean("n_detections").alias("mean"),
+			pl.mean("n_detections").alias("mean").round(2),
 			(pl.std("n_detections") / math.sqrt(n_days)).alias("sem"),
 		)
 		.with_columns(
@@ -531,9 +532,9 @@ def prep_time_per_cage(
 
 	match agg_switch:
 		case "sum":
-			agg_func = (pl.sum("time_spent"),)
+			agg_func = pl.sum("time_spent")
 		case "mean":
-			agg_func = (pl.mean("time_spent"),)
+			agg_func = pl.mean("time_spent").round(2)
 
 	img = (
 		store["cage_occupancy"]
@@ -581,7 +582,7 @@ def prep_pairwise_sociability(
 	img = (
 		store["pairwise_meetings"]
 		.lazy()
-		.with_columns(pl.col(pairwise_switch).round(2))
+		.with_columns(pl.col(pairwise_switch))
 		.filter(
 			pl.col("phase").is_in(phase_type),
 			pl.col("day").is_between(*days_range),
@@ -589,7 +590,7 @@ def prep_pairwise_sociability(
 		.group_by(["animal_id", "animal_id_2", "position"], maintain_order=True)
 		.agg(
 			pl.sum(pairwise_switch).alias("sum"),
-			pl.mean(pairwise_switch).alias("mean"),
+			pl.mean(pairwise_switch).alias("mean").round(2),
 		)
 		.join(
 			join_df,
@@ -632,7 +633,7 @@ def prep_within_cohort_sociability(
 			pl.col("day").is_between(*days_range),
 		)
 		.group_by(["animal_id", "animal_id_2"], maintain_order=True)
-		.agg(pl.mean(sociability_switch).alias("mean"))
+		.agg(pl.mean(sociability_switch).round(2).alias("mean"))
 		.join(
 			join_df,
 			on=["animal_id", "animal_id_2"],
@@ -735,8 +736,9 @@ def prep_social_stability(
 				)  # avoid div by 0 and hence NaN stability
 			)
 			.clip(0, 1)
+			.round(2)
 			.alias("stability"),
-			pl.median("proportion_together"),
+			pl.median("proportion_together").round(2),
 		)
 		.sort("animal_id")
 	).collect(engine="in-memory")
