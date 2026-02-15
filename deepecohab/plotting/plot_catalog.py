@@ -25,7 +25,7 @@ class PlotConfig:
 
 	store: dict | None = None
 	days_range: list[int] | None = None
-	days_single: int | None = None # NOTE: compatibility for slider / range slider - find better solution on frontend
+	days_single: int | None = None # TODO: compatibility for slider / range slider - find better solution on frontend
 	phase_type: list[str] | None = None
 	agg_switch: Literal["sum", "mean"] | None = None
 	position_switch: Literal["visits", "time"] | None = None

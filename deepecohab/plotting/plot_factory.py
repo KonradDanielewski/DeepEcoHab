@@ -26,7 +26,7 @@ def plot_activity(
 
 	match agg_switch:
 		case "sum":
-			# NOTE: Investigate inconsistent px.histogram behavior (if position and animal_id swaped it works as expected)
+			# TODO: Investigate inconsistent px.histogram behavior (if position and animal_id swaped it works as expected)
 			# Currently needs this group_by to present as necessary and px.bar
 			df = df.group_by("animal_id", "position", maintain_order=True).agg(pl.sum(type_switch))
 			fig = px.bar(
@@ -65,8 +65,7 @@ def plot_activity(
 def plot_time_alone(
 	df: pl.DataFrame, colors: list[str], agg_switch: Literal["mean", "sum"]
 ) -> go.Figure:
-	"""Plot time alone as a relative bar plot TODO: consider normalization
-	for visualization and hover info with real value"""
+	"""Plot time alone as a relative bar plot"""
 	match agg_switch:
 		case "sum":
 			fig = px.histogram(
