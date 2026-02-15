@@ -325,7 +325,11 @@ def time_spent_per_cage(
 	for annotation in fig.layout.annotations:
 		annotation["text"] = f"<b>Cage {int(annotation['text'].split('=')[1]) + 1}</b>"
 
-	fig.update_layout(xaxis=dict(title="Hour of day"), xaxis2=dict(title="Hour of day"))
+	fig.update_layout(
+		xaxis=dict(title="Hour of day"),
+		xaxis2=dict(title="Hour of day"),
+		yaxis=dict(automargin=True),
+	)
 
 	fig.update_traces(
 		hovertemplate="<br>".join(
@@ -376,6 +380,8 @@ def plot_heatmap(
 			]
 		)
 	)
+	
+	fig.update_layout(yaxis=dict(automargin=True), xaxis=dict(automargin=True))
 
 	return fig
 
@@ -417,6 +423,8 @@ def plot_sociability_heatmap(
 			]
 		)
 	)
+ 
+	fig.update_layout(yaxis=dict(automargin=True), xaxis=dict(automargin=True))
 
 	return fig
 
@@ -451,6 +459,8 @@ def plot_within_cohort_heatmap(
 			]
 		)
 	)
+ 
+	fig.update_layout(yaxis=dict(automargin=True), xaxis=dict(automargin=True))
 
 	return fig
 
@@ -526,11 +536,13 @@ def plot_network_graph(
 		showticklabels=False,
 		showgrid=False,
 		zeroline=False,
+		automargin=True
 	)
 	fig.update_yaxes(
 		showticklabels=False,
 		showgrid=False,
 		zeroline=False,
+		automargin=True
 	)
 
 	return fig

@@ -146,7 +146,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 		item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches)
 	}
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(input_dict["plot-dropdown"])
- 
+
 	phase_type: list[str] = (
 		[input_dict["phase_type"]]
 		if not input_dict["phase_type"] == "all"
@@ -289,7 +289,10 @@ def toggle_slider_visibility(mode: Literal["days_range", "days_single"]):
 
 
 @callback(
-	[Output("agg_switch", "disabled"), Output("agg_switch", "className")],
+	[
+		Output("agg_switch", "disabled"),
+		Output("agg_switch", "className"),
+	],
 	Input("days_single_container", "hidden"),
 )
 def disable_agg_switch(is_single_hidden):
