@@ -26,23 +26,27 @@ def plot_activity(
 
 	match agg_switch:
 		case "sum":
-			fig = px.histogram(
+			# NOTE: Investigate inconsistent px.histogram behavior (if position and animal_id swaped it works as expected)
+			# Currently needs this group_by to present as necessary and px.bar
+			df = df.group_by("animal_id", "position", maintain_order=True).agg(pl.sum(type_switch))
+			fig = px.bar(
 				df,
-				x="animal_id",
+				x="position",
 				y=type_switch,
-				color="position",
+				color="animal_id",
 				color_discrete_sequence=colors,
-				hover_data=["animal_id", "position", "day", type_switch],
+				hover_data=["animal_id", "position", type_switch],
 				title=position_title,
 				barmode="group",
 			)
 			fig.update_layout(barcornerradius=10)
+			fig.update_traces(marker_line_width=0)
 		case "mean":
 			fig = px.box(
 				df,
-				x="animal_id",
+				x="position",
 				y=type_switch,
-				color="position",
+				color="animal_id",
 				color_discrete_sequence=colors,
 				hover_data=["animal_id", "position", "day", type_switch],
 				title=position_title,
@@ -51,8 +55,8 @@ def plot_activity(
 			)
 			fig.update_traces(boxmean=True)
 
-	fig.update_layout(legend=dict(title="<b>Position</b>"))
-	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_layout(legend=dict(title="<b>Animal ID</b>"))
+	fig.update_xaxes(title_text="<b>Position</b>")
 	fig.update_yaxes(title_text=position_y_title)
 
 	return fig
@@ -129,7 +133,7 @@ def plot_sum_line_per_hour(
 
 	fig.update_layout(legend=dict(title=legend_title))
 	fig.update_yaxes(title=y_axes_label)
-	fig.update_xaxes(title="<b>Hours</b>", range=[0, 23])
+	fig.update_xaxes(title="<b>Hour of day</b>", range=[0, 23])
 
 	return fig
 
@@ -193,12 +197,12 @@ def plot_mean_line_per_hour(
 	fig.update_layout(
 		title=title,
 		legend=dict(
-			title="<b>Animal IDs</b>",
+			title="<b>Animal ID</b>",
 			tracegroupgap=0,
 		),
 	)
 	fig.update_yaxes(title=y_axes_label)
-	fig.update_xaxes(title="<b>Hours</b>")
+	fig.update_xaxes(title="<b>Hour of day</b>")
 
 	return fig
 
@@ -220,7 +224,7 @@ def plot_ranking_line(
 	fig.update_layout(
 		title="<b>Social dominance ranking in time</b>",
 		legend=dict(
-			title="<b>Animal IDs</b>",
+			title="<b>Animal ID</b>",
 			tracegroupgap=0,
 		),
 		xaxis=dict(title="<b>Timeline</b>"),
@@ -257,7 +261,7 @@ def plot_ranking_distribution(
 			title="<b>Probability density</b>",
 		),
 		legend=dict(
-			title="<b>Animal IDs</b>",
+			title="<b>Animal ID</b>",
 			tracegroupgap=0,
 		),
 	)
@@ -277,7 +281,7 @@ def plot_ranking_stability(
 		layout=dict(
 			title_x=0.5,
 			title="<b>Daily dominance rank Trajectories</b>",
-			legend_title_text="<b>Animal IDs</b>",
+			legend_title_text="<b>Animal ID</b>",
 			yaxis=dict(
 				title="<b>Rank</b>",
 				autorange="reversed",
@@ -321,6 +325,8 @@ def time_spent_per_cage(
 
 	for annotation in fig.layout.annotations:
 		annotation["text"] = f"<b>Cage {int(annotation['text'].split('=')[1]) + 1}</b>"
+
+	fig.update_layout(xaxis=dict(title="Hour of day"), xaxis2=dict(title="Hour of day"))
 
 	fig.update_traces(
 		hovertemplate="<br>".join(
@@ -458,7 +464,7 @@ def plot_metrics_polar(
 	)
 
 	fig.update_polars(bgcolor="rgba(0,0,0,0)")
-	fig.update_layout(title_y=0.95, legend_title_text="<b>Animal IDs</b>", title_x=0.45)
+	fig.update_layout(title_y=0.95, legend_title_text="<b>Animal ID</b>", title_x=0.45)
 
 	return fig
 

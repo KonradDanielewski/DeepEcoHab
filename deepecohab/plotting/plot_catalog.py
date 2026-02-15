@@ -195,9 +195,9 @@ def chasings_line(cfg: PlotConfig) -> go.Figure:
 		"store",
 		"days_range",
 		"phase_type",
-		"position_colors",
 		"position_switch",
 		"agg_switch",
+		"animal_colors",
 	],
 )
 def activity(cfg: PlotConfig) -> go.Figure:
@@ -208,7 +208,7 @@ def activity(cfg: PlotConfig) -> go.Figure:
 	"""
 	df = auxfun_plots.prep_activity(cfg.store, cfg.days_range, cfg.phase_type)
 
-	return plot_factory.plot_activity(df, cfg.position_colors, cfg.position_switch, cfg.agg_switch)
+	return plot_factory.plot_activity(df, cfg.animal_colors, cfg.position_switch, cfg.agg_switch)
 
 
 @plot_registry.register(
