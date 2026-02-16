@@ -6,7 +6,16 @@ from typing import Any
 import dash
 import dash_bootstrap_components as dbc
 import toml
-from dash import ALL, Input, Output, State, callback, ctx, no_update
+from dash import (
+	ALL,
+	Input,
+	Output,
+	State,
+	callback,
+	ctx,
+	no_update,
+	clientside_callback,
+)
 
 from deepecohab.app.page_layouts import home_layout
 from deepecohab.core import create_data_structure, create_project
@@ -44,29 +53,6 @@ def _get_status(idx: str, input: str) -> bool:
 dash.register_page(__name__, path="/", name="Home")
 
 layout = home_layout.generate_layout()
-
-
-@callback(
-	Output("load-project-modal", "is_open"),
-	Input("load-project", "n_clicks"),
-	State("load-project-modal", "is_open"),
-	prevent_initial_call=True,
-)
-def toggle_modal(n_clicks: int, is_open: bool) -> bool:
-	"""Opens and closes modal component for project loading"""
-	if n_clicks:
-		return not is_open
-	return is_open
-
-
-@callback(
-	Output("opt-collapse", "is_open"),
-	Input("opt-btn", "n_clicks"),
-	State("opt-collapse", "is_open"),
-	prevent_initial_call=True,
-)
-def toggle_opt(n_clicks: int, is_open: bool) -> bool:
-	return not is_open
 
 
 @callback(
@@ -113,7 +99,9 @@ def validate_and_highlight(
 @callback(
 	[
 		Output("project-config-store", "data", allow_duplicate=True),
-		Output("toast-container", "children", allow_duplicate=True),
+        Output("toast-container", "children", allow_duplicate=True),
+        Output("btn-text", "children"),
+        Output("create-project-btn", "color"),
 	],
 	Input("create-project-btn", "n_clicks"),
 	[
@@ -152,7 +140,7 @@ def _create_project(
 	min_cross: int,
 ):
 	if n_clicks == 0:
-		return no_update
+		return no_update, no_update, "Create Project", "primary"
 
 	id_list = [i.strip() for i in animals.split(",")] if animals else None
 	is_field = "field" in layouts
@@ -202,6 +190,8 @@ def _create_project(
 					duration=5000,
 					class_name="custom-toast",
 				),
+				"Success!",
+				"success",
 			)
 		else:
 			raise Exception("Couldn't create the EcoHab data structure!")
@@ -218,6 +208,8 @@ def _create_project(
 				icon="danger",
 				class_name="custom-toast",
 			),
+			"Try Again",
+			"danger",
 		]
 
 
@@ -254,7 +246,10 @@ def load_config_to_store(contents: dict[str, Any], filename: str):
 
 	except Exception as e:
 		error_toast = dbc.Toast(
-			f"Error: {str(e)}", header="Load Error", icon="danger", className="custom-toast"
+			f"Failed to load {filename}: {str(e)}",
+			header="Load Error",
+			icon="danger",
+			className="custom-toast",
 		)
 		return [no_update, True, error_toast]
 
@@ -272,7 +267,6 @@ def clear_app_cache(n_clicks: int):
 		return no_update, no_update
 
 	launch_cache.clear()
-	launch_cache.cull()
 
 	return (
 		None,
@@ -286,9 +280,26 @@ def clear_app_cache(n_clicks: int):
 	)
 
 
-@callback(
+clientside_callback(
+	dash.ClientsideFunction(namespace="clientside", function_name="is_disabled"),
 	Output("clear-session-btn", "disabled"),
 	Input("project-config-store", "data"),
 )
-def toggle_clear_button(config_data: dict[str, Any]):
-	return config_data is None or not config_data
+
+
+clientside_callback(
+	dash.ClientsideFunction(namespace="clientside", function_name="toggle_bool"),
+	Output("load-project-modal", "is_open"),
+	Input("load-project", "n_clicks"),
+	State("load-project-modal", "is_open"),
+	prevent_initial_call=True,
+)
+
+clientside_callback(
+	dash.ClientsideFunction(namespace="clientside", function_name="toggle_bool"),
+	Output("opt-collapse", "is_open"),
+	Input("opt-btn", "n_clicks"),
+	State("opt-collapse", "is_open"),
+	prevent_initial_call=True,
+)
+

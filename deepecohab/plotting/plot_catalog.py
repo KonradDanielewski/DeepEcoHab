@@ -7,7 +7,6 @@ from typing import (
 )
 
 import plotly.graph_objects as go
-import polars as pl
 
 from deepecohab.plotting import plot_factory
 from deepecohab.utils import auxfun_plots
@@ -97,7 +96,7 @@ def cage_preference_evolution(cfg: PlotConfig) -> go.Figure:
 
 @plot_registry.register(
 	"metrics-polar-line",
-	dependencies=["store", "days_range", "phase_type", "animals", "animal_colors"],
+	dependencies=["store", "days_range", "phase_type", "animal_colors"],
 )
 def polar_metrics(cfg: PlotConfig) -> go.Figure:
 	"""Generates a polar (radar) plot comparing various social dominance metrics.
@@ -107,7 +106,7 @@ def polar_metrics(cfg: PlotConfig) -> go.Figure:
 	"""
 	df = auxfun_plots.prep_polar_df(cfg.store, cfg.days_range, cfg.phase_type)
 
-	return plot_factory.plot_metrics_polar(df, cfg.animals, cfg.animal_colors)
+	return plot_factory.plot_metrics_polar(df, cfg.animal_colors)
 
 
 @plot_registry.register(

@@ -843,4 +843,26 @@ body.sidebar-open #main-content {
 
 .progress-bar {
   height: 30px;
+  transition: width 0.6s ease;
+}
+
+.progress {
+    background-color: #dee2e6 !important; 
+    border-radius: 0.25rem;
+    height: 1.5rem; 
+}
+
+#btn-text[data-dash-is-loading="true"] {
+    visibility: hidden;
+    position: relative;
+}
+
+#btn-text[data-dash-is-loading="true"]:after {
+    content: "Creating...";
+    position: absolute;
+    visibility: visible;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
 }

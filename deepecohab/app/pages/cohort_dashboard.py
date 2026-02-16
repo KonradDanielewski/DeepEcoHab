@@ -3,8 +3,21 @@ from typing import Any, Literal
 import dash
 import plotly.graph_objects as go
 import polars as pl
-from dash import ClientsideFunction, callback, ctx, dcc, html, no_update
-from dash.dependencies import ALL, MATCH, Input, Output, State
+from dash import (
+	clientside_callback,
+	callback,
+	ctx,
+	dcc,
+	html,
+	no_update,
+)
+from dash.dependencies import (
+	ALL,
+	MATCH,
+	Input,
+	Output,
+	State,
+)
 
 from deepecohab.app.page_layouts import cohort_dashboard_layout
 from deepecohab.plotting import plot_catalog
@@ -72,9 +85,9 @@ def render_graphs_layout(cfg):
 		Input("pairwise_switch", "value"),
 		Input("sociability_switch", "value"),
 		Input("ranking_switch", "value"),
+		Input("slider_switch", "value"),
 	],
 	State("project-config-store", "data"),
-	State("slider_switch", "value"),
 )
 def update_plots(
 	days_range: list[int],
@@ -85,13 +98,19 @@ def update_plots(
 	pair_switch: str,
 	sociability_switch: str,
 	ranking_switch: str,
-	cfg: dict[str, Any],
 	slider_mode: Literal["days_single", "days_range"],
+	cfg: dict[str, Any],
 ) -> tuple[go.Figure, dict]:
 	plot_name: str = ctx.outputs_grouping["id"]["name"]
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(plot_name)
 
-	id_check = "days_range" if ctx.triggered_id == "days_single" else ctx.triggered_id
+	id_check = (
+		"days_range"
+		if ctx.triggered_id == "days_single"
+		else None
+		if ctx.triggered_id == "slider_switch"
+		else ctx.triggered_id
+	)
 
 	if id_check is not None and id_check not in plot_attributes:
 		return no_update
@@ -100,7 +119,7 @@ def update_plots(
 		days_range = [days_single, days_single]
 
 	phase_list: list[str] = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
- 
+
 	cfg_tuple = tuple(sorted(cfg.items())) if cfg else ()
 	store = cache_config.get_project_data(cfg_tuple)
 
@@ -110,7 +129,7 @@ def update_plots(
 	positions = cfg.get("positions")
 	positions_colors = auxfun_plots.color_sampling(positions)
 	cages = cfg.get("cages")
- 
+
 	plot_cfg = plot_catalog.PlotConfig(
 		store=store,
 		days_range=days_range,
@@ -264,8 +283,8 @@ def download_comparison_data(btn_click: int, figure: dict, plot_type: str) -> di
 	return dcc.send_bytes(lambda b: b.write(content), filename=fname)
 
 
-dash.clientside_callback(
-	ClientsideFunction(namespace="clientside", function_name="handle_slider_mode"),
+clientside_callback(
+	dash.ClientsideFunction(namespace="clientside", function_name="handle_slider_mode"),
 	Output("days_range_container", "hidden"),
 	Output("days_single_container", "hidden"),
 	Output("agg_switch", "disabled"),
@@ -273,8 +292,8 @@ dash.clientside_callback(
 	Input("slider_switch", "value"),
 )
 
-dash.clientside_callback(
-	ClientsideFunction(namespace="clientside", function_name="sync_select_all"),
+clientside_callback(
+	dash.ClientsideFunction(namespace="clientside", function_name="sync_select_all"),
 	Output({"type": "main-checklist", "index": MATCH}, "value"),
 	Output({"type": "select-all", "index": MATCH}, "value"),
 	Input({"type": "select-all", "index": MATCH}, "value"),
@@ -282,8 +301,8 @@ dash.clientside_callback(
 	State({"type": "main-checklist", "index": MATCH}, "options"),
 )
 
-dash.clientside_callback(
-	ClientsideFunction(namespace="clientside", function_name="toggle_modal"),
+clientside_callback(
+	dash.ClientsideFunction(namespace="clientside", function_name="toggle_modal"),
 	Output("modal", "is_open"),
 	Output({"type": "main-checklist", "index": "plots"}, "options"),
 	Input("open-modal", "n_clicks"),

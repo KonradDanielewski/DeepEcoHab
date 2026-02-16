@@ -1,7 +1,14 @@
 import time
 
 import dash
-from dash import Input, Output, State, callback, no_update
+from dash import (
+	Input,
+	Output,
+	State,
+	callback,
+	clientside_callback,
+	no_update,
+)
 
 from deepecohab.app.page_layouts import analysis_layout
 from deepecohab.utils import (
@@ -12,18 +19,6 @@ from deepecohab.utils import (
 dash.register_page(__name__, path="/analysis", name="Analysis")
 
 layout = analysis_layout.generate_layout()
-
-
-@callback(
-	Output("antenna-button", "disabled", allow_duplicate=True),
-	Input("project-config-store", "data"),
-	prevent_initial_call="initial_duplicate",
-)
-def update_analysis_page(config):
-	if not config:
-		return "No project loaded.", True
-
-	return False
 
 
 @callback(
@@ -67,27 +62,38 @@ def start_analysis(n_clicks, config, min_time, chasing_window):
 		Output("analysis-progress", "label"),
 		Output("analysis-progress", "color"),
 		Output("progress-text", "children"),
+		Output("progress-interval", "disabled", allow_duplicate=True),
 	],
 	Input("progress-interval", "n_intervals"),
+	prevent_initial_call=True,
 )
 def update_progress_bar(n):
 	status = cache_config.launch_cache.get("analysis_status")
+
 	if not status:
-		return 0, "", "primary", ""
+		return 0, "", "primary", "Waiting for analysis to start...", no_update
 
 	percent = status.get("percent", 0)
 	msg = status.get("msg", "")
-	color = "success" if percent == 100 else "primary"
 
-	return percent, f"{percent}%" if percent > 5 else "", color, msg
+	is_finished = percent >= 100
+	color = "success" if is_finished else "primary"
+	label = f"{percent}%" if percent > 5 else ""
+
+	return percent, label, color, msg, is_finished
 
 
-@callback(
+clientside_callback(
+	dash.ClientsideFunction(namespace="clientside", function_name="enable_on_click"),
 	Output("progress-interval", "disabled", allow_duplicate=True),
 	Input("antenna-button", "n_clicks"),
 	prevent_initial_call=True,
 )
-def enable_interval(n):
-	if n:
-		return False
-	return no_update
+
+
+clientside_callback(
+	dash.ClientsideFunction(namespace="clientside", function_name="check_config_exists"),
+	Output("antenna-button", "disabled", allow_duplicate=True),
+	Input("project-config-store", "data"),
+	prevent_initial_call="initial_duplicate",
+)

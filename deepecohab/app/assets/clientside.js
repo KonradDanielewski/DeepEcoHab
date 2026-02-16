@@ -50,6 +50,36 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             }
 
             return [new_is_open, options];
-        }
+        },
+        is_disabled: function (config_data) {
+            if (!config_data) {
+                return true;
+            }
+            if (typeof config_data === 'object') {
+                return Object.keys(config_data).length === 0;
+            }
+            return false;
+        },
+        toggle_bool: function (n_clicks, is_open) {
+            if (!n_clicks) {
+                return is_open;
+            }
+            return !is_open;
+        },
+        check_config_exists: function(config) {
+            if (!config) {
+                return true;
+            }
+            if (Object.keys(config).length === 0) {
+                return true;
+            }
+            return false;
+        },
+        enable_on_click: function(n_clicks) {
+            if (n_clicks > 0) {
+                return false;
+            }
+            return window.dash_clientside.no_update;
+        },
     }
 });

@@ -37,11 +37,11 @@ def generate_settings_block(
 							dcc.RadioItems(
 								id=phase_type_id,
 								options=[
+									{"label": "All", "value": "all"},
 									{"label": "Dark", "value": "dark_phase"},
 									{"label": "Light", "value": "light_phase"},
-									{"label": "All", "value": "all"},
 								],
-								value="dark_phase",
+								value="all",
 								className="dash-radio",
 							)
 						],

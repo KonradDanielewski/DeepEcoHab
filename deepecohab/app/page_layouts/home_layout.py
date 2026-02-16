@@ -20,6 +20,7 @@ def generate_input_block(
 			value=value,
 			type=type,
 			className="filled-input",
+			debounce=True,
 		),
 	]
 
@@ -259,7 +260,11 @@ def generate_layout():
 										[
 											dbc.Col(
 												dbc.Button(
-													"Create Project",
+													children=[dbc.Spinner(
+														html.Span("Create Project", id="btn-text"),
+														size="sm",
+														spinner_class_name="me-2",
+													)],
 													id="create-project-btn",
 													color="primary",
 													disabled=True,

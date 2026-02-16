@@ -172,96 +172,32 @@ def prep_polar_df(
 	phase_type: list[str],
 ) -> pl.DataFrame:
 	"""Prepare z-score normalized metrics for a polar/radar chart across multiple behavioral categories."""
-	columns = [
-		"time_alone",
-		"n_chasing",
-		"n_chased",
-		"activity",
-		"time_together",
-		"pairwise_encounters",
-	]
-
-	time_alone = (
-		store["time_alone"]
-		.lazy()
-		.filter(pl.col("phase").is_in(phase_type), pl.col("day").is_between(*days_range))
-		.group_by("animal_id")
-		.agg(
-			pl.sum("time_alone"),
-		)
-	)
-
-	n_chasing = (
-		store["chasings_df"]
-		.lazy()
-		.filter(pl.col("phase").is_in(phase_type), pl.col("day").is_between(*days_range))
-		.group_by("chaser")
-		.agg(
-			pl.sum("chasings").alias("n_chasing"),
-		)
-		.rename({"chaser": "animal_id"})
-	)
-
-	n_chased = (
-		store["chasings_df"]
-		.lazy()
-		.filter(pl.col("phase").is_in(phase_type), pl.col("day").is_between(*days_range))
-		.group_by("chased")
-		.agg(
-			pl.sum("chasings").alias("n_chased"),
-		)
-		.rename({"chased": "animal_id"})
-	)
-
-	activity = (
-		store["activity_df"]
-		.lazy()
-		.filter(pl.col("phase").is_in(phase_type), pl.col("day").is_between(*days_range))
-		.group_by("animal_id")
-		.agg(
-			pl.sum("visits_to_position").alias("activity"),
-		)
-	)
-
-	pairwise_meetings = (
-		pl.concat(
-			[
-				store["pairwise_meetings"]
-				.lazy()
-				.filter(
-					pl.col("phase").is_in(phase_type),
-					pl.col("day").is_between(*days_range),
-				)
-				.select("animal_id", "time_together", "pairwise_encounters"),
-				store["pairwise_meetings"]
-				.lazy()
-				.filter(
-					pl.col("phase").is_in(phase_type),
-					pl.col("day").is_between(*days_range),
-				)
-				.select(
-					pl.col("animal_id_2").alias("animal_id"),
-					"time_together",
-					"pairwise_encounters",
-				),
-			],
-			how="align",
-		)
-		.group_by("animal_id")
-		.agg(
-			pl.sum("time_together"),
-			pl.sum("pairwise_encounters"),
-		)
-		.sort("animal_id")
-	)
-
-	df = pl.concat([time_alone, n_chasing, n_chased, activity, pairwise_meetings], how="align")
+	if days_range[0] == days_range[1]:
+		n_days = 1
+	else:
+		n_days = len(range(*days_range)) + 1
 
 	df = (
-		df.with_columns((pl.col(columns) - pl.mean(columns)) / pl.std(columns))
-		.unpivot(index="animal_id", variable_name="metric")
-		.collect()
-	)
+		store["feature_df"]
+		.lazy()
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(*days_range),
+		)
+		.group_by("animal_id", "metric", "day")
+		.agg(pl.mean("z-score"))
+		.group_by("animal_id", "metric")
+		.agg(
+			pl.mean("z-score").alias("mean"),
+			(pl.std("z-score") / math.sqrt(n_days)).alias("sem"),
+		)
+		.with_columns(
+			(pl.col("mean") - pl.col("sem")).alias("lower"),
+			(pl.col("mean") + pl.col("sem")).alias("upper"),
+		)
+		.sort("metric", "animal_id")
+		.fill_null(0)
+	).collect(engine="streaming")
 
 	return df
 
@@ -390,7 +326,10 @@ def prep_chasings_line(
 	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Calculate hourly chasing aggregates including mean and SEM for time-series plotting."""
-	n_days = len(range(*days_range)) + 1
+	if days_range[0] == days_range[1]:
+		n_days = 1
+	else:
+		n_days = len(range(*days_range)) + 1
 
 	join_df = pl.LazyFrame(
 		(
@@ -469,7 +408,10 @@ def prep_activity_line(
 	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Calculate hourly detection rates and SEM to track activity levels over time."""
-	n_days = len(range(*days_range)) + 1
+	if days_range[0] == days_range[1]:
+		n_days = 1
+	else:
+		n_days = len(range(*days_range)) + 1
 
 	join_df = pl.LazyFrame(
 		(
@@ -838,7 +780,7 @@ def prep_cage_preference_evolution(
 	join_df = pl.LazyFrame(
 		(
 			product(
-				range(days_range[0], days_range[1] +1),
+				range(days_range[0], days_range[1] + 1),
 				cages,
 				animals,
 			)
@@ -880,4 +822,6 @@ def prep_cage_preference_evolution(
 		.drop("position", "animal_id")
 	)
 
-	return img.to_numpy().reshape(len(cages), len(animals), len(range(days_range[0], days_range[1] +1)))
+	return img.to_numpy().reshape(
+		len(cages), len(animals), len(range(days_range[0], days_range[1] + 1))
+	)

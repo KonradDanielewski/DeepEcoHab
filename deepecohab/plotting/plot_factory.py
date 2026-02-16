@@ -478,26 +478,79 @@ def plot_within_cohort_heatmap(
 	return fig
 
 
-def plot_metrics_polar(
-	df: pl.DataFrame,
-	animals: list[str],
-	colors: list[str],
-) -> go.Figure:
-	"""Plots a polar line with different metrics per animal."""
-	fig = px.line_polar(
-		df,
-		r="value",
-		theta="metric",
-		color="animal_id",
-		line_close=True,
-		line_shape="spline",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
-		range_r=[df["value"].min() - 0.5, df["value"].max() + 0.5],
-		title="<b>Animal feature overview</b>",
-	)
+def plot_metrics_polar(df: pl.DataFrame, colors: list[str]):
+	"""Plots mean z-scores (across animals) of metrics with shading showing SEM as polar plot."""    
+	fig = go.Figure()
 
+	for i, (name, group) in enumerate(df.partition_by("animal_id", as_dict=True).items()):
+		group_closed = pl.concat([group, group.head(1)])
+		theta = group_closed["metric"]
+		mean = group_closed["mean"]
+		upper = group_closed["upper"]
+		lower = group_closed["lower"]
+
+		color = colors[i]
+		shade_color = color.replace("rgb", "rgba").replace(")", ", 0.2)")
+		leg_group = f"group_{name}"
+
+		fig.add_trace(
+			go.Scatterpolar(
+				r=lower,
+				theta=theta,
+				mode="lines",
+				line=dict(width=0, color=color),
+				line_shape="spline",
+				legendgroup=leg_group,
+				showlegend=False,
+				hoverinfo="skip",
+				name=f"{name}_lower",
+			)
+		)
+
+		fig.add_trace(
+			go.Scatterpolar(
+				r=upper,
+				theta=theta,
+				mode="lines",
+				fill="tonext",
+				fillcolor=shade_color,
+				line=dict(width=0, color=color),
+				line_shape="spline",
+				legendgroup=leg_group,
+				showlegend=False,
+				hoverinfo="skip",
+				name=f"{name}_upper",
+			)
+		)
+
+		fig.add_trace(
+			go.Scatterpolar(
+				r=mean,
+				theta=theta,
+				mode="lines",
+				line=dict(color=color, width=2),
+				line_shape="spline",
+				legendgroup=leg_group,
+				marker=dict(size=6),
+				name=f"{name[0]}",
+			)
+		)
+
+	fig.update_layout(
+		title="<b>Animal feature overview</b>",
+		title_y=0.95,
+		legend_title_text="<b>Animal ID</b>",
+		title_x=0.45,
+		polar=dict(
+			radialaxis=dict(
+				visible=True,
+				range=[df["mean"].min() - 0.5, df["mean"].max() + 0.5],
+			)
+		),
+		legend=dict(tracegroupgap=0),
+		showlegend=True,
+	)
 	fig.update_polars(bgcolor="rgba(0,0,0,0)")
-	fig.update_layout(title_y=0.95, legend_title_text="<b>Animal ID</b>", title_x=0.45)
 
 	return fig
 

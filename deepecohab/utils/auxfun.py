@@ -16,16 +16,17 @@ class DataFrameRegistry:
 	def __init__(self):
 		self._registry: dict[str, Callable] = {}
 		self.analysis_steps: list[str] = [
-            "activity_df",
-            "cage_occupancy",
-            "chasings_df",
-            "tube_test_df",
-            "ranking",
-            "pairwise_meetings",
-            "incohort_sociability",
-            "time_alone",
-            "pairwise_meetings",
-        ]
+			"activity_df",
+			"cage_occupancy",
+			"chasings_df",
+			"tube_test_df",
+			"ranking",
+			"pairwise_meetings",
+			"incohort_sociability",
+			"time_alone",
+			"pairwise_meetings",
+			"feature_df",
+		]
 
 	def register(self, name: str):
 		"""Decorator to register a new plot type."""
@@ -40,7 +41,9 @@ class DataFrameRegistry:
 		"""Returns a list of all registered function names."""
 		return list(self._registry.keys())
 
-	def run_pipeline(self, config: dict[str, Any], **kwargs) -> Iterator[tuple[str, int, list[int]]]:
+	def run_pipeline(
+		self, config: dict[str, Any], **kwargs
+	) -> Iterator[tuple[str, int, list[int]]]:
 		"""Runs the pipeline and yields status updates.
 
 		Yields:
@@ -134,9 +137,8 @@ def _split_datetime(phase_start: str) -> dt.datetime:
 		return dt.datetime.strptime(phase_start, "%H:%M")
 
 
-
 def get_phase_offset(time_str: str) -> pl.Expr:
-	"Helper to return offset from midnight for given hh:mm:ss string"
+	"""Helper to return offset from midnight for given hh:mm:ss string"""
 	start: dt.datetime = _split_datetime(time_str)
 	offset: pl.Expr = pl.duration(
 		hours=24 if start.hour == 0 else start.hour,
@@ -149,8 +151,7 @@ def get_phase_offset(time_str: str) -> pl.Expr:
 
 
 def get_phase_edge_grid(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
-	"Auxfun that creates a LazyFrame with all phases of the experiment and their ends"
-
+	"""Auxfun that creates a LazyFrame with all phases of the experiment and their ends"""
 	dark_offset = get_phase_offset(cfg["phase"]["dark_phase"])
 	light_offset = get_phase_offset(cfg["phase"]["light_phase"])
 
@@ -187,7 +188,7 @@ def get_phase_edge_grid(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 
 
 def get_phase_edges(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
-	"Helper to return durations of edge phases of the experiment"
+	"""Helper to return durations of edge phases of the experiment"""
 	base_midnight = pl.col("datetime").dt.truncate("1d")
 	time_offset = pl.col("datetime").dt.dst_offset()
 	time_diff = (pl.col("utc_off") - pl.col("utc_off").first()).dt.total_seconds()
@@ -304,7 +305,9 @@ def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Auxfun used to count phases"""
 	lf = (
 		lf.with_columns(pl.col("phase").rle_id().alias("run_id"))
-		.with_columns(pl.col("run_id").rank("dense").over("phase").cast(pl.UInt16).alias("phase_count"))
+		.with_columns(
+			pl.col("run_id").rank("dense").over("phase").cast(pl.UInt16).alias("phase_count")
+		)
 		.drop("run_id")
 	)
 	return lf
@@ -367,40 +370,36 @@ def update_repeat_antenna_position(lf: pl.LazyFrame) -> pl.LazyFrame:
 	between the corresponding cage and tunnel.
 	Args:
 		lf: a LazyFrame containing mouse position data
-	
+
 	Returns:
 	    lf: a LazyFrame with updated positions
 	"""
-	#TODO
+	# TODO
 	tunnel_dict = {
-		"1": 'c1_c2',
-		"2": 'c2_c1',
-		"3": 'c2_c3',
-		"4": 'c3_c2',
-		"5": 'c3_c4',
-		"6": 'c4_c3',
-		"7": 'c4_c1',
-		"8": 'c1_c4',
+		"1": "c1_c2",
+		"2": "c2_c1",
+		"3": "c2_c3",
+		"4": "c3_c2",
+		"5": "c3_c4",
+		"6": "c4_c3",
+		"7": "c4_c1",
+		"8": "c1_c4",
 	}
-	
+
 	lf = lf.with_columns(
-			pl.struct("position", "antenna").rle_id().over('animal_id').alias('run_id')
-		).with_columns(
-			pl.cum_count("position").over(
-				["animal_id",'run_id']
-			).alias('consecutive_antenna_readout')
-		)
+		pl.struct("position", "antenna").rle_id().over("animal_id").alias("run_id")
+	).with_columns(
+		pl.cum_count("position").over(["animal_id", "run_id"]).alias("consecutive_antenna_readout")
+	)
 	lf = lf.with_columns(
-		pl.when(
-			pl.col('consecutive_antenna_readout').mod(2) == 0
-		).then(
-			pl.col("antenna").cast(pl.Utf8).replace(tunnel_dict).cast(pl.Categorical)
-		).otherwise(
-			pl.col('position')
-		).alias('position')
+		pl.when(pl.col("consecutive_antenna_readout").mod(2) == 0)
+		.then(pl.col("antenna").cast(pl.Utf8).replace(tunnel_dict).cast(pl.Categorical))
+		.otherwise(pl.col("position"))
+		.alias("position")
 	)
 
 	return lf
+
 
 def append_start_end_to_config(
 	config_path: str | Path, lf: pl.LazyFrame
@@ -455,7 +454,9 @@ def add_positions_to_config(config_path: str | Path) -> None:
 	"""Auxfun to add cage names to config for reading convenience"""
 	cfg: dict[str, Any] = read_config(config_path)
 
-	positions = {cfg["tunnels"].get(value, value) for value in cfg["antenna_combinations"].values()} | {'undefined'}
+	positions = {
+		cfg["tunnels"].get(value, value) for value in cfg["antenna_combinations"].values()
+	} | {"undefined"}
 
 	with open(config_path, "w") as config:
 		cfg["positions"] = sorted(positions)

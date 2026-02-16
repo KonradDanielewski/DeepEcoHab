@@ -1,7 +1,7 @@
 import datetime as dt
 from itertools import combinations, product
 from pathlib import Path
-from typing import (Any, Literal)
+from typing import Any, Literal
 
 import polars as pl
 from openskill.models import PlackettLuce
@@ -352,7 +352,7 @@ def calculate_tube_test(
 
 	Args:
 	    config_path: path to project config file.
-	    winner_behavior: specifies whether to include events where the winning mouse followed the loser 
+	    winner_behavior: specifies whether to include events where the winning mouse followed the loser
 						or returned to the guarded resource
 	    save_data: toogles whether to save data.
 	    overwrite: toggles whether to overwrite the data.
@@ -363,7 +363,9 @@ def calculate_tube_test(
 	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "tube_test_df"
 
-	tube_test: pl.LazyFrame | None = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	tube_test: pl.LazyFrame | None = (
+		None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	)
 
 	if isinstance(tube_test, pl.LazyFrame):
 		return tube_test
@@ -377,36 +379,38 @@ def calculate_tube_test(
 	lf = auxfun.update_repeat_antenna_position(lf)
 	lf = auxfun.remove_tunnel_directionality(lf, cfg)
 	lf = lf.with_columns(
-		(pl.col('datetime') - pl.duration(seconds=pl.col("time_spent"))).alias("tunnel_entry"),
+		(pl.col("datetime") - pl.duration(seconds=pl.col("time_spent"))).alias("tunnel_entry"),
 		pl.col("position").shift(1).over("animal_id").alias("prev_position"),
-		pl.col("position").shift(-1).over("animal_id").alias("next_position")
+		pl.col("position").shift(-1).over("animal_id").alias("next_position"),
 	)
 
 	loser = lf.filter(
-		~pl.col("position").is_in(cages),
-		pl.col("prev_position") == pl.col("next_position")
+		~pl.col("position").is_in(cages), pl.col("prev_position") == pl.col("next_position")
 	)
 
-	intermediate = loser.join(
-		lf, on=["phase", "day", "phase_count", "position"], suffix="_winner" 
-	).filter(
-		pl.col("animal_id") != pl.col("animal_id_winner"),
-		pl.col("prev_position") != pl.col("prev_position_winner"),
-		pl.col("datetime") < pl.col("datetime_winner"),
-	).with_columns(
-		(
-			pl.min_horizontal(["datetime", "datetime_winner"])
-			- pl.max_horizontal(["tunnel_entry", "tunnel_entry_winner"])
+	intermediate = (
+		loser.join(lf, on=["phase", "day", "phase_count", "position"], suffix="_winner")
+		.filter(
+			pl.col("animal_id") != pl.col("animal_id_winner"),
+			pl.col("prev_position") != pl.col("prev_position_winner"),
+			pl.col("datetime") < pl.col("datetime_winner"),
 		)
-		.dt.total_seconds(fractional=True)
-		.alias("overlap_duration")
-	).filter(pl.col("overlap_duration") > 0)
+		.with_columns(
+			(
+				pl.min_horizontal(["datetime", "datetime_winner"])
+				- pl.max_horizontal(["tunnel_entry", "tunnel_entry_winner"])
+			)
+			.dt.total_seconds(fractional=True)
+			.alias("overlap_duration")
+		)
+		.filter(pl.col("overlap_duration") > 0)
+	)
 
-	if winner_behavior == 'CHASE':
+	if winner_behavior == "CHASE":
 		intermediate = intermediate.filter(
 			pl.col("next_position") == pl.col("next_position_winner"),
 		)
-	elif winner_behavior == 'GUARD':
+	elif winner_behavior == "GUARD":
 		intermediate = intermediate.filter(
 			pl.col("next_position") != pl.col("next_position_winner"),
 		)
@@ -418,9 +422,11 @@ def calculate_tube_test(
 		.len(name="tube_test")
 		.rename({"animal_id": "loser", "animal_id_winner": "winner"})
 	)
-	
+
 	# Perform empty join
-	all_pairs = [(a1, a2) for a1, a2 in list(product(cfg["animal_ids"], cfg['animal_ids'])) if a1 != a2]
+	all_pairs = [
+		(a1, a2) for a1, a2 in list(product(cfg["animal_ids"], cfg["animal_ids"])) if a1 != a2
+	]
 	pairs_df = pl.LazyFrame(
 		all_pairs,
 		schema={
@@ -439,7 +445,6 @@ def calculate_tube_test(
 		on=["phase", "day", "phase_count", "winner", "loser"],
 		how="left",
 	).fill_null(0)
-
 
 	if save_data:
 		tube_test.sink_parquet(
@@ -498,9 +503,9 @@ def calculate_time_alone(
 		.agg(pl.len().alias("time_alone"))
 	)
 
-	time_alone = auxfun.get_phase_count(time_alone)
-
 	time_alone = full_group_list.join(time_alone, on=result_cols, how="left").fill_null(0)
+
+	time_alone = auxfun.get_phase_count(time_alone.sort("day", "phase"))
 
 	if save_data:
 		time_alone.sink_parquet(results_path, compression="lz4", engine="streaming")
@@ -671,3 +676,124 @@ def calculate_incohort_sociability(
 		incohort_sociability.sink_parquet(results_path, compression="lz4", engine="streaming")
 
 	return incohort_sociability
+
+
+@df_registry.register("feature_df")
+def calculate_features(
+	config_path: Path | str | dict,
+	save_data: bool = True,
+	overwrite: bool = False,
+	**kwargs,
+) -> pl.LazyFrame:
+	"""Calculates z-score of ecohab metrics for further machine learning analysis.
+
+	Args:
+	    config_path: path to project config file.
+	    save_data: toogles whether to save data.
+	    overwrite: toggles whether to overwrite the data.
+
+	Returns:
+		Long format LazyFrame of features per phase, day and phase_count for each mouse.
+	"""
+	cfg: dict[str, Any] = auxfun.read_config(config_path)
+	key = "feature_df"
+
+	feature_df: pl.LazyFrame | None = (
+		None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	)
+	if isinstance(feature_df, pl.LazyFrame):
+		return feature_df
+
+	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
+	columns = [
+		"time_alone",
+		"n_chasing",
+		"n_chased",
+		"n_wins",
+		"n_loses",
+		"activity",
+		"time_together",
+		"pairwise_encounters",
+	]
+
+	chasings = auxfun.load_ecohab_data(config_path, "chasings_df")
+	tube_test = auxfun.load_ecohab_data(config_path, "tube_test_df")
+	pairwise_meetings = auxfun.load_ecohab_data(config_path, "pairwise_meetings")
+
+	time_alone = (
+		auxfun.load_ecohab_data(config_path, "time_alone")
+		.group_by("phase", "phase_count", "day", "animal_id")
+		.agg(pl.sum("time_alone"))
+	)
+
+	n_chasing = (
+		chasings.group_by("phase", "phase_count", "day", "chaser")
+		.agg(pl.sum("chasings").alias("n_chasing"))
+		.rename({"chaser": "animal_id"})
+	)
+
+	n_chased = (
+		chasings.group_by("phase", "phase_count", "day", "chased")
+		.agg(pl.sum("chasings").alias("n_chased"))
+		.rename({"chased": "animal_id"})
+	)
+
+	n_wins = (
+		tube_test.group_by("phase", "phase_count", "day", "winner")
+		.agg(pl.sum("tube_test").alias("n_wins"))
+		.rename({"winner": "animal_id"})
+	)
+
+	n_loses = (
+		tube_test.group_by("phase", "phase_count", "day", "loser")
+		.agg(pl.sum("tube_test").alias("n_loses"))
+		.rename({"loser": "animal_id"})
+	)
+
+	activity = (
+		auxfun.load_ecohab_data(config_path, "activity_df")
+		.group_by("phase", "phase_count", "day", "animal_id")
+		.agg(pl.sum("visits_to_position").alias("activity"))
+	)
+
+	pairwise_meetings = (
+		pl.concat(
+			[
+				pairwise_meetings.select(
+					"animal_id",
+					"day",
+					"phase",
+					"phase_count",
+					"time_together",
+					"pairwise_encounters",
+				),
+				pairwise_meetings.select(
+					pl.col("animal_id_2").alias("animal_id"),
+					"day",
+					"phase",
+					"phase_count",
+					"time_together",
+					"pairwise_encounters",
+				),
+			]
+		)
+		.group_by("phase", "phase_count", "day", "animal_id")
+		.agg([pl.sum("time_together"), pl.sum("pairwise_encounters")])
+	)
+
+	lfs = [time_alone, n_chasing, n_chased, n_wins, n_loses, activity, pairwise_meetings]
+
+	feature_lf = (
+		pl.concat(lfs, how="align")
+		.fill_null(0)
+		.with_columns(
+			[((pl.col(col) - pl.col(col).mean()) / pl.col(col).std()).alias(col) for col in columns]
+		)
+		.unpivot(index=["phase", "day", "phase_count", "animal_id"], variable_name="metric", value_name="z-score")
+		.with_columns(pl.col("z-score").round(2))
+	)
+
+	if save_data:
+		feature_lf.sink_parquet(results_path, compression="lz4", engine="streaming")
+
+	return feature_lf
