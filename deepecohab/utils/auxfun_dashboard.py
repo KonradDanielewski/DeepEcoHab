@@ -323,7 +323,7 @@ def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
 
 
 def generate_plot_download_tab() -> dcc.Tab:
-	"""Generates Plots download tab in the Downloads modal component"""
+	"""Generates Plots download tab in the Downloads modal component"""  # TODO: Add select all
 	return dcc.Tab(
 		label="Plots",
 		value="tab-plots",
@@ -333,13 +333,21 @@ def generate_plot_download_tab() -> dcc.Tab:
 			dbc.Row(
 				[
 					dbc.Col(
-						dbc.Checklist(
-							id="plot-checklist",
-							options=[],
-							value=[],
-							inline=False,
-							className="download-dropdown",
-						),
+						[
+							dbc.Checkbox(
+								id={"type": "select-all", "index": "plots"},
+								label="Select All",
+								value=False,
+								className="mb-2 fw-bold",
+							),
+							dbc.Checklist(
+								id={"type": "main-checklist", "index": "plots"},
+								options=[],
+								value=[],
+								inline=False,
+								className="download-dropdown",
+							),
+						],
 						width=8,
 					),
 					dbc.Col(
@@ -366,13 +374,21 @@ def generate_csv_download_tab() -> dcc.Tab:
 			dbc.Row(
 				[
 					dbc.Col(
-						dbc.Checklist(
-							id="data-keys-checklist",
-							options=options,
-							value=[],
-							inline=False,
-							className="download-dropdown",
-						),
+						[
+							dbc.Checkbox(
+								id={"type": "select-all", "index": "dfs"},
+								label="Select All",
+								value=False,
+								className="mb-2 fw-bold",
+							),
+							dbc.Checklist(
+								id={"type": "main-checklist", "index": "dfs"},
+								options=options,
+								value=[],
+								inline=False,
+								className="download-dropdown",
+							),
+						],
 						align="center",
 						width=8,
 					),
@@ -568,6 +584,9 @@ def build_filter_expr(
 	if phase_type is not None and "phase" in columns:
 		exprs.append(pl.col("phase").is_in(phase_type))
 
+	if not exprs:
+		return None
+    
 	return exprs
 
 
@@ -587,7 +606,8 @@ def download_dataframes(
 		name = selected_dfs[0]
 		if name in store:
 			df = store[name]
-			df = df.filter(build_filter_expr(df.schema, days_range, phase_type))
+			expr = build_filter_expr(df.schema, days_range, phase_type)
+			df = df.filter(expr) if expr is not None else df
 			return dcc.send_string(df.write_csv, f"{name}.csv")
 		return None
 
@@ -596,7 +616,8 @@ def download_dataframes(
 		for name in selected_dfs:
 			if name in store:
 				df = store[name]
-				df = df.filter(build_filter_expr(df.schema, days_range, phase_type))
+				expr = build_filter_expr(df.schema, days_range, phase_type)
+				df = df.filter(expr) if expr is not None else df
 				csv_bytes = df.write_csv().encode("utf-8")
 				zf.writestr(f"{name}.csv", csv_bytes)
 

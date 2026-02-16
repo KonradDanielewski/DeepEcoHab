@@ -86,7 +86,7 @@ def update_plots(
 	sociability_switch: str,
 	ranking_switch: str,
 	cfg: dict[str, Any],
-	slider_mode: Literal["days_single", "days_range"]
+	slider_mode: Literal["days_single", "days_range"],
 ) -> tuple[go.Figure, dict]:
 	plot_name: str = ctx.outputs_grouping["id"]["name"]
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(plot_name)
@@ -97,7 +97,7 @@ def update_plots(
 		return no_update
 
 	if slider_mode == "days_single":
-			days_range = [days_single, days_single]
+		days_range = [days_single, days_single]
 
 	phase_list: list[str] = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
 
@@ -193,9 +193,15 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 
 
 @callback(
-	[Output("modal", "is_open"), Output("plot-checklist", "options")],
-	[Input("open-modal", "n_clicks")],
-	[State("modal", "is_open"), State({"type": "graph", "name": ALL}, "id")],
+	[
+		Output("modal", "is_open"),
+		Output({"type": "main-checklist", "index": "plots"}, "options"),
+	],
+	Input("open-modal", "n_clicks"),
+	[
+		State("modal", "is_open"),
+		State({"type": "graph", "name": ALL}, "id"),
+	],
 )
 def toggle_modal(
 	open_click: bool, is_open: bool, graph_ids: list[dict[str, str]]
@@ -212,8 +218,8 @@ def toggle_modal(
 		Input({"type": "download-btn", "fmt": ALL, "side": ALL}, "n_clicks"),
 	],
 	[
-		State("data-keys-checklist", "value"),
-		State("plot-checklist", "value"),
+		State({"type": "main-checklist", "index": "dfs"}, "value"),
+		State({"type": "main-checklist", "index": "plots"}, "value"),
 		State("phase_type", "value"),
 		State("days_range", "value"),
 		State({"type": "graph", "name": ALL}, "figure"),
@@ -273,6 +279,36 @@ def download_comparison_data(btn_click: int, figure: dict, plot_type: str) -> di
 	plot_name = f"comparison_{plot_type}"
 	fname, content = auxfun_dashboard.get_plot_file(figure, triggered["fmt"], plot_name)
 	return dcc.send_bytes(lambda b: b.write(content), filename=fname)
+
+
+@callback(
+	[
+		Output({"type": "main-checklist", "index": MATCH}, "value"),
+		Output({"type": "select-all", "index": MATCH}, "value"),
+	],
+	[
+		Input({"type": "select-all", "index": MATCH}, "value"),
+		Input({"type": "main-checklist", "index": MATCH}, "value"),
+	],
+	[State({"type": "main-checklist", "index": MATCH}, "options")],
+)
+def sync_select_all_logic(select_all_checked, current_selection, options):
+	trigger = ctx.triggered_id
+
+	if not trigger or not options:
+		return no_update, no_update
+
+	all_values = [opt["value"] for opt in options]
+
+	match trigger.get("type"):
+		case "select-all":
+			return (all_values, True) if select_all_checked else ([], False)
+
+		case "main-checklist":
+			is_all_selected = set(current_selection) == set(all_values) and len(all_values) > 0
+			return no_update, is_all_selected
+
+	return no_update, no_update
 
 
 @callback(
