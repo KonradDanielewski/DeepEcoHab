@@ -30,15 +30,21 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 						[
 							dbc.Col(
 								auxfun_dashboard.generate_standard_graph(
+									"cage-preference-evolution", css_class="plot-500"
+								),
+								width=5,
+							),
+							dbc.Col(
+								auxfun_dashboard.generate_standard_graph(
 									"cage-preference", css_class="plot-500"
 								),
-								width=6,
+								width=3,
 							),
 							dbc.Col(
 								auxfun_dashboard.generate_standard_graph(
 									"metrics-polar-line", css_class="plot-500"
 								),
-								width=6,
+								width=4,
 							),
 						]
 					),

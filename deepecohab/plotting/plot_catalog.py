@@ -25,7 +25,6 @@ class PlotConfig:
 
 	store: dict | None = None
 	days_range: list[int] | None = None
-	days_single: int | None = None # TODO: compatibility for slider / range slider - find better solution on frontend
 	phase_type: list[str] | None = None
 	agg_switch: Literal["sum", "mean"] | None = None
 	position_switch: Literal["visits", "time"] | None = None
@@ -83,6 +82,17 @@ def cage_preference(cfg: PlotConfig) -> go.Figure:
 	df = auxfun_plots.prep_cage_preference(cfg.store, cfg.phase_type, cfg.days_range)
 
 	return plot_factory.plot_cage_preference(df, cfg.cages, cfg.position_colors)
+
+
+@plot_registry.register(
+	"cage-preference-evolution",
+	dependencies=["store", "cages", "animals", "days_range", "agg_switch"],
+)
+def cage_preference_evolution(cfg: PlotConfig) -> go.Figure:
+	"""Generates a cage preference box plot."""
+	img = auxfun_plots.prep_cage_preference_evolution(cfg.store, cfg.animals, cfg.days_range, cfg.agg_switch, cfg.cages)
+
+	return plot_factory.time_spent_per_cage(img, cfg.animals, type="daily")
 
 
 @plot_registry.register(
@@ -153,7 +163,7 @@ def network_dominance(cfg: PlotConfig) -> go.Figure:
 	"tube-test-heatmap",
 	dependencies=["store", "animals", "days_range", "phase_type", "agg_switch"],
 )
-def chasings_heatmap(cfg: PlotConfig) -> go.Figure:
+def tube_test_heatmap(cfg: PlotConfig) -> go.Figure:
 	"""Generates a chaser-vs-chased interaction heatmap.
 
 	Displays a matrix of agonistic interactions, where rows and columns represent
@@ -274,7 +284,7 @@ def time_per_cage(cfg: PlotConfig) -> go.Figure:
 		cfg.store, cfg.animals, cfg.days_range, cfg.agg_switch, cfg.cages
 	)
 
-	return plot_factory.time_spent_per_cage(img, cfg.animals)
+	return plot_factory.time_spent_per_cage(img, cfg.animals, type="hourly")
 
 
 @plot_registry.register(

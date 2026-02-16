@@ -312,29 +312,39 @@ def plot_ranking_stability(
 def time_spent_per_cage(
 	img: np.ndarray,
 	animals: list[str],
+	type: Literal["hourly", "daily"]
 ) -> go.Figure:
 	"""Plots N-cages of heatmaps with per hour time spent for each animal"""
+	match type:
+		case "hourly":
+			title="<b>Time spent per cage</b>"
+			x = "Hour: %{x}"
+			x_title="Hour of day"
+		case "daily":
+			title="<b>Cage preference over time</b>"
+			x= "Day: %{x}"
+			x_title="Day"
 	fig = px.imshow(
-		img,  # 24 hours in a day,
+		img,
 		y=animals,
 		facet_col=0,
 		facet_col_wrap=2,
-		title="<b>Time spent per cage</b>",
+		title=title,
 	)
 
 	for annotation in fig.layout.annotations:
 		annotation["text"] = f"<b>Cage {int(annotation['text'].split('=')[1]) + 1}</b>"
 
 	fig.update_layout(
-		xaxis=dict(title="Hour of day"),
-		xaxis2=dict(title="Hour of day"),
+		xaxis=dict(title=x_title),
+		xaxis2=dict(title=x_title),
 		yaxis=dict(automargin=True),
 	)
 
 	fig.update_traces(
 		hovertemplate="<br>".join(
 			[
-				"Hour: %{x}",
+				x,
 				"Animal ID: %{y}",
 				"Time [s]: %{z}",
 			]

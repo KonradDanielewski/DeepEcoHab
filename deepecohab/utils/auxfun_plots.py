@@ -168,7 +168,7 @@ def prep_ranking_day_stability(
 
 def prep_polar_df(
 	store: dict[str, pl.DataFrame],
-	days_range: list[int, int],
+	days_range: list[int],
 	phase_type: list[str],
 ) -> pl.DataFrame:
 	"""Prepare z-score normalized metrics for a polar/radar chart across multiple behavioral categories."""
@@ -268,7 +268,7 @@ def prep_polar_df(
 
 def prep_ranking_distribution(
 	store: dict[str, pl.DataFrame],
-	days_range: list[int, int],
+	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Calculate normal probability density functions for animal rankings on the latest available day."""
 	x_df = pl.LazyFrame({"ranking": np.arange(-10, 50, 0.1)})
@@ -297,7 +297,7 @@ def prep_ranking_distribution(
 def prep_network_dominance(
 	store: dict[str, pl.DataFrame],
 	animals: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 ) -> tuple[pl.DataFrame]:
 	"""Return a tuple of (edges, nodes) dataframes representing chasing interactions and final rankings."""
 	join_df = pl.LazyFrame(
@@ -339,7 +339,7 @@ def prep_network_dominance(
 def prep_chasings_heatmap(
 	store: dict[str, pl.DataFrame],
 	animals: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 	phase_type: list[str],
 	agg_switch: Literal["mean", "sum"],
 ) -> np.ndarray:
@@ -387,7 +387,7 @@ def prep_chasings_heatmap(
 def prep_chasings_line(
 	store: dict[str, pl.DataFrame],
 	animals: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Calculate hourly chasing aggregates including mean and SEM for time-series plotting."""
 	n_days = len(range(*days_range)) + 1
@@ -439,7 +439,7 @@ def prep_chasings_line(
 
 def prep_activity(
 	store: dict[str, pl.DataFrame],
-	days_range: list[int, int],
+	days_range: list[int],
 	phase_type: list[str],
 ) -> pl.DataFrame:
 	"""Aggregate visits and time spent per position, animal, and day."""
@@ -447,7 +447,10 @@ def prep_activity(
 		store["activity_df"]
 		.lazy()
 		.with_columns(pl.col("position").cast(pl.String))
-		.filter(pl.col("phase").is_in(phase_type), pl.col("day").is_between(*days_range))
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(*days_range),
+		)
 		.group_by(["day", "animal_id", "position"])
 		.agg(
 			pl.sum("visits_to_position").alias("visits"),
@@ -463,7 +466,7 @@ def prep_activity(
 def prep_activity_line(
 	store: dict[str, pl.DataFrame],
 	animals: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Calculate hourly detection rates and SEM to track activity levels over time."""
 	n_days = len(range(*days_range)) + 1
@@ -514,7 +517,7 @@ def prep_activity_line(
 def prep_time_per_cage(
 	store: dict[str, pl.DataFrame],
 	animals: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 	agg_switch: Literal["mean", "sum"],
 	cages: list[str],
 ) -> np.ndarray:
@@ -568,7 +571,7 @@ def prep_pairwise_sociability(
 	store: dict[str, pl.DataFrame],
 	phase_type: list[str],
 	animals: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 	agg_switch: Literal["mean", "sum"],
 	pairwise_switch: Literal["pairwise_encounters", "time_together"],
 	cages: list[str],
@@ -617,7 +620,7 @@ def prep_within_cohort_sociability(
 	store: dict[str, pl.DataFrame],
 	phase_type: list[str],
 	animals: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 	sociability_switch: Literal["proportion_together", "sociability"],
 ) -> np.ndarray:
 	"""Calculate and pivot the mean sociability scores between all animal pairs within a cohort."""
@@ -658,7 +661,7 @@ def prep_within_cohort_sociability(
 def prep_time_alone(
 	store: dict[str, pl.DataFrame],
 	phase_type: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Filter the time spent alone for the specified phases and day range."""
 	df = (
@@ -676,7 +679,7 @@ def prep_time_alone(
 def prep_network_sociability(
 	store: dict[str, pl.DataFrame],
 	animals: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Return a dataframe of edges representing time spent together."""
 	join_df = pl.LazyFrame(
@@ -709,7 +712,7 @@ def prep_network_sociability(
 def prep_social_stability(
 	store: dict[str, pl.DataFrame],
 	phase_type: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Return a dataframe showing proportion together and stability of the relationship"""
 	mda = (pl.col("proportion_together") - pl.median("proportion_together")).abs().median()
@@ -753,7 +756,7 @@ def prep_social_stability(
 def prep_cage_preference(
 	store: dict[str, pl.DataFrame],
 	phase_type: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Return a dataframe showing cage preference of the cohort"""
 	df = (
@@ -779,7 +782,7 @@ def prep_cage_preference(
 def prep_tube_test_heatmap(
 	store: dict[str, pl.DataFrame],
 	animals: list[str],
-	days_range: list[int, int],
+	days_range: list[int],
 	phase_type: list[str],
 	agg_switch: Literal["mean", "sum"],
 ) -> np.ndarray:
@@ -794,9 +797,9 @@ def prep_tube_test_heatmap(
 
 	match agg_switch:
 		case "sum":
-			agg_func = pl.when(pl.len() > 0).then(pl.sum("tube_tests")).alias("sum")
+			agg_func = pl.when(pl.len() > 0).then(pl.sum("tube_test")).alias("sum")
 		case "mean":
-			agg_func = pl.mean("tube_tests").round(2).alias("mean")
+			agg_func = pl.mean("tube_test").round(2).alias("mean")
 
 	img = (
 		store["tube_test_df"]
@@ -807,7 +810,7 @@ def prep_tube_test_heatmap(
 			pl.col("day").is_between(*days_range),
 		)
 		.group_by("day", "winner", "loser")
-		.agg(pl.sum("tube_tests"))
+		.agg(pl.sum("tube_test"))
 		.group_by("winner", "loser", maintain_order=True)
 		.agg(agg_func)
 		.join(join_df, on=["winner", "loser"], how="right")
@@ -822,3 +825,59 @@ def prep_tube_test_heatmap(
 	)
 
 	return img.to_numpy()
+
+
+def prep_cage_preference_evolution(
+	store: dict[str, pl.DataFrame],
+	animals: list[str],
+	days_range: list[int],
+	agg_switch: Literal["mean", "sum"],
+	cages: list[str],
+) -> np.ndarray:
+	"""Pivot time spent in specific cages into daily format for heatmaps plots."""
+	join_df = pl.LazyFrame(
+		(
+			product(
+				range(days_range[0], days_range[1] +1),
+				cages,
+				animals,
+			)
+		),
+		schema=[
+			("day", pl.Int8()),
+			("position", pl.String()),
+			("animal_id", pl.Enum(animals)),
+		],
+	)
+
+	match agg_switch:
+		case "sum":
+			agg_func = pl.sum("time_in_position")
+		case "mean":
+			agg_func = pl.mean("time_in_position").round(2)
+
+	img = (
+		store["activity_df"]
+		.lazy()
+		.with_columns(pl.col("position").cast(pl.String))
+		.filter(
+			pl.col("day").is_between(*days_range),
+			pl.col("position").str.contains("cage"),
+		)
+		.group_by(["day", "animal_id", "position"])
+		.agg(agg_func)
+		.join(
+			join_df,
+			on=["day", "position", "animal_id"],
+			how="right",
+		)
+		.collect(engine="in-memory")
+		.pivot(
+			on="day",
+			index=["position", "animal_id"],
+			values="time_in_position",
+		)
+		.drop("position", "animal_id")
+	)
+
+	return img.to_numpy().reshape(len(cages), len(animals), len(range(days_range[0], days_range[1] +1)))

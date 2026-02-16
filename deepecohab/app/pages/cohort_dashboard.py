@@ -74,6 +74,7 @@ def render_graphs_layout(cfg):
 		Input("ranking_switch", "value"),
 	],
 	State("project-config-store", "data"),
+	State("slider_switch", "value"),
 )
 def update_plots(
 	days_range: list[int],
@@ -85,19 +86,18 @@ def update_plots(
 	sociability_switch: str,
 	ranking_switch: str,
 	cfg: dict[str, Any],
+	slider_mode: Literal["days_single", "days_range"]
 ) -> tuple[go.Figure, dict]:
 	plot_name: str = ctx.outputs_grouping["id"]["name"]
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(plot_name)
 
-	check_id = "days_range" if ctx.triggered_id == "days_single" else ctx.triggered_id
+	id_check = "days_range" if ctx.triggered_id == "days_single" else ctx.triggered_id
 
-	if check_id is not None and check_id not in plot_attributes:
+	if id_check is not None and id_check not in plot_attributes:
 		return no_update
 
-	if ctx.triggered_id == "days_range":
-		pass
-	else:
-		days_range = [days_single, days_single]
+	if slider_mode == "days_single":
+			days_range = [days_single, days_single]
 
 	phase_list: list[str] = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
 
