@@ -18,6 +18,7 @@ def create_ecohab_project(
 	animal_ids: list | None = None,
 	custom_layout: bool = False,
 	field_ecohab: bool = False,
+	interpolate_positions: bool = False,
 	antenna_rename_scheme: dict | None = None,
 ) -> Path:
 	"""Creates the ecohab project directory and config."""
@@ -57,6 +58,7 @@ def create_ecohab_project(
 		"start_datetime": start_datetime,
 		"finish_datetime": finish_datetime,
 		"days_range": days_range,
+		"interpolate_positions": interpolate_positions,
 	}
 
 	if custom_layout and not field_ecohab:
