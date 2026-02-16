@@ -3,7 +3,7 @@ from typing import Any, Literal
 import dash
 import plotly.graph_objects as go
 import polars as pl
-from dash import callback, ctx, dcc, html, no_update
+from dash import ClientsideFunction, callback, ctx, dcc, html, no_update
 from dash.dependencies import ALL, MATCH, Input, Output, State
 
 from deepecohab.app.page_layouts import cohort_dashboard_layout
@@ -100,14 +100,17 @@ def update_plots(
 		days_range = [days_single, days_single]
 
 	phase_list: list[str] = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
+ 
+	cfg_tuple = tuple(sorted(cfg.items())) if cfg else ()
+	store = cache_config.get_project_data(cfg_tuple)
 
 	store = cache_config.get_project_data(cfg)
-	animals = cfg["animal_ids"]
+	animals = cfg.get("animal_ids")
 	animal_colors = auxfun_plots.color_sampling(animals)
-	cages = cfg["cages"]
-	positions = cfg["positions"]
-	positions_colors = auxfun_plots.color_sampling(animals)
-
+	positions = cfg.get("positions")
+	positions_colors = auxfun_plots.color_sampling(positions)
+	cages = cfg.get("cages")
+ 
 	plot_cfg = plot_catalog.PlotConfig(
 		store=store,
 		days_range=days_range,
@@ -193,26 +196,6 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 
 
 @callback(
-	[
-		Output("modal", "is_open"),
-		Output({"type": "main-checklist", "index": "plots"}, "options"),
-	],
-	Input("open-modal", "n_clicks"),
-	[
-		State("modal", "is_open"),
-		State({"type": "graph", "name": ALL}, "id"),
-	],
-)
-def toggle_modal(
-	open_click: bool, is_open: bool, graph_ids: list[dict[str, str]]
-) -> tuple[bool, list]:
-	"""Opens and closes Downloads modal component"""
-	if open_click:
-		return not is_open, auxfun_dashboard.get_options_from_ids([g["name"] for g in graph_ids])
-	return is_open, []
-
-
-@callback(
 	Output("download-component", "data"),
 	[
 		Input({"type": "download-btn", "fmt": ALL, "side": ALL}, "n_clicks"),
@@ -281,57 +264,32 @@ def download_comparison_data(btn_click: int, figure: dict, plot_type: str) -> di
 	return dcc.send_bytes(lambda b: b.write(content), filename=fname)
 
 
-@callback(
-	[
-		Output({"type": "main-checklist", "index": MATCH}, "value"),
-		Output({"type": "select-all", "index": MATCH}, "value"),
-	],
-	[
-		Input({"type": "select-all", "index": MATCH}, "value"),
-		Input({"type": "main-checklist", "index": MATCH}, "value"),
-	],
-	[State({"type": "main-checklist", "index": MATCH}, "options")],
-)
-def sync_select_all_logic(select_all_checked, current_selection, options):
-	trigger = ctx.triggered_id
-
-	if not trigger or not options:
-		return no_update, no_update
-
-	all_values = [opt["value"] for opt in options]
-
-	match trigger.get("type"):
-		case "select-all":
-			return (all_values, True) if select_all_checked else ([], False)
-
-		case "main-checklist":
-			is_all_selected = set(current_selection) == set(all_values) and len(all_values) > 0
-			return no_update, is_all_selected
-
-	return no_update, no_update
-
-
-@callback(
-	[
-		Output("days_range_container", "hidden"),
-		Output("days_single_container", "hidden"),
-	],
+dash.clientside_callback(
+	ClientsideFunction(namespace="clientside", function_name="handle_slider_mode"),
+	Output("days_range_container", "hidden"),
+	Output("days_single_container", "hidden"),
+	Output("agg_switch", "disabled"),
+	Output("agg_switch", "className"),
 	Input("slider_switch", "value"),
 )
-def toggle_slider_visibility(mode: Literal["days_range", "days_single"]):
-	if mode == "days_range":
-		return False, True
-	return True, False
 
-
-@callback(
-	[
-		Output("agg_switch", "disabled"),
-		Output("agg_switch", "className"),
-	],
-	Input("days_single_container", "hidden"),
+dash.clientside_callback(
+	ClientsideFunction(namespace="clientside", function_name="sync_select_all"),
+	Output({"type": "main-checklist", "index": MATCH}, "value"),
+	Output({"type": "select-all", "index": MATCH}, "value"),
+	Input({"type": "select-all", "index": MATCH}, "value"),
+	Input({"type": "main-checklist", "index": MATCH}, "value"),
+	State({"type": "main-checklist", "index": MATCH}, "options"),
 )
-def disable_agg_switch(is_single_hidden):
-	if is_single_hidden:
-		return False, "dash-radio"
-	return True, "dash-radio switch-disabled"
+
+dash.clientside_callback(
+	ClientsideFunction(namespace="clientside", function_name="toggle_modal"),
+	Output("modal", "is_open"),
+	Output({"type": "main-checklist", "index": "plots"}, "options"),
+	Input("open-modal", "n_clicks"),
+	[
+		State("modal", "is_open"),
+		State({"type": "graph", "name": ALL}, "id"),
+	],
+	prevent_initial_call=True,
+)

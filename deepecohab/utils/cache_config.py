@@ -12,7 +12,10 @@ launch_cache = diskcache.Cache(cache_dir)
 launch_cache.clear()
 background_manager = DiskcacheManager(launch_cache)
 
-def get_project_data(config: dict):
+
+@launch_cache.memoize()
+def get_project_data(config_tuple):
+	config = dict(config_tuple)
 	results_path = Path(config["project_location"]) / "results"
 	if not results_path.exists():
 		return {}

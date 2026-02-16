@@ -310,24 +310,27 @@ def plot_ranking_stability(
 
 
 def time_spent_per_cage(
-	img: np.ndarray,
-	animals: list[str],
-	type: Literal["hourly", "daily"]
+	img: np.ndarray, animals: list[str], type: Literal["hourly", "daily"]
 ) -> go.Figure:
 	"""Plots N-cages of heatmaps with per hour time spent for each animal"""
 	match type:
 		case "hourly":
-			title="<b>Time spent per cage</b>"
+			title = "<b>Time spent per cage</b>"
 			x = "Hour: %{x}"
-			x_title="Hour of day"
+			x_coords = list(range(img.shape[2]))
+			x_title = "Hour of day"
 		case "daily":
-			title="<b>Cage preference over time</b>"
-			x= "Day: %{x}"
-			x_title="Day"
+			title = "<b>Cage preference over time</b>"
+			x_coords = list(range(1, img.shape[2] + 1))
+			x = "Day: %{x}"
+			x_title = "Day"
+
 	fig = px.imshow(
 		img,
 		y=animals,
+		x=x_coords,
 		facet_col=0,
+		facet_row_spacing=0.14,
 		facet_col_wrap=2,
 		title=title,
 	)
@@ -390,7 +393,7 @@ def plot_heatmap(
 			]
 		)
 	)
-	
+
 	fig.update_layout(yaxis=dict(automargin=True), xaxis=dict(automargin=True))
 
 	return fig
@@ -433,7 +436,7 @@ def plot_sociability_heatmap(
 			]
 		)
 	)
- 
+
 	fig.update_layout(yaxis=dict(automargin=True), xaxis=dict(automargin=True))
 
 	return fig
@@ -469,7 +472,7 @@ def plot_within_cohort_heatmap(
 			]
 		)
 	)
- 
+
 	fig.update_layout(yaxis=dict(automargin=True), xaxis=dict(automargin=True))
 
 	return fig
@@ -542,18 +545,8 @@ def plot_network_graph(
 		),
 	)
 
-	fig.update_xaxes(
-		showticklabels=False,
-		showgrid=False,
-		zeroline=False,
-		automargin=True
-	)
-	fig.update_yaxes(
-		showticklabels=False,
-		showgrid=False,
-		zeroline=False,
-		automargin=True
-	)
+	fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, automargin=True)
+	fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, automargin=True)
 
 	return fig
 
