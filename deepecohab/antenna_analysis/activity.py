@@ -1,6 +1,7 @@
 import datetime as dt
 from pathlib import Path
 from typing import Any
+from itertools import product
 
 import polars as pl
 
@@ -34,14 +35,23 @@ def calculate_cage_occupancy(
 	if isinstance(cage_occupancy, pl.LazyFrame):
 		return cage_occupancy
 
+
+	lf: pl.LazyFrame = auxfun.load_ecohab_data(config_path, "main_df")
+
 	results_path = Path(cfg["project_location"]) / "results"
 
-	binary_lf: pl.LazyFrame = auxfun.load_ecohab_data(config_path, "binary_df")
+	relevant_cols = ['animal_id', 'datetime', 'time_spent', 'position']
+	
+	full_lf = get_hourly_padded(lf, relevant_cols)
 
-	cols = ["day", "hour", "cage", "animal_id"]
+	agg = full_lf.select(relevant_cols).with_columns(
+		auxfun.get_hour(), auxfun.get_day()
+		).group_by(
+			["day", "hour", "position", "animal_id"]
+		).agg(pl.sum("time_spent").alias("time_spent"))
 
 	bounds: tuple[dt.datetime, dt.datetime] = (
-		binary_lf.select(
+		lf.select(
 			pl.col("datetime").min().dt.truncate("1h").alias("start"),
 			pl.col("datetime").max().dt.truncate("1h").alias("end"),
 		)
@@ -56,15 +66,17 @@ def calculate_cage_occupancy(
 		.drop("datetime")
 	)
 
-	full_group_list = time_lf.join(auxfun.get_animal_cage_grid(cfg), how="cross")
-
-	agg = (
-		binary_lf.with_columns(auxfun.get_hour(), auxfun.get_day())
-		.group_by(cols)
-		.agg(pl.len().alias("time_spent"))
+	animal_pos_lf = pl.LazyFrame(
+		product(cfg["animal_ids"], set(cfg["antenna_combinations"].values())),
+		schema={
+			"animal_id": pl.Enum(cfg["animal_ids"]),
+			"position": pl.Categorical,
+		},
+		orient="row",
 	)
+	full_group_list = time_lf.join(animal_pos_lf, how="cross")
 
-	cage_occupancy = full_group_list.join(agg, on=cols, how="left").fill_null(0)
+	cage_occupancy = full_group_list.join(agg, on=["day", "hour", "position", "animal_id"], how="left").fill_null(0)
 
 	if save_data:
 		cage_occupancy.sink_parquet(
@@ -72,6 +84,50 @@ def calculate_cage_occupancy(
 		)
 
 	return cage_occupancy
+
+def get_hourly_padded(lf: pl.LazyFrame, relevant_cols: list[str]):
+	lf_trimmed =lf.select(relevant_cols)
+	lf_trimmed = lf_trimmed.with_columns(
+			(pl.col('datetime')-pl.col('datetime').dt.truncate('1h')).dt.total_seconds(fractional=True).alias('seconds_after_hour')
+		)
+
+	unmodified_rows = lf_trimmed.filter(
+			pl.col('seconds_after_hour') <= pl.col("time_spent")
+		).drop('seconds_after_hour')
+	eps = pl.duration(microseconds=1)
+	to_multiply = lf_trimmed.with_columns(
+		(pl.col('datetime').dt.truncate('1h')-eps).alias('end_hr'),
+		((pl.col('datetime')-pl.duration(seconds = pl.col('time_spent'))+pl.duration(hours=1)).dt.truncate('1h')-eps).alias('start_hr'),  
+	).filter(
+		pl.col('seconds_after_hour') < pl.col("time_spent")
+	).with_columns(
+		(pl.col('time_spent')-pl.col('seconds_after_hour')).alias('time_spent')
+	)
+
+	seconds_per_hr = 3600
+
+	ends = to_multiply.with_columns(
+		(pl.col('seconds_after_hour')).alias('time_spent')
+	)
+
+	starts = to_multiply.with_columns(
+		pl.col('start_hr').alias('datetime'),
+		(pl.col('time_spent').mod(seconds_per_hr)).alias('time_spent')
+	)
+	full_hours = to_multiply.filter(
+		pl.col('start_hr') != pl.col('end_hr')
+	).with_columns(
+		pl.datetime_ranges(
+			pl.col("start_hr"), pl.col("end_hr"),
+			interval="1h",
+		).alias('range')
+	).with_columns(pl.lit(3600).cast(pl.Float64).alias("time_spent")).explode('range').with_columns(
+		pl.col('range').alias('datetime')).drop("range")
+
+	multiplied = pl.concat([starts, ends, full_hours]).select(relevant_cols).sort(["datetime"])
+	full_lf = pl.concat([unmodified_rows, multiplied])
+	
+	return full_lf
 
 
 @df_registry.register("activity_df")
