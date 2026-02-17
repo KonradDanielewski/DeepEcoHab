@@ -154,7 +154,7 @@ def _create_project(
 		project_location.mkdir(parents=True, exist_ok=True)
 
 	try:
-		config_path = create_project.create_ecohab_project(
+		config_path, _ = create_project.create_ecohab_project(
 			project_location=loc,
 			data_path=data,
 			experiment_name=name,
@@ -177,7 +177,23 @@ def _create_project(
 		)
 		config_dict = toml.load(config_path)
 
-		if isinstance(config_dict, dict):
+		if isinstance(_, str):
+			return (
+				config_dict,
+				dbc.Toast(
+					f"Project already exists at {config_path}! Loaded existing.",
+					id="project-success-toast",
+					header="Warning",
+					is_open=True,
+					dismissable=True,
+					icon="warning",
+					duration=5000,
+					class_name="custom-toast",
+				),
+				"Warning!",
+				"warning",
+			)
+		elif _ is None:
 			return (
 				config_dict,
 				dbc.Toast(

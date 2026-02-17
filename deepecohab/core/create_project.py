@@ -20,7 +20,7 @@ def create_ecohab_project(
 	field_ecohab: bool = False,
 	interpolate_positions: bool = False,
 	antenna_rename_scheme: dict | None = None,
-) -> Path:
+) -> tuple[Path, str | None]:
 	"""Creates the ecohab project directory and config."""
 	project_root = Path(project_location)
 	data_dir = Path(data_path)
@@ -30,7 +30,7 @@ def create_ecohab_project(
 
 	if config_path.exists():
 		print(f"Project already exists! Loading: {config_path}")
-		return config_path
+		return config_path, "exists"
 
 	if not any(data_dir.glob("*.txt")):
 		raise FileNotFoundError(f"No .txt files found in {data_dir}")

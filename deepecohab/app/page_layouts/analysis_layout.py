@@ -98,7 +98,7 @@ def generate_cohort_card():
 					),
 				]
 			),
-		]
+		],
 	)
 
 
@@ -135,7 +135,7 @@ def generate_group_card():
 					),
 				]
 			),
-		]
+		],
 	)
 
 
@@ -172,7 +172,7 @@ def generate_pose_card():
 					),
 				]
 			),
-		]
+		],
 	)
 
 
@@ -202,6 +202,7 @@ def generate_layout():
 					],
 					width=6,
 				),
-			]
+			],
+			className="row-size",
 		),
 	]

@@ -94,7 +94,10 @@ def plot_time_alone(
 
 	fig.update_xaxes(title_text="<b>Animal ID</b>")
 	fig.update_yaxes(title_text="<b>Time alone [s]</b>")
-	fig.update_layout(barcornerradius=10)
+	fig.update_layout(
+		barcornerradius=10,
+		legend_title_text="<b>Animal ID</b>",
+	)
 
 	return fig
 
@@ -319,11 +322,15 @@ def time_spent_per_cage(
 			x = "Hour: %{x}"
 			x_coords = list(range(img.shape[2]))
 			x_title = "Hour of day"
+			z="Time [min]: %{z}"
+			legend_title = "<b>Minutes</b>"
 		case "daily":
 			title = "<b>Cage preference over time</b>"
 			x_coords = list(range(1, img.shape[2] + 1))
 			x = "Day: %{x}"
 			x_title = "Day"
+			z="Time [h]: %{z}"
+			legend_title = "<b>Hours</b>"
 
 	fig = px.imshow(
 		img,
@@ -342,6 +349,9 @@ def time_spent_per_cage(
 		xaxis=dict(title=x_title),
 		xaxis2=dict(title=x_title),
 		yaxis=dict(automargin=True),
+		coloraxis_colorbar=dict(
+			title=dict(text=legend_title),
+		),
 	)
 
 	fig.update_traces(
@@ -349,7 +359,7 @@ def time_spent_per_cage(
 			[
 				x,
 				"Animal ID: %{y}",
-				"Time [s]: %{z}",
+				z,
 			]
 		)
 	)
@@ -479,7 +489,7 @@ def plot_within_cohort_heatmap(
 
 
 def plot_metrics_polar(df: pl.DataFrame, colors: list[str]):
-	"""Plots mean z-scores (across animals) of metrics with shading showing SEM as polar plot."""    
+	"""Plots mean z-scores (across animals) of metrics with shading showing SEM as polar plot."""
 	fig = go.Figure()
 
 	for i, (name, group) in enumerate(df.partition_by("animal_id", as_dict=True).items()):
@@ -626,6 +636,7 @@ def plot_social_stability(
 	fig.update_layout(
 		xaxis=dict(title="<b>Relationship stability</b>"),
 		yaxis=dict(title="<b>Median proportion together</b>"),
+		legend_title_text="<b>Animal ID</b>",
 	)
 	fig.update_traces(marker_size=12)
 

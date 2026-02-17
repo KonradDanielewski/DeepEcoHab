@@ -318,7 +318,5 @@ def generate_layout():
 				html.Img(src="assets/logo_test.png", width=500, height=500),
 				className="fullscreen_centered",
 			),
-		],
-		justify="left",
-		align="center",
+		], className="card-size",
 	)

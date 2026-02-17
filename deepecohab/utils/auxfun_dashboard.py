@@ -325,6 +325,7 @@ def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
 def generate_plot_download_tab() -> dcc.Tab:
 	"""Generates Plots download tab in the Downloads modal component"""  # TODO: Add select all
 	return dcc.Tab(
+		id="download_tab",
 		label="Plots",
 		value="tab-plots",
 		className="dash-tab",
@@ -355,7 +356,7 @@ def generate_plot_download_tab() -> dcc.Tab:
 						width=4,
 						className="d-flex flex-column align-items-start",
 					),
-				]
+				], className="modal-download-content",
 			)
 		],
 	)
@@ -429,12 +430,14 @@ def generate_download_block() -> dbc.Modal:
 						generate_plot_download_tab(),
 						generate_csv_download_tab(),
 					],
-				)
+					className="modal-tabs-size",
+				),
 			),
 			dcc.Download(id="download-component"),
 		],
 		id="modal",
 		is_open=False,
+
 	)
 
 	return modal
@@ -475,7 +478,7 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450", **kwargs
 				className=css_class,
 				config=COMMON_CFG,
 			),
-		]
+		], className=css_class,
 	)
 
 

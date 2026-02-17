@@ -34,7 +34,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								),
 								width=6,
 							),
-						]
+						], class_name="row-size",
 					),
 					# Ranking, network graph, chasings
 					dbc.Row([dbc.Col(html.H2("Social hierarchy"), className="text-left my-4")]),
@@ -52,7 +52,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								),
 								width=1,
 							),
-						]
+						], class_name="row-size",
 					),
 					dbc.Row(
 						[
@@ -76,8 +76,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								],
 								width=6,
 							),
-						],
-						className="gx-3 gy-0",
+						], class_name="row-size",
 					),
 					dbc.Row(
 						[
@@ -93,11 +92,26 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								auxfun_dashboard.generate_standard_graph("chasings-line"),
 								width=6,
 							),
-						],
-						className="gx-3 gy-0",
+						], className="row-size",
 					),
 					# Activity per hour line and per position bar
 					dbc.Row([dbc.Col(html.H2("Activity", className="text-left mb-2"))]),
+					dbc.Row(
+						[
+							dbc.Col(
+								auxfun_dashboard.generate_standard_graph(
+									"cage-preference-evolution", css_class="plot-400"
+								),
+								width=8,
+							),
+							dbc.Col(
+								auxfun_dashboard.generate_standard_graph(
+									"cage-preference", css_class="plot-400"
+								),
+								width=4,
+							),
+						], className="row-size",
+					),
 					dbc.Row(
 						[
 							dbc.Col(
@@ -112,24 +126,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								),
 								width=1,
 							),
-						],
-						className="mb-2",
-					),
-					dbc.Row(
-						[
-							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"cage-preference-evolution", css_class="plot-350"
-								),
-								width=8,
-							),
-							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"cage-preference", css_class="plot-350"
-								),
-								width=4,
-							),
-						]
+						], className="row-size",
 					),
 					dbc.Row(
 						[
@@ -141,8 +138,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								auxfun_dashboard.generate_standard_graph("activity-line"),
 								width=6,
 							),
-						],
-						className="gx-3 gy-0",
+						], className="row-size",
 					),
 					dbc.Row(
 						[
@@ -176,7 +172,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								width=1,
 							),
 						],
-						className="mb-2",
+						className="row-size",
 					),
 					dbc.Row(
 						[
@@ -194,7 +190,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								width=6,
 							),
 						],
-						className="gx-3 gy-0",
+						className="row-size",
 					),
 					dbc.Row(
 						[
@@ -211,7 +207,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								width=2,
 							),
 						],
-						className="mt-5",
+						className="row-size",
 					),
 					dbc.Row(
 						[
@@ -233,7 +229,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								),
 								width=4,
 							),
-						],
+						], className="row-size",
 					),
 				],
 				fluid=True,

@@ -3,7 +3,7 @@ body {
   margin: 0;
   padding: 0;
   font-family: "Roboto", "Helvetica Neue", Arial, sans-serif;
-  background-color: #161f34;
+  background-color: #0a1735;
   color: #e0e6f0;
   line-height: 1.6;
 }
@@ -182,7 +182,7 @@ p,
 
 .dash-radio.switch-disabled {
   opacity: 0.4;
-  pointer-events: none; 
+  pointer-events: none;
   cursor: not-allowed;
 }
 
@@ -618,34 +618,50 @@ a:hover {
 /* Graph sizing */
 .plot-300 {
   height: 300px !important;
+  min-width: 300px !important;
+  width: 100%;
 }
 
 .plot-350 {
   height: 350px !important;
-}
-
-.plot-500 {
-  height: 500px !important;
+  min-width: 350px !important;
+  width: 100%;
 }
 
 .plot-450 {
   height: 450px !important;
+  min-width: 450px !important;
+  width: 100%;
+}
+
+.plot-500 {
+  height: 500px !important;
+  min-width: 500px !important;
+  width: 100%;
 }
 
 .plot-600 {
   height: 600px !important;
+  min-width: 600px !important;
+  width: 100%;
 }
 
 .plot-650 {
-  height: 600px !important;
+  height: 650px !important;
+  min-width: 650px !important;
+  width: 100%;
 }
 
 .plot-700 {
   height: 700px !important;
+  min-width: 700px !important;
+  width: 100%;
 }
 
 .plot-800 {
   height: 800px !important;
+  min-width: 800px !important;
+  width: 100%;
 }
 
 .fullsize {
@@ -658,6 +674,7 @@ a:hover {
 .tab-parent,
 .dash-tabs-container {
   overflow: visible !important;
+  min-width: 1600px !important;
 }
 
 .sticky-settings-block {
@@ -669,6 +686,7 @@ a:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   z-index: 1020;
   width: 100%;
+  min-width: 1600px !important;
 }
 
 .dash-tab {
@@ -678,6 +696,10 @@ a:hover {
   padding: 10px !important;
   font-weight: bold !important;
   border: none !important;
+}
+
+#download-tabs-parent .tab-content {
+  max-width: 450px !important;
 }
 
 .dash-tab--selected {
@@ -847,22 +869,44 @@ body.sidebar-open #main-content {
 }
 
 .progress {
-    background-color: #dee2e6 !important; 
-    border-radius: 0.25rem;
-    height: 1.5rem; 
+  background-color: #dee2e6 !important;
+  border-radius: 0.25rem;
+  height: 1.5rem;
 }
 
 #btn-text[data-dash-is-loading="true"] {
-    visibility: hidden;
-    position: relative;
+  visibility: hidden;
+  position: relative;
 }
 
 #btn-text[data-dash-is-loading="true"]:after {
-    content: "Creating...";
-    position: absolute;
-    visibility: visible;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    white-space: nowrap;
+  content: "Creating...";
+  position: absolute;
+  visibility: visible;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
+.row-size {
+  min-width: 1600px !important;
+}
+
+.analysis-card {
+  min-width: 800px !important;
+}
+
+.card-size {
+  min-width: 1600px !important;
+  justify-content: left !important;
+  align-items: center !important;
+}
+
+.modal-tabs-size {
+  max-width: 450px !important;
+}
+
+.modal-download-content {
+  max-width: 500px !important;
 }

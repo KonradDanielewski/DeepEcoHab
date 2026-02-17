@@ -14,8 +14,8 @@ def set_default_theme() -> None:
 	"""Sets default plotly theme. NOTE: to be updated as we go."""
 	dark_dash_template = go.layout.Template(
 		layout=go.Layout(
-			paper_bgcolor="#161f34",
-			plot_bgcolor="#161f34",
+			paper_bgcolor="#0a1735",
+			plot_bgcolor="#0a1735",
 			font=dict(color="#e0e6f0"),
 			xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
 			yaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
@@ -481,9 +481,9 @@ def prep_time_per_cage(
 
 	match agg_switch:
 		case "sum":
-			agg_func = pl.sum("time_spent")
+			agg_func = pl.sum("time_spent") / 60
 		case "mean":
-			agg_func = pl.mean("time_spent").round(2)
+			agg_func = pl.mean("time_spent").round(2) / 60
 
 	img = (
 		store["cage_occupancy"]
@@ -657,7 +657,7 @@ def prep_social_stability(
 	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Return a dataframe showing proportion together and stability of the relationship"""
-	mda = (pl.col("proportion_together") - pl.median("proportion_together")).abs().median()
+	mad = (pl.col("proportion_together") - pl.median("proportion_together")).abs().median()
 
 	df = store["incohort_sociability"].lazy()
 
@@ -681,7 +681,7 @@ def prep_social_stability(
 			(
 				1
 				- (
-					mda / (pl.median("proportion_together") + 1e-10)
+					mad / (pl.median("proportion_together") + 1e-10)
 				)  # avoid div by 0 and hence NaN stability
 			)
 			.clip(0, 1)
@@ -794,10 +794,9 @@ def prep_cage_preference_evolution(
 
 	match agg_switch:
 		case "sum":
-			agg_func = pl.sum("time_in_position")
+			agg_func = pl.sum("time_in_position") / 3600
 		case "mean":
-			agg_func = pl.mean("time_in_position").round(2)
-
+			agg_func = pl.mean("time_in_position").round(2) / 3600
 	img = (
 		store["activity_df"]
 		.lazy()
