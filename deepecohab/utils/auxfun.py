@@ -180,7 +180,7 @@ def get_phase_edge_grid(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 		.filter(pl.col("phase_end") >= exp_start)
 		.select(["phase", "phase_end"])
 		.sort("phase_end")
-		.with_columns(get_day("phase_end"))
+		.with_columns(get_day("phase_end").alias('day'))
 		.pipe(get_phase_count)
 	)
 
