@@ -229,7 +229,7 @@ def create_padded_df(
 		.then(pl.col("position").shift(-1).over("animal_id"))
 		.otherwise(pl.col("position"))
 		.alias("position"),
-	).drop("mask", "phase_end")
+	).with_columns(auxfun.get_day("datetime").alias('day')).drop("mask", "phase_end")
 
 	if save_data:
 		padded_lf.sink_parquet(
