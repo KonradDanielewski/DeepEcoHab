@@ -62,7 +62,7 @@ layout = html.Div(
 	],
 	Input("project-config-store", "data"),
 )
-def render_graphs_layout(cfg):
+def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 	if not cfg:
 		return html.Div("Please load a project to see graphs."), no_update
 

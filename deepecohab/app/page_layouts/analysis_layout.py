@@ -69,7 +69,7 @@ def generate_cohort_card():
 							dbc.Col(
 								dbc.Checkbox(
 									id="overwrite-check",
-									value=True,
+									value=False,
 									className="checkbox",
 								),
 								width=1,

@@ -322,14 +322,14 @@ def time_spent_per_cage(
 			x = "Hour: %{x}"
 			x_coords = list(range(img.shape[2]))
 			x_title = "Hour of day"
-			z="Time [min]: %{z}"
+			z = "Time [min]: %{z}"
 			legend_title = "<b>Minutes</b>"
 		case "daily":
 			title = "<b>Cage preference over time</b>"
 			x_coords = list(range(1, img.shape[2] + 1))
 			x = "Day: %{x}"
 			x_title = "Day"
-			z="Time [h]: %{z}"
+			z = "Time [h]: %{z}"
 			legend_title = "<b>Hours</b>"
 
 	fig = px.imshow(
@@ -584,7 +584,6 @@ def plot_network_graph(
 			graph = nx.Graph
 			title = "<b>Sociability network graph</b>"
 			include_ranking = False
-
 
 	G = nx.from_pandas_edgelist(connections, create_using=graph, edge_attr=edge_weight)
 	pos = nx.spring_layout(G, k=0.1, iterations=50, seed=42, weight=edge_weight, method="energy")

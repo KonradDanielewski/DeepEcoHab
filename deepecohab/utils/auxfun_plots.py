@@ -807,6 +807,7 @@ def prep_cage_preference_evolution(
 			pl.col("day").is_between(*days_range),
 			pl.col("position").str.contains("cage"),
 		)
+		.fill_null(0)
 		.group_by(["day", "animal_id", "position"])
 		.agg(agg_func)
 		.join(

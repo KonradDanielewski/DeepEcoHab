@@ -1,4 +1,5 @@
 import time
+from typing import Any
 
 import dash
 from dash import (
@@ -27,12 +28,21 @@ layout = analysis_layout.generate_layout()
 		Output("antenna-button", "disabled", allow_duplicate=True),
 	],
 	Input("antenna-button", "n_clicks"),
-	State("project-config-store", "data"),
-	State("numeric-input", "value"),
-	State("chasing_window", "value"),
+	[
+		State("project-config-store", "data"),
+		State("numeric-input", "value"),
+		State("chasing_window", "value"),
+		State("overwrite-check", "value"),
+	],
 	prevent_initial_call=True,
 )
-def start_analysis(n_clicks, config, min_time, chasing_window):
+def start_analysis(
+	n_clicks: int,
+	config: dict[str, Any],
+	min_time: float,
+	chasing_window: list[float],
+	overwrite: bool,
+) -> tuple[bool, bool]:
 	if not n_clicks or not config:
 		return no_update, no_update
 
@@ -40,6 +50,7 @@ def start_analysis(n_clicks, config, min_time, chasing_window):
 		config,
 		minimum_time=min_time,
 		chasing_time_window=chasing_window,
+		overwrite=overwrite,
 	)
 
 	for step_name, current, total in pipeline_generator:
@@ -67,7 +78,7 @@ def start_analysis(n_clicks, config, min_time, chasing_window):
 	Input("progress-interval", "n_intervals"),
 	prevent_initial_call=True,
 )
-def update_progress_bar(n):
+def update_progress_bar(n_clicks: int) -> tuple[float, str, str, str, bool]:
 	status = cache_config.launch_cache.get("analysis_status")
 
 	if not status:

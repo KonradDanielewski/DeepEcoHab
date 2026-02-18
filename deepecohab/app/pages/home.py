@@ -99,9 +99,9 @@ def validate_and_highlight(
 @callback(
 	[
 		Output("project-config-store", "data", allow_duplicate=True),
-        Output("toast-container", "children", allow_duplicate=True),
-        Output("btn-text", "children"),
-        Output("create-project-btn", "color"),
+		Output("toast-container", "children", allow_duplicate=True),
+		Output("btn-text", "children"),
+		Output("create-project-btn", "color"),
 	],
 	Input("create-project-btn", "n_clicks"),
 	[
@@ -126,13 +126,13 @@ def validate_and_highlight(
 def _create_project(
 	n_clicks: int,
 	name: str,
-	loc: str,
-	data: str,
-	light: str,
-	dark: str,
+	project_location: str,
+	data_path: str,
+	light_start: str,
+	dark_start: str,
 	ext: str,  # placeholder for now
 	prefix: str,
-	tz: str,
+	timezone: str,
 	animals: str,
 	layouts: list[bool],
 	exp_start: str,
@@ -140,29 +140,29 @@ def _create_project(
 	interpolate: bool,
 	sanitize: bool,
 	min_cross: int,
-):
+) -> tuple[dict[str, Any], dbc.Toast, str, str]:
 	if n_clicks == 0:
 		return no_update, no_update, "Create Project", "primary"
 
-	id_list = [i.strip() for i in animals.split(",")] if animals else None
+	animal_ids = [i.strip() for i in animals.split(",")] if animals else None
 	is_field = "field" in layouts
 	if "field" in layouts:
 		is_custom = True
 	else:
 		is_custom = "custom" in layouts
 
-	project_location = Path(loc)
+	project_location = Path(project_location)
 	if not project_location.is_dir():
 		project_location.mkdir(parents=True, exist_ok=True)
 
 	try:
 		config_path, _ = create_project.create_ecohab_project(
-			project_location=loc,
-			data_path=data,
+			project_location=project_location,
+			data_path=data_path,
 			experiment_name=name,
-			light_phase_start=light,
-			dark_phase_start=dark,
-			animal_ids=id_list,
+			light_phase_start=light_start,
+			dark_phase_start=dark_start,
+			animal_ids=animal_ids,
 			custom_layout=is_custom,
 			field_ecohab=is_field,
 			start_datetime=exp_start,
@@ -176,7 +176,7 @@ def _create_project(
 			min_antenna_crossings=int(min_cross),
 			fname_prefix=prefix,
 			custom_layout=is_custom,
-			timezone=tz,
+			timezone=timezone,
 		)
 		config_dict = toml.load(config_path)
 
@@ -241,7 +241,9 @@ def _create_project(
 	State("upload-config", "filename"),
 	prevent_initial_call=True,
 )
-def load_config_to_store(contents: dict[str, Any], filename: str):
+def load_config_to_store(
+	contents: dict[str, Any], filename: str
+) -> tuple[dict[str, Any], bool, dbc.Toast]:
 	if not contents:
 		return [no_update] * 3
 
@@ -250,7 +252,7 @@ def load_config_to_store(contents: dict[str, Any], filename: str):
 		decoded = base64.b64decode(content_string).decode("utf-8")
 		config_dict = toml.loads(decoded)
 
-		return [
+		return (
 			config_dict,
 			False,
 			dbc.Toast(
@@ -260,7 +262,7 @@ def load_config_to_store(contents: dict[str, Any], filename: str):
 				duration=10000,
 				className="custom-toast toast-success",
 			),
-		]
+		)
 
 	except Exception as e:
 		error_toast = dbc.Toast(
@@ -269,7 +271,7 @@ def load_config_to_store(contents: dict[str, Any], filename: str):
 			icon="danger",
 			className="custom-toast toast-danger",
 		)
-		return [no_update, True, error_toast]
+		return no_update, True, error_toast
 
 
 @callback(
@@ -280,7 +282,7 @@ def load_config_to_store(contents: dict[str, Any], filename: str):
 	Input("clear-session-btn", "n_clicks"),
 	prevent_initial_call=True,
 )
-def clear_app_cache(n_clicks: int):
+def clear_app_cache(n_clicks: int) -> tuple[None, dbc.Toast]:
 	if not n_clicks:
 		return no_update, no_update
 
@@ -322,8 +324,7 @@ clientside_callback(
 )
 
 clientside_callback(
-    dash.ClientsideFunction(namespace="clientside", function_name="is_checked"),
-    Output("min-cross", "disabled"),
-    Input("sanitize-check", "value"),
+	dash.ClientsideFunction(namespace="clientside", function_name="is_checked"),
+	Output("min-cross", "disabled"),
+	Input("sanitize-check", "value"),
 )
-
