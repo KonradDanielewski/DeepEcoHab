@@ -292,6 +292,7 @@ def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
 					dcc.Graph(
 						id={"figure": "comparison-plot", "side": side},
 						config=COMMON_CFG,
+						className="plot-600"
 					),
 				]
 			),

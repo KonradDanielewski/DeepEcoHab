@@ -29,12 +29,16 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 					dbc.Row(
 						[
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"metrics-polar-line", css_class="plot-500"
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"metrics-polar-line", css_class="plot-500"
+									),
+									color="primary",
 								),
 								width=6,
 							),
-						], class_name="row-size",
+						],
+						class_name="row-size",
 					),
 					# Ranking, network graph, chasings
 					dbc.Row([dbc.Col(html.H2("Social hierarchy"), className="text-left my-4")]),
@@ -52,65 +56,93 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								),
 								width=1,
 							),
-						], class_name="row-size",
+						],
+						class_name="row-size",
 					),
 					dbc.Row(
 						[
 							dbc.Col(
 								[
-									auxfun_dashboard.generate_standard_graph(
-										"ranking-line", css_class="plot-350"
+									dbc.Spinner(
+										auxfun_dashboard.generate_standard_graph(
+											"ranking-line", css_class="plot-350"
+										),
+										color="primary",
 									),
-									auxfun_dashboard.generate_standard_graph(
-										"ranking-distribution-line", css_class="plot-300"
+									dbc.Spinner(
+										auxfun_dashboard.generate_standard_graph(
+											"ranking-distribution-line", css_class="plot-300"
+										),
+										color="primary",
 									),
 								],
 								width=6,
 							),
 							dbc.Col(
 								[
-									auxfun_dashboard.generate_standard_graph(
-										"network-dominance",
-										css_class="plot-650",
+									dbc.Spinner(
+										auxfun_dashboard.generate_standard_graph(
+											"network-dominance",
+											css_class="plot-650",
+										),
+										color="primary",
 									),
 								],
 								width=6,
 							),
-						], class_name="row-size",
+						],
+						class_name="row-size",
 					),
 					dbc.Row(
 						[
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph("tube-test-heatmap"),
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph("tube-test-heatmap"),
+									color="primary",
+								),
 								width=3,
 							),
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph("chasings-heatmap"),
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph("chasings-heatmap"),
+									color="primary",
+								),
 								width=3,
 							),
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph("chasings-line"),
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph("chasings-line"),
+									color="primary",
+								),
 								width=6,
 							),
-						], className="row-size",
+						],
+						className="row-size",
 					),
 					# Activity per hour line and per position bar
 					dbc.Row([dbc.Col(html.H2("Activity", className="text-left mb-2"))]),
 					dbc.Row(
 						[
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"cage-preference-evolution", css_class="plot-400"
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"cage-preference-evolution", css_class="plot-400"
+									),
+									color="primary",
 								),
 								width=8,
 							),
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"cage-preference", css_class="plot-400"
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"cage-preference", css_class="plot-400"
+									),
+									color="primary",
 								),
 								width=4,
 							),
-						], className="row-size",
+						],
+						className="row-size",
 					),
 					dbc.Row(
 						[
@@ -126,25 +158,36 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 								),
 								width=1,
 							),
-						], className="row-size",
+						],
+						className="row-size",
 					),
 					dbc.Row(
 						[
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph("activity-bar"),
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph("activity-bar"),
+									color="primary",
+								),
 								width=6,
 							),
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph("activity-line"),
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph("activity-line"),
+									color="primary",
+								),
 								width=6,
 							),
-						], className="row-size",
+						],
+						className="row-size",
 					),
 					dbc.Row(
 						[
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"time-per-cage-heatmap", css_class="plot-400"
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"time-per-cage-heatmap", css_class="plot-400"
+									),
+									color="primary",
 								),
 								width=12,
 							),
@@ -177,15 +220,21 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 					dbc.Row(
 						[
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"sociability-heatmap", css_class="plot-600"
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"sociability-heatmap", css_class="plot-600"
+									),
+									color="primary",
 								),
 								width=6,
 							),
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"network-sociability",
-									css_class="plot-600",
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"network-sociability",
+										css_class="plot-600",
+									),
+									color="primary",
 								),
 								width=6,
 							),
@@ -212,24 +261,34 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 					dbc.Row(
 						[
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"cohort-heatmap", css_class="plot-500"
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"cohort-heatmap", css_class="plot-500"
+									),
+									color="primary",
 								),
 								width=4,
 							),
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"social-stability", css_class="plot-500"
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"social-stability", css_class="plot-500"
+									),
+									color="primary",
 								),
 								width=4,
 							),
 							dbc.Col(
-								auxfun_dashboard.generate_standard_graph(
-									"time-alone-bar", css_class="plot-500"
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"time-alone-bar", css_class="plot-500"
+									),
+									color="primary",
 								),
 								width=4,
 							),
-						], className="row-size",
+						],
+						className="row-size",
 					),
 				],
 				fluid=True,
@@ -246,11 +305,17 @@ def generate_comparison_layout(phase_range: list[int, int]) -> html.Div:
 			dbc.Row(
 				[
 					dbc.Col(
-						auxfun_dashboard.generate_comparison_block("left", phase_range),
+						dbc.Spinner(
+							auxfun_dashboard.generate_comparison_block("left", phase_range),
+							color="primary",
+						),
 						width=6,
 					),
 					dbc.Col(
-						auxfun_dashboard.generate_comparison_block("right", phase_range),
+						dbc.Spinner(
+							auxfun_dashboard.generate_comparison_block("right", phase_range),
+							color="primary",
+						),
 						width=6,
 					),
 				],
