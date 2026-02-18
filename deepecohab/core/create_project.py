@@ -80,4 +80,4 @@ def create_ecohab_project(
 	with open(config_path, "w") as toml_file:
 		toml.dump(config_data, toml_file)
 
-	return config_path
+	return config_path, "created"

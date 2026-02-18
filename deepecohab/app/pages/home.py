@@ -177,7 +177,7 @@ def _create_project(
 		)
 		config_dict = toml.load(config_path)
 
-		if isinstance(_, str):
+		if _ == "exists":
 			return (
 				config_dict,
 				dbc.Toast(
@@ -193,7 +193,7 @@ def _create_project(
 				"Warning!",
 				"warning",
 			)
-		elif _ is None:
+		elif _ == "created":
 			return (
 				config_dict,
 				dbc.Toast(

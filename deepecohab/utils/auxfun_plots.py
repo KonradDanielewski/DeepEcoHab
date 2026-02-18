@@ -14,8 +14,8 @@ def set_default_theme() -> None:
 	"""Sets default plotly theme. NOTE: to be updated as we go."""
 	dark_dash_template = go.layout.Template(
 		layout=go.Layout(
-			paper_bgcolor="#0a1735",
-			plot_bgcolor="#0a1735",
+			paper_bgcolor="#161f34",
+			plot_bgcolor="#161f34",
 			font=dict(color="#e0e6f0"),
 			xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
 			yaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
