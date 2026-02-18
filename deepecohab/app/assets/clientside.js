@@ -66,7 +66,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             }
             return !is_open;
         },
-        check_config_exists: function(config) {
+        check_config_exists: function (config) {
             if (!config) {
                 return true;
             }
@@ -75,11 +75,14 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             }
             return false;
         },
-        enable_on_click: function(n_clicks) {
+        enable_on_click: function (n_clicks) {
             if (n_clicks > 0) {
                 return false;
             }
             return window.dash_clientside.no_update;
+        },
+        is_checked: function(is_checked) {
+            return !is_checked;
         },
     }
 });

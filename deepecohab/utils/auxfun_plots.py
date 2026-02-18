@@ -53,14 +53,16 @@ def create_edges_trace(
 	"""Auxfun to create edges trace with color mapping based on edge width"""
 	edge_widths = np.array([G.edges[e][edge_weight] for e in G.edges()])
 
-	min_w: float = edge_widths.min()
-	max_w: float = edge_widths.max()
+	mu: float = edge_widths.mean()
+	std: float = edge_widths.std()
 
-	if max_w == min_w:
-		normalized_widths = np.zeros_like(edge_widths)
+	if std == 0 or np.isnan(std):
+		normalized_for_colors = np.full_like(edge_widths, 0.5)
 	else:
-		normalized_widths = (edge_widths - min_w) / (max_w - min_w)
-		colorscale: list[str] = px.colors.sample_colorscale(cmap, normalized_widths)
+		z_scores = (edge_widths - mu) / std
+		normalized_for_colors = 1 / (1 + np.exp(-z_scores))
+
+	colorscale: list[str] = px.colors.sample_colorscale(cmap, normalized_for_colors.tolist())
 
 	edge_trace: list[go.Scatter] = []
 
@@ -69,7 +71,7 @@ def create_edges_trace(
 			continue
 		source_x, source_y = pos[edge[0]][:2]
 		target_x, target_y = pos[edge[1]][:2]
-		edge_width = normalized_widths[i] * 10  # connection width scaler for visivbility
+		edge_width = normalized_for_colors[i] * 10  # connection width scaler for visivbility
 
 		edge_trace.append(
 			go.Scatter(

@@ -13,7 +13,7 @@ def generate_cohort_card():
 							dbc.Col(
 								[
 									dbc.Label(
-										"Minimum time together",
+										"Minimum time together [s]",
 										class_name="mb-3",
 									),
 									dbc.Input(
@@ -34,7 +34,7 @@ def generate_cohort_card():
 						[
 							dbc.Col(
 								[
-									dbc.Label("Chasing time window", class_name="mb-3"),
+									dbc.Label("Chasing time window [s]", class_name="mb-3"),
 									dcc.RangeSlider(
 										id="chasing_window",
 										min=0,
@@ -52,6 +52,28 @@ def generate_cohort_card():
 									),
 								],
 								width=6,
+							),
+						],
+						class_name="mb-4",
+					),
+					dbc.Row(
+						[
+							dbc.Col(
+								dbc.Label(
+									"Overwrite",
+									id="overwrite-label",
+									className="home-label",
+								),
+								width=2,
+							),
+							dbc.Col(
+								dbc.Checkbox(
+									id="overwrite-check",
+									value=True,
+									className="checkbox",
+								),
+								width=1,
+								align="center",
 							),
 						],
 						class_name="mb-4",

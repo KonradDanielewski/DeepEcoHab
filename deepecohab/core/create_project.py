@@ -20,6 +20,7 @@ def create_ecohab_project(
 	field_ecohab: bool = False,
 	interpolate_positions: bool = False,
 	antenna_rename_scheme: dict | None = None,
+	overwrite: bool = False,
 ) -> tuple[Path, str | None]:
 	"""Creates the ecohab project directory and config."""
 	project_root = Path(project_location)
@@ -28,7 +29,7 @@ def create_ecohab_project(
 	full_project_path = auxfun.make_project_path(project_root, experiment_name)
 	config_path = full_project_path / "config.toml"
 
-	if config_path.exists():
+	if config_path.exists() and not overwrite:
 		print(f"Project already exists! Loading: {config_path}")
 		return config_path, "exists"
 

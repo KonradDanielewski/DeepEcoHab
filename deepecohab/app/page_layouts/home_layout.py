@@ -185,6 +185,25 @@ def generate_layout():
 																	[
 																		dbc.Col(
 																			dbc.Label(
+																				"Interpolate position:",
+																				className="home-label",
+																			)
+																		),
+																		dbc.Col(
+																			dbc.Checkbox(
+																				id="interpolate-check",
+																				value=False,
+																				className="checkbox",
+																			),
+																			align="center",
+																		),
+																	],
+																	className="mb-0",
+																),
+																dbc.Row(
+																	[
+																		dbc.Col(
+																			dbc.Label(
 																				"Sanitize IDs:",
 																				className="home-label",
 																			)

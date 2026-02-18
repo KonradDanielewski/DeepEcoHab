@@ -117,6 +117,7 @@ def validate_and_highlight(
 		State("layout-checks", "value"),
 		State("experiment-start", "value"),
 		State("experiment-end", "value"),
+		State("interpolate-check", "value"),
 		State("sanitize-check", "value"),
 		State("min-cross", "value"),
 	],
@@ -136,6 +137,7 @@ def _create_project(
 	layouts: list[bool],
 	exp_start: str,
 	exp_end: str,
+	interpolate: bool,
 	sanitize: bool,
 	min_cross: int,
 ):
@@ -165,6 +167,7 @@ def _create_project(
 			field_ecohab=is_field,
 			start_datetime=exp_start,
 			finish_datetime=exp_end,
+			interpolate_positions=interpolate,
 		)
 
 		create_data_structure.get_ecohab_data_structure(
@@ -177,40 +180,39 @@ def _create_project(
 		)
 		config_dict = toml.load(config_path)
 
-		if _ == "exists":
-			return (
-				config_dict,
-				dbc.Toast(
-					f"Project already exists at {config_path}! Loaded existing.",
-					id="project-success-toast",
-					header="Warning",
-					is_open=True,
-					dismissable=True,
-					icon="warning",
-					duration=5000,
-					class_name="custom-toast",
-				),
-				"Warning!",
-				"warning",
-			)
-		elif _ == "created":
-			return (
-				config_dict,
-				dbc.Toast(
-					f"Project created at: {config_path}",
-					id="project-success-toast",
-					header="Success",
-					is_open=True,
-					dismissable=True,
-					icon="success",
-					duration=5000,
-					class_name="custom-toast",
-				),
-				"Success!",
-				"success",
-			)
-		else:
-			raise Exception("Couldn't create the EcoHab data structure!")
+		match _:
+			case "exists":
+				return (
+					config_dict,
+					dbc.Toast(
+						f"Project already exists at {config_path}! Loaded existing.",
+						id="project-success-toast",
+						header="Warning",
+						is_open=True,
+						dismissable=True,
+						icon="warning",
+						duration=10000,
+						class_name="custom-toast toast-warning",
+					),
+					"Warning!",
+					"warning",
+				)
+			case "created":
+				return (
+					config_dict,
+					dbc.Toast(
+						f"Project created at: {config_path}",
+						id="project-success-toast",
+						header="Success",
+						is_open=True,
+						dismissable=True,
+						icon="success",
+						duration=10000,
+						class_name="custom-toast toast-success",
+					),
+					"Success!",
+					"success",
+				)
 
 	except Exception as e:
 		return [
@@ -222,7 +224,7 @@ def _create_project(
 				is_open=True,
 				dismissable=True,
 				icon="danger",
-				class_name="custom-toast",
+				class_name="custom-toast toast-danger",
 			),
 			"Try Again",
 			"danger",
@@ -255,8 +257,8 @@ def load_config_to_store(contents: dict[str, Any], filename: str):
 				f"Loaded {filename} into session",
 				header="Success",
 				icon="success",
-				duration=3000,
-				className="custom-toast",
+				duration=10000,
+				className="custom-toast toast-success",
 			),
 		]
 
@@ -265,7 +267,7 @@ def load_config_to_store(contents: dict[str, Any], filename: str):
 			f"Failed to load {filename}: {str(e)}",
 			header="Load Error",
 			icon="danger",
-			className="custom-toast",
+			className="custom-toast toast-danger",
 		)
 		return [no_update, True, error_toast]
 
@@ -290,8 +292,8 @@ def clear_app_cache(n_clicks: int):
 			"Session and cache cleared. You can now load a new project.",
 			header="System Reset",
 			icon="info",
-			duration=4000,
-			className="custom-toast",
+			duration=10000,
+			className="custom-toast toast-info",
 		),
 	)
 
@@ -317,5 +319,11 @@ clientside_callback(
 	Input("opt-btn", "n_clicks"),
 	State("opt-collapse", "is_open"),
 	prevent_initial_call=True,
+)
+
+clientside_callback(
+    dash.ClientsideFunction(namespace="clientside", function_name="is_checked"),
+    Output("min-cross", "disabled"),
+    Input("sanitize-check", "value"),
 )
 
