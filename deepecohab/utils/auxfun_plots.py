@@ -514,7 +514,7 @@ def prep_time_per_cage(
 		),
 		schema=[
 			("hour", pl.Int8()),
-			("cage", pl.Categorical()),
+			("position", pl.Categorical()),
 			("animal_id", pl.Enum(animals)),
 		],
 	)
@@ -530,20 +530,20 @@ def prep_time_per_cage(
 		.lazy()
 		.filter(pl.col("day").is_between(*days_range))
 		.sort("day", "hour")
-		.group_by(["cage", "animal_id", "hour"], maintain_order=True)
+		.group_by(["position", "animal_id", "hour"], maintain_order=True)
 		.agg(agg_func)
 		.join(
 			join_df,
-			on=["hour", "cage", "animal_id"],
+			on=["hour", "position", "animal_id"],
 			how="right",
 		)
 		.collect(engine="in-memory")
 		.pivot(
 			on="hour",
-			index=["cage", "animal_id"],
+			index=["position", "animal_id"],
 			values="time_spent",
 		)
-		.drop("cage", "animal_id")
+		.drop("position", "animal_id")
 	)
 
 	return img.to_numpy().reshape(len(cages), len(animals), 24)
