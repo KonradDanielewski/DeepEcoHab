@@ -48,7 +48,7 @@ def calculate_cage_occupancy(
 		auxfun.get_hour(), auxfun.get_day()
 		).group_by(
 			["day", "hour", "position", "animal_id"]
-		).agg(pl.sum("time_spent").alias("time_spent"))
+		).agg(pl.sum("time_spent").round(0).cast(pl.UInt32).alias("time_spent"))
 
 	bounds: tuple[dt.datetime, dt.datetime] = (
 		lf.select(
@@ -92,7 +92,7 @@ def get_hourly_padded(lf: pl.LazyFrame, relevant_cols: list[str]):
 		)
 
 	unmodified_rows = lf_trimmed.filter(
-			pl.col('seconds_after_hour') <= pl.col("time_spent")
+			pl.col('seconds_after_hour') >= pl.col("time_spent")
 		).drop('seconds_after_hour')
 	eps = pl.duration(microseconds=1)
 	to_multiply = lf_trimmed.with_columns(
@@ -121,7 +121,7 @@ def get_hourly_padded(lf: pl.LazyFrame, relevant_cols: list[str]):
 			pl.col("start_hr"), pl.col("end_hr"),
 			interval="1h",
 		).alias('range')
-	).with_columns(pl.lit(3600).cast(pl.Float64).alias("time_spent")).explode('range').with_columns(
+	).with_columns(pl.lit(seconds_per_hr).cast(pl.Float64).alias("time_spent")).explode('range').with_columns(
 		pl.col('range').alias('datetime')).drop("range")
 
 	multiplied = pl.concat([starts, ends, full_hours]).select(relevant_cols).sort(["datetime"])
