@@ -2,7 +2,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
     clientside: {
         handle_slider_mode: function (mode) {
             if (mode === 'days_range') {
-                return [false, true, "sum", false, "dash-radio"];
+                return [false, true, window.dash_clientside.no_update, false, "dash-radio"];
             } else {
                 return [true, false, "sum", true, "dash-radio switch-disabled"];
             }
