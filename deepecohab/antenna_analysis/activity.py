@@ -40,11 +40,9 @@ def calculate_cage_occupancy(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	relevant_cols = ['animal_id', 'datetime', 'time_spent', 'position']
-	
-	full_lf = get_hourly_padded(lf, relevant_cols)
+	full_lf = get_hourly_padded(lf)
 
-	agg = full_lf.select(relevant_cols).with_columns(
+	agg = full_lf.with_columns(
 		auxfun.get_hour(), auxfun.get_day()
 		).group_by(
 			["day", "hour", "position", "animal_id"]
@@ -85,17 +83,16 @@ def calculate_cage_occupancy(
 
 	return cage_occupancy
 
-def get_hourly_padded(lf: pl.LazyFrame, relevant_cols: list[str]):
-	lf_trimmed =lf.select(relevant_cols)
-	lf_trimmed = lf_trimmed.with_columns(
+def get_hourly_padded(lf: pl.LazyFrame):
+	lf = lf.select(['animal_id', 'datetime', 'time_spent', 'position']).with_columns(
 			(pl.col('datetime')-pl.col('datetime').dt.truncate('1h')).dt.total_seconds(fractional=True).alias('seconds_after_hour')
 		)
 
-	unmodified_rows = lf_trimmed.filter(
+	unmodified_rows = lf.filter(
 			pl.col('seconds_after_hour') >= pl.col("time_spent")
 		).drop('seconds_after_hour')
 	eps = pl.duration(microseconds=1)
-	to_multiply = lf_trimmed.with_columns(
+	to_multiply = lf.with_columns(
 		(pl.col('datetime').dt.truncate('1h')-eps).alias('end_hr'),
 		((pl.col('datetime')-pl.duration(seconds = pl.col('time_spent'))+pl.duration(hours=1)).dt.truncate('1h')-eps).alias('start_hr'),  
 	).filter(
@@ -124,7 +121,7 @@ def get_hourly_padded(lf: pl.LazyFrame, relevant_cols: list[str]):
 	).with_columns(pl.lit(seconds_per_hr).cast(pl.Float64).alias("time_spent")).explode('range').with_columns(
 		pl.col('range').alias('datetime')).drop("range")
 
-	multiplied = pl.concat([starts, ends, full_hours]).select(relevant_cols).sort(["datetime"])
+	multiplied = pl.concat([starts, ends, full_hours])
 	full_lf = pl.concat([unmodified_rows, multiplied])
 	
 	return full_lf
