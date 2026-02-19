@@ -1,75 +1,9 @@
-from dataclasses import dataclass
-from typing import (
-	Any,
-	Callable,
-	Dict,
-	Literal,
-)
-
 import plotly.graph_objects as go
 
+from deepecohab.core.registries import plot_registry
 from deepecohab.plotting import plot_factory
 from deepecohab.utils import auxfun_plots
-
-
-@dataclass(frozen=True)
-class PlotConfig:
-	"""
-	Immutable container for dashboard state used to configure plot generation.
-
-	This class aggregates UI selections and switch states into a single object
-	passed to the plot factory. NOTE: Consider this as future BaseClass for group
-	analysis.
-	"""
-
-	store: dict | None = None
-	days_range: list[int] | None = None
-	phase_type: list[str] | None = None
-	agg_switch: Literal["sum", "mean"] | None = None
-	position_switch: Literal["visits", "time"] | None = None
-	pairwise_switch: Literal["time_together", "pairwise_encounters"] | None = None
-	sociability_switch: Literal["proportion_together", "sociability"] | None = None
-	ranking_switch: Literal["intime", "stability"] | None = None
-	animals: list[str] | None = None
-	animal_colors: list[str] | None = None
-	cages: list[str] | None = None
-	positions: list[str] | None = None
-	position_colors: list[str] | None = None
-	ligt_dark_onset: dict[str, float] | None = None
-
-
-class PlotRegistry:
-	"""Registry for dashboard plots."""
-
-	def __init__(self):
-		self._registry: Dict[str, Callable[[PlotConfig], Any]] = {}
-		self._plot_dependencies: Dict[str, list[str]] = {}
-
-	def register(self, name: str, dependencies: list[str] = None):
-		"""Decorator to register a new plot type."""
-
-		def wrapper(func: Callable[[PlotConfig], Any]):
-			self._registry[name] = func
-			self._plot_dependencies[name] = dependencies
-			return func
-
-		return wrapper
-
-	def get_dependencies(self, name: str) -> list[str]:
-		"""Returns the list of PlotConfig attributes used by a specific plot."""
-		return self._plot_dependencies.get(name, list())
-
-	def get_plot(self, name: str, config: PlotConfig):
-		plotter = self._registry.get(name)
-		if not plotter:
-			return {}
-		return plotter(config)
-
-	def list_available(self) -> list[str]:
-		return list(self._registry.keys())
-
-
-plot_registry = PlotRegistry()
+from deepecohab.utils.auxfun_plots import PlotConfig
 
 
 @plot_registry.register(
@@ -259,7 +193,14 @@ def activity(cfg: PlotConfig) -> go.Figure:
 
 @plot_registry.register(
 	"activity-line",
-	dependencies=["store", "animals", "days_range", "animal_colors", "agg_switch", "light_dark_onset"],
+	dependencies=[
+		"store",
+		"animals",
+		"days_range",
+		"animal_colors",
+		"agg_switch",
+		"light_dark_onset",
+	],
 )
 def activity_line(cfg: PlotConfig) -> go.Figure:
 	"""Generates a line plot of diurnal activity based on antenna crossings.

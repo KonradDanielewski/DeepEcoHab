@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 from itertools import combinations, product
 from typing import Literal
 
@@ -8,6 +9,32 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 import polars as pl
+
+
+@dataclass(frozen=True)
+class PlotConfig:
+	"""
+	Immutable container for dashboard state used to configure plot generation.
+
+	This class aggregates UI selections and switch states into a single object
+	passed to the plot factory. NOTE: Consider this as future BaseClass for group
+	analysis.
+	"""
+
+	store: dict | None = None
+	days_range: list[int] | None = None
+	phase_type: list[str] | None = None
+	agg_switch: Literal["sum", "mean"] | None = None
+	position_switch: Literal["visits", "time"] | None = None
+	pairwise_switch: Literal["time_together", "pairwise_encounters"] | None = None
+	sociability_switch: Literal["proportion_together", "sociability"] | None = None
+	ranking_switch: Literal["intime", "stability"] | None = None
+	animals: list[str] | None = None
+	animal_colors: list[str] | None = None
+	cages: list[str] | None = None
+	positions: list[str] | None = None
+	position_colors: list[str] | None = None
+	ligt_dark_onset: dict[str, float] | None = None
 
 
 def set_default_theme() -> None:

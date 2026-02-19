@@ -10,8 +10,7 @@ import plotly.graph_objects as go
 import polars as pl
 from dash import dcc, exceptions, html
 
-from deepecohab.plotting.plot_catalog import plot_registry
-from deepecohab.utils.auxfun import df_registry
+from deepecohab.core.registries import df_registry, plot_registry
 
 COMMON_CFG = {"displayModeBar": False}
 

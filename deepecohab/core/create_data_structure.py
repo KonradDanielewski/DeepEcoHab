@@ -7,8 +7,8 @@ import polars as pl
 from polars.exceptions import ComputeError
 from tzlocal import get_localzone
 
+from deepecohab.core.registries import df_registry
 from deepecohab.utils import auxfun
-from deepecohab.utils.auxfun import df_registry
 
 
 def load_data(

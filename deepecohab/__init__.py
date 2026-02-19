@@ -6,6 +6,8 @@ from deepecohab.analysis.antenna_analysis import (
 	calculate_incohort_sociability as calculate_incohort_sociability,
 	calculate_pairwise_meetings as calculate_pairwise_meetings,
 	calculate_time_alone as calculate_time_alone,
+	calculate_tube_test as calculate_tube_test,
+	calculate_features as calculate_features,
 )
 
 from deepecohab.core.create_data_structure import (
@@ -14,16 +16,18 @@ from deepecohab.core.create_data_structure import (
 from deepecohab.core.create_project import (
 	create_ecohab_project as create_ecohab_project,
 )
-from deepecohab.plotting.plot_catalog import (
-	PlotConfig as PlotConfig,
+from deepecohab.core.registries import (
+	df_registry as df_registry,
 	plot_registry as plot_registry,
 )
 from deepecohab.utils.auxfun import (
-	df_registry as df_registry,
 	load_ecohab_data as load_ecohab_data,
 	read_config as read_config,
 )
-from deepecohab.utils.auxfun_plots import set_default_theme as set_default_theme
+from deepecohab.utils.auxfun_plots import (
+    set_default_theme as set_default_theme, 
+    PlotConfig as PlotConfig,
+)
 from deepecohab.version import __version__ as __version__
 
 set_default_theme()

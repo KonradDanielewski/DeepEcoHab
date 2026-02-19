@@ -6,8 +6,8 @@ from typing import Any, Literal
 import polars as pl
 from openskill.models import PlackettLuce
 
+from deepecohab.core.registries import df_registry
 from deepecohab.utils import auxfun
-from deepecohab.utils.auxfun import df_registry
 
 
 @df_registry.register("cage_occupancy")
@@ -789,7 +789,11 @@ def calculate_features(
 		.with_columns(
 			[((pl.col(col) - pl.col(col).mean()) / pl.col(col).std()).alias(col) for col in columns]
 		)
-		.unpivot(index=["phase", "day", "phase_count", "animal_id"], variable_name="metric", value_name="z-score")
+		.unpivot(
+			index=["phase", "day", "phase_count", "animal_id"],
+			variable_name="metric",
+			value_name="z-score",
+		)
 		.with_columns(pl.col("z-score").round(2))
 	)
 

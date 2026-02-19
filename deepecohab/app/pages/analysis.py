@@ -12,10 +12,8 @@ from dash import (
 )
 
 from deepecohab.app.page_layouts import analysis_layout
-from deepecohab.utils import (
-	auxfun,
-	cache_config,
-)
+from deepecohab.core.registries import df_registry
+from deepecohab.utils import cache_config
 
 dash.register_page(__name__, path="/analysis", name="Analysis")
 
@@ -47,7 +45,7 @@ def start_analysis(
 	if not n_clicks or not config:
 		return no_update, no_update
 
-	pipeline_generator = auxfun.df_registry.run_pipeline(
+	pipeline_generator = df_registry.run_pipeline(
 		config,
 		minimum_time=min_time,
 		chasing_time_window=chasing_window,

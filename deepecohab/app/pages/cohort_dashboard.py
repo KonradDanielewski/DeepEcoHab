@@ -1,11 +1,14 @@
-from typing import Any, Literal
+from typing import (
+	Any,
+	Literal,
+)
 
 import dash
 import plotly.graph_objects as go
 import polars as pl
 from dash import (
-	clientside_callback,
 	callback,
+	clientside_callback,
 	ctx,
 	dcc,
 	html,
@@ -20,6 +23,7 @@ from dash.dependencies import (
 )
 
 from deepecohab.app.page_layouts import cohort_dashboard_layout
+from deepecohab.core.registries import plot_registry
 from deepecohab.plotting import plot_catalog
 from deepecohab.utils import (
 	auxfun_dashboard,
@@ -123,7 +127,7 @@ def update_plots(
 		""""""
 	)
 	plot_name: str = ctx.outputs_grouping["id"]["name"]
-	plot_attributes = plot_catalog.plot_registry.get_dependencies(plot_name)
+	plot_attributes = plot_registry.get_dependencies(plot_name)
 
 	id_check = (
 		"days_range"
@@ -173,7 +177,7 @@ def update_plots(
 		ligt_dark_onset=ligt_dark_onset,
 	)
 
-	fig = plot_catalog.plot_registry.get_plot(plot_name, plot_cfg)
+	fig = plot_registry.get_plot(plot_name, plot_cfg)
 
 	return fig
 
