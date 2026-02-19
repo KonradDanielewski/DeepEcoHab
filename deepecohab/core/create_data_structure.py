@@ -216,20 +216,24 @@ def create_padded_df(
 
 	padded_lf = pl.concat([full_lf, extension_lf]).sort(["datetime"])
 
-	padded_lf = padded_lf.with_columns(
-		pl.when(pl.col("mask"))
-		.then(auxfun.get_time_spent_expression(alias=None))
-		.otherwise(
-			pl.when(pl.col("mask").shift(1).over("animal_id"))
+	padded_lf = (
+		padded_lf.with_columns(
+			pl.when(pl.col("mask"))
 			.then(auxfun.get_time_spent_expression(alias=None))
-			.otherwise(pl.col("time_spent"))
+			.otherwise(
+				pl.when(pl.col("mask").shift(1).over("animal_id"))
+				.then(auxfun.get_time_spent_expression(alias=None))
+				.otherwise(pl.col("time_spent"))
+			)
+			.alias("time_spent"),
+			pl.when(pl.col("mask"))
+			.then(pl.col("position").shift(-1).over("animal_id"))
+			.otherwise(pl.col("position"))
+			.alias("position"),
 		)
-		.alias("time_spent"),
-		pl.when(pl.col("mask"))
-		.then(pl.col("position").shift(-1).over("animal_id"))
-		.otherwise(pl.col("position"))
-		.alias("position"),
-	).with_columns(auxfun.get_day("datetime").alias('day')).drop("mask", "phase_end")
+		.with_columns(auxfun.get_day("datetime").alias("day"))
+		.drop("mask", "phase_end")
+	)
 
 	if save_data:
 		padded_lf.sink_parquet(
@@ -387,16 +391,17 @@ def get_ecohab_data_structure(
 	)
 
 	# After trimming get phases, days and phase count
-	lf = lf.with_columns(
-		auxfun.get_phase(cfg),
-		auxfun.get_day(),
-		auxfun.get_hour(),
+	lf = (
+		lf.with_columns(
+			auxfun.get_phase(cfg),
+			auxfun.get_day(),
+			auxfun.get_hour(),
+		)
+		.pipe(auxfun.get_phase_count)
+		.pipe(calculate_time_spent)
+		.pipe(get_animal_position, antenna_pairs)
+		.drop("COM")
 	)
-	lf = auxfun.get_phase_count(lf)
-
-	lf = calculate_time_spent(lf)
-	lf = get_animal_position(lf, antenna_pairs)
-	lf = lf.drop("COM")
 
 	auxfun.add_cages_to_config(config_path)
 	auxfun.add_positions_to_config(config_path)

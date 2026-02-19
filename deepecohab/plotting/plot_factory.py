@@ -107,6 +107,7 @@ def plot_sum_line_per_hour(
 	animals: list[str],
 	colors: list[tuple[int, int, int]],
 	input_type: Literal["activity", "chasings"],
+	light_dark: dict[str, float],
 ) -> go.Figure:
 	"""Plots line graph for activity or chasings."""
 
@@ -136,6 +137,25 @@ def plot_sum_line_per_hour(
 	fig.update_layout(legend=dict(title=legend_title))
 	fig.update_yaxes(title=y_axes_label)
 	fig.update_xaxes(title="<b>Hour of day</b>", range=[0, 23])
+	
+	light_onset = light_dark['light_phase']
+	dark_onset = light_dark['dark_phase']
+ 
+	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash='dash', line_width=4)
+	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash='dash', line_width=4)
+
+	fig.add_annotation(
+		x=(light_onset + 6) % 24, y=1.15, xref="x", yref="paper", text="☀️", showarrow=False, font=dict(size=25)
+	)
+
+	fig.add_annotation(
+		x=(dark_onset + 6) % 24, y=1.15, xref="x", yref="paper", text="🌙", showarrow=False, font=dict(size=25)
+	)
+
+	fig.update_layout(
+		xaxis=dict(dtick=1),
+		margin=dict(t=80), 
+	)
 
 	return fig
 
@@ -145,6 +165,7 @@ def plot_mean_line_per_hour(
 	animals: list[str],
 	colors: list[str],
 	input_type: Literal["activity", "chasings"],
+	light_dark: dict[str, float],
 ) -> go.Figure:
 	"""Plots line graph for activity or chasings with SEM shading."""
 
@@ -205,6 +226,25 @@ def plot_mean_line_per_hour(
 	)
 	fig.update_yaxes(title=y_axes_label)
 	fig.update_xaxes(title="<b>Hour of day</b>")
+	
+	light_onset = light_dark['light_phase']
+	dark_onset = light_dark['dark_phase']
+ 
+	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash='dash', line_width=4)
+	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash='dash', line_width=4)
+
+	fig.add_annotation(
+		x=(light_onset + 6) % 24, y=1.15, xref="x", yref="paper", text="☀️", showarrow=False, font=dict(size=25)
+	)
+
+	fig.add_annotation(
+		x=(dark_onset + 6) % 24, y=1.15, xref="x", yref="paper", text="🌙", showarrow=False, font=dict(size=25)
+	)
+
+	fig.update_layout(
+		xaxis=dict(dtick=1),
+		margin=dict(t=80), 
+	)
 
 	return fig
 

@@ -35,6 +35,7 @@ class PlotConfig:
 	cages: list[str] | None = None
 	positions: list[str] | None = None
 	position_colors: list[str] | None = None
+	ligt_dark_onset: dict[str, float] | None = None
 
 
 class PlotRegistry:
@@ -89,7 +90,9 @@ def cage_preference(cfg: PlotConfig) -> go.Figure:
 )
 def cage_preference_evolution(cfg: PlotConfig) -> go.Figure:
 	"""Generates a cage preference box plot."""
-	img = auxfun_plots.prep_cage_preference_evolution(cfg.store, cfg.animals, cfg.days_range, cfg.agg_switch, cfg.cages)
+	img = auxfun_plots.prep_cage_preference_evolution(
+		cfg.store, cfg.animals, cfg.days_range, cfg.agg_switch, cfg.cages
+	)
 
 	return plot_factory.time_spent_per_cage(img, cfg.animals, type="daily")
 
@@ -196,7 +199,14 @@ def chasings_heatmap(cfg: PlotConfig) -> go.Figure:
 
 @plot_registry.register(
 	"chasings-line",
-	dependencies=["store", "animals", "days_range", "animal_colors", "agg_switch"],
+	dependencies=[
+		"store",
+		"animals",
+		"days_range",
+		"animal_colors",
+		"agg_switch",
+		"light_dark_onset",
+	],
 )
 def chasings_line(cfg: PlotConfig) -> go.Figure:
 	"""Generates a line plot of chasing frequency per hour.
@@ -209,11 +219,19 @@ def chasings_line(cfg: PlotConfig) -> go.Figure:
 	match cfg.agg_switch:
 		case "sum":
 			return plot_factory.plot_sum_line_per_hour(
-				df, cfg.animals, cfg.animal_colors, "chasings"
+				df,
+				cfg.animals,
+				cfg.animal_colors,
+				"chasings",
+				cfg.ligt_dark_onset,
 			)
 		case "mean":
 			return plot_factory.plot_mean_line_per_hour(
-				df, cfg.animals, cfg.animal_colors, "chasings"
+				df,
+				cfg.animals,
+				cfg.animal_colors,
+				"chasings",
+				cfg.ligt_dark_onset,
 			)
 
 
@@ -241,7 +259,7 @@ def activity(cfg: PlotConfig) -> go.Figure:
 
 @plot_registry.register(
 	"activity-line",
-	dependencies=["store", "animals", "days_range", "animal_colors", "agg_switch"],
+	dependencies=["store", "animals", "days_range", "animal_colors", "agg_switch", "light_dark_onset"],
 )
 def activity_line(cfg: PlotConfig) -> go.Figure:
 	"""Generates a line plot of diurnal activity based on antenna crossings.
@@ -259,6 +277,7 @@ def activity_line(cfg: PlotConfig) -> go.Figure:
 				cfg.animals,
 				cfg.animal_colors,
 				"activity",
+				cfg.ligt_dark_onset,
 			)
 		case "mean":
 			return plot_factory.plot_mean_line_per_hour(
@@ -266,6 +285,7 @@ def activity_line(cfg: PlotConfig) -> go.Figure:
 				cfg.animals,
 				cfg.animal_colors,
 				"activity",
+				cfg.ligt_dark_onset,
 			)
 
 
