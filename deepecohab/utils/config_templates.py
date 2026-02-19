@@ -5,7 +5,7 @@ import toml
 from importlib import resources
 
 
-@dataclass  # TODO make interpolation optional, provide different sets of antenna combinations
+@dataclass
 class ExperimentConfig(ABC):
 	project_location: str
 	experiment_name: str

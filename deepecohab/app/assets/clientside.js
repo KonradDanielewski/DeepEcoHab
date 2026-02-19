@@ -2,9 +2,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
     clientside: {
         handle_slider_mode: function (mode) {
             if (mode === 'days_range') {
-                return [false, true, false, "dash-radio"];
+                return [false, true, "sum", false, "dash-radio"];
             } else {
-                return [true, false, true, "dash-radio switch-disabled"];
+                return [true, false, "sum", true, "dash-radio switch-disabled"];
             }
         },
         sync_select_all: function (selectAllChecked, currentSelection, options) {
@@ -81,7 +81,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             }
             return window.dash_clientside.no_update;
         },
-        is_checked: function(is_checked) {
+        is_checked: function (is_checked) {
             return !is_checked;
         },
     }

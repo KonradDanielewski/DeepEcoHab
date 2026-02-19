@@ -1,6 +1,8 @@
+import datetime as dt
 import io
 import json
 import zipfile
+from pathlib import Path
 from typing import Any, Literal
 
 import dash_bootstrap_components as dbc
@@ -292,7 +294,7 @@ def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
 					dcc.Graph(
 						id={"figure": "comparison-plot", "side": side},
 						config=COMMON_CFG,
-						className="plot-600"
+						className="plot-600",
 					),
 				]
 			),
@@ -357,7 +359,8 @@ def generate_plot_download_tab() -> dcc.Tab:
 						width=4,
 						className="d-flex flex-column align-items-start",
 					),
-				], className="modal-download-content",
+				],
+				className="modal-download-content",
 			)
 		],
 	)
@@ -438,7 +441,6 @@ def generate_download_block() -> dbc.Modal:
 		],
 		id="modal",
 		is_open=False,
-
 	)
 
 	return modal
@@ -479,7 +481,8 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450", **kwargs
 				className=css_class,
 				config=COMMON_CFG,
 			),
-		], className=css_class,
+		],
+		className=css_class,
 	)
 
 
@@ -590,7 +593,7 @@ def build_filter_expr(
 
 	if not exprs:
 		return None
-    
+
 	return exprs
 
 
@@ -630,3 +633,33 @@ def download_dataframes(
 	return dcc.send_bytes(
 		lambda b: b.write(zip_buffer.getvalue()), filename="selected_dataframes.zip"
 	)
+
+
+def _is_valid_time(time_str: str) -> bool:
+	"""Helper to check if provided time a valid time."""
+	try:
+		dt.datetime.strptime(time_str, "%H:%M")
+		return True
+	except (ValueError, TypeError):
+		return False
+
+
+def _get_status(idx: str, input: str) -> bool:
+	"""Helper to validate required inputs."""
+	if not (input and input.strip()):
+		return False
+
+	if idx == "proj-loc":
+		try:
+			Path(input)
+			return True
+		except OSError:
+			return False
+
+	if idx == "data-loc":
+		return Path(input).is_dir()
+
+	if idx in ["light-start", "dark-start"]:
+		return _is_valid_time(input)
+
+	return True

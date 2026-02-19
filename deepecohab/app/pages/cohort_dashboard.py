@@ -63,6 +63,7 @@ layout = html.Div(
 	Input("project-config-store", "data"),
 )
 def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
+	"""Render page layout for both tabs"""
 	if not cfg:
 		return html.Div("Please load a project to see graphs."), no_update
 
@@ -101,6 +102,26 @@ def update_plots(
 	slider_mode: Literal["days_single", "days_range"],
 	cfg: dict[str, Any],
 ) -> tuple[go.Figure, dict]:
+	(
+		"""Performs selective plot update on the main layout
+
+	Args:
+		days_range: range of days selected on the RangeSlider.
+		days_single: day selected on the single Slider.
+		phase_type: type of phase chosed (light, dark or all).
+		agg_switch: aggregation switch (sum or mean).
+		pos_switch: activity bar/box plot switch (visits or time spent).
+		pair_switch: pairwise meetings plot switch (encounters or time together).
+		sociability_switch: sociability plot switch (proportion together or incohort sociability)
+		ranking_switch: ranking switch (per hour update or per day rank)
+		slider_mode: toogle for which slider type is visible
+		cfg: config of the loaded project
+
+	Returns:
+		Figures affected by the activated switch/slider etc.
+	"""
+		""""""
+	)
 	plot_name: str = ctx.outputs_grouping["id"]["name"]
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(plot_name)
 
@@ -216,9 +237,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 
 @callback(
 	Output("download-component", "data"),
-	[
-		Input({"type": "download-btn", "fmt": ALL, "side": ALL}, "n_clicks"),
-	],
+	Input({"type": "download-btn", "fmt": ALL, "side": ALL}, "n_clicks"),
 	[
 		State({"type": "main-checklist", "index": "dfs"}, "value"),
 		State({"type": "main-checklist", "index": "plots"}, "value"),
@@ -285,26 +304,35 @@ def download_comparison_data(btn_click: int, figure: dict, plot_type: str) -> di
 
 clientside_callback(
 	dash.ClientsideFunction(namespace="clientside", function_name="handle_slider_mode"),
-	Output("days_range_container", "hidden"),
-	Output("days_single_container", "hidden"),
-	Output("agg_switch", "disabled"),
-	Output("agg_switch", "className"),
+	[
+		Output("days_range_container", "hidden"),
+		Output("days_single_container", "hidden"),
+		Output("agg_switch", "value"),
+		Output("agg_switch", "disabled"),
+		Output("agg_switch", "className"),
+	],
 	Input("slider_switch", "value"),
 )
 
 clientside_callback(
 	dash.ClientsideFunction(namespace="clientside", function_name="sync_select_all"),
-	Output({"type": "main-checklist", "index": MATCH}, "value"),
-	Output({"type": "select-all", "index": MATCH}, "value"),
-	Input({"type": "select-all", "index": MATCH}, "value"),
-	Input({"type": "main-checklist", "index": MATCH}, "value"),
+	[
+		Output({"type": "main-checklist", "index": MATCH}, "value"),
+		Output({"type": "select-all", "index": MATCH}, "value"),
+	],
+	[
+		Input({"type": "select-all", "index": MATCH}, "value"),
+		Input({"type": "main-checklist", "index": MATCH}, "value"),
+	],
 	State({"type": "main-checklist", "index": MATCH}, "options"),
 )
 
 clientside_callback(
 	dash.ClientsideFunction(namespace="clientside", function_name="toggle_modal"),
-	Output("modal", "is_open"),
-	Output({"type": "main-checklist", "index": "plots"}, "options"),
+	[
+		Output("modal", "is_open"),
+		Output({"type": "main-checklist", "index": "plots"}, "options"),
+	],
 	Input("open-modal", "n_clicks"),
 	[
 		State("modal", "is_open"),

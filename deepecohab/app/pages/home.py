@@ -20,34 +20,7 @@ from dash import (
 from deepecohab.app.page_layouts import home_layout
 from deepecohab.core import create_data_structure, create_project
 from deepecohab.utils.cache_config import launch_cache
-
-
-def _is_valid_time(time_str: str) -> bool:
-	try:
-		dt.datetime.strptime(time_str, "%H:%M")
-		return True
-	except (ValueError, TypeError):
-		return False
-
-
-def _get_status(idx: str, input: str) -> bool:
-	if not (input and input.strip()):
-		return False
-
-	if idx == "proj-loc":
-		try:
-			Path(input)
-			return True
-		except OSError:
-			return False
-
-	if idx == "data-loc":
-		return Path(input).is_dir()
-
-	if idx in ["light-start", "dark-start"]:
-		return _is_valid_time(input)
-
-	return True
+from deepecohab.utils import auxfun_dashboard
 
 
 dash.register_page(__name__, path="/", name="Home")
@@ -69,13 +42,15 @@ layout = home_layout.generate_layout()
 def validate_and_highlight(
 	inputs: list[str], current_valid: list[bool], current_invalid: list[bool]
 ):
+	"""Helper callback to highlight if an input is correct or no."""
 	if not ctx.triggered_id:
 		return no_update
 
 	inputs_meta = ctx.inputs_list[0]
 
 	technical_validity = [
-		_get_status(meta["id"]["index"], val) for meta, val in zip(inputs_meta, inputs)
+		auxfun_dashboard._get_status(meta["id"]["index"], val)
+		for meta, val in zip(inputs_meta, inputs)
 	]
 
 	new_valid_ui = []
@@ -141,6 +116,28 @@ def _create_project(
 	sanitize: bool,
 	min_cross: int,
 ) -> tuple[dict[str, Any], dbc.Toast, str, str]:
+	"""Project creation callback.
+
+	Args:
+		n_clicks: _description_
+		name: project name.
+		project_location: location where project will be created.
+		data_path: path to raw data from the acquisition software.
+		light_start: hour and minute of light phase start.
+		dark_start: hour and minute of dark phase start.
+		ext: extension of the file containing raw data.
+		timezone: IANA format timezone.
+		animals: comma separated string of animal names.
+		layouts: type of layout.
+		exp_start: datetime of experiment start.
+		exp_end: datetime of experiment end.
+		interpolate: toogle whether to use interpolated antenna combinations or no (handles position estimation if only one antenna missing).
+		sanitize: toggle whether to sanitize animal ids.
+		min_cross: minimum number of antenna crossings used within the sanitation.
+
+	Returns:
+		dict of the project config, toast with info, type of info.
+	"""    
 	if n_clicks == 0:
 		return no_update, no_update, "Create Project", "primary"
 
@@ -244,6 +241,7 @@ def _create_project(
 def load_config_to_store(
 	contents: dict[str, Any], filename: str
 ) -> tuple[dict[str, Any], bool, dbc.Toast]:
+	"""Helper to load the config into cache for the period of the session."""
 	if not contents:
 		return [no_update] * 3
 
@@ -283,6 +281,7 @@ def load_config_to_store(
 	prevent_initial_call=True,
 )
 def clear_app_cache(n_clicks: int) -> tuple[None, dbc.Toast]:
+	"""Helper to clear the cache for clean load of another project."""
 	if not n_clicks:
 		return no_update, no_update
 
