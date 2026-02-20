@@ -290,30 +290,6 @@ def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
 	return lf
 
 
-def get_lf_from_enum(
-	values: list, col_name: str, col_type: pl.DataType, sorted: bool = False
-) -> pl.LazyFrame:
-	"""Auxfun for creating LazyFrames from lists of values"""
-
-	res = pl.LazyFrame(
-		{col_name: values},
-		schema={col_name: col_type},
-	)
-
-	return res.sort(col_name) if sorted else res
-
-
-def get_animal_cage_grid(cfg: dict) -> pl.LazyFrame:
-	"""Auxfun to prepare LazyFrame of all animal x cage combos"""
-	animal_ids: list[str] = cfg["animal_ids"]
-	cages: list[str] = cfg["cages"]
-	animals_lf = get_lf_from_enum(
-		animal_ids, "animal_id", sorted=True, col_type=pl.Enum(animal_ids)
-	)
-	cages_lf = get_lf_from_enum(cages, "cage", col_type=pl.Categorical)
-	return animals_lf.join(cages_lf, how="cross")
-
-
 def set_animal_ids(
 	config_path: str | Path | dict[str, Any],
 	lf: pl.LazyFrame,
@@ -445,21 +421,19 @@ def run_dashboard(config_path: str | Path | dict[str, Any]):
 		pass
 
 
-def get_time_spent_expression(
+def get_time_spent(
 	time_col: str = "datetime",
-	group_col: str = "animal_id",
-	alias: str | None = "time_spent",
+	group_col: str = "animal_id"
 ) -> pl.Expr:
 	"""Auxfun to build a polars expression object to perform timedelta calculation on a dataframe with specified column names"""
-	expr = (
+	return (
 		(pl.col(time_col) - pl.col(time_col).shift(1))
 		.over(group_col)
 		.dt.total_seconds(fractional=True)
 		.fill_null(0)
 		.cast(pl.Float64)
 		.round(2)
-	)
-	return expr.alias(alias) if alias is not None else expr
+	).alias("time_spent")
 
 
 def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:

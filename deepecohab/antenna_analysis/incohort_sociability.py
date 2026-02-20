@@ -1,6 +1,7 @@
 from itertools import combinations
 from pathlib import Path
 from typing import Any
+from itertools import product
 
 import polars as pl
 
@@ -45,7 +46,16 @@ def calculate_time_alone(
 		auxfun.get_phase(cfg).alias("phase"),
 	).unique()
 
-	full_group_list = time_lf.join(auxfun.get_animal_cage_grid(cfg), how="cross")
+	animal_cage_grid = 	pl.LazyFrame(
+		product(cfg["animal_ids"], cfg["cages"]),
+		schema={
+			"animal_id": pl.Enum(cfg["animal_ids"]),
+			"cage": pl.Categorical,
+		},
+		orient="row",
+	)
+
+	full_group_list = time_lf.join(animal_cage_grid, how="cross")
 
 	time_alone = (
 		binary_df.group_by(group_cols, maintain_order=True)

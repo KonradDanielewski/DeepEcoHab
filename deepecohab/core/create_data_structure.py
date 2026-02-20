@@ -53,14 +53,6 @@ def load_data(
 
 	return lf
 
-
-def calculate_time_spent(lf: pl.LazyFrame) -> pl.LazyFrame:
-	"""Auxfun to calculate timedelta between positions i.e. time spent in each state, rounded to 10s of miliseconds"""
-
-	lf = lf.with_columns(auxfun.get_time_spent_expression())
-	return lf
-
-
 def get_animal_position(lf: pl.LazyFrame, antenna_pairs: dict) -> pl.LazyFrame:
 	"""Auxfun, groupby mapping of antenna pairs to position"""
 	prev_ant = pl.col("antenna").shift(1).over("animal_id").fill_null(0).cast(pl.Utf8)
@@ -213,18 +205,11 @@ def create_padded_df(
 	padded_lf = pl.concat([full_lf, extension_lf]).sort(["datetime"])
 
 	padded_lf = padded_lf.with_columns(
+		pl.when(pl.col("mask") | pl.col("mask").shift(1).over("animal_id"))
+		.then(auxfun.get_time_spent()).otherwise(pl.col("time_spent")),
 		pl.when(pl.col("mask"))
-		.then(auxfun.get_time_spent_expression(alias=None))
-		.otherwise(
-			pl.when(pl.col("mask").shift(1).over("animal_id"))
-			.then(auxfun.get_time_spent_expression(alias=None))
-			.otherwise(pl.col("time_spent"))
-		)
-		.alias("time_spent"),
-		pl.when(pl.col("mask"))
-		.then(pl.col("position").shift(-1).over("animal_id"))
-		.otherwise(pl.col("position"))
-		.alias("position"),
+		.then(pl.col("position").shift(-1).over("animal_id")
+		.alias("position")).otherwise(pl.col("position")),
 	).drop("mask", "phase_end")
 
 	if save_data:
@@ -266,10 +251,12 @@ def create_binary_df(
 	results_path = Path(cfg["project_location"]) / "results"
 
 	cages: list[str] = cfg["cages"]
-	animal_ids: list[str] = cfg["animal_ids"]
 
-	animals_lf = auxfun.get_lf_from_enum(
-		animal_ids, "animal_id", sorted=True, col_type=pl.Enum(animal_ids)
+	animals_lf = pl.LazyFrame(
+		cfg["animal_ids"],
+		schema={
+			"animal_id": pl.Enum(cfg["animal_ids"]),
+		},
 	)
 
 	lf = lf.select(["animal_id", "datetime", "position"]).sort(["animal_id", "datetime"])
@@ -389,10 +376,10 @@ def get_ecohab_data_structure(
 		auxfun.get_phase(cfg),
 		auxfun.get_day(),
 		auxfun.get_hour(),
+		auxfun.get_time_spent()
 	)
 	lf = auxfun.get_phase_count(lf)
 
-	lf = calculate_time_spent(lf)
 	lf = get_animal_position(lf, antenna_pairs)
 	lf = lf.drop("COM")
 
