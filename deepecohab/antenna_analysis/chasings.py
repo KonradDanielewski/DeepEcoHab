@@ -236,12 +236,14 @@ def calculate_tube_tests(
 
 	cages: list[str] = cfg["cages"]
 
-	lf = auxfun.update_repeat_antenna_position(lf)
-	lf = auxfun.remove_tunnel_directionality(lf, cfg)
+	lf = auxfun.update_repeat_antenna_position(lf).with_columns(
+		auxfun.remove_tunnel_directionality(cfg, "undirected")
+	)
+
 	lf = lf.with_columns(
 		(pl.col('datetime') - pl.duration(seconds=pl.col("time_spent"))).alias("tunnel_entry"),
-		pl.col("position").shift(1).over("animal_id").alias("prev_position"),
-		pl.col("position").shift(-1).over("animal_id").alias("next_position")
+		pl.col("undirected").shift(1).over("animal_id").alias("prev_position"),
+		pl.col("undirected").shift(-1).over("animal_id").alias("next_position")
 	)
 
 	loser = lf.filter(
@@ -250,7 +252,7 @@ def calculate_tube_tests(
 	)
 
 	intermediate = loser.join(
-		lf, on=["phase", "day", "phase_count", "position"], suffix="_winner" 
+		lf, on=["phase", "day", "phase_count", "undirected"], suffix="_winner" 
 	).filter(
 		pl.col("animal_id") != pl.col("animal_id_winner"),
 		pl.col("prev_position") != pl.col("prev_position_winner"),
@@ -275,10 +277,11 @@ def calculate_tube_tests(
 
 	tube_tests = (
 		intermediate.group_by(
-			["phase", "day", "phase_count", "hour", "animal_id", "animal_id_winner"]
+			["phase", "day", "phase_count", "hour", "animal_id", "animal_id_winner", "position"]
 		)
 		.len(name="tube_tests")
-		.rename({"animal_id": "loser", "animal_id_winner": "winner"})
+		.rename({"animal_id": "loser", 
+		   "animal_id_winner": "winner"})
 	)
 	
 	# Perform empty join

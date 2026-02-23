@@ -103,9 +103,10 @@ def calculate_activity(
 	results_path: Path = Path(cfg["project_location"]) / "results"
 
 	padded_lf: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="padded_df")
-	padded_lf = auxfun.remove_tunnel_directionality(padded_lf, cfg)
 
-	per_position_lf = padded_lf.group_by(
+	per_position_lf = padded_lf.with_columns(
+		auxfun.remove_tunnel_directionality(cfg)
+	).group_by(
 		["phase", "day", "phase_count", "position", "animal_id"]
 	).agg(
 		pl.sum("time_spent").alias("time_in_position"),

@@ -502,13 +502,11 @@ def get_time_spent_expression(
 	return expr.alias(alias) if alias is not None else expr
 
 
-def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
+def remove_tunnel_directionality(cfg: dict[str, Any], colname: str = "position") -> pl.Expr:
 	"""Auxfun to map directional tunnels in a LazyFrame to undirected ones"""
 	tunnels: list[str] = cfg["tunnels"]
 
-	return lf.with_columns(
-		pl.col("position").cast(pl.Utf8).replace(tunnels).cast(pl.Categorical).alias("position")
-	)
+	return pl.col("position").cast(pl.Utf8).replace(tunnels).cast(pl.Categorical).alias(colname)
 
 
 def add_positions_to_config(config_path: str | Path | dict[str, Any], positions: list[str]) -> None:

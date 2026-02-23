@@ -408,7 +408,9 @@ def get_ecohab_data_structure(
 	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf, cfg)
 
 	positions = (
-		auxfun.remove_tunnel_directionality(lf, cfg).collect()["position"].unique().to_list()
+		lf.with_columns(
+			auxfun.remove_tunnel_directionality(cfg)
+		).select("position").unique().collect()["position"].to_list()
 	)
 	auxfun.add_positions_to_config(config_path, positions)
 
