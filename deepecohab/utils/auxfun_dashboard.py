@@ -170,100 +170,40 @@ def generate_settings_block(
 					*(
 						[
 							html.Div(className="divider"),
-							html.Div(
-								id={
-									"container": position_switch_id["type"],
-									"side": position_switch_id["side"],
-								},
-								hidden=True,
-								className="flex-container",
-								children=[
-									html.Div(
-										dcc.RadioItems(
-											id=position_switch_id,
-											inline=True,
-											options=[
-												{"label": "Visits", "value": "visits"},
-												{"label": "Time", "value": "time"},
-											],
-											value="visits",
-											className="dash-radio",
-										),
-									),
-								],
+							generate_radio_switch(
+								position_switch_id,
+								[
+									{"label": "Visits", "value": "visits"},
+									{"label": "Time", "value": "time"},
+								]
 							),
-							html.Div(
-								id={
-									"container": pairwise_switch_id["type"],
-									"side": pairwise_switch_id["side"],
-								},
-								hidden=True,
-								className="flex-container",
-								children=[
-									html.Div(
-										dcc.RadioItems(
-											id=pairwise_switch_id,
-											inline=True,
-											options=[
-												{"label": "Visits", "value": "pairwise_encounters"},
-												{"label": "Time", "value": "time_together"},
-											],
-											value="pairwise_encounters",
-											className="dash-radio",
-										),
-									),
-								],
+							generate_radio_switch(
+								pairwise_switch_id,
+								[
+									{"label": "Visits", "value": "pairwise_encounters"},
+									{"label": "Time", "value": "time_together"},
+								]
 							),
-							html.Div(
-								id={
-									"container": sociability_switch_id["type"],
-									"side": sociability_switch_id["side"],
-								},
-								hidden=True,
-								className="flex-container",
-								children=[
-									html.Div(
-										dcc.RadioItems(
-											id=sociability_switch_id,
-											inline=True,
-											options=[
-												{
-													"label": "Time together",
-													"value": "proportion_together",
-												},
-												{
-													"label": "Incohort sociability",
-													"value": "sociability",
-												},
-											],
-											value="proportion_together",
-											className="dash-radio",
-										),
-									),
-								],
+							generate_radio_switch(
+								sociability_switch_id,
+								[
+									{
+										"label": "Time together",
+										"value": "proportion_together",
+									},
+									{
+										"label": "Incohort sociability",
+										"value": "sociability",
+									},
+								]
 							),
-							html.Div(
-								id={
-									"container": ranking_switch_id["type"],
-									"side": ranking_switch_id["side"],
-								},
-								hidden=True,
-								className="flex-container",
-								children=[
-									html.Div(
-										dcc.RadioItems(
-											id=ranking_switch_id,
-											inline=True,
-											options=[
-												{"label": "In time", "value": "intime"},
-												{"label": "Day stability", "value": "stability"},
-											],
-											value="intime",
-											className="dash-radio",
-										),
-									),
-								],
-							),
+							generate_radio_switch(
+								ranking_switch_id,
+								[
+									{"label": "In time", "value": "intime"},
+									{"label": "Day stability", "value": "stability"},
+								]
+							)
 						]
 						if comparison_layout
 						else []
@@ -445,7 +385,7 @@ def generate_download_block() -> dbc.Modal:
 	return modal
 
 
-def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]):
+def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]) -> html.Div:
 	return html.Div(
 		[
 			html.Div("MENU", className="sidebar-label"),
@@ -466,6 +406,27 @@ def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], to
 			),
 		],
 		id="sidebar",
+	)
+
+def generate_radio_switch(switch_id: dict, switch_options: list[dict]) -> html.Div:
+	return html.Div(
+		id={
+			"container": switch_id["type"],
+			"side": switch_id["side"],
+		},
+		hidden=True,
+		className="flex-container",
+		children=[
+			html.Div(
+				dcc.RadioItems(
+					id=switch_id,
+					inline=True,
+					options=switch_options,
+					value=switch_options[0]['value'],
+					className="dash-radio",
+				),
+			),
+		],
 	)
 
 
@@ -517,7 +478,6 @@ def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool
 		)
 		buttons.append(dbc.Col(btn, width=width_col))
 	return dbc.Row(buttons)
-
 
 def get_plot_file(
 	figure: go.Figure,
@@ -632,7 +592,6 @@ def download_dataframes(
 	return dcc.send_bytes(
 		lambda b: b.write(zip_buffer.getvalue()), filename="selected_dataframes.zip"
 	)
-
 
 def _is_valid_time(time_str: str) -> bool:
 	"""Helper to check if provided time a valid time."""
