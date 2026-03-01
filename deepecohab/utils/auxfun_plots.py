@@ -58,6 +58,23 @@ def set_default_theme() -> None:
 	pio.templates["dash_dark"] = dark_dash_template
 	pio.templates.default = "dash_dark"
 
+import re
+
+def rgb_list_to_hex(colors: list[str]) -> list[str]:
+    """
+    Convert ['rgb(r,g,b)', 'rgba(r,g,b,a)', ...] -> ['#rrggbb', ...]
+    Alpha channel (if present) is ignored.
+    """
+    hex_colors = []
+    for c in colors:
+        match = re.search(r"rgba?\((\d+),\s*(\d+),\s*(\d+)", c)
+        if not match:
+            raise ValueError(f"Invalid RGB(A) color format: {c}")
+        r, g, b = map(int, match.groups())
+        if not (0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255):
+            raise ValueError(f"RGB values out of range in: {c}")
+        hex_colors.append(f"#{r:02x}{g:02x}{b:02x}")
+    return hex_colors
 
 def color_sampling(
 	values: list[str], cmap: str = "Phase"
@@ -68,7 +85,7 @@ def color_sampling(
 	)  # TODO: Temporary fix until we have a default color map with same colors but non-cyclical
 	colors: list[str] = px.colors.sample_colorscale(cmap, x)
 
-	return colors
+	return rgb_list_to_hex(colors)
 
 
 def create_edges_trace(

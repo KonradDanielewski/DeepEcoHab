@@ -5,6 +5,7 @@ from typing import (
 
 import dash
 import plotly.graph_objects as go
+import plotly.express as px
 import polars as pl
 from dash import (
 	callback,
@@ -12,7 +13,7 @@ from dash import (
 	ctx,
 	dcc,
 	html,
-	no_update,
+	no_update
 )
 from dash.dependencies import (
 	ALL,
@@ -78,7 +79,6 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 
 	return dashboard_layout, comparison_tab
 
-
 @callback(
 	Output({"type": "graph", "name": MATCH}, "figure"),
 	[
@@ -91,6 +91,7 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 		Input("sociability_switch", "value"),
 		Input("ranking_switch", "value"),
 		Input("slider_switch", "value"),
+		Input("cmap_dropdown", "value"),
 	],
 	State("project-config-store", "data"),
 )
@@ -104,7 +105,8 @@ def update_plots(
 	sociability_switch: str,
 	ranking_switch: str,
 	slider_mode: Literal["days_single", "days_range"],
-	cfg: dict[str, Any],
+	scale: str, 
+	cfg: dict[str, Any]
 ) -> tuple[go.Figure, dict]:
 	(
 		"""Performs selective plot update on the main layout
@@ -137,9 +139,9 @@ def update_plots(
 		else ctx.triggered_id
 	)
 
-	if id_check is not None and id_check not in plot_attributes:
+	if id_check is not None and id_check not in plot_attributes and id_check != 'cmap_dropdown':
 		return no_update
-
+	
 	if slider_mode == "days_single":
 		days_range = [days_single, days_single]
 
@@ -150,9 +152,9 @@ def update_plots(
 
 	store = cache_config.get_project_data(cfg)
 	animals = cfg.get("animal_ids")
-	animal_colors = auxfun_plots.color_sampling(animals)
+	animal_colors = auxfun_plots.color_sampling(animals, scale)
 	positions = cfg.get("positions")
-	positions_colors = auxfun_plots.color_sampling(positions)
+	positions_colors = auxfun_plots.color_sampling(positions, scale)
 	cages = cfg.get("cages")
 	ligt_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60
@@ -182,6 +184,7 @@ def update_plots(
 	return fig
 
 
+
 @callback(
 	[
 		Output({"figure": "comparison-plot", "side": MATCH}, "figure"),
@@ -198,6 +201,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 	input_dict: dict[str, Any] = {
 		item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches)
 	}
+
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(input_dict["plot-dropdown"])
 
 	phase_type: list[str] = (

@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
+import plotly.express as px
 import polars as pl
 from dash import dcc, exceptions, html
 
@@ -206,7 +207,9 @@ def generate_settings_block(
 							)
 						]
 						if comparison_layout
-						else []
+						else [
+							generate_cmap_choice_block(),
+						]
 					),
 				],
 				className="centered-container",
@@ -384,7 +387,6 @@ def generate_download_block() -> dbc.Modal:
 
 	return modal
 
-
 def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]) -> html.Div:
 	return html.Div(
 		[
@@ -445,6 +447,21 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450", **kwargs
 		className=css_class,
 	)
 
+def generate_cmap_choice_block():
+
+	colorscales = px.colors.named_colorscales()
+	return html.Div(
+		[
+			dcc.Dropdown(
+				id="cmap_dropdown",
+				options=[{"label" : scale, "value" : scale} for scale in colorscales],
+				value="rdbu",
+				optionHeight=40,
+				maxHeight=400,
+			)
+		],
+		style={"maxWidth": "520px", "margin": "40px auto"},
+	)
 
 def get_options_from_ids(
 	obj_ids: list[str], sep: str = "-", delist: list[str] = []
