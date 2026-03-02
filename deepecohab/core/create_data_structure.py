@@ -10,6 +10,7 @@ from tzlocal import get_localzone
 from deepecohab.core.registries import df_registry
 from deepecohab.utils import auxfun
 
+import random
 
 def load_data(
 	config_path: str | Path,
@@ -145,7 +146,30 @@ def sanitize_timezone(timezone: str) -> ZoneInfo:
 		raise ValueError(
 			"Provided timezone not in available timezones or wrong type. To check available timezones run zoneinfo.available_timezones()"
 		)
+	
+def prepare_animal_data(animal_ids: list[str], cfg : dict):
+	ids = sorted(animal_ids)
+	if not ids:
+		return {"animals": []}
 
+	shuffled = ids.copy()
+	random.shuffle(shuffled)
+
+	n = len(shuffled)
+	n_a = (n + 1) // 2
+	group_a = set(shuffled[:n_a])
+
+	animals = [
+		{
+			"orig_id": orig_id,
+			"display_id": i + 1,
+			"group": 'A' if orig_id in group_a else 'B',
+		}
+		for i, orig_id in enumerate(ids)
+	]
+	cfg['animals'] = animals
+	
+	return cfg
 
 @df_registry.register("padded_df")
 def create_padded_df(
@@ -359,6 +383,8 @@ def get_ecohab_data_structure(
 	cfg = auxfun.read_config(
 		config_path
 	)  # reload config potential animal_id changes due to sanitation
+
+	cfg = prepare_animal_data(animal_ids, cfg)
 
 	timezone = sanitize_timezone(timezone)
 
