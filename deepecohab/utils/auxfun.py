@@ -5,6 +5,7 @@ from typing import (
 	Any,
 	Literal,
 )
+import random
 
 import polars as pl
 import toml
@@ -388,6 +389,36 @@ def append_start_end_to_config(
 	)
 
 	return cfg, start_time, end_time
+
+	
+def prepare_animal_data(config_path : str):
+
+	cfg = read_config(config_path)
+	ids = sorted(cfg["animal_ids"])
+	if not ids:
+		return {"animals": []}
+
+	shuffled = ids.copy()
+	random.shuffle(shuffled)
+
+	n = len(shuffled)
+	n_a = (n + 1) // 2
+	group_a = set(shuffled[:n_a])
+
+	animals = [
+		{
+			"orig_id": orig_id,
+			"display_id": i + 1,
+			"group": 'A' if orig_id in group_a else 'B',
+		}
+		for i, orig_id in enumerate(ids)
+	]
+	
+	with open(config_path, "w") as config:
+		cfg['animals'] = animals
+		toml.dump(cfg, config)
+		
+	return cfg
 
 
 def add_cages_to_config(config_path: str | Path) -> None:
