@@ -297,6 +297,15 @@ def download_selected_data(
 	else:
 		raise dash.exceptions.PreventUpdate
 
+@callback(
+	Output("color-settings-modal", "is_open"),
+	Input("open-color-settings", "n_clicks"),
+	State("color-settings-modal", "is_open"),
+	prevent_initial_call=True,
+)
+def toggle_color_settings(n_clicks, is_open):
+	return not is_open
+
 
 @callback(
 	Output({"downloader": "download-component-comparison", "side": MATCH}, "data"),

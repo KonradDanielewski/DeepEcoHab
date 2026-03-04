@@ -158,6 +158,18 @@ def generate_settings_block(
 												n_clicks=0,
 												className="DownloadButton",
 											),
+											html.Button(
+												[
+													html.I(
+														className="fa-solid fa-lg me-2"
+													),
+													"Color settings",
+												],
+												id="open-color-settings",
+												n_clicks=0,
+												className="DownloadButton",
+											),
+											generate_color_settings_block(),
 											generate_download_block(),
 										]
 									),
@@ -207,9 +219,7 @@ def generate_settings_block(
 							)
 						]
 						if comparison_layout
-						else [
-							generate_cmap_choice_block(),
-						]
+						else []
 					),
 				],
 				className="centered-container",
@@ -382,6 +392,22 @@ def generate_download_block() -> dbc.Modal:
 			dcc.Download(id="download-component"),
 		],
 		id="modal",
+		is_open=False,
+	)
+
+	return modal
+
+
+def generate_color_settings_block() -> dbc.Modal:
+	"""Generate color settings modal component"""
+	modal = dbc.Modal(
+		[
+			dbc.ModalHeader([dbc.ModalTitle("Color settings", className="fw-bold")]),
+			dbc.ModalBody(
+				generate_cmap_choice_block()
+			)
+		],
+		id="color-settings-modal",
 		is_open=False,
 	)
 
