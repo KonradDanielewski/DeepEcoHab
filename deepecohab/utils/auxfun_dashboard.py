@@ -183,21 +183,21 @@ def generate_settings_block(
 					*(
 						[
 							html.Div(className="divider"),
-							generate_radio_switch(
+							generate_hidden_radio_switch(
 								position_switch_id,
 								[
 									{"label": "Visits", "value": "visits"},
 									{"label": "Time", "value": "time"},
 								]
 							),
-							generate_radio_switch(
+							generate_hidden_radio_switch(
 								pairwise_switch_id,
 								[
 									{"label": "Visits", "value": "pairwise_encounters"},
 									{"label": "Time", "value": "time_together"},
 								]
 							),
-							generate_radio_switch(
+							generate_hidden_radio_switch(
 								sociability_switch_id,
 								[
 									{
@@ -210,7 +210,7 @@ def generate_settings_block(
 									},
 								]
 							),
-							generate_radio_switch(
+							generate_hidden_radio_switch(
 								ranking_switch_id,
 								[
 									{"label": "In time", "value": "intime"},
@@ -400,11 +400,49 @@ def generate_download_block() -> dbc.Modal:
 
 def generate_color_settings_block() -> dbc.Modal:
 	"""Generate color settings modal component"""
+	
+	colorscales = px.colors.named_colorscales()
+
 	modal = dbc.Modal(
 		[
 			dbc.ModalHeader([dbc.ModalTitle("Color settings", className="fw-bold")]),
 			dbc.ModalBody(
-				generate_cmap_choice_block()
+				[
+					html.Div(
+						[
+							dcc.Dropdown(
+								id=f"cmap_dropdown",
+								options=colorscales,
+								value="rdbu",
+								optionHeight=40,
+								maxHeight=400,
+							),
+							dcc.RadioItems(
+								id="color_by",
+								options=[
+									{"label": "Animal", "value": "animal_id"},
+									{"label": "Feature", "value": "feature"}
+								],
+								value="animal_id",
+								className="dash-radio",
+							),
+							html.Div(
+								id = 'feature_dropdown_container',
+								children = [
+									dcc.Dropdown(
+										id=f"feature_dropdown",
+										options=['group', 'genotype'],
+										value="group",
+										optionHeight=40,
+										maxHeight=400,
+									)
+								],
+								hidden=True
+							)
+						],
+						style={"maxWidth": "520px", "margin": "40px auto"},
+					),
+				]
 			)
 		],
 		id="color-settings-modal",
@@ -436,7 +474,7 @@ def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], to
 		id="sidebar",
 	)
 
-def generate_radio_switch(switch_id: dict, switch_options: list[dict]) -> html.Div:
+def generate_hidden_radio_switch(switch_id: dict, switch_options: list[dict]) -> html.Div:
 	return html.Div(
 		id={
 			"container": switch_id["type"],
@@ -473,21 +511,6 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450", **kwargs
 		className=css_class,
 	)
 
-def generate_cmap_choice_block():
-
-	colorscales = px.colors.named_colorscales()
-	return html.Div(
-		[
-			dcc.Dropdown(
-				id="cmap_dropdown",
-				options=[{"label" : scale, "value" : scale} for scale in colorscales],
-				value="rdbu",
-				optionHeight=40,
-				maxHeight=400,
-			)
-		],
-		style={"maxWidth": "520px", "margin": "40px auto"},
-	)
 
 def get_options_from_ids(
 	obj_ids: list[str], sep: str = "-", delist: list[str] = []

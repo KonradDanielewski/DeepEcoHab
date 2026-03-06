@@ -79,6 +79,16 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 
 	return dashboard_layout, comparison_tab
 
+
+@callback(
+	Output("feature_dropdown_container", "hidden"),
+	Input("color_by", "value"),
+)
+def toggle_colormap_feature(switch_value: str):
+	if switch_value == 'feature':
+		return False
+	return True
+
 @callback(
 	Output({"type": "graph", "name": MATCH}, "figure"),
 	[
@@ -139,7 +149,7 @@ def update_plots(
 		else ctx.triggered_id
 	)
 
-	if id_check is not None and id_check not in plot_attributes and id_check != 'cmap_dropdown':
+	if id_check is not None and id_check not in plot_attributes and not (id_check.contains("cmap")):
 		return no_update
 	
 	if slider_mode == "days_single":
