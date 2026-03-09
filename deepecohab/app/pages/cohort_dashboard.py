@@ -158,7 +158,7 @@ def update_plots(
 	if id_check is not None and id_check not in plot_attributes and not id_check == 'apply-cmap-btn':
 		return no_update
 
-	animal_colors, positions_colors = auxfun_plots.apply_color_settings(cfg, colormap, color_by, feature_to_color_by)
+	animal_colors, animals, positions_colors, positions = auxfun_plots.apply_color_settings(cfg, colormap, color_by, feature_to_color_by)
 	
 	if slider_mode == "days_single":
 		days_range = [days_single, days_single]
@@ -169,8 +169,7 @@ def update_plots(
 	store = cache_config.get_project_data(cfg_tuple)
 
 	store = cache_config.get_project_data(cfg)
-	animals = cfg.get("animal_ids")
-	positions = cfg.get("positions")
+
 	cages = cfg.get("cages")
 	ligt_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60

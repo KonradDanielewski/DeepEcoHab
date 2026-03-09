@@ -864,15 +864,19 @@ def apply_color_settings(cfg: dict[str, Any],
 	positions_colors = color_sampling(positions, colormap)
 
 	if color_by == 'animal_id':
-		feature_to_color_by = 'orig_id'
+		animal_ids = list(animals.keys())
+		animal_colors = color_sampling(animal_ids, colormap)
+	else:
+		#TODO switch this to reading from config 
+		unique_feature_values = list(set([animal[feature_to_color_by] for animal in animals.values()]))
 
-	unique_feature_values = list(set([animal[feature_to_color_by] for animal in animals]))
-	values_colors = color_sampling(unique_feature_values, colormap)
-	
-	values_colors_map = dict(zip(unique_feature_values, values_colors))
+		values_colors = color_sampling(unique_feature_values, colormap)
+		
+		values_colors_map = dict(zip(unique_feature_values, values_colors))
+		
+		animal_ids = sorted(animals, key=lambda k: animals[k][feature_to_color_by])
 
-	
-	animal_colors = [values_colors_map[animal[feature_to_color_by]] for animal in animals]
+		animal_colors = [values_colors_map[animals[aid][feature_to_color_by]] for aid in animal_ids]
 
-	return animal_colors, positions_colors
+	return animal_colors, animal_ids, positions_colors, positions
 

@@ -405,14 +405,13 @@ def prepare_animal_data(config_path : str):
 	n_a = (n + 1) // 2
 	group_a = set(shuffled[:n_a])
 
-	animals = [
-		{
-			"orig_id": orig_id,
+	animals = {
+		orig_id : {
 			"display_id": i + 1,
 			"group": 'A' if orig_id in group_a else 'B',
 		}
 		for i, orig_id in enumerate(ids)
-	]
+	}
 	
 	with open(config_path, "w") as config:
 		cfg['animals'] = animals
