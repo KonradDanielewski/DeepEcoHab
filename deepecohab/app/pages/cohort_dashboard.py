@@ -101,7 +101,10 @@ def toggle_colormap_feature(switch_value: str):
 		Input("sociability_switch", "value"),
 		Input("ranking_switch", "value"),
 		Input("slider_switch", "value"),
+		Input("color_by", "value"),
+		Input("feature_dropdown", "value"),
 		Input("cmap_dropdown", "value"),
+		Input("apply-cmap-btn", "n_clicks"),
 	],
 	State("project-config-store", "data"),
 )
@@ -115,7 +118,10 @@ def update_plots(
 	sociability_switch: str,
 	ranking_switch: str,
 	slider_mode: Literal["days_single", "days_range"],
-	scale: str, 
+	color_by: Literal['animal_id', 'feature'],
+	feature_to_color_by: Literal['group'], #TODO pull this from config
+	colormap: str,
+	apply_cmap_clicks: int,
 	cfg: dict[str, Any]
 ) -> tuple[go.Figure, dict]:
 	(
@@ -149,8 +155,10 @@ def update_plots(
 		else ctx.triggered_id
 	)
 
-	if id_check is not None and id_check not in plot_attributes and not (id_check.contains("cmap")):
+	if id_check is not None and id_check not in plot_attributes and not id_check == 'apply-cmap-btn':
 		return no_update
+
+	animal_colors, positions_colors = auxfun_plots.apply_color_settings(cfg, colormap, color_by, feature_to_color_by)
 	
 	if slider_mode == "days_single":
 		days_range = [days_single, days_single]
@@ -162,9 +170,7 @@ def update_plots(
 
 	store = cache_config.get_project_data(cfg)
 	animals = cfg.get("animal_ids")
-	animal_colors = auxfun_plots.color_sampling(animals, scale)
 	positions = cfg.get("positions")
-	positions_colors = auxfun_plots.color_sampling(positions, scale)
 	cages = cfg.get("cages")
 	ligt_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60

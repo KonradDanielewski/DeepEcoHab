@@ -430,7 +430,7 @@ def generate_color_settings_block() -> dbc.Modal:
 								id = 'feature_dropdown_container',
 								children = [
 									dcc.Dropdown(
-										id=f"feature_dropdown",
+										id="feature_dropdown",
 										options=['group', 'genotype'],
 										value="group",
 										optionHeight=40,
@@ -438,6 +438,13 @@ def generate_color_settings_block() -> dbc.Modal:
 									)
 								],
 								hidden=True
+							),
+							dbc.Button(
+								"Apply",
+								id="apply-cmap-btn",
+								n_clicks=0,
+								color="primary",
+								className="ModalButton",
 							)
 						],
 						style={"maxWidth": "520px", "margin": "40px auto"},

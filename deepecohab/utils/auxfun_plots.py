@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass
 from itertools import combinations, product
-from typing import Literal
+from typing import Any, Literal
 
 import networkx as nx
 import numpy as np
@@ -854,3 +854,25 @@ def prep_cage_preference_evolution(
 	return img.to_numpy().reshape(
 		len(cages), len(animals), len(range(days_range[0], days_range[1] + 1))
 	)
+
+def apply_color_settings(cfg: dict[str, Any], 
+						 colormap: str, 
+						 color_by: Literal['animal_id', 'feature'], 
+						 feature_to_color_by: str):
+	animals = cfg.get("animals")
+	positions = cfg.get("positions")
+	positions_colors = color_sampling(positions, colormap)
+
+	if color_by == 'animal_id':
+		feature_to_color_by = 'orig_id'
+
+	unique_feature_values = list(set([animal[feature_to_color_by] for animal in animals]))
+	values_colors = color_sampling(unique_feature_values, colormap)
+	
+	values_colors_map = dict(zip(unique_feature_values, values_colors))
+
+	
+	animal_colors = [values_colors_map[animal[feature_to_color_by]] for animal in animals]
+
+	return animal_colors, positions_colors
+
