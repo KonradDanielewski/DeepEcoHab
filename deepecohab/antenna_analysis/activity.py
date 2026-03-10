@@ -121,7 +121,7 @@ def get_hourly_padded(lf: pl.LazyFrame):
 	).with_columns(pl.lit(seconds_per_hr).cast(pl.Float64).alias("time_spent")).explode('range').with_columns(
 		pl.col('range').alias('datetime')).drop("range")
 
-	multiplied = pl.concat([starts, ends, full_hours])
+	multiplied = pl.concat([starts, ends, full_hours]).select("animal_id", "datetime","time_spent", "position")
 	full_lf = pl.concat([unmodified_rows, multiplied])
 	
 	return full_lf
