@@ -203,8 +203,9 @@ def calculate_chasings(
 
 	return chasings
 
+
 @df_registry.register("tube_test_df")
-def calculate_tube_tests(
+def calculate_tube_test(
 	config_path: str | Path | dict,
 	winner_behavior: Literal["CHASE", "GUARD", "BOTH"] = "BOTH",
 	overwrite: bool = False,
@@ -214,7 +215,7 @@ def calculate_tube_tests(
 
 	Args:
 	    config_path: path to project config file.
-	    winner_behavior: specifies whether to include events where the winning mouse followed the loser 
+	    winner_behavior: specifies whether to include events where the winning mouse followed the loser
 						or returned to the guarded resource
 	    save_data: toogles whether to save data.
 	    overwrite: toggles whether to overwrite the data.
@@ -225,10 +226,12 @@ def calculate_tube_tests(
 	cfg: dict[str, Any] = auxfun.read_config(config_path)
 	key = "tube_test_df"
 
-	tube_tests: pl.LazyFrame | None = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	tube_test: pl.LazyFrame | None = (
+		None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	)
 
-	if isinstance(tube_tests, pl.LazyFrame):
-		return tube_tests
+	if isinstance(tube_test, pl.LazyFrame):
+		return tube_test
 
 	results_path = Path(cfg["project_location"]) / "results"
 
@@ -241,51 +244,54 @@ def calculate_tube_tests(
 	)
 
 	lf = lf.with_columns(
-		(pl.col('datetime') - pl.duration(seconds=pl.col("time_spent"))).alias("tunnel_entry"),
+		(pl.col("datetime") - pl.duration(seconds=pl.col("time_spent"))).alias("tunnel_entry"),
 		pl.col("undirected").shift(1).over("animal_id").alias("prev_position"),
-		pl.col("undirected").shift(-1).over("animal_id").alias("next_position")
+		pl.col("undirected").shift(-1).over("animal_id").alias("next_position"),
 	)
 
 	loser = lf.filter(
-		~pl.col("position").is_in(cages),
-		pl.col("prev_position") == pl.col("next_position")
+		~pl.col("position").is_in(cages), pl.col("prev_position") == pl.col("next_position")
 	)
 
-	intermediate = loser.join(
-		lf, on=["phase", "day", "phase_count", "undirected"], suffix="_winner" 
-	).filter(
-		pl.col("animal_id") != pl.col("animal_id_winner"),
-		pl.col("prev_position") != pl.col("prev_position_winner"),
-		pl.col("datetime") < pl.col("datetime_winner"),
-	).with_columns(
-		(
-			pl.min_horizontal(["datetime", "datetime_winner"])
-			- pl.max_horizontal(["tunnel_entry", "tunnel_entry_winner"])
+	intermediate = (
+		loser.join(lf, on=["phase", "day", "phase_count", "undirected"], suffix="_winner")
+		.filter(
+			pl.col("animal_id") != pl.col("animal_id_winner"),
+			pl.col("prev_position") != pl.col("prev_position_winner"),
+			pl.col("datetime") < pl.col("datetime_winner"),
 		)
-		.dt.total_seconds(fractional=True)
-		.alias("overlap_duration")
-	).filter(pl.col("overlap_duration") > 0)
+		.with_columns(
+			(
+				pl.min_horizontal(["datetime", "datetime_winner"])
+				- pl.max_horizontal(["tunnel_entry", "tunnel_entry_winner"])
+			)
+			.dt.total_seconds(fractional=True)
+			.alias("overlap_duration")
+		)
+		.filter(pl.col("overlap_duration") > 0)
+	)
 
-	if winner_behavior == 'CHASE':
+	if winner_behavior == "CHASE":
 		intermediate = intermediate.filter(
 			pl.col("next_position") == pl.col("next_position_winner"),
 		)
-	elif winner_behavior == 'GUARD':
+	elif winner_behavior == "GUARD":
 		intermediate = intermediate.filter(
 			pl.col("next_position") != pl.col("next_position_winner"),
 		)
 
-	tube_tests = (
+	tube_test = (
 		intermediate.group_by(
 			["phase", "day", "phase_count", "hour", "animal_id", "animal_id_winner", "position"]
 		)
-		.len(name="tube_tests")
-		.rename({"animal_id": "loser", 
-		   "animal_id_winner": "winner"})
+		.len(name="tube_test")
+		.rename({"animal_id": "loser", "animal_id_winner": "winner"})
 	)
-	
+
 	# Perform empty join
-	all_pairs = [(a1, a2) for a1, a2 in list(product(cfg["animal_ids"], cfg['animal_ids'])) if a1 != a2]
+	all_pairs = [
+		(a1, a2) for a1, a2 in list(product(cfg["animal_ids"], cfg["animal_ids"])) if a1 != a2
+	]
 	pairs_df = pl.LazyFrame(
 		all_pairs,
 		schema={
@@ -295,20 +301,19 @@ def calculate_tube_tests(
 		orient="row",
 	)
 
-	time_grid = tube_tests.select("phase", "day", "phase_count").unique()
+	time_grid = tube_test.select("phase", "day", "phase_count").unique()
 
 	full_grid = time_grid.join(pairs_df, how="cross")
 
-	tube_tests = full_grid.join(
-		tube_tests,
+	tube_test = full_grid.join(
+		tube_test,
 		on=["phase", "day", "phase_count", "winner", "loser"],
 		how="left",
 	).fill_null(0)
 
-
 	if save_data:
-		tube_tests.sink_parquet(
+		tube_test.sink_parquet(
 			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
 		)
 
-	return tube_tests
+	return tube_test

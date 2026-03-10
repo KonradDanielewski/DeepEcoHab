@@ -5,6 +5,7 @@ from deepecohab.antenna_analysis.activity import (
 from deepecohab.antenna_analysis.chasings import (
 	calculate_chasings as calculate_chasings,
 	calculate_ranking as calculate_ranking,
+	calculate_tube_test as calculate_tube_test,
 )
 from deepecohab.antenna_analysis.incohort_sociability import (
 	calculate_incohort_sociability as calculate_incohort_sociability,
