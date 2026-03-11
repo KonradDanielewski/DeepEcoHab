@@ -156,7 +156,7 @@ def update_plots(
 	cages = cfg.get("cages")
 	ligt_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60
-		for name, time in cfg.get('phase').items()
+		for name, time in cfg.get("phase").items()
 		for parts in [time.split(":")]
 	}
 
@@ -214,7 +214,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 	positions_colors = auxfun_plots.color_sampling(animals)
 	ligt_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60
-		for name, time in cfg.get('phase').items()
+		for name, time in cfg.get("phase").items()
 		for parts in [time.split(":")]
 	}
 
@@ -259,6 +259,8 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 		State({"type": "main-checklist", "index": "plots"}, "value"),
 		State("phase_type", "value"),
 		State("days_range", "value"),
+		State("days_single", "value"),
+		State("slider_switch", "value"),
 		State({"type": "graph", "name": ALL}, "figure"),
 		State({"type": "graph", "name": ALL}, "id"),
 		State("project-config-store", "data"),
@@ -271,6 +273,8 @@ def download_selected_data(
 	selected_plots: list[str],
 	phase_type: str,
 	days_range: list[int],
+	days_single: int,
+	slider_mode: Literal["days_single", "days_range"],
 	all_figures: list[dict],
 	all_ids: list[dict],
 	cfg: dict[str, Any],
@@ -279,6 +283,8 @@ def download_selected_data(
 	triggered = ctx.triggered_id
 	if not triggered:
 		raise dash.exceptions.PreventUpdate
+	if slider_mode == "days_single":
+		days_range = [days_single, days_single]
 
 	if triggered["side"] == "dfs":
 		store = cache_config.get_project_data(cfg)
@@ -292,6 +298,7 @@ def download_selected_data(
 		)
 	else:
 		raise dash.exceptions.PreventUpdate
+
 
 @callback(
 	Output("color-settings-modal", "is_open"),
