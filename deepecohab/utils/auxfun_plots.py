@@ -58,7 +58,6 @@ def set_default_theme() -> None:
 	pio.templates["dash_dark"] = dark_dash_template
 	pio.templates.default = "dash_dark"
 
-import re
 
 def color_sampling(
 	values: list[str], cmap: str = "Phase"
@@ -70,6 +69,7 @@ def color_sampling(
 	colors: list[str] = px.colors.sample_colorscale(cmap, x)
 
 	return colors
+
 
 def create_edges_trace(
 	G: nx.Graph,
@@ -855,28 +855,32 @@ def prep_cage_preference_evolution(
 		len(cages), len(animals), len(range(days_range[0], days_range[1] + 1))
 	)
 
-def apply_color_settings(cfg: dict[str, Any], 
-						 colormap: str, 
-						 color_by: Literal['animal_id', 'feature'], 
-						 feature_to_color_by: str):
+
+def apply_color_settings(
+	cfg: dict[str, Any],
+	color_by: Literal["animal_id", "feature"],
+	feature_to_color_by: str,
+	colormap: str = "Phase",
+):
 	animals = cfg.get("animals")
 	positions = cfg.get("positions")
 	positions_colors = color_sampling(positions, colormap)
 
-	if color_by == 'animal_id':
+	if color_by == "animal_id":
 		animal_ids = list(animals.keys())
 		animal_colors = color_sampling(animal_ids, colormap)
 	else:
-		#TODO switch this to reading from config 
-		unique_feature_values = list(set([animal[feature_to_color_by] for animal in animals.values()]))
+		# TODO switch this to reading from config
+		unique_feature_values = list(
+			set([animal[feature_to_color_by] for animal in animals.values()])
+		)
 
 		values_colors = color_sampling(unique_feature_values, colormap)
-		
+
 		values_colors_map = dict(zip(unique_feature_values, values_colors))
-		
+
 		animal_ids = sorted(animals, key=lambda k: animals[k][feature_to_color_by])
 
 		animal_colors = [values_colors_map[animals[aid][feature_to_color_by]] for aid in animal_ids]
 
 	return animal_colors, animal_ids, positions_colors, positions
-
