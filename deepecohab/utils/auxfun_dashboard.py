@@ -7,7 +7,6 @@ from typing import Any, Literal
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
-import plotly.express as px
 import polars as pl
 from dash import dcc, exceptions, html
 
@@ -158,18 +157,6 @@ def generate_settings_block(
 												n_clicks=0,
 												className="DownloadButton",
 											),
-											html.Button(
-												[
-													html.I(
-														className="fa-solid fa-lg me-2"
-													),
-													"Color settings",
-												],
-												id="open-color-settings",
-												n_clicks=0,
-												className="DownloadButton",
-											),
-											generate_color_settings_block(),
 											generate_download_block(),
 										]
 									),
@@ -398,67 +385,7 @@ def generate_download_block() -> dbc.Modal:
 	return modal
 
 
-def generate_color_settings_block() -> dbc.Modal:
-	"""Generate color settings modal component"""
-	
-	colorscales = px.colors.named_colorscales()
-
-	modal = dbc.Modal(
-		[
-			dbc.ModalHeader([dbc.ModalTitle("Color settings", className="fw-bold")]),
-			dbc.ModalBody(
-				[
-					html.Div(
-						[
-							dcc.Dropdown(
-								id=f"cmap_dropdown",
-								options=colorscales,
-								value="rdbu",
-								optionHeight=40,
-								maxHeight=400,
-							),
-							dcc.RadioItems(
-								id="color_by",
-								options=[
-									{"label": "Animal", "value": "animal_id"},
-									{"label": "Feature", "value": "feature"}
-								],
-								value="animal_id",
-								className="dash-radio",
-							),
-							html.Div(
-								id = 'feature_dropdown_container',
-								children = [
-									dcc.Dropdown(
-										id="feature_dropdown",
-										options=['group', 'genotype'],
-										value="group",
-										optionHeight=40,
-										maxHeight=400,
-									)
-								],
-								hidden=True
-							),
-							dbc.Button(
-								"Apply",
-								id="apply-cmap-btn",
-								n_clicks=0,
-								color="primary",
-								className="ModalButton",
-							)
-						],
-						style={"maxWidth": "520px", "margin": "40px auto"},
-					),
-				]
-			)
-		],
-		id="color-settings-modal",
-		is_open=False,
-	)
-
-	return modal
-
-def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]) -> html.Div:
+def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]):
 	return html.Div(
 		[
 			html.Div("MENU", className="sidebar-label"),
@@ -551,6 +478,7 @@ def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool
 		)
 		buttons.append(dbc.Col(btn, width=width_col))
 	return dbc.Row(buttons)
+
 
 def get_plot_file(
 	figure: go.Figure,
@@ -665,6 +593,7 @@ def download_dataframes(
 	return dcc.send_bytes(
 		lambda b: b.write(zip_buffer.getvalue()), filename="selected_dataframes.zip"
 	)
+
 
 def _is_valid_time(time_str: str) -> bool:
 	"""Helper to check if provided time a valid time."""
