@@ -5,7 +5,6 @@ from typing import (
 
 import dash
 import plotly.graph_objects as go
-import plotly.express as px
 import polars as pl
 from dash import (
 	callback,
@@ -13,7 +12,7 @@ from dash import (
 	ctx,
 	dcc,
 	html,
-	no_update
+	no_update,
 )
 from dash.dependencies import (
 	ALL,
@@ -81,15 +80,6 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 
 
 @callback(
-	Output("feature_dropdown_container", "hidden"),
-	Input("color_by", "value"),
-)
-def toggle_colormap_feature(switch_value: str):
-	if switch_value == 'feature':
-		return False
-	return True
-
-@callback(
 	Output({"type": "graph", "name": MATCH}, "figure"),
 	[
 		Input("days_range", "value"),
@@ -101,10 +91,6 @@ def toggle_colormap_feature(switch_value: str):
 		Input("sociability_switch", "value"),
 		Input("ranking_switch", "value"),
 		Input("slider_switch", "value"),
-		Input("color_by", "value"),
-		Input("feature_dropdown", "value"),
-		Input("cmap_dropdown", "value"),
-		Input("apply-cmap-btn", "n_clicks"),
 	],
 	State("project-config-store", "data"),
 )
@@ -118,11 +104,7 @@ def update_plots(
 	sociability_switch: str,
 	ranking_switch: str,
 	slider_mode: Literal["days_single", "days_range"],
-	color_by: Literal['animal_id', 'feature'],
-	feature_to_color_by: Literal['group'], #TODO pull this from config
-	colormap: str,
-	apply_cmap_clicks: int,
-	cfg: dict[str, Any]
+	cfg: dict[str, Any],
 ) -> tuple[go.Figure, dict]:
 	(
 		"""Performs selective plot update on the main layout
@@ -155,11 +137,9 @@ def update_plots(
 		else ctx.triggered_id
 	)
 
-	if id_check is not None and id_check not in plot_attributes and not id_check == 'apply-cmap-btn':
+	if id_check is not None and id_check not in plot_attributes:
 		return no_update
 
-	animal_colors, animals, positions_colors, positions = auxfun_plots.apply_color_settings(cfg, colormap, color_by, feature_to_color_by)
-	
 	if slider_mode == "days_single":
 		days_range = [days_single, days_single]
 
@@ -169,7 +149,10 @@ def update_plots(
 	store = cache_config.get_project_data(cfg_tuple)
 
 	store = cache_config.get_project_data(cfg)
-
+	animals = cfg.get("animal_ids")
+	animal_colors = auxfun_plots.color_sampling(animals)
+	positions = cfg.get("positions")
+	positions_colors = auxfun_plots.color_sampling(positions)
 	cages = cfg.get("cages")
 	ligt_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60
@@ -199,7 +182,6 @@ def update_plots(
 	return fig
 
 
-
 @callback(
 	[
 		Output({"figure": "comparison-plot", "side": MATCH}, "figure"),
@@ -216,7 +198,6 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 	input_dict: dict[str, Any] = {
 		item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches)
 	}
-
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(input_dict["plot-dropdown"])
 
 	phase_type: list[str] = (

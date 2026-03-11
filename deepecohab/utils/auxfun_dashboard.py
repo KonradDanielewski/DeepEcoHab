@@ -385,7 +385,7 @@ def generate_download_block() -> dbc.Modal:
 	return modal
 
 
-def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]):
+def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]) -> html.Div:
 	return html.Div(
 		[
 			html.Div("MENU", className="sidebar-label"),
