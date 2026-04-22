@@ -30,15 +30,24 @@ def load_data(
 			new_columns=["ind", "date", "time", "antenna", "time_under", "animal_id"],
 			include_file_paths="file",
 			glob=True,
-			infer_schema=True,
-			infer_schema_length=10,
+			schema={
+				'ind': pl.Int64,
+				'date': pl.String, 
+				'time': pl.String, 
+				'antenna': pl.Int64, 
+				'time_under': pl.Int64, 
+				'animal_id': pl.String,
+			},
+			truncate_ragged_lines=True
 		)
 	except ComputeError:
 		print("No data found with specified prefix!")
 
+
 	lf = lf.with_columns(
 		pl.col("file").str.extract(r"([^/\\]+)$").str.split("_").list.get(0).alias("COM")
 	).drop(["ind", "file"])
+
 
 	lf = auxfun.set_animal_ids(
 		config_path,
@@ -371,7 +380,6 @@ def get_ecohab_data_structure(
 
 	# Handle timezone, DST and trimming
 	has_com = not lf.filter(pl.col("COM").str.contains("COM")).collect().is_empty()
-
 	if not has_com:
 		lf = apply_timezone_fix(lf, timezone).lazy()
 	else:
@@ -383,6 +391,7 @@ def get_ecohab_data_structure(
 
 	start_date: dt.datetime = dt.datetime.fromisoformat(start_date).astimezone(timezone)
 	finish_date: dt.datetime = dt.datetime.fromisoformat(finish_date).astimezone(timezone)
+
 
 	lf = lf.filter((pl.col("datetime") >= start_date) & (pl.col("datetime") <= finish_date)).sort(
 		"datetime"

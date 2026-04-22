@@ -704,7 +704,7 @@ def plot_social_stability(
 		y="proportion_together",
 		color="animal_id",
 		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
-		hover_data={"animal_id", "animal_id_2"},
+		hover_data={"animal_id_2"},
 		range_x=[0, 1],
 		range_y=[0, 1],
 		range_color=[0, 1],
