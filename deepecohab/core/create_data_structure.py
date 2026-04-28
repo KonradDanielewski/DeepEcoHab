@@ -365,7 +365,7 @@ def get_ecohab_data_structure(
 	)
 
 
-	# cfg = auxfun.prepare_animal_data(config_path)
+	cfg = auxfun.read_config(config_path)
 
 	timezone = sanitize_timezone(timezone)
 
