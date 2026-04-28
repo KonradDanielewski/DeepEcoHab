@@ -28,7 +28,7 @@ def cage_preference_evolution(cfg: PlotConfig) -> go.Figure:
 		cfg.store, cfg.animals, cfg.days_range, cfg.agg_switch, cfg.cages
 	)
 
-	return plot_factory.time_spent_per_cage(img, cfg.animals, type="daily")
+	return plot_factory.time_spent_per_cage(img, type="daily")
 
 
 @plot_registry.register(
@@ -175,6 +175,7 @@ def chasings_line(cfg: PlotConfig) -> go.Figure:
 		"store",
 		"days_range",
 		"phase_type",
+		"positions",
 		"position_switch",
 		"agg_switch",
 		"animal_colors",
@@ -188,7 +189,7 @@ def activity(cfg: PlotConfig) -> go.Figure:
 	"""
 	df = auxfun_plots.prep_activity(cfg.store, cfg.days_range, cfg.phase_type)
 
-	return plot_factory.plot_activity(df, cfg.animal_colors, cfg.position_switch, cfg.agg_switch)
+	return plot_factory.plot_activity(df, cfg.positions, cfg.animal_colors, cfg.position_switch, cfg.agg_switch)
 
 
 @plot_registry.register(
@@ -244,7 +245,7 @@ def time_per_cage(cfg: PlotConfig) -> go.Figure:
 		cfg.store, cfg.animals, cfg.days_range, cfg.agg_switch, cfg.cages
 	)
 
-	return plot_factory.time_spent_per_cage(img, cfg.animals, type="hourly")
+	return plot_factory.time_spent_per_cage(img, type="hourly")
 
 
 @plot_registry.register(
@@ -297,7 +298,7 @@ def within_cohort_sociability(cfg: PlotConfig) -> go.Figure:
 
 @plot_registry.register(
 	"time-alone-bar",
-	dependencies=["store", "phase_type", "days_range", "agg_switch", "animal_colors"],
+	dependencies=["store", "phase_type", "days_range", "agg_switch", "animal_colors", "cages"],
 )
 def time_alone(cfg: PlotConfig) -> go.Figure:
 	"""Generates a stacked bar plot of time spent alone.
@@ -307,7 +308,7 @@ def time_alone(cfg: PlotConfig) -> go.Figure:
 	"""
 	df = auxfun_plots.prep_time_alone(cfg.store, cfg.phase_type, cfg.days_range)
 
-	return plot_factory.plot_time_alone(df, cfg.animal_colors, cfg.agg_switch)
+	return plot_factory.plot_time_alone(df, cfg.cages, cfg.animal_colors, cfg.agg_switch)
 
 
 @plot_registry.register(

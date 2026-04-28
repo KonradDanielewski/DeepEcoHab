@@ -226,6 +226,7 @@ def prep_polar_df(
 		)
 		.sort("metric", "animal_id")
 		.fill_null(0)
+		.with_columns(pl.col("metric").str.to_titlecase().str.replace("_", " ").str.replace("N ", "# of "))
 	).collect(engine="streaming")
 
 	return df
@@ -514,7 +515,7 @@ def prep_time_per_cage(
 		case "mean":
 			agg_func = pl.mean("time_spent").round(2) / 60
 
-	img = (
+	df = (
 		store["cage_occupancy"]
 		.lazy()
 		.filter(pl.col("day").is_between(*days_range))
@@ -526,16 +527,9 @@ def prep_time_per_cage(
 			on=["hour", "cage", "animal_id"],
 			how="right",
 		)
-		.collect(engine="in-memory")
-		.pivot(
-			on="hour",
-			index=["cage", "animal_id"],
-			values="time_spent",
-		)
-		.drop("cage", "animal_id")
-	)
+	).collect(engine="in-memory")
 
-	return img.to_numpy().reshape(len(cages), len(animals), 24)
+	return df
 
 
 def prep_pairwise_sociability(
@@ -823,10 +817,10 @@ def prep_cage_preference_evolution(
 
 	match agg_switch:
 		case "sum":
-			agg_func = pl.sum("time_in_position") / 3600
+			agg_func = pl.sum("time_in_position").truediv(3600).round(2)
 		case "mean":
-			agg_func = pl.mean("time_in_position").round(2) / 3600
-	img = (
+			agg_func = pl.mean("time_in_position").truediv(3600).round(2)
+	df = (
 		store["activity_df"]
 		.lazy()
 		.with_columns(pl.col("position").cast(pl.String))
@@ -842,18 +836,9 @@ def prep_cage_preference_evolution(
 			on=["day", "position", "animal_id"],
 			how="right",
 		)
-		.collect(engine="in-memory")
-		.pivot(
-			on="day",
-			index=["position", "animal_id"],
-			values="time_in_position",
-		)
-		.drop("position", "animal_id")
-	)
+	).collect(engine="in-memory")
 
-	return img.to_numpy().reshape(
-		len(cages), len(animals), len(range(days_range[0], days_range[1] + 1))
-	)
+	return df
 
 
 def apply_color_settings(

@@ -11,6 +11,7 @@ from deepecohab.utils import auxfun_plots
 
 def plot_activity(
 	df: pl.DataFrame,
+	positions: list[str],
 	colors: np.ndarray,
 	type_switch: Literal["visits", "time"],
 	agg_switch: Literal["sum", "mean"],
@@ -56,14 +57,18 @@ def plot_activity(
 			fig.update_traces(boxmean=True)
 
 	fig.update_layout(legend=dict(title="<b>Animal ID</b>"))
-	fig.update_xaxes(title_text="<b>Position</b>")
+	fig.update_xaxes(
+		title_text="<b>Position</b>",
+		tickvals=[i for i, pos in enumerate(positions)],
+		ticktext=[position.capitalize().replace("_", " ") for position in positions],
+	)
 	fig.update_yaxes(title_text=position_y_title)
 
 	return fig
 
 
 def plot_time_alone(
-	df: pl.DataFrame, colors: list[str], agg_switch: Literal["mean", "sum"]
+	df: pl.DataFrame, cages: list[str], colors: list[str], agg_switch: Literal["mean", "sum"]
 ) -> go.Figure:
 	"""Plot time alone as a relative bar plot"""
 	match agg_switch:
@@ -92,7 +97,11 @@ def plot_time_alone(
 			)
 			fig.update_traces(boxmean=True)
 
-	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_xaxes(
+		title_text="<b>Cage</b>",
+		tickvals=[i for i, cage in enumerate(cages)],
+		ticktext=[cage.capitalize().replace("_", " ") for cage in cages],
+	)
 	fig.update_yaxes(title_text="<b>Time alone [s]</b>")
 	fig.update_layout(
 		barcornerradius=10,
@@ -137,24 +146,36 @@ def plot_sum_line_per_hour(
 	fig.update_layout(legend=dict(title=legend_title))
 	fig.update_yaxes(title=y_axes_label)
 	fig.update_xaxes(title="<b>Hour of day</b>", range=[0, 23])
-	
-	light_onset = light_dark['light_phase']
-	dark_onset = light_dark['dark_phase']
- 
-	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash='dash', line_width=4)
-	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash='dash', line_width=4)
+
+	light_onset = light_dark["light_phase"]
+	dark_onset = light_dark["dark_phase"]
+
+	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash="dash", line_width=4)
+	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash="dash", line_width=4)
 
 	fig.add_annotation(
-		x=(light_onset + 6) % 24, y=1.15, xref="x", yref="paper", text="☀️", showarrow=False, font=dict(size=25)
+		x=(light_onset + 6) % 24,
+		y=1.15,
+		xref="x",
+		yref="paper",
+		text="☀️",
+		showarrow=False,
+		font=dict(size=25),
 	)
 
 	fig.add_annotation(
-		x=(dark_onset + 6) % 24, y=1.15, xref="x", yref="paper", text="🌙", showarrow=False, font=dict(size=25)
+		x=(dark_onset + 6) % 24,
+		y=1.15,
+		xref="x",
+		yref="paper",
+		text="🌙",
+		showarrow=False,
+		font=dict(size=25),
 	)
 
 	fig.update_layout(
 		xaxis=dict(dtick=1),
-		margin=dict(t=80), 
+		margin=dict(t=80),
 	)
 
 	return fig
@@ -226,24 +247,36 @@ def plot_mean_line_per_hour(
 	)
 	fig.update_yaxes(title=y_axes_label)
 	fig.update_xaxes(title="<b>Hour of day</b>")
-	
-	light_onset = light_dark['light_phase']
-	dark_onset = light_dark['dark_phase']
- 
-	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash='dash', line_width=4)
-	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash='dash', line_width=4)
+
+	light_onset = light_dark["light_phase"]
+	dark_onset = light_dark["dark_phase"]
+
+	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash="dash", line_width=4)
+	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash="dash", line_width=4)
 
 	fig.add_annotation(
-		x=(light_onset + 6) % 24, y=1.15, xref="x", yref="paper", text="☀️", showarrow=False, font=dict(size=25)
+		x=(light_onset + 6) % 24,
+		y=1.15,
+		xref="x",
+		yref="paper",
+		text="☀️",
+		showarrow=False,
+		font=dict(size=25),
 	)
 
 	fig.add_annotation(
-		x=(dark_onset + 6) % 24, y=1.15, xref="x", yref="paper", text="🌙", showarrow=False, font=dict(size=25)
+		x=(dark_onset + 6) % 24,
+		y=1.15,
+		xref="x",
+		yref="paper",
+		text="🌙",
+		showarrow=False,
+		font=dict(size=25),
 	)
 
 	fig.update_layout(
 		xaxis=dict(dtick=1),
-		margin=dict(t=80), 
+		margin=dict(t=80),
 	)
 
 	return fig
@@ -352,46 +385,51 @@ def plot_ranking_stability(
 	return fig
 
 
-def time_spent_per_cage(
-	img: np.ndarray, animals: list[str], type: Literal["hourly", "daily"]
-) -> go.Figure:
+def time_spent_per_cage(df: np.ndarray, type: Literal["hourly", "daily"]) -> go.Figure:
 	"""Plots N-cages of heatmaps with per hour time spent for each animal"""
-	match type:
+	match type:  # TODO: improve column naming consistency to avoid this mess
 		case "hourly":
 			title = "<b>Time spent per cage</b>"
+			x_col = "hour"
+			facet_col = "cage"
+			z_col = "time_spent"
 			x = "Hour: %{x}"
-			x_coords = list(range(img.shape[2]))
 			x_title = "Hour of day"
 			z = "Time [min]: %{z}"
 			legend_title = "<b>Minutes</b>"
+			nbins = 24
 		case "daily":
 			title = "<b>Cage preference over time</b>"
-			x_coords = list(range(1, img.shape[2] + 1))
+			x_col = "day"
+			facet_col = "position"
+			z_col = "time_in_position"
 			x = "Day: %{x}"
 			x_title = "Day"
 			z = "Time [h]: %{z}"
+			nbins = None
 			legend_title = "<b>Hours</b>"
 
-	fig = px.imshow(
-		img,
-		y=animals,
-		x=x_coords,
-		facet_col=0,
-		facet_row_spacing=0.14,
+	fig = px.density_heatmap(
+		df,
+		x=x_col,
+		y="animal_id",
+		z=z_col,
+		facet_col=facet_col,
 		facet_col_wrap=2,
+		color_continuous_scale="Viridis",
+		nbinsx=nbins,
 		title=title,
 	)
 
 	for annotation in fig.layout.annotations:
-		annotation["text"] = f"<b>Cage {int(annotation['text'].split('=')[1]) + 1}</b>"
+		annotation["text"] = f"<b>Cage {annotation['text'].split('_')[1]}</b>"
 
 	fig.update_layout(
 		xaxis=dict(title=x_title),
 		xaxis2=dict(title=x_title),
-		yaxis=dict(automargin=True),
-		coloraxis_colorbar=dict(
-			title=dict(text=legend_title),
-		),
+		yaxis=dict(automargin=True, title="Animal ID"),
+		yaxis3=dict(automargin=True, title="Animal ID"),
+		coloraxis_colorbar=dict(title=dict(text=legend_title)),
 	)
 
 	fig.update_traces(
@@ -702,7 +740,11 @@ def plot_cage_preference(
 
 	fig.update_traces(boxmean=True)
 	fig.update_yaxes(title_text="<b>Avg time per day [h]</b>")
-	fig.update_xaxes(title_text="<b>Cages</b>")
+	fig.update_xaxes(
+		title_text="<b>Cages</b>",
+		tickvals=[i for i, cage in enumerate(cages)],
+		ticktext=[cage.capitalize().replace("_", " ") for cage in cages],
+	)
 	fig.update_layout(legend=dict(title=""))
 
 	return fig
