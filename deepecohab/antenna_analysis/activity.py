@@ -65,7 +65,7 @@ def calculate_cage_occupancy(
 	)
 
 	animal_pos_lf = pl.LazyFrame(
-		product(cfg["animal_ids"], set(cfg["antenna_combinations"].values())),
+		product(cfg["animal_ids"], set(cfg["cages"])),
 		schema={
 			"animal_id": pl.Enum(cfg["animal_ids"]),
 			"position": pl.Categorical,
