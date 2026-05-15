@@ -40,8 +40,9 @@ def load_data(
 			},
 			truncate_ragged_lines=True
 		)
-	except ComputeError:
-		print("No data found with specified prefix!")
+	except ComputeError as e: 
+		# NOTE: maybe we should catch lack fo data earlier? otherwise this error is fragile and can be false
+		raise FileNotFoundError(f"No .txt files found at {data_path} with prefix '{fname_prefix}'") from e
 
 
 	lf = lf.with_columns(
@@ -134,7 +135,6 @@ def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -
 		df.with_row_index()
 		.with_columns(pl.col("index").ge(pivot_index).alias("is_after_jump"))
 		.with_columns(
-			(pl.col("time_under") / 1000).cast(pl.Int64()),
 			pl.when(pl.col("is_after_jump"))
 			.then(pl.col("datetime").dt.replace_time_zone(timezone.key, ambiguous="latest"))
 			.otherwise(pl.col("datetime").dt.replace_time_zone(timezone.key, ambiguous="earliest")),
@@ -365,7 +365,7 @@ def get_ecohab_data_structure(
 	)
 
 
-	cfg = auxfun.prepare_animal_data(config_path)
+	# cfg = auxfun.prepare_animal_data(config_path)
 
 	timezone = sanitize_timezone(timezone)
 

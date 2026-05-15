@@ -55,8 +55,19 @@ def load_ecohab_data(
 
 	return pl.read_parquet(results_path) if return_df else pl.scan_parquet(results_path)
 
+def _get_data(
+    config_path: str | Path | dict[str, Any], key: str
+) -> pl.LazyFrame:
+    """Like load_ecohab_data but raises if the file doesn't exist."""
+    lf = load_ecohab_data(config_path, key)
+    if lf is None:
+        raise FileNotFoundError(
+            f"'{key}.parquet' not found. Run the appropriate pipeline step first."
+        )
+    return lf
 
-def make_project_path(project_location: str, experiment_name: str) -> Path:
+
+def make_project_path(project_location: Path, experiment_name: str) -> Path:
 	"""Auxfun to make a name of the project directory using its name and time of creation"""
 	project_name: Path = Path(experiment_name + "_" + dt.datetime.today().strftime("%Y-%m-%d"))
 	project_location: Path = project_location / project_name
@@ -115,7 +126,7 @@ def get_phase_edge_grid(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 		pl.datetime_range(
 			pl.col("datetime").min().dt.truncate("1d"),
 			pl.col("datetime").max().dt.truncate("1d"),
-			interval="24h",
+			interval="1d",
 		)
 		.alias("phase_end")
 		.explode()
@@ -391,33 +402,33 @@ def append_start_end_to_config(
 	return cfg, start_time, end_time
 
 	
-def prepare_animal_data(config_path : str):
+# def prepare_animal_data(config_path : str):
 
-	cfg = read_config(config_path)
-	ids = sorted(cfg["animal_ids"])
-	if not ids:
-		return {"animals": []}
+# 	cfg = read_config(config_path)
+# 	ids = sorted(cfg["animal_ids"])
+# 	if not ids:
+# 		return {"animals": []}
 
-	shuffled = ids.copy()
-	random.shuffle(shuffled)
+# 	shuffled = ids.copy()
+# 	random.shuffle(shuffled)
 
-	n = len(shuffled)
-	n_a = (n + 1) // 2
-	group_a = set(shuffled[:n_a])
+# 	n = len(shuffled)
+# 	n_a = (n + 1) // 2
+# 	group_a = set(shuffled[:n_a])
 
-	animals = {
-		orig_id : {
-			"display_id": i + 1,
-			"group": 'A' if orig_id in group_a else 'B',
-		}
-		for i, orig_id in enumerate(ids)
-	}
+# 	animals = {
+# 		orig_id : {
+# 			"display_id": i + 1,
+# 			"group": 'A' if orig_id in group_a else 'B',
+# 		}
+# 		for i, orig_id in enumerate(ids)
+# 	}
 	
-	with open(config_path, "w") as config:
-		cfg['animals'] = animals
-		toml.dump(cfg, config)
+# 	with open(config_path, "w") as config:
+# 		cfg['animals'] = animals
+# 		toml.dump(cfg, config)
 		
-	return cfg
+# 	return cfg
 
 
 def add_cages_to_config(config_path: str | Path) -> None:

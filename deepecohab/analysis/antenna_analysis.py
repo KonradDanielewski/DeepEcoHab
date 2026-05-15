@@ -39,7 +39,7 @@ def calculate_cage_occupancy(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	binary_lf: pl.LazyFrame = auxfun.load_ecohab_data(config_path, "binary_df")
+	binary_lf: pl.LazyFrame = auxfun._get_data(config_path, "binary_df")
 
 	cols = ["day", "hour", "cage", "animal_id"]
 
@@ -106,7 +106,7 @@ def calculate_activity(
 
 	results_path: Path = Path(cfg["project_location"]) / "results"
 
-	padded_lf: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="padded_df")
+	padded_lf: pl.LazyFrame = auxfun._get_data(cfg, key="padded_df")
 	padded_lf = auxfun.remove_tunnel_directionality(padded_lf, cfg)
 
 	per_position_lf = padded_lf.group_by(
@@ -176,7 +176,7 @@ def calculate_ranking(
 		ranking: dict[str, dict[str, float]] = {player: model.rating() for player in animal_ids}
 
 	match_df: pl.DataFrame = (
-		auxfun.load_ecohab_data(cfg, "match_df")
+		auxfun._get_data(cfg, "match_df")
 		.select("loser", "winner", "datetime")
 		.sort("datetime")
 		.collect()
@@ -264,7 +264,7 @@ def calculate_chasings(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	lf: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="main_df")
+	lf: pl.LazyFrame = auxfun._get_data(cfg, key="main_df")
 
 	cages: list[str] = cfg["cages"]
 	tunnels: list[str] = cfg["tunnels"]
@@ -372,7 +372,7 @@ def calculate_tube_test(
 
 	results_path = Path(cfg["project_location"]) / "results"
 
-	lf: pl.LazyFrame = auxfun.load_ecohab_data(cfg, key="main_df")
+	lf: pl.LazyFrame = auxfun._get_data(cfg, key="main_df")
 
 	cages: list[str] = cfg["cages"]
 
@@ -482,7 +482,7 @@ def calculate_time_alone(
 
 	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 
-	binary_df: pl.LazyFrame = auxfun.load_ecohab_data(config_path, "binary_df")
+	binary_df: pl.LazyFrame = auxfun._get_data(config_path, "binary_df")
 
 	group_cols = ["datetime", "cage"]
 	result_cols = ["phase", "day", "animal_id", "cage"]
@@ -544,7 +544,7 @@ def calculate_pairwise_meetings(
 		return pairwise_meetings
 
 	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
-	padded_df = auxfun.load_ecohab_data(cfg, key="padded_df")
+	padded_df = auxfun._get_data(cfg, key="padded_df")
 
 	cages: list[str] = cfg["cages"]
 
@@ -642,9 +642,9 @@ def calculate_incohort_sociability(
 
 	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 
-	phase_durations: pl.LazyFrame = auxfun.load_ecohab_data(config_path, "phase_durations")
-	time_together_df: pl.LazyFrame = auxfun.load_ecohab_data(config_path, "pairwise_meetings")
-	activity_df: pl.LazyFrame = auxfun.load_ecohab_data(config_path, "activity_df")
+	phase_durations: pl.LazyFrame = auxfun._get_data(config_path, "phase_durations")
+	time_together_df: pl.LazyFrame = auxfun._get_data(config_path, "pairwise_meetings")
+	activity_df: pl.LazyFrame = auxfun._get_data(config_path, "activity_df")
 
 	core_columns = ["phase", "day", "phase_count", "animal_id", "animal_id_2"]
 
@@ -716,12 +716,12 @@ def calculate_features(
 		"pairwise_encounters",
 	]
 
-	chasings = auxfun.load_ecohab_data(config_path, "chasings_df")
-	tube_test = auxfun.load_ecohab_data(config_path, "tube_test_df")
-	pairwise_meetings = auxfun.load_ecohab_data(config_path, "pairwise_meetings")
+	chasings = auxfun._get_data(config_path, "chasings_df")
+	tube_test = auxfun._get_data(config_path, "tube_test_df")
+	pairwise_meetings = auxfun._get_data(config_path, "pairwise_meetings")
 
 	time_alone = (
-		auxfun.load_ecohab_data(config_path, "time_alone")
+		auxfun._get_data(config_path, "time_alone")
 		.group_by("phase", "phase_count", "day", "animal_id")
 		.agg(pl.sum("time_alone"))
 	)
@@ -751,7 +751,7 @@ def calculate_features(
 	)
 
 	activity = (
-		auxfun.load_ecohab_data(config_path, "activity_df")
+		auxfun._get_data(config_path, "activity_df")
 		.group_by("phase", "phase_count", "day", "animal_id")
 		.agg(pl.sum("visits_to_position").alias("activity"))
 	)

@@ -17,7 +17,6 @@ class DataFrameRegistry:
 			"pairwise_meetings",
 			"incohort_sociability",
 			"time_alone",
-			"pairwise_meetings",
 			"feature_df",
 		]
 
@@ -43,10 +42,10 @@ class DataFrameRegistry:
 			(step_name, current_index, total_steps)
 		"""
 		total = len(self.analysis_steps)
-		for i, name in enumerate(self.analysis_steps):
-			yield name, i + 1, total
+		for i, name in enumerate(self.analysis_steps):	
 			func = self._registry[name]
 			func(config, **kwargs)
+			yield name, i + 1, total
 
 
 class PlotRegistry:
