@@ -757,28 +757,17 @@ def calculate_features(
 	)
 
 	pairwise_meetings = (
-		pl.concat(
-			[
-				pairwise_meetings.select(
-					"animal_id",
-					"day",
-					"phase",
-					"phase_count",
-					"time_together",
-					"pairwise_encounters",
-				),
-				pairwise_meetings.select(
-					pl.col("animal_id_2").alias("animal_id"),
-					"day",
-					"phase",
-					"phase_count",
-					"time_together",
-					"pairwise_encounters",
-				),
-			]
+		pairwise_meetings
+		.unpivot(
+			on=["animal_id", "animal_id_2"],
+			index=["day", "phase", "phase_count", "time_together", "pairwise_encounters"],
+			variable_name="_drop",
+			value_name="col", # can't be animal_id cause lazyframe freaks out, hence we rename
 		)
-		.group_by("phase", "phase_count", "day", "animal_id")
-		.agg([pl.sum("time_together"), pl.sum("pairwise_encounters")])
+		.drop("_drop")
+		.group_by("phase", "phase_count", "day", "col")
+		.agg(pl.sum("time_together"), pl.sum("pairwise_encounters"))
+		.rename({'col': 'animal_id'})
 	)
 
 	lfs = [time_alone, n_chasing, n_chased, n_wins, n_loses, activity, pairwise_meetings]

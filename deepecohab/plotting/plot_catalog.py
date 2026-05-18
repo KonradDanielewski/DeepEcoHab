@@ -189,7 +189,9 @@ def activity(cfg: PlotConfig) -> go.Figure:
 	"""
 	df = auxfun_plots.prep_activity(cfg.store, cfg.days_range, cfg.phase_type)
 
-	return plot_factory.plot_activity(df, cfg.positions, cfg.animal_colors, cfg.position_switch, cfg.agg_switch)
+	return plot_factory.plot_activity(
+		df, cfg.positions, cfg.animal_colors, cfg.position_switch, cfg.agg_switch
+	)
 
 
 @plot_registry.register(

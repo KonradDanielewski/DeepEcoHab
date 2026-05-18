@@ -9,7 +9,6 @@ from deepecohab.analysis.antenna_analysis import (
 	calculate_tube_test as calculate_tube_test,
 	calculate_features as calculate_features,
 )
-
 from deepecohab.core.create_data_structure import (
 	get_ecohab_data_structure as get_ecohab_data_structure,
 )
@@ -20,6 +19,7 @@ from deepecohab.core.registries import (
 	df_registry as df_registry,
 	plot_registry as plot_registry,
 )
+from deepecohab.plotting import plot_catalog as plot_catalog
 from deepecohab.utils.auxfun import (
 	load_ecohab_data as load_ecohab_data,
 	read_config as read_config,
