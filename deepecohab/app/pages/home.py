@@ -174,7 +174,6 @@ def _create_project(
 			min_antenna_crossings=int(min_cross),
 			fname_prefix=prefix,
 			custom_layout=is_custom,
-			timezone=timezone,
 		)
 		config_dict = toml.load(config_path)
 
