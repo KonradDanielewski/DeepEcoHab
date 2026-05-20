@@ -120,7 +120,7 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
 	)
 
 
-def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -> pl.DataFrame:
+def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -> pl.DataFrame: # TODO: check for necessity with the current implementation of get_phase and get_phase_durations
 	"""Auxfun to handle winter DST due to time ambiguity. Finds a pivot point (time suddenly going backwards) and establishes it as DST onset."""
 	df = frame.collect() if isinstance(frame, pl.LazyFrame) else frame
 
@@ -143,7 +143,7 @@ def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -
 	)
 
 
-def sanitize_timezone(timezone: str) -> ZoneInfo:
+def sanitize_timezone(timezone: str) -> ZoneInfo: # TODO: This should be happening at user input not dataset creation
 	"""Auxfun to check timezone correctness"""
 	if timezone is None:
 		return get_localzone()
@@ -364,10 +364,10 @@ def get_ecohab_data_structure(
 		animal_ids=animal_ids,
 	)
 
+	timezone = sanitize_timezone(timezone)
+	cfg['timezone'] = timezone
 
 	cfg = auxfun.read_config(config_path)
-
-	timezone = sanitize_timezone(timezone)
 
 	lf = _prepare_columns(cfg, lf)
 
@@ -421,7 +421,7 @@ def get_ecohab_data_structure(
 	create_padded_df(config_path, lf, save_data, overwrite)
 	create_binary_df(config_path, lf, save_data, overwrite)
 
-	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(lf, cfg)
+	phase_durations_lf: pl.LazyFrame = auxfun.get_phase_durations(cfg)
 
 	if save_data:
 		lf.sink_parquet(results_path / f"{key}.parquet", compression="lz4", engine="streaming")

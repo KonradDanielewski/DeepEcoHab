@@ -12,6 +12,7 @@ def create_ecohab_project(
 	data_path: str | Path,
 	start_datetime: str | None = None,
 	finish_datetime: str | None = None,
+	timezone: str = None,
 	experiment_name: str = "ecohab_project",
 	dark_phase_start: str = "12:00:00",
 	light_phase_start: str = "00:00:00",
@@ -58,6 +59,7 @@ def create_ecohab_project(
 		"dark_phase_start": dark_phase_start,
 		"start_datetime": start_datetime,
 		"finish_datetime": finish_datetime,
+		"timezone": timezone,
 		"days_range": days_range,
 		"interpolate_positions": interpolate_positions,
 	}

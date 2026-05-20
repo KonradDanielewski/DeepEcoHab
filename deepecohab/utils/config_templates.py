@@ -16,6 +16,7 @@ class ExperimentConfig(ABC):
 	days_range: list[int] | None = None
 	start_datetime: str | None = None
 	finish_datetime: str | None = None
+	timezone: str = None
 	antenna_combinations: dict[str, str] = field(default_factory=dict)
 	tunnels: dict[str, str] = field(default_factory=dict)
 	phase: dict[str, str] = field(init=False)
@@ -58,6 +59,7 @@ class ExperimentConfig(ABC):
 		data["animal_ids"] = self.animal_ids
 		data["phase"] = self.phase
 		data["experiment_timeline"] = self.experiment_timeline
+		data["timezone"] = self.timezone
 		data["days_range"] = self.days_range
 		data["antenna_combinations"] = self.antenna_combinations
 		data["tunnels"] = self.tunnels

@@ -5,7 +5,6 @@ from typing import (
 	Any,
 	Literal,
 )
-import random
 
 import polars as pl
 import toml
@@ -55,16 +54,15 @@ def load_ecohab_data(
 
 	return pl.read_parquet(results_path) if return_df else pl.scan_parquet(results_path)
 
-def _get_data(
-    config_path: str | Path | dict[str, Any], key: str
-) -> pl.LazyFrame:
-    """Like load_ecohab_data but raises if the file doesn't exist."""
-    lf = load_ecohab_data(config_path, key)
-    if lf is None:
-        raise FileNotFoundError(
-            f"'{key}.parquet' not found. Run the appropriate pipeline step first."
-        )
-    return lf
+
+def _get_data(config_path: str | Path | dict[str, Any], key: str) -> pl.LazyFrame:
+	"""Like load_ecohab_data but raises if the file doesn't exist."""
+	lf = load_ecohab_data(config_path, key)
+	if lf is None:
+		raise FileNotFoundError(
+			f"'{key}.parquet' not found. Run the appropriate pipeline step first."
+		)
+	return lf
 
 
 def make_project_path(project_location: Path, experiment_name: str) -> Path:
@@ -73,25 +71,6 @@ def make_project_path(project_location: Path, experiment_name: str) -> Path:
 	project_location: Path = project_location / project_name
 
 	return project_location
-
-
-def get_phase_lens(cfg: dict[str, Any]) -> tuple[int, int]:
-	"""Helper to extract default phase duration in seconds"""
-	SECONDS_PER_DAY = 86400
-
-	start_time, end_time = cfg["phase"].values()
-
-	start_t = dt.time.fromisoformat(start_time)
-	end_t = dt.time.fromisoformat(end_time)
-
-	duration_light = (
-		(end_t.hour * 3600 + end_t.minute * 60 + end_t.second)
-		- (start_t.hour * 3600 + start_t.minute * 60 + start_t.second)
-	) % SECONDS_PER_DAY
-
-	duration_dark = SECONDS_PER_DAY - duration_light
-
-	return duration_light, duration_dark
 
 
 def _split_datetime(phase_start: str) -> dt.datetime:
@@ -151,77 +130,29 @@ def get_phase_edge_grid(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 	return full_phase_lf
 
 
-def get_phase_edges(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
-	"""Helper to return durations of edge phases of the experiment"""
-	base_midnight = pl.col("datetime").dt.truncate("1d")
-	time_offset = pl.col("datetime").dt.dst_offset()
-	time_diff = (pl.col("utc_off") - pl.col("utc_off").first()).dt.total_seconds()
-
-	dark_offset = get_phase_offset(cfg["phase"]["dark_phase"])
-	light_offset = get_phase_offset(cfg["phase"]["light_phase"])
-
-	start = (
-		lf.filter(pl.col("datetime") == pl.col("datetime").min())
-		.with_columns(
-			time_offset.alias("utc_off"),
-			pl.when(pl.col("phase") == "light_phase")
-			.then(base_midnight + dark_offset)
-			.otherwise(base_midnight + light_offset)
-			.alias("datetime_"),
-		)
-		.with_columns(
-			(pl.col("datetime_") - pl.col("datetime")).dt.total_seconds().alias("duration_seconds"),
-			time_offset.alias("utc_off"),
-		)
-	)
-
-	stop = (
-		lf.filter(pl.col("datetime") == pl.col("datetime").max())
-		.with_columns(
-			time_offset.alias("utc_off"),
-			pl.when(pl.col("phase") == "light_phase")
-			.then(base_midnight + light_offset)
-			.otherwise(base_midnight + dark_offset)
-			.alias("datetime_"),
-		)
-		.with_columns(
-			(pl.col("datetime") - pl.col("datetime_")).dt.total_seconds().alias("duration_seconds")
-		)
-	)
-
-	edges = (
-		pl.concat([start, stop])
-		.with_columns((pl.col("duration_seconds") - time_diff).alias("duration_seconds"))
-		.select(["phase", "phase_count", "duration_seconds"])
-	)
-
-	return edges
-
-
 @df_registry.register("phase_durations")
-def get_phase_durations(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
-	"""Auxfun to calculate approximate phase durations.
-	Assumes the length is the closest full hour of the total length in seconds (first to last datetime in this phase).
-	"""
-
-	duration_light, duration_dark = get_phase_lens(cfg)
-
-	edges = get_phase_edges(lf, cfg)
-
-	inner_phases = lf.select(["phase", "phase_count"]).unique()
-
-	phase_durations = inner_phases.join(
-		edges, on=["phase", "phase_count"], how="left"
-	).with_columns(
-		pl.when(pl.col("duration_seconds").is_null())
-		.then(
-			pl.when(pl.col("phase") == "light_phase")
-			.then(pl.lit(duration_light))
-			.otherwise(pl.lit(duration_dark))
+def get_phase_durations(cfg: dict[str, Any]) -> pl.LazyFrame:
+	"""Auxfun to calculate approximate phase durations with 1 minute precision"""
+	phase_durations = (
+		pl.LazyFrame(
+			pl.datetime_range(
+				dt.datetime.fromisoformat(cfg["experiment_timeline"]["start_date"]),
+				dt.datetime.fromisoformat(cfg["experiment_timeline"]["finish_date"]),
+				interval="1m",
+				time_zone=cfg['timezone'],
+				closed="left",
+				eager=True,
+			).dt.round("1m")
 		)
-		.otherwise(pl.col("duration_seconds"))
-		.alias("duration_seconds")
-		.cast(pl.Int64)
+		.rename({"literal": "datetime"})
+		.with_columns(get_phase(cfg))
+		.pipe(get_phase_count)
+		.group_by("phase", "phase_count")
+		.agg(
+			((pl.col("datetime").max() - pl.col("datetime").min()) + pl.duration(minutes=1))
+			.dt.total_seconds()
+			.alias("duration_seconds")
+		)
 	)
 
 	return phase_durations
@@ -249,11 +180,15 @@ def get_phase(cfg: dict[str, Any]) -> pl.Expr:
 	end_t = dt.time.fromisoformat(end_str)
 
 	time_offset = pl.col("datetime").dt.dst_offset() - pl.col("datetime").first().dt.dst_offset()
+	adjusted_time = (pl.col("datetime") - time_offset).dt.time()
+
+	if start_t <= end_t:
+		condition = adjusted_time.is_between(start_t, end_t, closed="left")
+	else:
+		condition = (adjusted_time >= start_t) | (adjusted_time < end_t)
 
 	return (
-		pl.when(
-			(pl.col("datetime") - time_offset).dt.time().is_between(start_t, end_t, closed="left")
-		)
+		pl.when(condition)
 		.then(pl.lit("light_phase"))
 		.otherwise(pl.lit("dark_phase"))
 		.cast(pl.Enum(phase_names))
@@ -401,7 +336,7 @@ def append_start_end_to_config(
 
 	return cfg, start_time, end_time
 
-	
+
 # def prepare_animal_data(config_path : str):
 
 # 	cfg = read_config(config_path)
@@ -423,11 +358,11 @@ def append_start_end_to_config(
 # 		}
 # 		for i, orig_id in enumerate(ids)
 # 	}
-	
+
 # 	with open(config_path, "w") as config:
 # 		cfg['animals'] = animals
 # 		toml.dump(cfg, config)
-		
+
 # 	return cfg
 
 

@@ -164,6 +164,7 @@ def _create_project(
 			field_ecohab=is_field,
 			start_datetime=exp_start,
 			finish_datetime=exp_end,
+			timezone=timezone,
 			interpolate_positions=interpolate,
 		)
 
