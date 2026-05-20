@@ -319,7 +319,6 @@ def get_ecohab_data_structure(
 	sanitize_animal_ids: bool = True,
 	min_antenna_crossings: int = 100,
 	custom_layout: bool = False,
-	timezone: str | None = None,
 	overwrite: bool = False,
 	save_data: bool = True,
 ) -> pl.LazyFrame:
@@ -364,7 +363,7 @@ def get_ecohab_data_structure(
 		animal_ids=animal_ids,
 	)
 
-	timezone = sanitize_timezone(timezone)
+	timezone = sanitize_timezone(cfg['timezone'])
 	cfg['timezone'] = timezone
 
 	cfg = auxfun.read_config(config_path)
