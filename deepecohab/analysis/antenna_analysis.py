@@ -503,9 +503,12 @@ def calculate_time_alone(
 		.agg(pl.len().alias("time_alone"))
 	)
 
-	time_alone = full_group_list.join(time_alone, on=result_cols, how="left").fill_null(0)
-
-	time_alone = auxfun.get_phase_count(time_alone.sort("day", "phase"))
+	time_alone = (
+		full_group_list.join(time_alone, on=result_cols, how="left")
+		.fill_null(0)
+		.sort("day", "phase")
+		.pipe(auxfun.get_phase_count)
+	)
 
 	if save_data:
 		time_alone.sink_parquet(results_path, compression="lz4", engine="streaming")
@@ -757,17 +760,16 @@ def calculate_features(
 	)
 
 	pairwise_meetings = (
-		pairwise_meetings
-		.unpivot(
+		pairwise_meetings.unpivot(
 			on=["animal_id", "animal_id_2"],
 			index=["day", "phase", "phase_count", "time_together", "pairwise_encounters"],
 			variable_name="_drop",
-			value_name="col", # can't be animal_id cause lazyframe freaks out, hence we rename
+			value_name="col",  # can't be animal_id cause lazyframe freaks out, hence we rename
 		)
 		.drop("_drop")
 		.group_by("phase", "phase_count", "day", "col")
 		.agg(pl.sum("time_together"), pl.sum("pairwise_encounters"))
-		.rename({'col': 'animal_id'})
+		.rename({"col": "animal_id"})
 	)
 
 	lfs = [time_alone, n_chasing, n_chased, n_wins, n_loses, activity, pairwise_meetings]

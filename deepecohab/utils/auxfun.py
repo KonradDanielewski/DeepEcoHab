@@ -139,7 +139,7 @@ def get_phase_durations(cfg: dict[str, Any]) -> pl.LazyFrame:
 				dt.datetime.fromisoformat(cfg["experiment_timeline"]["start_date"]),
 				dt.datetime.fromisoformat(cfg["experiment_timeline"]["finish_date"]),
 				interval="1m",
-				time_zone=cfg['timezone'],
+				time_zone=cfg["timezone"],
 				closed="left",
 				eager=True,
 			).dt.round("1m")
@@ -221,7 +221,7 @@ def get_animal_position_grid(
 		schema={
 			"animal_id": pl.Enum(cfg["animal_ids"]),
 			position_key[:-1]: pl.Categorical,
-		},  # stupid way to remove last letter
+		},  # stupid way to remove last letter TODO: make names consistent across tables and config
 	)
 
 
@@ -242,10 +242,10 @@ def set_animal_ids(
 		animal_detections: pl.DataFrame = lf.group_by("animal_id").len().collect()
 
 		if sanitize_animal_ids:
-			is_ghost = pl.col("len") < min_antenna_crossings
+			is_ghost: pl.Expr = pl.col("len") < min_antenna_crossings
 
-			dropped_ids = animal_detections.filter(is_ghost)["animal_id"].to_list()
-			animal_ids = animal_detections.filter(~is_ghost)["animal_id"].to_list()
+			dropped_ids: list[str] = animal_detections.filter(is_ghost)["animal_id"].to_list()
+			animal_ids: list[str] = animal_detections.filter(~is_ghost)["animal_id"].to_list()
 
 			if dropped_ids:
 				print(f"IDs dropped from dataset {dropped_ids}")
@@ -255,7 +255,7 @@ def set_animal_ids(
 			animal_ids: list[str] = animal_detections.get_column("animal_id").to_list()
 
 		animal_ids: list[str] = sorted(animal_ids)
-		lf = lf.filter(pl.col("animal_id").is_in(animal_ids))
+		lf: pl.LazyFrame = lf.filter(pl.col("animal_id").is_in(animal_ids))
 
 	cfg.update({"animal_ids": animal_ids, "dropped_ids": dropped_ids})
 	with open(config_path, "w") as f:
