@@ -56,7 +56,7 @@ dependencies = [
     Issues   = "https://github.com/KonradDanielewski/DeepEcoHab/issues"
 
     [project.scripts]
-    deepecohab-app = "deepecohab.app.__main__:main"
+    deepecohab = "deepecohab.app.__main__:main"
 
 [tool.setuptools]
 include-package-data = true

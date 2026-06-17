@@ -124,80 +124,6 @@ def generate_cohort_card():
 	)
 
 
-def generate_group_card():
-	return dbc.Card(
-		[
-			dbc.CardBody(
-				[
-					html.H3("Group analysis", className="h3"),
-					dbc.Row(
-						[html.H4("PLACEHOLDER", className="h4")],
-						class_name="mb-4",
-					),
-					dbc.Row(
-						[html.H4("PLACEHOLDER", className="h4")],
-						class_name="mb-4",
-					),
-					dbc.Row(
-						[
-							dbc.Col(
-								[
-									dbc.Button(
-										"PLACEHOLDER",
-										id="placeholder-button",
-										color="primary",
-										n_clicks=0,
-										size="md",
-										class_name="w-100",
-									),
-								],
-								width=12,
-							),
-						]
-					),
-				]
-			),
-		],
-	)
-
-
-def generate_pose_card():
-	return dbc.Card(
-		[
-			dbc.CardBody(
-				[
-					html.H3("Pose analysis", className="h3"),
-					dbc.Row(
-						[html.H4("PLACEHOLDER", className="h4")],
-						class_name="mb-4",
-					),
-					dbc.Row(
-						[html.H4("PLACEHOLDER", className="h4")],
-						class_name="mb-4",
-					),
-					dbc.Row(
-						[
-							dbc.Col(
-								[
-									dbc.Button(
-										"PLACEHOLDER",
-										id="placeholder-button2",
-										color="primary",
-										n_clicks=0,
-										size="mg",
-										class_name="w-100",
-									),
-								],
-								width=12,
-							),
-						]
-					),
-				]
-			),
-		],
-	)
-
-
 def generate_layout():
 	return [
 		dbc.Row(
@@ -214,13 +140,11 @@ def generate_layout():
 				dbc.Col(
 					[
 						generate_cohort_card(),
-						generate_group_card(),
 					],
 					width=6,
 				),
 				dbc.Col(
 					[
-						generate_pose_card(),
 					],
 					width=6,
 				),

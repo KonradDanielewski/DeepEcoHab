@@ -24,5 +24,4 @@ def get_project_data(config_tuple):
 	return {
 		name: auxfun.load_ecohab_data(config, name, return_df=True)
 		for name in df_registry.list_available()
-		if "binary" not in str(name)
 	}

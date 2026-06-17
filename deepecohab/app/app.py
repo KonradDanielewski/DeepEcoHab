@@ -24,7 +24,6 @@ def create_app() -> dash.Dash:
 		"/": "fas fa-house",
 		"/analysis": "fas fa-magnifying-glass-chart",
 		"/cohort_dashboard": "fas fa-chart-diagram",
-		"/group_dashboard": "fas fa-chart-column",
 	}
 
 	tooltips = ["Home", "Analysis", "Cohort Dashboard", "Group Dashboard"]

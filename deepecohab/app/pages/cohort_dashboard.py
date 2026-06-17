@@ -154,7 +154,7 @@ def update_plots(
 	positions = cfg.get("positions")
 	positions_colors = auxfun_plots.color_sampling(positions)
 	cages = cfg.get("cages")
-	ligt_dark_onset = {
+	light_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60
 		for name, time in cfg.get("phase").items()
 		for parts in [time.split(":")]
@@ -174,7 +174,7 @@ def update_plots(
 		cages=cages,
 		positions=positions,
 		position_colors=positions_colors,
-		ligt_dark_onset=ligt_dark_onset,
+		light_dark_onset=light_dark_onset,
 	)
 
 	fig = plot_registry.get_plot(plot_name, plot_cfg)
@@ -212,7 +212,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 	cages = cfg["cages"]
 	positions = cfg["positions"]
 	positions_colors = auxfun_plots.color_sampling(animals)
-	ligt_dark_onset = {
+	light_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60
 		for name, time in cfg.get("phase").items()
 		for parts in [time.split(":")]
@@ -232,7 +232,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 		cages=cages,
 		positions=positions,
 		position_colors=positions_colors,
-		ligt_dark_onset=ligt_dark_onset,
+		light_dark_onset=light_dark_onset,
 	)
 
 	fig = plot_catalog.plot_registry.get_plot(input_dict["plot-dropdown"], plot_cfg)
