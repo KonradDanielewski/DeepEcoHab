@@ -3,3 +3,5 @@
 build/
 dist/
 uv*
+tests/.hypothesis
+examples/example_project*

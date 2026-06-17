@@ -45,6 +45,12 @@ dependencies = [
     "tzlocal",
 ]
 
+    [project.optional-dependencies]
+    test = [
+        "pytest",
+        "hypothesis",
+    ]
+
     [project.urls]
     Homepage = "https://github.com/KonradDanielewski/DeepEcoHab"
     Issues   = "https://github.com/KonradDanielewski/DeepEcoHab/issues"
@@ -69,3 +75,7 @@ line-length = 100
     indent-style = "tab"
 
     docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]
+addopts   = "-ra"
