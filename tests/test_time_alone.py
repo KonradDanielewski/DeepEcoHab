@@ -1,0 +1,358 @@
+import datetime as dt
+
+import polars as pl
+import pytest
+import strategies as strat
+import tzlocal
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from deepecohab.analysis.antenna_analysis import _get_time_alone
+
+TZ = tzlocal.get_localzone()
+
+SCHEMA: dict[str, pl.DataType] = {
+	"animal_id": pl.Enum(["A", "B", "C"]),
+	"position": pl.Categorical,
+	"datetime": pl.Datetime("ms", str(TZ)),
+	"time_spent": pl.Float64,
+}
+
+CFG: dict = {
+	"phase": {"light_phase": "07:00:00", "dark_phase": "20:00:00"},
+	"tunnels": {"c1_c2": "tunnel_1"},
+}
+
+EXPECTED_COLUMNS = {
+	"animal_id",
+	"position",
+	"phase",
+	"day",
+	"phase_count",
+	"hour",
+	"time_alone",
+}
+
+
+def at(*args: int) -> dt.datetime:
+	"""Construct a zone-aware datetime in the project timezone."""
+	return dt.datetime(*args, tzinfo=TZ)
+
+
+@pytest.fixture()
+def make_df():
+	"""Build a typed, zone-aware DataFrame from plain column dicts."""
+
+	def _make(data: dict) -> pl.DataFrame:
+		return pl.DataFrame(data, schema=SCHEMA)
+
+	return _make
+
+
+def alone_row(result: pl.DataFrame, animal: str) -> dict:
+	"""Extract the single result row for *animal*; fail clearly otherwise."""
+	rows = result.filter(pl.col("animal_id") == animal)
+	assert rows.height == 1, f"Expected exactly one row for animal '{animal}', got {rows.height}"
+	return rows.row(0, named=True)
+
+
+def test_output_schema(make_df):
+	"""Result carries animal_id, position, phase, day, time_alone."""
+	df = make_df(
+		{
+			"animal_id": ["A"],
+			"position": ["cage_1"],
+			"datetime": [dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ)],
+			"time_spent": [10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+	assert set(result.columns) == EXPECTED_COLUMNS
+
+
+def test_single_animal_alone(make_df):
+	"""A single animal with no companions gets the exact duration recorded."""
+	df = make_df(
+		{
+			"animal_id": ["A"],
+			"position": ["cage_1"],
+			"datetime": [at(2023, 5, 24, 12, 0, 0)],
+			"time_spent": [10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+
+	assert result.height == 1
+	row = alone_row(result, "A")
+	assert row["time_alone"] == 10
+	assert row["phase"] == "light_phase"
+	assert row["day"] == 1
+
+
+def test_two_animals_overlapping_completely(make_df):
+	"""Two animals on the exact same interval - neither is ever alone."""
+	df = make_df(
+		{
+			"animal_id": ["A", "B"],
+			"position": ["cage_1", "cage_1"],
+			"datetime": [
+				dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ),
+				dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ),
+			],
+			"time_spent": [10.0, 10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+	assert result.height == 0
+
+
+def test_partial_overlap(make_df):
+	"""Staggered overlap, each animal alone for 5 s:
+	A 12:00:00-12:00:10, B 12:00:05-12:00:15, together 12:00:05-12:00:10.
+	"""
+	df = make_df(
+		{
+			"animal_id": ["A", "B"],
+			"position": ["cage_1", "cage_1"],
+			"datetime": [
+				dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ),
+				dt.datetime(2023, 5, 24, 12, 0, 5, tzinfo=TZ),
+			],
+			"time_spent": [10.0, 10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+
+	assert result.height == 2
+	assert alone_row(result, "A")["time_alone"] == 5
+	assert alone_row(result, "B")["time_alone"] == 5
+
+
+def test_empty_gap_not_counted(make_df):
+	"""A gap between visits must not be credited to either animal (5 s each)."""
+	df = make_df(
+		{
+			"animal_id": ["A", "B"],
+			"position": ["cage_1", "cage_1"],
+			"datetime": [
+				dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ),
+				dt.datetime(2023, 5, 24, 12, 0, 20, tzinfo=TZ),
+			],
+			"time_spent": [5.0, 5.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+
+	assert result.height == 2
+	assert alone_row(result, "A")["time_alone"] == 5
+	assert alone_row(result, "B")["time_alone"] == 5
+
+
+def test_multiple_positions_independent(make_df):
+	"""Alone time is per position; cage_2 presence does not affect cage_1."""
+	df = make_df(
+		{
+			"animal_id": ["A", "A", "B"],
+			"position": ["cage_1", "cage_2", "cage_1"],
+			"datetime": [
+				dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ),
+				dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ),
+				dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ),
+			],
+			"time_spent": [10.0, 10.0, 10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+
+	assert result.filter(pl.col("position") == "cage_2").height == 1
+	assert result.filter(pl.col("position") == "cage_1").height == 0
+	cage2 = result.filter((pl.col("animal_id") == "A") & (pl.col("position") == "cage_2")).row(
+		0, named=True
+	)
+	assert cage2["time_alone"] == 10
+
+
+def test_accumulated_alone_time_same_phase(make_df):
+	"""Separate non-overlapping visits in the same phase/day are summed."""
+	df = make_df(
+		{
+			"animal_id": ["A", "A"],
+			"position": ["cage_1", "cage_1"],
+			"datetime": [
+				dt.datetime(2023, 5, 24, 12, 0, 10, tzinfo=TZ),
+				dt.datetime(2023, 5, 24, 12, 1, 10, tzinfo=TZ),
+			],
+			"time_spent": [10.0, 10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+
+	assert result.height == 1
+	assert alone_row(result, "A")["time_alone"] == 20
+
+
+def test_phase_split(make_df):
+	"""Two alone visits in different phases produce two rows, labeled correctly."""
+	df = make_df(
+		{
+			"animal_id": ["A", "A"],
+			"position": ["cage_1", "cage_1"],
+			"datetime": [
+				dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ),  # 12:00 -> light_phase
+				dt.datetime(2023, 5, 24, 22, 0, 0, tzinfo=TZ),  # 22:00 -> dark_phase
+			],
+			"time_spent": [10.0, 10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG).sort("phase")
+
+	assert result.height == 2
+	by_phase = {r["phase"]: r for r in result.iter_rows(named=True)}
+	assert set(by_phase) == {"light_phase", "dark_phase"}
+	assert by_phase["light_phase"]["time_alone"] == 10
+	assert by_phase["dark_phase"]["time_alone"] == 10
+
+
+def test_day_split(make_df):
+	"""Visits on different calendar days produce separate, 1-indexed day rows."""
+	df = make_df(
+		{
+			"animal_id": ["A", "A"],
+			"position": ["cage_1", "cage_1"],
+			"datetime": [
+				dt.datetime(2023, 5, 24, 12, 0, 0, tzinfo=TZ),  # 1st day
+				dt.datetime(2023, 5, 26, 12, 0, 0, tzinfo=TZ),  # 3rd day
+			],
+			"time_spent": [10.0, 10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG).sort("day")
+
+	assert result.height == 2
+	assert result["day"].to_list() == [1, 3]
+	assert all(t == 10 for t in result["time_alone"])
+
+
+def test_boundary_time_is_light(make_df):
+	"""A visit starting exactly at 07:00 is labeled light_phase (start inclusive)."""
+	df = make_df(
+		{
+			"animal_id": ["A"],
+			"position": ["cage_1"],
+			"datetime": [dt.datetime(2023, 5, 24, 7, 0, 5, tzinfo=TZ)],
+			"time_spent": [5.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+	assert alone_row(result, "A")["phase"] == "light_phase"
+
+
+def test_simultaneous_handoff(make_df):
+	"""A leaves at T and B enters at T: each animal gets its full alone time, no double-count."""
+	# A: [12:00:00, 12:00:10), B: [12:00:10, 12:00:20) — leave and enter at the same instant.
+	df = make_df(
+		{
+			"animal_id": ["A", "B"],
+			"position": ["cage_1", "cage_1"],
+			"datetime": [at(2023, 5, 24, 12, 0, 10), at(2023, 5, 24, 12, 0, 20)],
+			"time_spent": [10.0, 10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+
+	assert result.height == 2
+	assert alone_row(result, "A")["time_alone"] == 10
+	assert alone_row(result, "B")["time_alone"] == 10
+
+
+def test_simultaneous_swap_with_bystander(make_df):
+	"""A leaves and C enters at T while B is present throughout — nobody is ever alone."""
+	# A: [12:00:00, 12:00:10), B: [12:00:00, 12:00:20), C: [12:00:10, 12:00:20)
+	df = make_df(
+		{
+			"animal_id": ["A", "B", "C"],
+			"position": ["cage_1", "cage_1", "cage_1"],
+			"datetime": [
+				at(2023, 5, 24, 12, 0, 10),
+				at(2023, 5, 24, 12, 0, 20),
+				at(2023, 5, 24, 12, 0, 20),
+			],
+			"time_spent": [10.0, 20.0, 10.0],
+		}
+	)
+	result = _get_time_alone(df, CFG)
+
+	assert result.height == 0
+
+
+# --- property-based tests ----------------------------------------------------
+# A full alone-time oracle would just reimplement the function, so these assert
+# structural invariants that must hold for any arrangement of animals/intervals.
+# Timezone and phase config are drawn inside @given; see tests/strategies.py.
+# tunnels={} keeps positions undirected so remove_tunnel_directionality is a
+# no-op and cage positions pass straight through.
+
+
+@settings(max_examples=200)
+@given(
+	events=st.lists(strat.event, min_size=1, max_size=25),
+	tz=strat.timezones,
+	pcfg=strat.phase_configs,
+)
+def test_alone_never_exceeds_presence(events, tz, pcfg):
+	"""No animal can be alone longer than the total time it is present: summed
+	time_alone per animal <= summed visit duration per animal.
+	"""
+	cfg = {"phase": pcfg, "tunnels": {}}
+	result = _get_time_alone(strat.time_alone_frame(events, tz), cfg)
+
+	alone = dict(result.group_by("animal_id").agg(pl.sum("time_alone")).iter_rows())
+	presence: dict[str, float] = {}
+	for e in events:
+		presence[e["animal_id"]] = presence.get(e["animal_id"], 0.0) + e["duration"]
+
+	assert (result["time_alone"] >= 0).all()
+	for animal, total_alone in alone.items():
+		assert total_alone <= presence[str(animal)] + 1e-6
+
+
+@settings(max_examples=200)
+@given(
+	animals=st.lists(st.sampled_from(strat.ANIMALS), min_size=2, max_size=6, unique=True),
+	position=st.sampled_from(strat.CAGES),
+	start=strat.naive_datetimes,
+	duration=strat.positive_durations,
+	tz=strat.timezones,
+	pcfg=strat.phase_configs,
+)
+def test_full_overlap_means_nobody_alone(animals, position, start, duration, tz, pcfg):
+	"""When >=2 animals occupy the exact same interval in one cage, at no instant
+	is exactly one present, so the result is empty.
+	"""
+	cfg = {"phase": pcfg, "tunnels": {}}
+	events = [
+		{"animal_id": a, "position": position, "start": start, "duration": duration}
+		for a in animals
+	]
+	result = _get_time_alone(strat.time_alone_frame(events, tz), cfg)
+	assert result.height == 0
+
+
+@settings(max_examples=200)
+@given(
+	animal=st.sampled_from(strat.ANIMALS),
+	position=st.sampled_from(strat.CAGES),
+	start=strat.naive_datetimes,
+	duration=strat.positive_durations,
+	tz=strat.timezones,
+	pcfg=strat.phase_configs,
+)
+def test_lone_animal_is_alone_for_its_whole_visit(animal, position, start, duration, tz, pcfg):
+	"""A single animal with a single visit is alone for exactly that duration."""
+	cfg = {"phase": pcfg, "tunnels": {}}
+	events = [{"animal_id": animal, "position": position, "start": start, "duration": duration}]
+	result = _get_time_alone(strat.time_alone_frame(events, tz), cfg)
+
+	assert result.height == 1
+	assert result["animal_id"].to_list() == [animal]
+	assert result["time_alone"][0] == pytest.approx(duration, abs=1e-6)
