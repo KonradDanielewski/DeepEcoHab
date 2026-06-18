@@ -20,5 +20,6 @@ dist/
 .DS_Store
 Thumbs.db
 
-# DeepEcoHab generated projects
+# DeepEcoHab generated artifacts
 examples/example_project*
+deepecohab/cache/

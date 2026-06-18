@@ -6,7 +6,8 @@ from dash import DiskcacheManager
 from deepecohab.core.registries import df_registry
 from deepecohab.utils import auxfun
 
-cache_dir = Path(r"\cache")
+# Co-locate the launch cache with the package rather than the drive root.
+cache_dir = Path(__file__).resolve().parents[1] / "cache"
 cache_dir.mkdir(exist_ok=True)
 
 launch_cache = diskcache.Cache(cache_dir)
