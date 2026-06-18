@@ -1,12 +1,29 @@
 from abc import ABC
 from dataclasses import dataclass, field
+from importlib import resources
 
 import toml
-from importlib import resources
 
 
 @dataclass
 class ExperimentConfig(ABC):
+	"""Template for an experiment configuration.
+
+	Attributes:
+		project_location: location of the project
+		experiment_name: name of the experiment
+		data_path: directory containing the antenna reads
+		animal_ids: RFID tag hex codes for animals
+		dark_phase_start: start time of the dark phase (light off)
+		light_phase_start: start time of the light phase (light on)
+		start_datetime: date and time of the experiment start - data will be
+			pruned to match
+		finish_datetime: date and time of the experiment end - data will be
+			pruned to match
+		antenna_combinations: per-comport renaming scheme, used when combining
+			reads from multiple boards in one setup
+	"""
+
 	project_location: str
 	experiment_name: str
 	data_path: str
@@ -22,19 +39,6 @@ class ExperimentConfig(ABC):
 	phase: dict[str, str] = field(init=False)
 	experiment_timeline: dict[str, str | None] = field(init=False)
 	interpolate_positions: bool = False
-	"""Generates a config template
-
-    Attributes:
-        project_location: location of the project
-        experiment_name: name of the experiment
-        data_path: directory containing the antenna reads
-        animal_ids: RFID tag hex codes for animals
-        dark_phase_start: start time of the dark phase (light off)
-        light_phase_start: start time of the light phase (light on)
-        start_datetime: date and time of the experiment start - data will be pruned to match
-        finish_datetime: date and time of the experiment end - data will be pruned to match
-        antenna_rename_scheme: a dictionary that contains per comport renaming scheme - used when using multiple boards in one setup   
-    """
 
 	def __post_init__(self):
 		self.phase = {
@@ -52,6 +56,7 @@ class ExperimentConfig(ABC):
 		return cfg[interp_key] if self.interpolate_positions else cfg[default_key]
 
 	def to_dict(self) -> dict:
+		"""Serialize the config to a plain dict ready to write to TOML."""
 		data = {}
 		data["project_location"] = self.project_location
 		data["experiment_name"] = self.experiment_name
@@ -72,7 +77,7 @@ class ExperimentConfig(ABC):
 
 @dataclass
 class DefaultConfig(ExperimentConfig):
-	"""Generates default config"""
+	"""Generates default config."""
 
 	def __post_init__(self):
 		super().__post_init__()
@@ -84,7 +89,7 @@ class DefaultConfig(ExperimentConfig):
 
 @dataclass
 class CustomConfig(DefaultConfig):
-	"""Generates custom config for arbitrary"""
+	"""Generates custom config for arbitrary."""
 
 	antenna_rename_scheme: dict[str, dict[str, int]] = field(default_factory=dict)
 

@@ -1,5 +1,3 @@
-import datetime as dt
-from itertools import combinations, product
 from pathlib import Path
 from typing import Any, Literal
 
@@ -10,170 +8,182 @@ from deepecohab.core.registries import df_registry
 from deepecohab.utils import auxfun
 
 
-@df_registry.register("cage_occupancy")
-def calculate_cage_occupancy(
-	config_path: str | Path | dict,
-	save_data: bool = True,
-	overwrite: bool = False,
-	**kwargs,
-) -> pl.LazyFrame:
-	"""Calculates time spent per animal per phase in every cage.
+def _get_activity(lf: pl.LazyFrame, cfg: dict[str, Any] | Path | str) -> pl.LazyFrame:
+	"""Aggregate per-animal occupancy and visit counts for every position.
+
+	Drops tunnel directionality so the two ends of a tunnel collapse to one
+	position, then sums dwell time and counts visits per animal in each
+	position/hour cell. Interpolated reads (synthesised to bridge gaps, not real
+	antenna detections) are excluded from the visit count but still contribute
+	their time.
 
 	Args:
-	    config_path: path to projects' config file or dict with the config.
-	    save_data: toogles whether to save data.
-	    overwrite: toggles whether to overwrite the data.
+		lf: Padded antenna table (``padded_df``).
+		cfg: Path or mapping resolved by ``read_config``.
 
 	Returns:
-	    LazyFrame of time spent in each cage with 1s resolution.
+		LazyFrame with ``time_in_position`` and ``visits_to_position`` per
+		phase/day/phase_count/hour/position/animal.
 	"""
-	cfg: dict[str, Any] = auxfun.read_config(config_path)
-	key = "cage_occupancy"
+	lf = auxfun.remove_tunnel_directionality(lf, cfg)
 
-	cage_occupancy: pl.LazyFrame | None = (
-		None if overwrite else auxfun.load_ecohab_data(config_path, key)
-	)
-
-	if isinstance(cage_occupancy, pl.LazyFrame):
-		return cage_occupancy
-
-	results_path = Path(cfg["project_location"]) / "results"
-
-	binary_lf: pl.LazyFrame = auxfun._get_data(config_path, "binary_df")
-
-	cols = ["day", "hour", "cage", "animal_id"]
-
-	bounds: tuple[dt.datetime, dt.datetime] = (
-		binary_lf.select(
-			pl.col("datetime").min().dt.truncate("1h").alias("start"),
-			pl.col("datetime").max().dt.truncate("1h").alias("end"),
-		)
-		.collect()
-		.row(0)
-	)
-
-	time_lf = (
-		pl.LazyFrame()
-		.select(pl.datetime_range(bounds[0], bounds[1], "1h").alias("datetime"))
-		.with_columns(auxfun.get_hour(), auxfun.get_day())
-		.drop("datetime")
-	)
-
-	full_group_list = time_lf.join(auxfun.get_animal_position_grid(cfg, "cages"), how="cross")
-
-	agg = (
-		binary_lf.with_columns(auxfun.get_hour(), auxfun.get_day())
-		.group_by(cols)
-		.agg(pl.len().alias("time_spent"))
-	)
-
-	cage_occupancy = full_group_list.join(agg, on=cols, how="left").fill_null(0)
-
-	if save_data:
-		cage_occupancy.sink_parquet(
-			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
-		)
-
-	return cage_occupancy
-
-
-@df_registry.register("activity_df")
-def calculate_activity(
-	config_path: str | Path | dict,
-	save_data: bool = True,
-	overwrite: bool = False,
-	**kwargs,
-) -> pl.LazyFrame:
-	"""Calculates time spent and visits to every possible position per phase for every mouse.
-
-	Args:
-	    config_path: path to projects' config file or dict with the config.
-	    save_data: toogles whether to save data.
-	    overwrite: toggles whether to overwrite the data.
-
-	Returns:
-	    LazyFrame of time and visits
-	"""
-	cfg: dict[str, Any] = auxfun.read_config(config_path)
-	key = "activity_df"
-
-	time_per_position_lf: pl.LazyFrame | None = (
-		None if overwrite else auxfun.load_ecohab_data(config_path, key)
-	)
-
-	if isinstance(time_per_position_lf, pl.LazyFrame):
-		return time_per_position_lf
-
-	results_path: Path = Path(cfg["project_location"]) / "results"
-
-	padded_lf: pl.LazyFrame = auxfun._get_data(cfg, key="padded_df")
-	padded_lf = auxfun.remove_tunnel_directionality(padded_lf, cfg)
-
-	per_position_lf = padded_lf.group_by(
-		["phase", "day", "phase_count", "position", "animal_id"]
-	).agg(
+	return lf.group_by(["phase", "day", "phase_count", "hour", "position", "animal_id"]).agg(
 		pl.sum("time_spent").alias("time_in_position"),
-		pl.len().alias("visits_to_position"),
+		(~pl.col("interpolated")).sum().alias("visits_to_position"),
 	)
 
-	time_grid = per_position_lf.select("phase", "day", "phase_count").unique()
-	full_grid = time_grid.join(auxfun.get_animal_position_grid(cfg, "positions"), how="cross")
 
-	per_position_lf = full_grid.join(
-		per_position_lf, on=["phase", "day", "phase_count", "position", "animal_id"], how="left"
-	).fill_null(0)
+def _get_time_alone(lf: pl.LazyFrame, cfg: dict[str, Any] | Path | str) -> pl.LazyFrame:
+	"""Compute how long each animal occupied a position with no other animal present.
 
-	if save_data:
-		per_position_lf.sink_parquet(
-			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
-		)
+	Uses a sweep-line over occupancy intervals: each animal's stay in a position
+	becomes an enter (+1) and a leave (-1) event, and a running ``n_active`` count
+	per position tracks how many animals are present at any instant. Spans where
+	exactly one animal is present (``n_active == 1``) are solitary; their length is
+	the time until the next event. The occupant is recovered with a second signed
+	counter (``id_active``): summing the per-animal physical codes leaves the lone
+	occupant's code standing when only one is active, which is mapped back to the
+	enum label via ``id_lookup``. ``undefined`` positions are excluded.
 
-	return per_position_lf
+	Args:
+		lf: Padded antenna table (``padded_df``).
+		cfg: Path or mapping resolved by ``read_config``.
 
-
-@df_registry.register("ranking")
-def calculate_ranking(
-	config_path: str | Path | dict,
-	overwrite: bool = False,
-	save_data: bool = True,
-	**kwargs,
-) -> pl.LazyFrame:
-	"""Calculate ranking using Plackett Luce algortihm. Each chasing event is a match
-	   Args:
-	       config_path: path to project config file.
-	       save_data: toogles whether to save data.
-	       overwrite: toggles whether to overwrite the data.
-	       ranking: optionally, user can pass a DataFrame from a different
-	recording of same animals to start ranking from a certain point instead of 0 by applying:
-
-	ranking.group_by('animal_id').agg(pl.last('mu'), pl.last('sigma'))
-
-	on the previous rec of the same animals to get their last rank estimation.
-
-	   Returns:
-	       LazyFrame of ranking
+	Returns:
+		LazyFrame with ``time_alone`` (seconds) per
+		phase/day/phase_count/hour/position/animal.
 	"""
-	cfg: dict[str, Any] = auxfun.read_config(config_path)
-	key = "ranking"
+	lf = auxfun.remove_tunnel_directionality(lf, cfg)
+	df_intervals = lf.filter(pl.col("position") != "undefined").with_columns(
+		pl.col("datetime").alias("end"),
+		(pl.col("datetime").sub(pl.col("time_spent").mul(1000_000).cast(pl.Duration("us")))).alias(
+			"start"
+		),
+		pl.col("animal_id").to_physical().cast(pl.Int64).alias("id_code"),
+	)
 
-	ranking: pl.LazyFrame | None = None if overwrite else auxfun.load_ecohab_data(config_path, key)
+	# Small lookup to restore enum labels after the sweep (one row per animal).
+	id_lookup = df_intervals.select("animal_id", "id_code").unique()
 
-	if isinstance(ranking, pl.LazyFrame):
-		return ranking
+	enters = df_intervals.select(
+		pl.col("start").alias("time"),
+		"position",
+		pl.lit(1, dtype=pl.Int32).alias("delta"),
+		pl.col("id_code").alias("id_delta"),
+	)
+	leaves = df_intervals.select(
+		pl.col("end").alias("time"),
+		"position",
+		pl.lit(-1, dtype=pl.Int32).alias("delta"),
+		pl.col("id_code").neg().alias("id_delta"),
+	)
 
-	results_path: Path = Path(cfg["project_location"]) / "results"
+	events = (
+		pl.concat([enters, leaves])
+		.sort("position", "time")
+		.with_columns(
+			pl.col("delta").cum_sum().over("position").alias("n_active"),
+			pl.col("id_delta").cum_sum().over("position").alias("id_active"),
+			pl.col("time").shift(-1).over("position").alias("time_next"),
+		)
+	)
 
-	prev_ranking = kwargs.get("prev_ranking", None)
+	time_alone = (
+		events.filter(
+			pl.col("time_next").is_not_null(),
+			(pl.col("n_active") == 1),
+			(pl.col("time_next") > pl.col("time")),
+		)
+		.select(
+			pl.col("position"),
+			pl.col("time").alias("datetime"),
+			pl.col("time_next").sub(pl.col("time")).alias("duration"),
+			pl.col("id_active").alias("id_code"),
+		)
+		.with_columns(auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour())
+		.sort("day", "phase")
+		.pipe(auxfun.get_phase_count)
+		.group_by("id_code", "position", "phase", "day", "phase_count", "hour")
+		.agg(pl.col("duration").sum().dt.total_seconds(fractional=True).alias("time_alone"))
+		.join(id_lookup, on="id_code", how="left")
+		.select("animal_id", "position", "phase", "day", "phase_count", "hour", "time_alone")
+	)
+
+	return time_alone
+
+
+@df_registry.register_step("activity_df", requires=["padded_df"])
+def calculate_activity(cfg: dict[str, Any], **kwargs) -> pl.LazyFrame:
+	"""Build the per-animal activity table: occupancy, visits and solitary time.
+
+	Combines two views of ``padded_df`` (per-position dwell time and visit counts
+	from :func:`_get_activity`, and solitary occupancy from :func:`_get_time_alone`)
+	and reindexes them onto the dense experiment grid, so every animal/position/hour
+	cell is present with absent cells filled with ``0``.
+
+	Args:
+	    cfg: resolved project config.
+
+	Returns:
+	    LazyFrame with ``time_in_position``, ``visits_to_position`` and
+	    ``time_alone`` per phase/day/phase_count/hour/position/animal.
+	"""
+	padded_df: pl.LazyFrame = auxfun._get_data(cfg, key="padded_df")
+
+	per_position_lf: pl.LazyFrame = _get_activity(padded_df, cfg)
+	time_alone: pl.LazyFrame = _get_time_alone(padded_df, cfg)
+
+	return (
+		auxfun.build_experiment_grid(cfg)
+		.join(
+			per_position_lf,
+			on=["phase", "day", "phase_count", "hour", "position", "animal_id"],
+			how="left",
+		)
+		.join(
+			time_alone,
+			on=["phase", "day", "phase_count", "hour", "position", "animal_id"],
+			how="left",
+		)
+		.fill_null(0)
+	)
+
+
+@df_registry.register_step("ranking", requires=["match_df"])
+def calculate_ranking(cfg: dict[str, Any], **kwargs) -> pl.LazyFrame:
+	"""Estimate a dominance ranking by replaying chasing events as Plackett-Luce matches.
+
+	Each chasing event in ``match_df`` is treated as a one-on-one match (winner
+	beats loser) and replayed in chronological order, updating every animal's
+	skill rating (``mu``/``sigma`` and its derived ``ordinal``) after each match.
+	One row per animal is emitted after every match, so the result is the full
+	rating trajectory over time, not just the final standings.
+
+	Args:
+	    cfg: resolved project config.
+	    prev_ranking: optional starting ratings from an earlier recording of the
+	        same animals, so ranking continues from their previous estimate instead
+	        of from scratch. Expects a DataFrame/LazyFrame with ``animal_id``,
+	        ``mu`` and ``sigma`` columns; build it from a prior ``ranking`` with
+	        :func:`get_prev_ranking`.
+
+	Returns:
+	    LazyFrame with ``mu``, ``sigma``, ``ordinal`` and ``datetime`` per animal,
+	    one row per animal after each match.
+	"""
+	prev_ranking = kwargs.get("prev_ranking")
 	animal_ids: list[str] = cfg["animal_ids"]
 
-	if isinstance(prev_ranking, dict):
-		ranking: dict[str, dict[str, float]] = {
-			name: PlackettLuce(mu=mu, sigma=sigma, limit_sigma=True, balance=True)
-			for name, mu, sigma in prev_ranking.iter_rows()
-		}
-	else:
-		model = PlackettLuce(limit_sigma=True, balance=True)
-		ranking: dict[str, dict[str, float]] = {player: model.rating() for player in animal_ids}
+	model = PlackettLuce(limit_sigma=True, balance=True)
+	# Every animal starts at the model default; animals present in prev_ranking
+	# resume from their previously estimated mu/sigma instead.
+	ranking = {player: model.rating() for player in animal_ids}
+
+	if prev_ranking is not None:
+		if isinstance(prev_ranking, pl.LazyFrame):
+			prev_ranking = prev_ranking.collect()
+		for name, mu, sigma in prev_ranking.select("animal_id", "mu", "sigma").iter_rows():
+			ranking[name] = model.rating(mu=mu, sigma=sigma)
 
 	match_df: pl.DataFrame = (
 		auxfun._get_data(cfg, "match_df")
@@ -209,61 +219,55 @@ def calculate_ranking(
 		auxfun.get_hour(),
 	)
 
-	if save_data:
-		ranking_df.sink_parquet(
-			results_path / "ranking.parquet", compression="lz4", engine="streaming"
-		)
-
-	return ranking
+	return ranking_df
 
 
-@df_registry.register("match_df")
-def get_matches(lf: pl.LazyFrame, results_path: Path, save_data: bool) -> None:
-	"""Creates a lazyframe of matches"""
-	matches = lf.select(
-		"animal_id", "animal_id_chasing", "datetime_chasing", "position", "chasing_length"
-	).rename(
-		{
-			"animal_id": "loser",
-			"animal_id_chasing": "winner",
-			"datetime_chasing": "datetime",
-		}
-	)
-	if save_data:
-		matches.sink_parquet(
-			results_path / "match_df.parquet", compression="lz4", engine="streaming"
-		)
+def get_prev_ranking(ranking: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
+	"""Collapse a ``ranking`` trajectory to each animal's latest rating.
 
-
-@df_registry.register("chasings_df")
-def calculate_chasings(
-	config_path: str | Path | dict,
-	overwrite: bool = False,
-	save_data: bool = True,
-	chasing_time_window: list[int, int] = [0.1, 1.2],
-	**kwargs,
-) -> pl.LazyFrame:
-	"""Calculates chasing events per pair of mice for each phase
+	``calculate_ranking`` emits one row per animal after every match; this keeps
+	only the chronologically last ``mu``/``sigma`` per animal, yielding exactly
+	the ``animal_id``/``mu``/``sigma`` frame that ``calculate_ranking`` accepts as
+	its ``prev_ranking`` argument. Feed it back to continue ranking the same
+	animals from where a previous recording left off.
 
 	Args:
-	    config_path: path to project config file.
-	    save_data: toogles whether to save data.
-	    overwrite: toggles whether to overwrite the data.
-		chasing_time_window: defines min and max length of the chasing event in seconds. Defaults to [0.1, 1.2]
+	    ranking: a ``ranking`` result (LazyFrame or DataFrame).
 
 	Returns:
-	    LazyFrame of chasings
+	    LazyFrame with one row per animal and columns ``animal_id``, ``mu``,
+	    ``sigma``.
 	"""
-	cfg: dict[str, Any] = auxfun.read_config(config_path)
-	key = "chasings_df"
+	return (
+		ranking.lazy()
+		.sort("datetime")
+		.group_by("animal_id", maintain_order=True)
+		.agg(pl.last("mu"), pl.last("sigma"))
+	)
 
-	chasings: pl.LazyFrame | None = None if overwrite else auxfun.load_ecohab_data(config_path, key)
 
-	if isinstance(chasings, pl.LazyFrame):
-		return chasings
+@df_registry.register_step("match_df", requires=["main_df"])
+def calculate_matches(
+	cfg: dict[str, Any],
+	chasing_time_window: tuple[float] = (0.1, 1.2),
+	**kwargs,
+) -> pl.LazyFrame:
+	"""Builds the event-level chasing table: one row per chasing event.
 
-	results_path = Path(cfg["project_location"]) / "results"
+	A chasing event is a loser entering a tunnel from a cage and a winner
+	following through the same tunnel within ``chasing_time_window`` seconds.
+	This table is the shared input for both ``chasings_df`` (per-hour counts) and
+	``ranking`` (sequential match outcomes), so it is computed once here.
 
+	Args:
+	    cfg: resolved project config.
+	    chasing_time_window: min and max length of the chasing event in seconds.
+	        Defaults to [0.1, 1.2].
+
+	Returns:
+	    LazyFrame of chasing events with winner/loser, the grid columns and the
+	    chasing length.
+	"""
 	lf: pl.LazyFrame = auxfun._get_data(cfg, key="main_df")
 
 	cages: list[str] = cfg["cages"]
@@ -289,92 +293,89 @@ def calculate_chasings(
 		pl.col("datetime") < pl.col("datetime_chasing"),
 	)
 
-	get_matches(
-		intermediate.with_columns(
-			(pl.col("datetime") - pl.col("tunnel_entry"))
-			.dt.total_seconds(fractional=True)
-			.alias("chasing_length")
-		),
-		results_path,
-		save_data,
+	# Event-level table. Grid columns are kept so chasings_df can aggregate it
+	# directly; datetime is the winner's read time (matches the ranking order).
+	return intermediate.select(
+		pl.col("phase"),
+		pl.col("day"),
+		pl.col("phase_count"),
+		pl.col("hour"),
+		pl.col("position"),
+		pl.col("animal_id_chasing").alias("winner"),
+		pl.col("animal_id").alias("loser"),
+		pl.col("datetime_chasing").alias("datetime"),
+		(pl.col("datetime") - pl.col("tunnel_entry"))
+		.dt.total_seconds(fractional=True)
+		.alias("chasing_length"),
 	)
 
-	chasings = (
-		intermediate.group_by(
-			["phase", "day", "phase_count", "hour", "position", "animal_id_chasing", "animal_id"]
-		)
-		.len(name="chasings")
-		.rename({"animal_id": "chased", "animal_id_chasing": "chaser"})
-	)
 
-	# Perform empty join
-	all_pairs = [
-		(a1, a2) for a1, a2 in list(product(cfg["animal_ids"], cfg["animal_ids"])) if a1 != a2
-	]
-	directional_tunnels = [pos for pos in cfg["antenna_combinations"].values() if "cage" not in pos]
-	pairs_df = pl.LazyFrame(
-		[(*p, c) for p, c in product(all_pairs, directional_tunnels)],
-		schema={
-			"chaser": pl.Enum(cfg["animal_ids"]),
-			"chased": pl.Enum(cfg["animal_ids"]),
-			"position": pl.Categorical,
-		},
-		orient="row",
-	)
+@df_registry.register_step("chasings_df", requires=["match_df"])
+def calculate_chasings(cfg: dict[str, Any], **kwargs) -> pl.LazyFrame:
+	"""Count chasing events per ordered pair of animals for each tunnel and hour.
 
-	time_grid = chasings.select("phase", "day", "phase_count").unique()
-
-	full_grid = time_grid.join(pairs_df, how="cross")
-
-	chasings = full_grid.join(
-		chasings,
-		on=["phase", "day", "phase_count", "position", "chaser", "chased"],
-		how="left",
-	).fill_null(0)
-
-	if save_data:
-		chasings.sink_parquet(
-			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
-		)
-
-	return chasings
-
-
-@df_registry.register("tube_test_df")
-def calculate_tube_test(
-	config_path: str | Path | dict,
-	winner_behavior: Literal["CHASE", "GUARD", "BOTH"] = "BOTH",
-	overwrite: bool = False,
-	save_data: bool = True,
-	**kwargs,
-) -> pl.LazyFrame:
-	"""Calculates tube test events per pair of mice for each hour
+	Per-hour aggregation of the event-level ``match_df``, reindexed onto the dense
+	grid so every chaser/chased/tunnel/hour cell is present (absent cells are ``0``).
+	The match-level ``winner``/``loser`` are renamed to ``chaser``/``chased`` here,
+	since in a chasing the winner is the chaser and the loser is the chased.
 
 	Args:
-	    config_path: path to project config file.
-	    winner_behavior: specifies whether to include events where the winning mouse followed the loser
-						or returned to the guarded resource
-	    save_data: toogles whether to save data.
-	    overwrite: toggles whether to overwrite the data.
+	    cfg: resolved project config.
+
+	Returns:
+	    LazyFrame with a ``chasings`` count per chaser/chased/tunnel/hour.
+	"""
+	matches: pl.LazyFrame = auxfun._get_data(cfg, key="match_df")
+
+	chasings = (
+		matches.group_by(["phase", "day", "phase_count", "hour", "position", "winner", "loser"])
+		.len(name="chasings")
+		.rename({"winner": "chaser", "loser": "chased"})
+	)
+
+	return auxfun.reindex_onto_grid(
+		chasings,
+		cfg,
+		("chaser", "chased"),
+		ordered=True,
+		positions=auxfun.get_positions(cfg, "tunnels_directional"),
+	)
+
+
+@df_registry.register_step("tube_test_df", requires=["main_df"])
+def calculate_tube_test(
+	cfg: dict[str, Any],
+	winner_behavior: Literal["CHASE", "GUARD", "BOTH"] = "BOTH",
+	max_dwell: float = 10.0,
+	**kwargs,
+) -> pl.LazyFrame:
+	"""Calculates tube test events per pair of mice for each hour.
+
+	A tube test event is a head-on tunnel encounter: the loser entered a tunnel
+	and retreated to the cage it came from, while the winner entered the same
+	tunnel from the opposite end during an overlapping interval and exited later.
+
+	Args:
+	    cfg: resolved project config.
+	    winner_behavior: which winner outcomes to include.
+	        ``"CHASE"`` - the winner follows the loser into the cage the loser
+	        retreated to (``next_position_winner == next_position``).
+	        ``"GUARD"`` - the winner returns to its own origin cage to hold the
+	        resource (``next_position_winner == prev_position_winner``).
+	        ``"BOTH"`` - either of the above (the union; events where the winner
+	        ends up in neither cage, e.g. a third tunnel, are excluded).
+	    max_dwell: maximum tunnel dwell time, in seconds, for a segment to count.
+	        Retreat segments synthesised from repeated antenna reads can have
+	        inflated durations (the mouse left the tunnel and returned to the same
+	        antenna); capping the dwell prevents those from producing phantom
+	        overlaps. Defaults to 10.0.
 
 	Returns:
 	    LazyFrame of tube test events
 	"""
-	cfg: dict[str, Any] = auxfun.read_config(config_path)
-	key = "tube_test_df"
-
-	tube_test: pl.LazyFrame | None = (
-		None if overwrite else auxfun.load_ecohab_data(config_path, key)
-	)
-
-	if isinstance(tube_test, pl.LazyFrame):
-		return tube_test
-
-	results_path = Path(cfg["project_location"]) / "results"
-
 	lf: pl.LazyFrame = auxfun._get_data(cfg, key="main_df")
 
-	cages: list[str] = cfg["cages"]
+	tunnels: list[str] = auxfun.get_positions(cfg, "tunnels")
 
 	lf = auxfun.update_repeat_antenna_position(lf)
 	lf = auxfun.remove_tunnel_directionality(lf, cfg)
@@ -384,16 +385,24 @@ def calculate_tube_test(
 		pl.col("position").shift(-1).over("animal_id").alias("next_position"),
 	)
 
+	# Loser: entered a tunnel and retreated to the cage it came from. The dwell
+	# cap drops inflated repeat-antenna segments that are not real tunnel time.
 	loser = lf.filter(
-		~pl.col("position").is_in(cages), pl.col("prev_position") == pl.col("next_position")
+		pl.col("position").is_in(tunnels),
+		pl.col("prev_position") == pl.col("next_position"),
+		pl.col("time_spent") <= max_dwell,
 	)
 
 	intermediate = (
 		loser.join(lf, on=["phase", "day", "phase_count", "position"], suffix="_winner")
 		.filter(
 			pl.col("animal_id") != pl.col("animal_id_winner"),
+			# entered from opposite ends of the same tunnel
 			pl.col("prev_position") != pl.col("prev_position_winner"),
+			# loser exits first (also dedups the symmetric winner/loser pairing)
 			pl.col("datetime") < pl.col("datetime_winner"),
+			# winner genuinely occupied the tunnel, not an inflated segment
+			pl.col("time_spent_winner") <= max_dwell,
 		)
 		.with_columns(
 			(
@@ -406,14 +415,17 @@ def calculate_tube_test(
 		.filter(pl.col("overlap_duration") > 0)
 	)
 
-	if winner_behavior == "CHASE":
-		intermediate = intermediate.filter(
-			pl.col("next_position") == pl.col("next_position_winner"),
-		)
-	elif winner_behavior == "GUARD":
-		intermediate = intermediate.filter(
-			pl.col("next_position") != pl.col("next_position_winner"),
-		)
+	# CHASE: winner follows the loser into the cage it retreated to.
+	# GUARD: winner returns to its own origin cage to hold the resource.
+	chase = pl.col("next_position_winner") == pl.col("next_position")
+	guard = pl.col("next_position_winner") == pl.col("prev_position_winner")
+	match winner_behavior:
+		case "CHASE":
+			intermediate = intermediate.filter(chase)
+		case "GUARD":
+			intermediate = intermediate.filter(guard)
+		case "BOTH":
+			intermediate = intermediate.filter(chase | guard)
 
 	tube_test = (
 		intermediate.group_by(
@@ -423,130 +435,32 @@ def calculate_tube_test(
 		.rename({"animal_id": "loser", "animal_id_winner": "winner"})
 	)
 
-	# Perform empty join
-	all_pairs = [
-		(a1, a2) for a1, a2 in list(product(cfg["animal_ids"], cfg["animal_ids"])) if a1 != a2
-	]
-	pairs_df = pl.LazyFrame(
-		all_pairs,
-		schema={
-			"winner": pl.Enum(cfg["animal_ids"]),
-			"loser": pl.Enum(cfg["animal_ids"]),
-		},
-		orient="row",
-	)
-
-	time_grid = tube_test.select("phase", "day", "phase_count").unique()
-
-	full_grid = time_grid.join(pairs_df, how="cross")
-
-	tube_test = full_grid.join(
-		tube_test,
-		on=["phase", "day", "phase_count", "winner", "loser"],
-		how="left",
-	).fill_null(0)
-
-	if save_data:
-		tube_test.sink_parquet(
-			results_path / f"{key}.parquet", compression="lz4", engine="streaming"
-		)
-
-	return tube_test
+	return auxfun.reindex_onto_grid(tube_test, cfg, ("winner", "loser"), ordered=True)
 
 
-@df_registry.register("time_alone")
-def calculate_time_alone(
-	config_path: Path | str | dict,
-	save_data: bool = True,
-	overwrite: bool = False,
-	**kwargs,
-) -> pl.LazyFrame:
-	"""Calculates time spent alone by animal per phase/day/cage
-
-	Args:
-	    config_path: path to project config file.
-	    save_data: toogles whether to save data.
-	    overwrite: toggles whether to overwrite the data.
-
-	Returns:
-	    DataFrame containing time spent alone in seconds.
-	"""
-	cfg: dict[str, Any] = auxfun.read_config(config_path)
-	key = "time_alone"
-
-	time_alone: pl.LazyFrame | None = (
-		None if overwrite else auxfun.load_ecohab_data(config_path, key)
-	)
-	if isinstance(time_alone, pl.LazyFrame):
-		return time_alone
-
-	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
-
-	binary_df: pl.LazyFrame = auxfun._get_data(config_path, "binary_df")
-
-	group_cols = ["datetime", "cage"]
-	result_cols = ["phase", "day", "animal_id", "cage"]
-
-	time_lf = binary_df.select(
-		auxfun.get_day().alias("day"),
-		auxfun.get_phase(cfg).alias("phase"),
-	).unique()
-
-	full_group_list = time_lf.join(auxfun.get_animal_position_grid(cfg, "cages"), how="cross")
-
-	time_alone = (
-		binary_df.group_by(group_cols, maintain_order=True)
-		.agg(pl.len().alias("n"), pl.col("animal_id").first())
-		.filter(pl.col("n") == 1)
-		.with_columns(auxfun.get_phase(cfg), auxfun.get_day())
-		.group_by(result_cols, maintain_order=True)
-		.agg(pl.len().alias("time_alone"))
-	)
-
-	time_alone = (
-		full_group_list.join(time_alone, on=result_cols, how="left")
-		.fill_null(0)
-		.sort("day", "phase")
-		.pipe(auxfun.get_phase_count)
-	)
-
-	if save_data:
-		time_alone.sink_parquet(results_path, compression="lz4", engine="streaming")
-
-	return time_alone
-
-
-@df_registry.register("pairwise_meetings")
+@df_registry.register_step("pairwise_meetings", requires=["padded_df"])
 def calculate_pairwise_meetings(
-	config_path: str | Path | dict,
-	save_data: bool = True,
-	overwrite: bool = False,
+	cfg: dict[str, Any],
 	minimum_time: int | float | None = 2,
 	**kwargs,
 ) -> pl.LazyFrame:
-	"""Calculates time spent together and number of meetings by animals on a per phase, day and cage basis. Slow due to the nature of datetime overlap calculation.
+	"""Count co-occurrences and shared time for every pair of animals per cage and hour.
+
+	Self-joins cage occupancy intervals and, for each unordered pair sharing a
+	cage, measures the temporal overlap of their stays. Overlaps shorter than
+	``minimum_time`` are discarded, then the survivors are summed into shared time
+	and meeting counts and reindexed onto the dense grid. Slow, because it
+	materialises every overlapping interval pair before aggregating.
 
 	Args:
-	    cfg: dictionary with the project config.
-	    save_data: toogles whether to save data.
-	    overwrite: toggles whether to overwrite the data.
-		minimum_time: sets minimum time together to be considered an interaction - in seconds i.e., if set to 2 any time spent in the cage together
-			that is shorter than 2 seconds will be omited. Defaults to 2.
+	    cfg: resolved project config.
+	    minimum_time: minimum overlap, in seconds, for a co-occurrence to count as
+	        a meeting; shorter overlaps are dropped. Defaults to 2.
 
 	Returns:
-	    LazyFrame of time spent together per phase, per cage.
+	    LazyFrame with ``time_together`` (seconds) and ``pairwise_encounters`` per
+	    pair/cage/hour.
 	"""
-	cfg: dict[str, Any] = auxfun.read_config(config_path)
-	key = "pairwise_meetings"
-
-	pairwise_meetings: pl.LazyFrame | None = (
-		None if overwrite else auxfun.load_ecohab_data(config_path, key)
-	)
-
-	if isinstance(pairwise_meetings, pl.DataFrame):
-		return pairwise_meetings
-
-	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 	padded_df = auxfun._get_data(cfg, key="padded_df")
 
 	cages: list[str] = cfg["cages"]
@@ -582,82 +496,69 @@ def calculate_pairwise_meetings(
 	)
 
 	pairwise_meetings = (
-		joined.group_by("phase", "day", "phase_count", "position", "animal_id", "animal_id_2").agg(
+		joined.group_by(
+			"phase", "day", "phase_count", "hour", "position", "animal_id", "animal_id_2"
+		).agg(
 			pl.sum("overlap_duration").alias("time_together"),
 			pl.len().alias("pairwise_encounters"),
 		)
-	).sort(["phase", "day", "phase_count", "position", "animal_id", "animal_id_2"])
+	).sort(["phase", "day", "phase_count", "hour", "position", "animal_id", "animal_id_2"])
 
-	# Perform empty join
-	all_pairs = list(combinations(cfg["animal_ids"], 2))
-	temp_df = pl.LazyFrame(
-		[(*p, c) for p, c in product(all_pairs, cfg["positions"])],
-		schema={
-			"animal_id": pl.Enum(cfg["animal_ids"]),
-			"animal_id_2": pl.Enum(cfg["animal_ids"]),
-			"position": pl.Categorical,
-		},
-		orient="row",
+	return auxfun.reindex_onto_grid(
+		pairwise_meetings,
+		cfg,
+		("animal_id", "animal_id_2"),
+		ordered=False,
+		positions=auxfun.get_positions(cfg, "all"),
 	)
 
-	time_grid = pairwise_meetings.select("phase", "day", "phase_count").unique()
 
-	full_grid = time_grid.join(temp_df, how="cross")
+@df_registry.register_step(
+	"incohort_sociability", requires=["pairwise_meetings", "activity_df", "phase_durations"]
+)
+def calculate_incohort_sociability(cfg: dict[str, Any], **kwargs) -> pl.LazyFrame:
+	"""Compute in-cohort sociability: observed togetherness minus chance expectation.
 
-	pairwise_meetings = full_grid.join(
-		pairwise_meetings,
-		on=["phase", "day", "phase_count", "position", "animal_id", "animal_id_2"],
-		how="left",
-	).fill_null(0)
-
-	if save_data:
-		pairwise_meetings.sink_parquet(results_path, compression="lz4", engine="streaming")
-
-	return pairwise_meetings
-
-
-@df_registry.register("incohort_sociability")
-def calculate_incohort_sociability(
-	config_path: dict,
-	save_data: bool = True,
-	overwrite: bool = False,
-	**kwargs,
-) -> pl.LazyFrame:
-	"""Calculates in-cohort sociability. For more info: DOI:10.7554/eLife.19532.
+	For each pair and cage, the time the pair actually spent together (as a
+	fraction of phase duration) is compared against the time they would be
+	expected to share by chance given each animal's independent occupancy of that
+	cage (the product of their occupancy proportions). ``sociability`` is the
+	observed-minus-chance difference summed over cages; positive values indicate
+	the pair sought each other out. For background see DOI:10.7554/eLife.19532.
 
 	Args:
-	    config_path: path to project config file.
-	    save_data: toogles whether to save data.
-	    overwrite: toggles whether to overwrite the data.
+	    cfg: resolved project config.
 
 	Returns:
-	    Long format LazyFrame of in-cohort sociability per phase for each possible pair of mice.
+	    Long-format LazyFrame with ``proportion_together`` and ``sociability`` per
+	    phase for every pair of animals.
 	"""
-	cfg: dict[str, Any] = auxfun.read_config(config_path)
-	key = "incohort_sociability"
-
-	incohort_sociability: pl.LazyFrame | None = (
-		None if overwrite else auxfun.load_ecohab_data(config_path, key)
-	)
-
-	if isinstance(incohort_sociability, pl.LazyFrame):
-		return incohort_sociability
-
-	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
-
-	phase_durations: pl.LazyFrame = auxfun._get_data(config_path, "phase_durations")
-	time_together_df: pl.LazyFrame = auxfun._get_data(config_path, "pairwise_meetings")
-	activity_df: pl.LazyFrame = auxfun._get_data(config_path, "activity_df")
+	phase_durations: pl.LazyFrame = auxfun._get_data(cfg, "phase_durations")
+	time_together_df: pl.LazyFrame = auxfun._get_data(cfg, "pairwise_meetings")
+	activity_df: pl.LazyFrame = auxfun._get_data(cfg, "activity_df")
 
 	core_columns = ["phase", "day", "phase_count", "animal_id", "animal_id_2"]
+	cages: list[str] = cfg["cages"]
 
-	estimated_proportion_together = activity_df.join(
-		activity_df, on=["phase_count", "phase", "position"], suffix="_2"
+	# Collapse the hourly pairwise grid to phase level so the per-row chance term
+	# below is not summed once per hour.
+	time_together_df = time_together_df.group_by([*core_columns, "position"]).agg(
+		pl.sum("time_together")
+	)
+
+	activity_per_phase = (
+		activity_df.filter(pl.col("position").is_in(cages))
+		.group_by(["phase", "day", "phase_count", "position", "animal_id"])
+		.agg(pl.sum("time_in_position"))
+	)
+
+	estimated_proportion_together = activity_per_phase.join(
+		activity_per_phase, on=["phase", "day", "phase_count", "position"], suffix="_2"
 	).filter(pl.col("animal_id") < pl.col("animal_id_2"))
 
 	incohort_sociability = (
 		time_together_df.join(
-			estimated_proportion_together, on=core_columns + ["position"], how="left"
+			estimated_proportion_together, on=[*core_columns, "position"], how="left"
 		)
 		.join(phase_durations, on=["phase_count", "phase"], how="left")
 		.with_columns(
@@ -675,39 +576,30 @@ def calculate_incohort_sociability(
 		.sort(core_columns)
 	)
 
-	if save_data:
-		incohort_sociability.sink_parquet(results_path, compression="lz4", engine="streaming")
-
 	return incohort_sociability
 
 
-@df_registry.register("feature_df")
-def calculate_features(
-	config_path: Path | str | dict,
-	save_data: bool = True,
-	overwrite: bool = False,
-	**kwargs,
-) -> pl.LazyFrame:
-	"""Calculates z-score of ecohab metrics for further machine learning analysis.
+@df_registry.register_step(
+	"feature_df",
+	requires=["chasings_df", "tube_test_df", "pairwise_meetings", "activity_df"],
+)
+def calculate_features(cfg: dict[str, Any], **kwargs) -> pl.LazyFrame:
+	"""Assemble a per-animal feature table of z-scored EcoHAB metrics for ML analysis.
+
+	Collapses the upstream tables to one value per animal per phase/day for each
+	metric -- chasings given (``n_chasing``) and received (``n_chased``), tube-test
+	wins (``n_wins``) and losses (``n_loses``), ``activity`` and ``time_alone``,
+	and ``time_together``/``pairwise_encounters`` -- aligns them, and z-scores each
+	metric across the table so they are comparable on a common scale. The result is
+	returned in long form, one row per animal/metric.
 
 	Args:
-	    config_path: path to project config file.
-	    save_data: toogles whether to save data.
-	    overwrite: toggles whether to overwrite the data.
+	    cfg: resolved project config.
 
 	Returns:
-		Long format LazyFrame of features per phase, day and phase_count for each mouse.
+	    Long-format LazyFrame with ``metric`` and its ``z-score`` per
+	    phase/day/phase_count for each animal.
 	"""
-	cfg: dict[str, Any] = auxfun.read_config(config_path)
-	key = "feature_df"
-
-	feature_df: pl.LazyFrame | None = (
-		None if overwrite else auxfun.load_ecohab_data(config_path, key)
-	)
-	if isinstance(feature_df, pl.LazyFrame):
-		return feature_df
-
-	results_path = Path(cfg["project_location"]) / "results" / f"{key}.parquet"
 	columns = [
 		"time_alone",
 		"n_chasing",
@@ -719,15 +611,9 @@ def calculate_features(
 		"pairwise_encounters",
 	]
 
-	chasings = auxfun._get_data(config_path, "chasings_df")
-	tube_test = auxfun._get_data(config_path, "tube_test_df")
-	pairwise_meetings = auxfun._get_data(config_path, "pairwise_meetings")
-
-	time_alone = (
-		auxfun._get_data(config_path, "time_alone")
-		.group_by("phase", "phase_count", "day", "animal_id")
-		.agg(pl.sum("time_alone"))
-	)
+	chasings = auxfun._get_data(cfg, "chasings_df")
+	tube_test = auxfun._get_data(cfg, "tube_test_df")
+	pairwise_meetings = auxfun._get_data(cfg, "pairwise_meetings")
 
 	n_chasing = (
 		chasings.group_by("phase", "phase_count", "day", "chaser")
@@ -754,9 +640,9 @@ def calculate_features(
 	)
 
 	activity = (
-		auxfun._get_data(config_path, "activity_df")
+		auxfun._get_data(cfg, "activity_df")
 		.group_by("phase", "phase_count", "day", "animal_id")
-		.agg(pl.sum("visits_to_position").alias("activity"))
+		.agg(pl.sum("visits_to_position").alias("activity"), pl.sum("time_alone"))
 	)
 
 	pairwise_meetings = (
@@ -772,7 +658,7 @@ def calculate_features(
 		.rename({"col": "animal_id"})
 	)
 
-	lfs = [time_alone, n_chasing, n_chased, n_wins, n_loses, activity, pairwise_meetings]
+	lfs = [n_chasing, n_chased, n_wins, n_loses, activity, pairwise_meetings]
 
 	feature_lf = (
 		pl.concat(lfs, how="align")
@@ -787,8 +673,5 @@ def calculate_features(
 		)
 		.with_columns(pl.col("z-score").round(2))
 	)
-
-	if save_data:
-		feature_lf.sink_parquet(results_path, compression="lz4", engine="streaming")
 
 	return feature_lf

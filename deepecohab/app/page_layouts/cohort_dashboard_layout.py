@@ -5,7 +5,7 @@ from deepecohab.utils import auxfun_dashboard
 
 
 def generate_graphs_layout(days_range: list[int]) -> html.Div:
-	"""Generates layout of the main dashboard tab"""
+	"""Generates layout of the main dashboard tab."""
 	return html.Div(
 		[
 			html.Div(
@@ -298,7 +298,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 
 
 def generate_comparison_layout(phase_range: list[int, int]) -> html.Div:
-	"""Generates layout for the comparisons tab"""
+	"""Generates layout for the comparisons tab."""
 	return html.Div(
 		[
 			html.H2("Plot Comparison", className="text-center my-4"),

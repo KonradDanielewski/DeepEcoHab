@@ -41,7 +41,7 @@ def start_analysis(
 	chasing_window: list[float],
 	overwrite: bool,
 ) -> tuple[bool, bool]:
-	"""Run analysis for antenna data"""    
+	"""Run analysis for antenna data."""
 	if not n_clicks or not config:
 		return no_update, no_update
 
@@ -78,7 +78,7 @@ def start_analysis(
 	prevent_initial_call=True,
 )
 def update_progress_bar(n_clicks: int) -> tuple[float, str, str, str, bool]:
-	"""Progress bar update logic based on number of steps"""    
+	"""Progress bar update logic based on number of steps."""
 	status = cache_config.launch_cache.get("analysis_status")
 
 	if not status:

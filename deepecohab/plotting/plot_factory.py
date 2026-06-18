@@ -56,7 +56,7 @@ def plot_activity(
 			)
 			fig.update_traces(boxmean=True)
 
-	fig.update_layout(legend=dict(title="<b>Animal ID</b>"))
+	fig.update_layout(legend={"title": "<b>Animal ID</b>"})
 	fig.update_xaxes(
 		title_text="<b>Position</b>",
 		tickvals=[i for i, pos in enumerate(positions)],
@@ -70,7 +70,7 @@ def plot_activity(
 def plot_time_alone(
 	df: pl.DataFrame, cages: list[str], colors: list[str], agg_switch: Literal["mean", "sum"]
 ) -> go.Figure:
-	"""Plot time alone as a relative bar plot"""
+	"""Plot time alone as a relative bar plot."""
 	match agg_switch:
 		case "sum":
 			fig = px.histogram(
@@ -119,7 +119,6 @@ def plot_sum_line_per_hour(
 	light_dark: dict[str, float],
 ) -> go.Figure:
 	"""Plots line graph for activity or chasings."""
-
 	match input_type:
 		case "activity":
 			title = "<b>Activity over time</b>"
@@ -137,13 +136,13 @@ def plot_sum_line_per_hour(
 		x="hour",
 		y="total",
 		color=color_col,
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
 		category_orders={color_col: animals},
 		line_shape="spline",
 		title=title,
 	)
 
-	fig.update_layout(legend=dict(title=legend_title))
+	fig.update_layout(legend={"title": legend_title})
 	fig.update_yaxes(title=y_axes_label)
 	fig.update_xaxes(title="<b>Hour of day</b>", range=[0, 23])
 
@@ -160,7 +159,7 @@ def plot_sum_line_per_hour(
 		yref="paper",
 		text="☀️",
 		showarrow=False,
-		font=dict(size=25),
+		font={"size": 25},
 	)
 
 	fig.add_annotation(
@@ -170,12 +169,12 @@ def plot_sum_line_per_hour(
 		yref="paper",
 		text="🌙",
 		showarrow=False,
-		font=dict(size=25),
+		font={"size": 25},
 	)
 
 	fig.update_layout(
-		xaxis=dict(dtick=1),
-		margin=dict(t=80),
+		xaxis={"dtick": 1},
+		margin={"t": 80},
 	)
 
 	return fig
@@ -189,7 +188,6 @@ def plot_mean_line_per_hour(
 	light_dark: dict[str, float],
 ) -> go.Figure:
 	"""Plots line graph for activity or chasings with SEM shading."""
-
 	match input_type:
 		case "activity":
 			title = "<b>Activity over time</b>"
@@ -202,7 +200,7 @@ def plot_mean_line_per_hour(
 
 	fig = go.Figure()
 
-	for animal, color in zip(animals, colors):
+	for animal, color in zip(animals, colors, strict=False):
 		animal_df = df.filter(pl.col(animal_col) == animal)
 
 		x = animal_df["hour"].to_list()
@@ -223,7 +221,7 @@ def plot_mean_line_per_hour(
 				showlegend=False,
 				name=animal,
 				legendgroup=animal,
-				line=dict(shape="spline"),
+				line={"shape": "spline"},
 			)
 		)
 
@@ -234,16 +232,16 @@ def plot_mean_line_per_hour(
 				line_color=color,
 				name=animal,
 				legendgroup=animal,
-				line=dict(shape="spline"),
+				line={"shape": "spline"},
 			)
 		)
 
 	fig.update_layout(
 		title=title,
-		legend=dict(
-			title="<b>Animal ID</b>",
-			tracegroupgap=0,
-		),
+		legend={
+			"title": "<b>Animal ID</b>",
+			"tracegroupgap": 0,
+		},
 	)
 	fig.update_yaxes(title=y_axes_label)
 	fig.update_xaxes(title="<b>Hour of day</b>")
@@ -261,7 +259,7 @@ def plot_mean_line_per_hour(
 		yref="paper",
 		text="☀️",
 		showarrow=False,
-		font=dict(size=25),
+		font={"size": 25},
 	)
 
 	fig.add_annotation(
@@ -271,12 +269,12 @@ def plot_mean_line_per_hour(
 		yref="paper",
 		text="🌙",
 		showarrow=False,
-		font=dict(size=25),
+		font={"size": 25},
 	)
 
 	fig.update_layout(
-		xaxis=dict(dtick=1),
-		margin=dict(t=80),
+		xaxis={"dtick": 1},
+		margin={"t": 80},
 	)
 
 	return fig
@@ -293,19 +291,19 @@ def plot_ranking_line(
 		x="datetime",
 		y="ordinal",
 		color="animal_id",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
 	)
 
 	fig.update_layout(
 		title="<b>Social dominance ranking in time</b>",
-		legend=dict(
-			title="<b>Animal ID</b>",
-			tracegroupgap=0,
-		),
-		xaxis=dict(title="<b>Timeline</b>"),
-		yaxis=dict(
-			title="<b>Ranking</b>",
-		),
+		legend={
+			"title": "<b>Animal ID</b>",
+			"tracegroupgap": 0,
+		},
+		xaxis={"title": "<b>Timeline</b>"},
+		yaxis={
+			"title": "<b>Ranking</b>",
+		},
 	)
 
 	return fig
@@ -322,23 +320,23 @@ def plot_ranking_distribution(
 		x="ranking",
 		y="probability_density",
 		color="animal_id",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
 		hover_data=["animal_id", "ranking", "probability_density"],
 	)
 	fig.update_traces(fill="tozeroy")
 
 	fig.update_layout(
 		title="<b>Ranking probability distribution</b>",
-		xaxis=dict(
-			title="<b>Ranking</b>",
-		),
-		yaxis=dict(
-			title="<b>Probability density</b>",
-		),
-		legend=dict(
-			title="<b>Animal ID</b>",
-			tracegroupgap=0,
-		),
+		xaxis={
+			"title": "<b>Ranking</b>",
+		},
+		yaxis={
+			"title": "<b>Probability density</b>",
+		},
+		legend={
+			"title": "<b>Animal ID</b>",
+			"tracegroupgap": 0,
+		},
 	)
 
 	return fig
@@ -349,25 +347,25 @@ def plot_ranking_stability(
 	animals: list[str],
 	colors: list[tuple[int, int, int, float]],
 ) -> go.Figure:
-	"""Plots animal rank on a per day basis"""
-	color_map = {animal: color for animal, color in zip(animals, colors)}
+	"""Plots animal rank on a per day basis."""
+	color_map = dict(zip(animals, colors, strict=False))
 
 	fig = go.Figure(
-		layout=dict(
-			title_x=0.5,
-			title="<b>Daily dominance rank trajectories</b>",
-			legend_title_text="<b>Animal ID</b>",
-			yaxis=dict(
-				title="<b>Rank</b>",
-				autorange="reversed",
-				type="category",
-				categoryorder="array",
-				categoryarray=df["rank"].unique().sort(),
-			),
-			xaxis=dict(
-				title="<b>Day</b>",
-			),
-		)
+		layout={
+			"title_x": 0.5,
+			"title": "<b>Daily dominance rank trajectories</b>",
+			"legend_title_text": "<b>Animal ID</b>",
+			"yaxis": {
+				"title": "<b>Rank</b>",
+				"autorange": "reversed",
+				"type": "category",
+				"categoryorder": "array",
+				"categoryarray": df["rank"].unique().sort(),
+			},
+			"xaxis": {
+				"title": "<b>Day</b>",
+			},
+		}
 	)
 	for animal in animals:
 		temp = df.filter(pl.col("animal_id") == animal).sort("day")
@@ -377,8 +375,8 @@ def plot_ranking_stability(
 				y=temp["rank"],
 				mode="lines+markers",
 				name=animal,
-				line=dict(color=color_map[animal]),
-				marker=dict(color=color_map[animal]),
+				line={"color": color_map[animal]},
+				marker={"color": color_map[animal]},
 			)
 		)
 
@@ -386,13 +384,13 @@ def plot_ranking_stability(
 
 
 def time_spent_per_cage(df: np.ndarray, type: Literal["hourly", "daily"]) -> go.Figure:
-	"""Plots N-cages of heatmaps with per hour time spent for each animal"""
+	"""Plots N-cages of heatmaps with per hour time spent for each animal."""
 	match type:  # TODO: improve column naming consistency to avoid this mess
 		case "hourly":
 			title = "<b>Time spent per cage</b>"
 			x_col = "hour"
-			facet_col = "cage"
-			z_col = "time_spent"
+			facet_col = "position"
+			z_col = "time_in_position"
 			x = "Hour: %{x}"
 			x_title = "Hour of day"
 			z = "Time [min]: %{z}"
@@ -425,22 +423,14 @@ def time_spent_per_cage(df: np.ndarray, type: Literal["hourly", "daily"]) -> go.
 		annotation["text"] = f"<b>Cage {annotation['text'].split('_')[1]}</b>"
 
 	fig.update_layout(
-		xaxis=dict(title=x_title),
-		xaxis2=dict(title=x_title),
-		yaxis=dict(automargin=True, title="Animal ID"),
-		yaxis3=dict(automargin=True, title="Animal ID"),
-		coloraxis_colorbar=dict(title=dict(text=legend_title)),
+		xaxis={"title": x_title},
+		xaxis2={"title": x_title},
+		yaxis={"automargin": True, "title": "Animal ID"},
+		yaxis3={"automargin": True, "title": "Animal ID"},
+		coloraxis_colorbar={"title": {"text": legend_title}},
 	)
 
-	fig.update_traces(
-		hovertemplate="<br>".join(
-			[
-				x,
-				"Animal ID: %{y}",
-				z,
-			]
-		)
-	)
+	fig.update_traces(hovertemplate="<br>".join([x, "Animal ID: %{y}", z]))
 
 	return fig
 
@@ -482,7 +472,7 @@ def plot_heatmap(
 		)
 	)
 
-	fig.update_layout(yaxis=dict(automargin=True), xaxis=dict(automargin=True))
+	fig.update_layout(yaxis={"automargin": True}, xaxis={"automargin": True})
 
 	return fig
 
@@ -525,7 +515,7 @@ def plot_sociability_heatmap(
 		)
 	)
 
-	fig.update_layout(yaxis=dict(automargin=True), xaxis=dict(automargin=True))
+	fig.update_layout(yaxis={"automargin": True}, xaxis={"automargin": True})
 
 	return fig
 
@@ -561,7 +551,7 @@ def plot_within_cohort_heatmap(
 		)
 	)
 
-	fig.update_layout(yaxis=dict(automargin=True), xaxis=dict(automargin=True))
+	fig.update_layout(yaxis={"automargin": True}, xaxis={"automargin": True})
 
 	return fig
 
@@ -586,7 +576,7 @@ def plot_metrics_polar(df: pl.DataFrame, colors: list[str]):
 				r=lower,
 				theta=theta,
 				mode="lines",
-				line=dict(width=0, color=color),
+				line={"width": 0, "color": color},
 				line_shape="spline",
 				legendgroup=leg_group,
 				showlegend=False,
@@ -602,7 +592,7 @@ def plot_metrics_polar(df: pl.DataFrame, colors: list[str]):
 				mode="lines",
 				fill="tonext",
 				fillcolor=shade_color,
-				line=dict(width=0, color=color),
+				line={"width": 0, "color": color},
 				line_shape="spline",
 				legendgroup=leg_group,
 				showlegend=False,
@@ -616,10 +606,10 @@ def plot_metrics_polar(df: pl.DataFrame, colors: list[str]):
 				r=mean,
 				theta=theta,
 				mode="lines",
-				line=dict(color=color, width=2),
+				line={"color": color, "width": 2},
 				line_shape="spline",
 				legendgroup=leg_group,
-				marker=dict(size=6),
+				marker={"size": 6},
 				name=f"{name[0]}",
 			)
 		)
@@ -629,13 +619,13 @@ def plot_metrics_polar(df: pl.DataFrame, colors: list[str]):
 		title_y=0.95,
 		legend_title_text="<b>Animal ID</b>",
 		title_x=0.45,
-		polar=dict(
-			radialaxis=dict(
-				visible=True,
-				range=[df["mean"].min() - 0.5, df["mean"].max() + 0.5],
-			)
-		),
-		legend=dict(tracegroupgap=0),
+		polar={
+			"radialaxis": {
+				"visible": True,
+				"range": [df["mean"].min() - 0.5, df["mean"].max() + 0.5],
+			}
+		},
+		legend={"tracegroupgap": 0},
 		showlegend=True,
 	)
 	fig.update_polars(bgcolor="rgba(0,0,0,0)")
@@ -678,11 +668,11 @@ def plot_network_graph(
 	node_trace = auxfun_plots.create_node_trace(pos, colors, animals, include_ranking)
 
 	fig = go.Figure(
-		data=edge_trace + [node_trace],
+		data=[*edge_trace, node_trace],
 		layout=go.Layout(
 			showlegend=False,
 			hovermode="closest",
-			title=dict(text=title, x=0.5, y=0.95),
+			title={"text": title, "x": 0.5, "y": 0.95},
 		),
 	)
 
@@ -703,7 +693,7 @@ def plot_social_stability(
 		x="stability",
 		y="proportion_together",
 		color="animal_id",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
 		hover_data={"animal_id_2"},
 		range_x=[0, 1],
 		range_y=[0, 1],
@@ -712,8 +702,8 @@ def plot_social_stability(
 	)
 
 	fig.update_layout(
-		xaxis=dict(title="<b>Relationship stability</b>"),
-		yaxis=dict(title="<b>Median proportion together</b>"),
+		xaxis={"title": "<b>Relationship stability</b>"},
+		yaxis={"title": "<b>Median proportion together</b>"},
 		legend_title_text="<b>Animal ID</b>",
 	)
 	fig.update_traces(marker_size=12)
@@ -734,7 +724,7 @@ def plot_cage_preference(
 		color="position",
 		points="outliers",
 		hover_data={"animal_id", "day"},
-		color_discrete_map={cage: color for cage, color in zip(cages, colors)},
+		color_discrete_map=dict(zip(cages, colors, strict=False)),
 		title="<b>Cage preference</b>",
 	)
 
@@ -745,6 +735,6 @@ def plot_cage_preference(
 		tickvals=[i for i, cage in enumerate(cages)],
 		ticktext=[cage.capitalize().replace("_", " ") for cage in cages],
 	)
-	fig.update_layout(legend=dict(title=""))
+	fig.update_layout(legend={"title": ""})
 
 	return fig

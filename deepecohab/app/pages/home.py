@@ -1,5 +1,4 @@
 import base64
-import datetime as dt
 from pathlib import Path
 from typing import Any
 
@@ -12,16 +11,15 @@ from dash import (
 	Output,
 	State,
 	callback,
+	clientside_callback,
 	ctx,
 	no_update,
-	clientside_callback,
 )
 
 from deepecohab.app.page_layouts import home_layout
 from deepecohab.core import create_data_structure, create_project
-from deepecohab.utils.cache_config import launch_cache
 from deepecohab.utils import auxfun_dashboard
-
+from deepecohab.utils.cache_config import launch_cache
 
 dash.register_page(__name__, path="/", name="Home")
 
@@ -50,14 +48,14 @@ def validate_and_highlight(
 
 	technical_validity = [
 		auxfun_dashboard._get_status(meta["id"]["index"], val)
-		for meta, val in zip(inputs_meta, inputs)
+		for meta, val in zip(inputs_meta, inputs, strict=False)
 	]
 
 	new_valid_ui = []
 	new_invalid_ui = []
 
 	for meta, is_valid, old_v, old_inv in zip(
-		inputs_meta, technical_validity, current_valid, current_invalid
+		inputs_meta, technical_validity, current_valid, current_invalid, strict=False
 	):
 		if meta["id"] == ctx.triggered_id:
 			new_valid_ui.append(is_valid)
@@ -137,16 +135,13 @@ def _create_project(
 
 	Returns:
 		dict of the project config, toast with info, type of info.
-	"""    
+	"""
 	if n_clicks == 0:
 		return no_update, no_update, "Create Project", "primary"
 
 	animal_ids = [i.strip() for i in animals.split(",")] if animals else None
 	is_field = "field" in layouts
-	if "field" in layouts:
-		is_custom = True
-	else:
-		is_custom = "custom" in layouts
+	is_custom = True if "field" in layouts else "custom" in layouts
 
 	project_location = Path(project_location)
 	if not project_location.is_dir():
@@ -215,7 +210,7 @@ def _create_project(
 		return [
 			"",
 			dbc.Toast(
-				f"Error: {str(e)}",
+				f"Error: {e!s}",
 				id="project-error-toast",
 				header="Project Creation Failed",
 				is_open=True,
@@ -264,7 +259,7 @@ def load_config_to_store(
 
 	except Exception as e:
 		error_toast = dbc.Toast(
-			f"Failed to load {filename}: {str(e)}",
+			f"Failed to load {filename}: {e!s}",
 			header="Load Error",
 			icon="danger",
 			className="custom-toast toast-danger",

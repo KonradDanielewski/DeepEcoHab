@@ -3,6 +3,7 @@ from dash import dcc, html
 
 
 def generate_cohort_card():
+	"""Build the antenna-analysis card for the analysis page."""
 	return dbc.Card(
 		[
 			dbc.CardBody(
@@ -125,6 +126,7 @@ def generate_cohort_card():
 
 
 def generate_layout():
+	"""Build the full layout for the experiment analysis page."""
 	return [
 		dbc.Row(
 			[
@@ -144,8 +146,7 @@ def generate_layout():
 					width=6,
 				),
 				dbc.Col(
-					[
-					],
+					[],
 					width=6,
 				),
 			],

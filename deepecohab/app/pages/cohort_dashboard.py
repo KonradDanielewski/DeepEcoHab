@@ -67,7 +67,7 @@ layout = html.Div(
 	Input("project-config-store", "data"),
 )
 def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
-	"""Render page layout for both tabs"""
+	"""Render page layout for both tabs."""
 	if not cfg:
 		return html.Div("Please load a project to see graphs."), no_update
 
@@ -106,8 +106,7 @@ def update_plots(
 	slider_mode: Literal["days_single", "days_range"],
 	cfg: dict[str, Any],
 ) -> tuple[go.Figure, dict]:
-	(
-		"""Performs selective plot update on the main layout
+	"""Perform a selective plot update on the main layout.
 
 	Args:
 		days_range: range of days selected on the RangeSlider.
@@ -124,8 +123,6 @@ def update_plots(
 	Returns:
 		Figures affected by the activated switch/slider etc.
 	"""
-		""""""
-	)
 	plot_name: str = ctx.outputs_grouping["id"]["name"]
 	plot_attributes = plot_registry.get_dependencies(plot_name)
 
@@ -194,15 +191,15 @@ def update_plots(
 	State("project-config-store", "data"),
 )
 def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go.Figure, dict]:
-	"""Render plots in the comparisons tab"""
+	"""Render plots in the comparisons tab."""
 	input_dict: dict[str, Any] = {
-		item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches)
+		item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches, strict=False)
 	}
 	plot_attributes = plot_catalog.plot_registry.get_dependencies(input_dict["plot-dropdown"])
 
 	phase_type: list[str] = (
 		[input_dict["phase_type"]]
-		if not input_dict["phase_type"] == "all"
+		if input_dict["phase_type"] != "all"
 		else ["dark_phase", "light_phase"]
 	)
 
@@ -279,7 +276,7 @@ def download_selected_data(
 	all_ids: list[dict],
 	cfg: dict[str, Any],
 ) -> dict[str, Any | None]:
-	"""Triggers download from the Downloads modal component"""
+	"""Triggers download from the Downloads modal component."""
 	triggered = ctx.triggered_id
 	if not triggered:
 		raise dash.exceptions.PreventUpdate
@@ -307,6 +304,7 @@ def download_selected_data(
 	prevent_initial_call=True,
 )
 def toggle_color_settings(n_clicks, is_open):
+	"""Toggle the color-settings panel open/closed on button click."""
 	return not is_open
 
 
@@ -320,7 +318,7 @@ def toggle_color_settings(n_clicks, is_open):
 	prevent_initial_call=True,
 )
 def download_comparison_data(btn_click: int, figure: dict, plot_type: str) -> dict[str, Any | None]:
-	"""Triggers download from the comparisons tab"""
+	"""Triggers download from the comparisons tab."""
 	triggered = ctx.triggered_id
 	if not triggered:
 		raise dash.exceptions.PreventUpdate

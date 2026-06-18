@@ -10,7 +10,7 @@ def generate_input_block(
 	value: str | None = None,
 	type: str | None = None,
 ) -> list[dbc.Label, dbc.Input]:
-
+	"""Build a labelled input row (label plus input field) for a config form."""
 	return [
 		dbc.Label(label_name, className="home-label"),
 		dbc.Input(
@@ -45,6 +45,7 @@ modal = dbc.Modal(
 
 
 def generate_layout():
+	"""Build the full layout for the project configuration (home) page."""
 	return dbc.Row(
 		[
 			dbc.Col(
@@ -279,11 +280,15 @@ def generate_layout():
 										[
 											dbc.Col(
 												dbc.Button(
-													children=[dbc.Spinner(
-														html.Span("Create Project", id="btn-text"),
-														size="sm",
-														spinner_class_name="me-2",
-													)],
+													children=[
+														dbc.Spinner(
+															html.Span(
+																"Create Project", id="btn-text"
+															),
+															size="sm",
+															spinner_class_name="me-2",
+														)
+													],
 													id="create-project-btn",
 													color="primary",
 													disabled=True,
@@ -337,5 +342,6 @@ def generate_layout():
 				html.Img(src="assets/logo_test.png", width=500, height=500),
 				className="fullscreen_centered",
 			),
-		], className="card-size",
+		],
+		className="card-size",
 	)

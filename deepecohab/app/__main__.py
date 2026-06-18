@@ -5,6 +5,7 @@ from threading import Timer
 
 
 def main() -> None:
+	"""Parse CLI arguments, create the dashboard app and run the server."""
 	parser = argparse.ArgumentParser(description="Launch the DeepEcoHab dashboard.")
 	parser.add_argument("--host", default="127.0.0.1")
 	parser.add_argument("--port", type=int, default=8050)

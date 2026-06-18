@@ -28,7 +28,7 @@ def generate_settings_block(
 	include_download: bool = False,
 	comparison_layout: bool = False,
 ) -> html.Div:
-	"""Generates settings block for the dashboard tabs"""
+	"""Generates settings block for the dashboard tabs."""
 	block = html.Div(
 		[
 			html.Div(
@@ -175,14 +175,14 @@ def generate_settings_block(
 								[
 									{"label": "Visits", "value": "visits"},
 									{"label": "Time", "value": "time"},
-								]
+								],
 							),
 							generate_hidden_radio_switch(
 								pairwise_switch_id,
 								[
 									{"label": "Visits", "value": "pairwise_encounters"},
 									{"label": "Time", "value": "time_together"},
-								]
+								],
 							),
 							generate_hidden_radio_switch(
 								sociability_switch_id,
@@ -195,15 +195,15 @@ def generate_settings_block(
 										"label": "Incohort sociability",
 										"value": "sociability",
 									},
-								]
+								],
 							),
 							generate_hidden_radio_switch(
 								ranking_switch_id,
 								[
 									{"label": "In time", "value": "intime"},
 									{"label": "Day stability", "value": "stability"},
-								]
-							)
+								],
+							),
 						]
 						if comparison_layout
 						else []
@@ -219,7 +219,7 @@ def generate_settings_block(
 
 
 def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
-	""" "Generates a side of a comparisons block"""
+	"""Generate one side of a comparisons block."""
 	return html.Div(
 		[
 			html.Label("Select Plot", style={"fontWeight": "bold"}),
@@ -265,7 +265,7 @@ def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
 
 
 def generate_plot_download_tab() -> dcc.Tab:
-	"""Generates Plots download tab in the Downloads modal component"""  # TODO: Add select all
+	"""Generates Plots download tab in the Downloads modal component."""  # TODO: Add select all
 	return dcc.Tab(
 		id="download_tab",
 		label="Plots",
@@ -306,7 +306,7 @@ def generate_plot_download_tab() -> dcc.Tab:
 
 
 def generate_csv_download_tab() -> dcc.Tab:
-	"""Generates DataFrames download tab in the Downloads modal component"""
+	"""Generates DataFrames download tab in the Downloads modal component."""
 	options = get_options_from_ids(df_registry.list_available(), "_", delist=["binary_df"])
 
 	return dcc.Tab(
@@ -361,7 +361,7 @@ def generate_csv_download_tab() -> dcc.Tab:
 
 
 def generate_download_block() -> dbc.Modal:
-	"""Generate Downloads modal component"""
+	"""Generate Downloads modal component."""
 	modal = dbc.Modal(
 		[
 			dbc.ModalHeader([dbc.ModalTitle("Downloads", className="fw-bold")]),
@@ -385,7 +385,10 @@ def generate_download_block() -> dbc.Modal:
 	return modal
 
 
-def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]) -> html.Div:
+def generate_sidebar(
+	icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]
+) -> html.Div:
+	"""Build the navigation sidebar with page links and tooltips."""
 	return html.Div(
 		[
 			html.Div("MENU", className="sidebar-label"),
@@ -400,7 +403,7 @@ def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], to
 						href=page["relative_path"],
 						className="nav-link-wrapper",
 					)
-					for page, tooltip in zip(page_registry.values(), tooltips)
+					for page, tooltip in zip(page_registry.values(), tooltips, strict=False)
 				],
 				className="tab-buttons",
 			),
@@ -408,7 +411,9 @@ def generate_sidebar(icon_map: dict[str, str], page_registry: dict[str, str], to
 		id="sidebar",
 	)
 
+
 def generate_hidden_radio_switch(switch_id: dict, switch_options: list[dict]) -> html.Div:
+	"""Build a hidden radio-button switch used to drive plot options."""
 	return html.Div(
 		id={
 			"container": switch_id["type"],
@@ -422,7 +427,7 @@ def generate_hidden_radio_switch(switch_id: dict, switch_options: list[dict]) ->
 					id=switch_id,
 					inline=True,
 					options=switch_options,
-					value=switch_options[0]['value'],
+					value=switch_options[0]["value"],
 					className="dash-radio",
 				),
 			),
@@ -431,7 +436,7 @@ def generate_hidden_radio_switch(switch_id: dict, switch_options: list[dict]) ->
 
 
 def generate_standard_graph(graph_id: str, css_class: str = "plot-450", **kwargs) -> html.Div:
-	"""Generate Div that contains graph and corresponding data"""
+	"""Generate Div that contains graph and corresponding data."""
 	animate = kwargs.get("animate", False)
 	return html.Div(
 		[
@@ -447,9 +452,10 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450", **kwargs
 
 
 def get_options_from_ids(
-	obj_ids: list[str], sep: str = "-", delist: list[str] = []
+	obj_ids: list[str], sep: str = "-", delist: list[str] | None = None
 ) -> list[dict[str, str]]:
-	"""Generate options in the Downloads -> Plots tab from available IDs"""
+	"""Generate options in the Downloads -> Plots tab from available IDs."""
+	delist = delist or []
 	return [
 		{"label": get_display_name(obj_id, sep), "value": obj_id}
 		for obj_id in obj_ids
@@ -458,12 +464,12 @@ def get_options_from_ids(
 
 
 def get_display_name(name: str, sep: str = "-") -> str:
-	"""Helper to beautify option names for Downloads -> Plots tab"""
+	"""Helper to beautify option names for Downloads -> Plots tab."""
 	return " ".join(word.capitalize() for word in name.split(sep))
 
 
 def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool = True) -> dbc.Row:
-	"""Generate buttons for Downloads -> Plot tab"""
+	"""Generate buttons for Downloads -> Plot tab."""
 	buttons: list[dbc.Col] = []
 	width_col = 12
 	if not is_vertical:
@@ -485,7 +491,7 @@ def get_plot_file(
 	fmt: Literal["json", "png", "svg"],
 	plot_name: str,
 ) -> bytes:
-	"""Helper for content download"""
+	"""Helper for content download."""
 	match fmt:
 		case "svg":
 			content = figure.to_image(format="svg")
@@ -506,13 +512,13 @@ def download_plots(
 	all_figures: list[go.Figure],
 	all_ids: list[dict],
 ) -> dict[str, Any | None]:
-	"""Downloads chosen plot/s related object via the browser"""
+	"""Downloads chosen plot/s related object via the browser."""
 	if not selected_plots or not fmt:
 		raise exceptions.PreventUpdate
 
 	files: list[bytes] = []
 
-	for fig_id, fig in zip(all_ids, all_figures):
+	for fig_id, fig in zip(all_ids, all_figures, strict=False):
 		plot_id = fig_id["name"]
 		if plot_id not in selected_plots or fig is None:
 			continue
@@ -539,10 +545,10 @@ def download_plots(
 
 def build_filter_expr(
 	columns: list[str],
-	days_range: list[int] = None,
-	phase_type: list[str] = None,
+	days_range: list[int] | None = None,
+	phase_type: list[str] | None = None,
 ) -> pl.Expr:
-	"Builds filtering expressions for DF download by checking column presence"
+	"""Builds filtering expressions for DF download by checking column presence."""
 	exprs: list[pl.Expr] = []
 
 	if days_range is not None and "day" in columns:
@@ -563,11 +569,11 @@ def download_dataframes(
 	days_range: list[int],
 	store: dict,
 ) -> dict[str, Any | None]:
-	"""Downloads the selected DataFrame/s via the browser"""
+	"""Downloads the selected DataFrame/s via the browser."""
 	if not selected_dfs:
 		raise exceptions.PreventUpdate
 
-	phase_type = [phase_type] if not phase_type == "all" else ["dark_phase", "light_phase"]
+	phase_type = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
 
 	if len(selected_dfs) == 1:
 		name = selected_dfs[0]

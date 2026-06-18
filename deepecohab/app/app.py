@@ -7,7 +7,9 @@ from deepecohab.utils import (
 	cache_config,
 )
 
+
 def create_app() -> dash.Dash:
+	"""Build and configure the multi-page Dash application."""
 	app = dash.Dash(
 		__name__,
 		use_pages=True,

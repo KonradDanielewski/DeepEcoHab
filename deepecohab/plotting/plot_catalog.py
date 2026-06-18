@@ -12,7 +12,6 @@ from deepecohab.utils.auxfun_plots import PlotConfig
 )
 def cage_preference(cfg: PlotConfig) -> go.Figure:
 	"""Generates a cage preference box plot."""
-
 	df = auxfun_plots.prep_cage_preference(cfg.store, cfg.phase_type, cfg.days_range)
 
 	return plot_factory.plot_cage_preference(df, cfg.cages, cfg.position_colors)
@@ -52,7 +51,6 @@ def polar_metrics(cfg: PlotConfig) -> go.Figure:
 )
 def ranking_over_time(cfg: PlotConfig) -> go.Figure:
 	"""Generates ranking plots either over time or as day-to-day stability."""
-
 	match cfg.ranking_switch:
 		case "intime":
 			df = auxfun_plots.prep_ranking_over_time(cfg.store, cfg.days_range)
@@ -157,7 +155,7 @@ def chasings_line(cfg: PlotConfig) -> go.Figure:
 				cfg.animals,
 				cfg.animal_colors,
 				"chasings",
-				cfg.ligt_dark_onset,
+				cfg.light_dark_onset,
 			)
 		case "mean":
 			return plot_factory.plot_mean_line_per_hour(
@@ -165,7 +163,7 @@ def chasings_line(cfg: PlotConfig) -> go.Figure:
 				cfg.animals,
 				cfg.animal_colors,
 				"chasings",
-				cfg.ligt_dark_onset,
+				cfg.light_dark_onset,
 			)
 
 
@@ -221,7 +219,7 @@ def activity_line(cfg: PlotConfig) -> go.Figure:
 				cfg.animals,
 				cfg.animal_colors,
 				"activity",
-				cfg.ligt_dark_onset,
+				cfg.light_dark_onset,
 			)
 		case "mean":
 			return plot_factory.plot_mean_line_per_hour(
@@ -229,7 +227,7 @@ def activity_line(cfg: PlotConfig) -> go.Figure:
 				cfg.animals,
 				cfg.animal_colors,
 				"activity",
-				cfg.ligt_dark_onset,
+				cfg.light_dark_onset,
 			)
 
 
@@ -341,7 +339,6 @@ def social_stability(cfg: PlotConfig) -> go.Figure:
 	based on proportional time spent together and coefficient of variation like metric
 	calculated through median absolute deviation.
 	"""
-
 	df = auxfun_plots.prep_social_stability(cfg.store, cfg.phase_type, cfg.days_range)
 
 	return plot_factory.plot_social_stability(df, cfg.animals, cfg.animal_colors)

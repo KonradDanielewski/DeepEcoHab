@@ -7,7 +7,7 @@ name = "deepecohab"
 version = "0.5.0rc8"
 description = "EcoHab with some machine learning"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = "MIT"
 license-files = [ "LICENSE" ]
 authors = [
@@ -72,6 +72,7 @@ include-package-data = true
 
 [tool.ruff]
 line-length = 100
+target-version = "py312"
 
     [tool.ruff.format]
     quote-style  = "double"
@@ -79,6 +80,42 @@ line-length = 100
 
     docstring-code-format = true
 
+    [tool.ruff.lint]
+    extend-select = [
+        "UP",   # pyupgrade
+        "D",    # pydocstyle
+        "I",    # isort — own import ordering
+        "B",    # bugbear — mutable defaults, zip strict, etc.
+        "RUF",  # ruff-specific — implicit Optional, etc.
+        "SIM",  # flake8-simplify
+        "C4",   # comprehensions
+        "NPY",  # numpy-specific lints
+    ]
+
+    ignore = [
+        "D206",  # docstring tab indentation — conflicts with indent-style = "tab"
+        "D100",  # missing module docstring — ceremonial
+        "D104",  # missing package docstring — __init__.py re-exports
+        "D105",  # missing magic-method docstring — dunders are self-explanatory
+        "D107",  # missing __init__ docstring — args documented at class level
+        "D417",  # missing param description — noise from **kwargs registry passthrough
+    ]
+
+    [tool.ruff.lint.per-file-ignores]
+    "tests/**" = ["D"]   # no docstring rules in tests
+
+    [tool.ruff.lint.pydocstyle]
+    convention = "google"
+
 [tool.pytest.ini_options]
 testpaths = [ "tests" ]
 addopts   = "-ra"
+markers   = [
+    "e2e: full end-to-end pipeline test on the bundled field example data (slow).",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.17",
+    "ty>=0.0.50",
+]

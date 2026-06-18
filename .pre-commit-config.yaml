@@ -1,0 +1,9 @@
+# Run `pre-commit install` once to enable these hooks locally.
+# Versions are kept in sync with the `ruff` pin in pyproject.toml [dependency-groups].dev.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.17
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format

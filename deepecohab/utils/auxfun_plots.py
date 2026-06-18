@@ -13,8 +13,7 @@ import polars as pl
 
 @dataclass(frozen=True)
 class PlotConfig:
-	"""
-	Immutable container for dashboard state used to configure plot generation.
+	"""Immutable container for dashboard state used to configure plot generation.
 
 	This class aggregates UI selections and switch states into a single object
 	passed to the plot factory. NOTE: Consider this as future BaseClass for group
@@ -34,7 +33,7 @@ class PlotConfig:
 	cages: list[str] | None = None
 	positions: list[str] | None = None
 	position_colors: list[str] | None = None
-	ligt_dark_onset: dict[str, float] | None = None
+	light_dark_onset: dict[str, float] | None = None
 
 
 def set_default_theme() -> None:
@@ -43,15 +42,15 @@ def set_default_theme() -> None:
 		layout=go.Layout(
 			paper_bgcolor="#161f34",
 			plot_bgcolor="#161f34",
-			font=dict(color="#e0e6f0"),
-			xaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
-			yaxis=dict(gridcolor="#2e3b53", linecolor="#4fc3f7"),
-			legend=dict(bgcolor="rgba(0,0,0,0)"),
-			colorscale=dict(
-				sequential="Viridis",
-				sequentialminus="Plasma",
-				diverging="curl",
-			),
+			font={"color": "#e0e6f0"},
+			xaxis={"gridcolor": "#2e3b53", "linecolor": "#4fc3f7"},
+			yaxis={"gridcolor": "#2e3b53", "linecolor": "#4fc3f7"},
+			legend={"bgcolor": "rgba(0,0,0,0)"},
+			colorscale={
+				"sequential": "Viridis",
+				"sequentialminus": "Plasma",
+				"diverging": "curl",
+			},
 		)
 	)
 
@@ -77,7 +76,7 @@ def create_edges_trace(
 	cmap: str = "Viridis",
 	edge_weight: Literal["chasings", "time_together"] = "chasings",
 ) -> list:
-	"""Auxfun to create edges trace with color mapping based on edge width"""
+	"""Auxfun to create edges trace with color mapping based on edge width."""
 	edge_widths = np.array([G.edges[e][edge_weight] for e in G.edges()])
 
 	mu: float = edge_widths.mean()
@@ -104,13 +103,13 @@ def create_edges_trace(
 			go.Scatter(
 				x=[source_x, target_x, None],
 				y=[source_y, target_y, None],
-				line=dict(
-					width=edge_width,
-					color=colorscale[i],
-				),
+				line={
+					"width": edge_width,
+					"color": colorscale[i],
+				},
 				hoverinfo="none",
 				mode="lines+markers",
-				marker=dict(size=edge_width, symbol="arrow", angleref="previous"),
+				marker={"size": edge_width, "symbol": "arrow", "angleref": "previous"},
 				opacity=0.5,
 				showlegend=False,
 			)
@@ -125,7 +124,7 @@ def create_node_trace(
 	animals: list[str],
 	include_ranking: bool,
 ) -> go.Scatter:
-	"""Auxfun to create node trace"""
+	"""Auxfun to create node trace."""
 	node_trace = go.Scatter(
 		x=[],
 		y=[],
@@ -135,12 +134,12 @@ def create_node_trace(
 		mode="markers+text",
 		textposition="top center",
 		showlegend=False,
-		marker=dict(
-			showscale=False,
-			colorscale=colors,
-			size=[],
-			color=[],
-		),
+		marker={
+			"showscale": False,
+			"colorscale": colors,
+			"size": [],
+			"color": [],
+		},
 	)
 
 	ranking_score_list: list[float] = []
@@ -158,7 +157,7 @@ def create_node_trace(
 		)
 
 	node_trace["marker"]["color"] = colors
-	node_trace["marker"]["size"] = [rank for rank in ranking_score_list]
+	node_trace["marker"]["size"] = list(ranking_score_list)
 	return node_trace
 
 
@@ -201,10 +200,7 @@ def prep_polar_df(
 	phase_type: list[str],
 ) -> pl.DataFrame:
 	"""Prepare z-score normalized metrics for a polar/radar chart across multiple behavioral categories."""
-	if days_range[0] == days_range[1]:
-		n_days = 1
-	else:
-		n_days = len(range(*days_range)) + 1
+	n_days = 1 if days_range[0] == days_range[1] else len(range(*days_range)) + 1
 
 	df = (
 		store["feature_df"]
@@ -226,7 +222,9 @@ def prep_polar_df(
 		)
 		.sort("metric", "animal_id")
 		.fill_null(0)
-		.with_columns(pl.col("metric").str.to_titlecase().str.replace("_", " ").str.replace("N ", "# of "))
+		.with_columns(
+			pl.col("metric").str.to_titlecase().str.replace("_", " ").str.replace("N ", "# of ")
+		)
 	).collect(engine="streaming")
 
 	return df
@@ -356,10 +354,7 @@ def prep_chasings_line(
 	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Calculate hourly chasing aggregates including mean and SEM for time-series plotting."""
-	if days_range[0] == days_range[1]:
-		n_days = 1
-	else:
-		n_days = len(range(*days_range)) + 1
+	n_days = 1 if days_range[0] == days_range[1] else len(range(*days_range)) + 1
 
 	join_df = pl.LazyFrame(
 		(
@@ -438,10 +433,7 @@ def prep_activity_line(
 	days_range: list[int],
 ) -> pl.DataFrame:
 	"""Calculate hourly detection rates and SEM to track activity levels over time."""
-	if days_range[0] == days_range[1]:
-		n_days = 1
-	else:
-		n_days = len(range(*days_range)) + 1
+	n_days = 1 if days_range[0] == days_range[1] else len(range(*days_range)) + 1
 
 	join_df = pl.LazyFrame(
 		(
@@ -504,27 +496,27 @@ def prep_time_per_cage(
 		),
 		schema=[
 			("hour", pl.Int8()),
-			("cage", pl.Categorical()),
+			("position", pl.Categorical()),
 			("animal_id", pl.Enum(animals)),
 		],
 	)
 
 	match agg_switch:
 		case "sum":
-			agg_func = pl.sum("time_spent") / 60
+			agg_func = pl.sum("time_in_position") / 60
 		case "mean":
-			agg_func = pl.mean("time_spent").round(2) / 60
+			agg_func = pl.mean("time_in_position").round(2) / 60
 
 	df = (
-		store["cage_occupancy"]
+		store["activity_df"]
 		.lazy()
-		.filter(pl.col("day").is_between(*days_range))
+		.filter(pl.col("day").is_between(*days_range), pl.col("position").is_in(cages))
 		.sort("day", "hour")
-		.group_by(["cage", "animal_id", "hour"], maintain_order=True)
+		.group_by(["position", "animal_id", "hour"], maintain_order=True)
 		.agg(agg_func)
 		.join(
 			join_df,
-			on=["hour", "cage", "animal_id"],
+			on=["hour", "position", "animal_id"],
 			how="right",
 		)
 	).collect(engine="in-memory")
@@ -630,11 +622,15 @@ def prep_time_alone(
 ) -> pl.DataFrame:
 	"""Filter the time spent alone for the specified phases and day range."""
 	df = (
-		store["time_alone"]
+		store["activity_df"]
 		.filter(
 			pl.col("phase").is_in(phase_type),
 			pl.col("day").is_between(*days_range),
+			pl.col("position")
+			.cast(pl.String)
+			.str.contains("cage"),  # NOTE: To be decided whether the plot should show tunnels
 		)
+		.rename({"position": "cage"})
 		.sort("animal_id", "cage")
 	)
 
@@ -679,7 +675,7 @@ def prep_social_stability(
 	phase_type: list[str],
 	days_range: list[int],
 ) -> pl.DataFrame:
-	"""Return a dataframe showing proportion together and stability of the relationship"""
+	"""Return a dataframe showing proportion together and stability of the relationship."""
 	mad = (pl.col("proportion_together") - pl.median("proportion_together")).abs().median()
 
 	df = store["incohort_sociability"].lazy()
@@ -723,7 +719,7 @@ def prep_cage_preference(
 	phase_type: list[str],
 	days_range: list[int],
 ) -> pl.DataFrame:
-	"""Return a dataframe showing cage preference of the cohort"""
+	"""Return a dataframe showing cage preference of the cohort."""
 	df = (
 		store["activity_df"]
 		.lazy()
@@ -847,6 +843,7 @@ def apply_color_settings(
 	feature_to_color_by: str,
 	colormap: str = "Phase",
 ):
+	"""Build the color mapping for plots, keyed by animal id or by feature."""
 	animals = cfg.get("animals")
 	positions = cfg.get("positions")
 	positions_colors = color_sampling(positions, colormap)
@@ -856,13 +853,11 @@ def apply_color_settings(
 		animal_colors = color_sampling(animal_ids, colormap)
 	else:
 		# TODO switch this to reading from config
-		unique_feature_values = list(
-			set([animal[feature_to_color_by] for animal in animals.values()])
-		)
+		unique_feature_values = list({animal[feature_to_color_by] for animal in animals.values()})
 
 		values_colors = color_sampling(unique_feature_values, colormap)
 
-		values_colors_map = dict(zip(unique_feature_values, values_colors))
+		values_colors_map = dict(zip(unique_feature_values, values_colors, strict=False))
 
 		animal_ids = sorted(animals, key=lambda k: animals[k][feature_to_color_by])
 
