@@ -1,5 +1,6 @@
 import dash_bootstrap_components as dbc
 from dash import dcc, html
+from dash.development.base_component import Component
 
 
 def generate_input_block(
@@ -9,7 +10,7 @@ def generate_input_block(
 	required: bool,
 	value: str | None = None,
 	type: str | None = None,
-) -> list[dbc.Label, dbc.Input]:
+) -> list[Component]:
 	"""Build a labelled input row (label plus input field) for a config form."""
 	return [
 		dbc.Label(label_name, className="home-label"),
@@ -18,7 +19,7 @@ def generate_input_block(
 			placeholder=placeholder,
 			required=required,
 			value=value,
-			type=type,
+			type=type,  # ty: ignore[invalid-argument-type] — dbc.Input.type stub is a strict Literal; value comes from caller config as str.
 			className="filled-input",
 			debounce=True,
 		),

@@ -1,5 +1,7 @@
 import functools
-from collections.abc import Callable, Iterator
+import inspect
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import fields
 from pathlib import Path
 from typing import (
 	Any,
@@ -41,7 +43,7 @@ class DataFrameRegistry:
 
 		return wrapper
 
-	def register_step(self, name: str, requires: tuple[str, ...] = ()):
+	def register_step(self, name: str, requires: Sequence[str] = ()):
 		"""Register an analysis pipeline step.
 
 		The wrapped function becomes pure compute: it receives the resolved
@@ -169,18 +171,38 @@ class DataFrameRegistry:
 
 
 class PlotRegistry:
-	"""Registry for dashboard plots."""
+	"""Registry for dashboard plots.
+
+	A plot's dependencies are its function parameters: each parameter name must
+	match a ``PlotConfig`` field, and the registry injects those fields by
+	keyword at render time. The signature is therefore the single source of
+	truth for what a plot needs - there is no separate dependency list to keep
+	in sync, and parameters are annotated with their real (non-optional) types
+	because the registry guarantees they are populated before dispatch.
+	"""
 
 	def __init__(self):
-		self._registry: dict[str, Callable[[PlotConfig], Any]] = {}
+		self._registry: dict[str, Callable[..., Any]] = {}
 		self._plot_dependencies: dict[str, list[str]] = {}
+		self._config_fields = {f.name for f in fields(PlotConfig)}
 
-	def register(self, name: str, dependencies: list[str] | None = None):
-		"""Decorator to register a new plot type."""
+	def register(self, name: str):
+		"""Decorator to register a new plot type.
 
-		def wrapper(func: Callable[[PlotConfig], Any]):
+		The wrapped function's parameter names declare which ``PlotConfig``
+		fields it consumes. Unknown parameter names raise at import time so a
+		typo fails fast rather than at first render.
+		"""
+
+		def wrapper(func: Callable[..., Any]):
+			deps = list(inspect.signature(func).parameters)
+			unknown = set(deps) - self._config_fields
+			if unknown:
+				raise ValueError(
+					f"Plot {name!r} requests non-PlotConfig field(s): {sorted(unknown)}"
+				)
 			self._registry[name] = func
-			self._plot_dependencies[name] = dependencies
+			self._plot_dependencies[name] = deps
 			return func
 
 		return wrapper
@@ -190,11 +212,22 @@ class PlotRegistry:
 		return self._plot_dependencies.get(name, [])
 
 	def get_plot(self, name: str, config: PlotConfig):
-		"""Build the named plot from ``config``; returns ``{}`` if it is unregistered."""
+		"""Build the named plot from ``config``; returns ``{}`` if it is unregistered.
+
+		Validates that every field the plot declares as a parameter was populated
+		on ``config`` before dispatching, so a missing selection fails fast with a
+		clear error instead of surfacing deep inside polars/plotly.
+		"""
 		plotter = self._registry.get(name)
 		if not plotter:
 			return {}
-		return plotter(config)
+		values = {dep: getattr(config, dep) for dep in self._plot_dependencies[name]}
+		missing = [key for key, value in values.items() if value is None]
+		if missing:
+			raise ValueError(
+				f"Plot {name!r} requires PlotConfig field(s) {missing}, which are None."
+			)
+		return plotter(**values)
 
 	def list_available(self) -> list[str]:
 		"""Returns the names of all registered plots."""

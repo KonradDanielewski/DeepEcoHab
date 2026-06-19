@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import (
 	Any,
 	Literal,
+	overload,
 )
 
 import polars as pl
@@ -28,6 +29,14 @@ def read_config(config_path: str | Path | dict[str, Any]) -> dict:
 		)
 
 
+@overload
+def load_ecohab_data(
+	config_path: str | Path | dict[str, Any], key: str, return_df: Literal[False] = False
+) -> pl.LazyFrame | None: ...
+@overload
+def load_ecohab_data(
+	config_path: str | Path | dict[str, Any], key: str, return_df: Literal[True]
+) -> pl.DataFrame | None: ...
 def load_ecohab_data(
 	config_path: str | Path | dict[str, Any], key: str, return_df: bool = False
 ) -> pl.LazyFrame | pl.DataFrame | None:
@@ -379,7 +388,7 @@ def _get_minute_padding(lf: pl.LazyFrame, cfg: dict[str, Any]):
 		Frame with the same schema plus ``interpolated`` and a ``row_id`` index
 		identifying the original (pre-split) row; one row per minute-aligned piece.
 	"""
-	minute: pl.Duration = pl.duration(minutes=1)
+	minute: pl.Expr = pl.duration(minutes=1)
 
 	minute_padded: pl.LazyFrame = (
 		lf.with_row_index("row_id")
@@ -566,7 +575,7 @@ def build_animal_grid(
 			rows = [(a, b) for a, b in product(animal_ids, animal_ids) if a != b]
 		else:
 			rows = list(combinations(animal_ids, 2))
-		schema = {first: enum, second: enum}
+		schema: dict[str, Any] = {first: enum, second: enum}
 
 	if positions is not None:
 		rows = [(*row, pos) for row, pos in product(rows, positions)]

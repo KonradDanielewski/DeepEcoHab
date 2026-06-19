@@ -73,7 +73,7 @@ def load_data(
 	)
 
 	if custom_layout:
-		rename_dicts: list[dict[int, int]] = cfg["antenna_rename_scheme"]
+		rename_dicts: dict = cfg["antenna_rename_scheme"]
 		lf = _rename_antennas(lf, rename_dicts)
 
 	auxfun.add_cages_to_config(config_path)
@@ -169,7 +169,7 @@ def apply_timezone_fix(frame: pl.DataFrame | pl.LazyFrame, timezone: ZoneInfo) -
 
 	diffs = df["datetime"].diff().fill_null(dt.timedelta(microseconds=0))
 
-	if diffs.min() >= dt.timedelta(microseconds=0):
+	if diffs.min() >= dt.timedelta(microseconds=0):  # ty: ignore[unsupported-operator] — Series.min on a Duration column is typed as a broad union.
 		return df.with_columns(pl.col("datetime").dt.replace_time_zone(timezone.key))
 
 	pivot_index = diffs.arg_min()
@@ -270,7 +270,7 @@ def get_ecohab_data_structure(
 	antenna_pairs: dict[str, str] = cfg["antenna_combinations"]
 
 	try:
-		animal_ids: list[str] = cfg["animal_ids"]
+		animal_ids: list[str] | None = cfg["animal_ids"]
 	except KeyError:
 		animal_ids = None
 

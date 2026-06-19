@@ -12,7 +12,7 @@ from deepecohab.utils import auxfun_plots
 def plot_activity(
 	df: pl.DataFrame,
 	positions: list[str],
-	colors: np.ndarray,
+	colors: list[str],
 	type_switch: Literal["visits", "time"],
 	agg_switch: Literal["sum", "mean"],
 ) -> go.Figure:
@@ -114,7 +114,7 @@ def plot_time_alone(
 def plot_sum_line_per_hour(
 	df: pl.DataFrame,
 	animals: list[str],
-	colors: list[tuple[int, int, int]],
+	colors: list[str],
 	input_type: Literal["activity", "chasings"],
 	light_dark: dict[str, float],
 ) -> go.Figure:
@@ -283,7 +283,7 @@ def plot_mean_line_per_hour(
 def plot_ranking_line(
 	df: pl.DataFrame,
 	animals: list[str],
-	colors: list[tuple[int, int, int, float]],
+	colors: list[str],
 ) -> go.Figure:
 	"""Plots line graph of ranking over time."""
 	fig = px.line(
@@ -312,7 +312,7 @@ def plot_ranking_line(
 def plot_ranking_distribution(
 	df: pl.DataFrame,
 	animals: list[str],
-	colors: list[tuple[int, int, int, float]],
+	colors: list[str],
 ) -> go.Figure:
 	"""Plots line graph of ranking distribution with shaded area."""
 	fig = px.line(
@@ -345,7 +345,7 @@ def plot_ranking_distribution(
 def plot_ranking_stability(
 	df: pl.DataFrame,
 	animals: list[str],
-	colors: list[tuple[int, int, int, float]],
+	colors: list[str],
 ) -> go.Figure:
 	"""Plots animal rank on a per day basis."""
 	color_map = dict(zip(animals, colors, strict=False))
@@ -383,7 +383,7 @@ def plot_ranking_stability(
 	return fig
 
 
-def time_spent_per_cage(df: np.ndarray, type: Literal["hourly", "daily"]) -> go.Figure:
+def time_spent_per_cage(df: pl.DataFrame, type: Literal["hourly", "daily"]) -> go.Figure:
 	"""Plots N-cages of heatmaps with per hour time spent for each animal."""
 	match type:  # TODO: improve column naming consistency to avoid this mess
 		case "hourly":
@@ -622,7 +622,8 @@ def plot_metrics_polar(df: pl.DataFrame, colors: list[str]):
 		polar={
 			"radialaxis": {
 				"visible": True,
-				"range": [df["mean"].min() - 0.5, df["mean"].max() + 0.5],
+				# Series.min/max is typed as a broad union; arithmetic is valid for this numeric column.
+				"range": [df["mean"].min() - 0.5, df["mean"].max() + 0.5],  # ty: ignore[unsupported-operator]
 			}
 		},
 		legend={"tracegroupgap": 0},
@@ -659,6 +660,7 @@ def plot_network_graph(
 	for animal in animals:
 		match graph_type:
 			case "chasings":
+				assert nodes is not None, "Ranking nodes are required for a chasings network graph."
 				ordinal = nodes.filter(pl.col("animal_id") == animal).select("ordinal").item()
 			case "proportion_together":
 				ordinal = 30

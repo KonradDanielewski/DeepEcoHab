@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, Literal
 
 import polars as pl
@@ -8,7 +7,7 @@ from deepecohab.core.registries import df_registry
 from deepecohab.utils import auxfun
 
 
-def _get_activity(lf: pl.LazyFrame, cfg: dict[str, Any] | Path | str) -> pl.LazyFrame:
+def _get_activity(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 	"""Aggregate per-animal occupancy and visit counts for every position.
 
 	Drops tunnel directionality so the two ends of a tunnel collapse to one
@@ -33,7 +32,7 @@ def _get_activity(lf: pl.LazyFrame, cfg: dict[str, Any] | Path | str) -> pl.Lazy
 	)
 
 
-def _get_time_alone(lf: pl.LazyFrame, cfg: dict[str, Any] | Path | str) -> pl.LazyFrame:
+def _get_time_alone(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 	"""Compute how long each animal occupied a position with no other animal present.
 
 	Uses a sweep-line over occupancy intervals: each animal's stay in a position
@@ -249,7 +248,7 @@ def get_prev_ranking(ranking: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
 @df_registry.register_step("match_df", requires=["main_df"])
 def calculate_matches(
 	cfg: dict[str, Any],
-	chasing_time_window: tuple[float] = (0.1, 1.2),
+	chasing_time_window: tuple[float, float] = (0.1, 1.2),
 	**kwargs,
 ) -> pl.LazyFrame:
 	"""Builds the event-level chasing table: one row per chasing event.

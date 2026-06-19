@@ -113,7 +113,7 @@ def _create_project(
 	interpolate: bool,
 	sanitize: bool,
 	min_cross: int,
-) -> tuple[dict[str, Any], dbc.Toast, str, str]:
+) -> tuple[dict[str, Any] | str, dbc.Toast, str, str]:
 	"""Project creation callback.
 
 	Args:
@@ -137,19 +137,20 @@ def _create_project(
 		dict of the project config, toast with info, type of info.
 	"""
 	if n_clicks == 0:
-		return no_update, no_update, "Create Project", "primary"
+		# Dash no_update sentinels leave the store and toast untouched on the initial render.
+		return no_update, no_update, "Create Project", "primary"  # ty: ignore[invalid-return-type]
 
 	animal_ids = [i.strip() for i in animals.split(",")] if animals else None
 	is_field = "field" in layouts
 	is_custom = True if "field" in layouts else "custom" in layouts
 
-	project_location = Path(project_location)
-	if not project_location.is_dir():
-		project_location.mkdir(parents=True, exist_ok=True)
+	project_dir = Path(project_location)
+	if not project_dir.is_dir():
+		project_dir.mkdir(parents=True, exist_ok=True)
 
 	try:
 		config_path, _ = create_project.create_ecohab_project(
-			project_location=project_location,
+			project_location=project_dir,
 			data_path=data_path,
 			experiment_name=name,
 			light_phase_start=light_start,
@@ -189,7 +190,7 @@ def _create_project(
 					"Warning!",
 					"warning",
 				)
-			case "created":
+			case _:
 				return (
 					config_dict,
 					dbc.Toast(
@@ -207,7 +208,7 @@ def _create_project(
 				)
 
 	except Exception as e:
-		return [
+		return (
 			"",
 			dbc.Toast(
 				f"Error: {e!s}",
@@ -220,7 +221,7 @@ def _create_project(
 			),
 			"Try Again",
 			"danger",
-		]
+		)
 
 
 @callback(
@@ -233,12 +234,11 @@ def _create_project(
 	State("upload-config", "filename"),
 	prevent_initial_call=True,
 )
-def load_config_to_store(
-	contents: dict[str, Any], filename: str
-) -> tuple[dict[str, Any], bool, dbc.Toast]:
+def load_config_to_store(contents: str, filename: str) -> tuple[dict[str, Any], bool, dbc.Toast]:
 	"""Helper to load the config into cache for the period of the session."""
 	if not contents:
-		return [no_update] * 3
+		# Dash no_update sentinels leave every output untouched when there is no upload.
+		return no_update, no_update, no_update  # ty: ignore[invalid-return-type]
 
 	try:
 		content_string = contents.split(",")[-1]
@@ -264,7 +264,7 @@ def load_config_to_store(
 			icon="danger",
 			className="custom-toast toast-danger",
 		)
-		return no_update, True, error_toast
+		return no_update, True, error_toast  # ty: ignore[invalid-return-type] — Dash no_update keeps the existing config on load failure.
 
 
 @callback(
@@ -278,7 +278,8 @@ def load_config_to_store(
 def clear_app_cache(n_clicks: int) -> tuple[None, dbc.Toast]:
 	"""Helper to clear the cache for clean load of another project."""
 	if not n_clicks:
-		return no_update, no_update
+		# Dash no_update sentinels leave the store and toast untouched before any click.
+		return no_update, no_update  # ty: ignore[invalid-return-type]
 
 	launch_cache.clear()
 

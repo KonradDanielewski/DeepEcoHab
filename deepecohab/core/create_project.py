@@ -76,7 +76,7 @@ def create_ecohab_project(
 	if not any(data_dir.glob("*.txt")):
 		raise FileNotFoundError(f"No .txt files found in {data_dir}")
 
-	days_range: list[int] = None
+	days_range: list[int] | None = None
 	if start_datetime and finish_datetime:
 		dt_format = "%Y-%m-%d %H:%M:%S"
 		start = dt.datetime.strptime(start_datetime, dt_format)
@@ -114,7 +114,8 @@ def create_ecohab_project(
 	else:
 		config_cls = config_templates.DefaultConfig
 
-	config_data: dict[str, Any] = config_cls(**config_kwargs).to_dict()
+	# ty cannot check **dict unpacking against a union of dataclass constructors.
+	config_data: dict[str, Any] = config_cls(**config_kwargs).to_dict()  # ty: ignore[invalid-argument-type]
 
 	full_project_path.mkdir(parents=True, exist_ok=True)
 	(full_project_path / "results").mkdir(exist_ok=True)

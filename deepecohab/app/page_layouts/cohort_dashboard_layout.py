@@ -297,7 +297,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 	)
 
 
-def generate_comparison_layout(phase_range: list[int, int]) -> html.Div:
+def generate_comparison_layout(phase_range: list[int]) -> html.Div:
 	"""Generates layout for the comparisons tab."""
 	return html.Div(
 		[

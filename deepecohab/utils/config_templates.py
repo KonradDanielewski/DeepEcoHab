@@ -33,7 +33,7 @@ class ExperimentConfig(ABC):
 	days_range: list[int] | None = None
 	start_datetime: str | None = None
 	finish_datetime: str | None = None
-	timezone: str = None
+	timezone: str | None = None
 	antenna_combinations: dict[str, str] = field(default_factory=dict)
 	tunnels: dict[str, str] = field(default_factory=dict)
 	phase: dict[str, str] = field(init=False)

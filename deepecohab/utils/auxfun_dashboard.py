@@ -3,7 +3,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -18,7 +18,7 @@ COMMON_CFG = {"displayModeBar": False}
 def generate_settings_block(
 	phase_type_id: dict | str,
 	aggregate_stats_id: dict | str,
-	slider_id: dict | str,
+	slider_id: str | list[dict],
 	slider_switch_id: dict | str,
 	days_range: list[int],
 	position_switch_id: dict | str | None = None,
@@ -171,21 +171,21 @@ def generate_settings_block(
 						[
 							html.Div(className="divider"),
 							generate_hidden_radio_switch(
-								position_switch_id,
+								position_switch_id,  # ty: ignore[invalid-argument-type] — always a dict id in the comparison layout.
 								[
 									{"label": "Visits", "value": "visits"},
 									{"label": "Time", "value": "time"},
 								],
 							),
 							generate_hidden_radio_switch(
-								pairwise_switch_id,
+								pairwise_switch_id,  # ty: ignore[invalid-argument-type] — always a dict id in the comparison layout.
 								[
 									{"label": "Visits", "value": "pairwise_encounters"},
 									{"label": "Time", "value": "time_together"},
 								],
 							),
 							generate_hidden_radio_switch(
-								sociability_switch_id,
+								sociability_switch_id,  # ty: ignore[invalid-argument-type] — always a dict id in the comparison layout.
 								[
 									{
 										"label": "Time together",
@@ -198,7 +198,7 @@ def generate_settings_block(
 								],
 							),
 							generate_hidden_radio_switch(
-								ranking_switch_id,
+								ranking_switch_id,  # ty: ignore[invalid-argument-type] — always a dict id in the comparison layout.
 								[
 									{"label": "In time", "value": "intime"},
 									{"label": "Day stability", "value": "stability"},
@@ -232,7 +232,7 @@ def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
 				[
 					dcc.Graph(
 						id={"figure": "comparison-plot", "side": side},
-						config=COMMON_CFG,
+						config=COMMON_CFG,  # ty: ignore[invalid-argument-type] — dcc.Graph.config stub is a TypedDict; a plain dict is accepted at runtime.
 						className="plot-600",
 					),
 				]
@@ -327,7 +327,7 @@ def generate_csv_download_tab() -> dcc.Tab:
 							),
 							dbc.Checklist(
 								id={"type": "main-checklist", "index": "dfs"},
-								options=options,
+								options=options,  # ty: ignore[invalid-argument-type] — Dash Checklist options stub is a strict TypedDict; list[dict] is accepted at runtime.
 								value=[],
 								inline=False,
 								className="download-dropdown",
@@ -386,7 +386,7 @@ def generate_download_block() -> dbc.Modal:
 
 
 def generate_sidebar(
-	icon_map: dict[str, str], page_registry: dict[str, str], tooltips: list[str]
+	icon_map: dict[str, str], page_registry: dict[str, dict], tooltips: list[str]
 ) -> html.Div:
 	"""Build the navigation sidebar with page links and tooltips."""
 	return html.Div(
@@ -444,7 +444,7 @@ def generate_standard_graph(graph_id: str, css_class: str = "plot-450", **kwargs
 				id={"type": "graph", "name": graph_id},
 				animate=animate,
 				className=css_class,
-				config=COMMON_CFG,
+				config=COMMON_CFG,  # ty: ignore[invalid-argument-type] — dcc.Graph.config stub is a TypedDict; a plain dict is accepted at runtime.
 			),
 		],
 		className=css_class,
@@ -488,9 +488,9 @@ def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool
 
 def get_plot_file(
 	figure: go.Figure,
-	fmt: Literal["json", "png", "svg"],
+	fmt: str,
 	plot_name: str,
-) -> bytes:
+) -> tuple[str, bytes]:
 	"""Helper for content download."""
 	match fmt:
 		case "svg":
@@ -509,14 +509,14 @@ def get_plot_file(
 def download_plots(
 	selected_plots: list[str],
 	fmt: str,
-	all_figures: list[go.Figure],
+	all_figures: list[dict],
 	all_ids: list[dict],
 ) -> dict[str, Any | None]:
 	"""Downloads chosen plot/s related object via the browser."""
 	if not selected_plots or not fmt:
 		raise exceptions.PreventUpdate
 
-	files: list[bytes] = []
+	files: list[tuple[str, bytes]] = []
 
 	for fig_id, fig in zip(all_ids, all_figures, strict=False):
 		plot_id = fig_id["name"]
@@ -547,7 +547,7 @@ def build_filter_expr(
 	columns: list[str],
 	days_range: list[int] | None = None,
 	phase_type: list[str] | None = None,
-) -> pl.Expr:
+) -> list[pl.Expr] | None:
 	"""Builds filtering expressions for DF download by checking column presence."""
 	exprs: list[pl.Expr] = []
 
@@ -564,8 +564,8 @@ def build_filter_expr(
 
 
 def download_dataframes(
-	selected_dfs: list[pl.DataFrame],
-	phase_type: list[str],
+	selected_dfs: list[str],
+	phase_type: str,
 	days_range: list[int],
 	store: dict,
 ) -> dict[str, Any | None]:
@@ -573,23 +573,23 @@ def download_dataframes(
 	if not selected_dfs:
 		raise exceptions.PreventUpdate
 
-	phase_type = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
+	phase_types: list[str] = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
 
 	if len(selected_dfs) == 1:
 		name = selected_dfs[0]
 		if name in store:
 			df = store[name]
-			expr = build_filter_expr(df.schema, days_range, phase_type)
+			expr = build_filter_expr(df.schema, days_range, phase_types)
 			df = df.filter(expr) if expr is not None else df
 			return dcc.send_string(df.write_csv, f"{name}.csv")
-		return None
+		raise exceptions.PreventUpdate
 
 	zip_buffer = io.BytesIO()
 	with zipfile.ZipFile(zip_buffer, "w") as zf:
 		for name in selected_dfs:
 			if name in store:
 				df = store[name]
-				expr = build_filter_expr(df.schema, days_range, phase_type)
+				expr = build_filter_expr(df.schema, days_range, phase_types)
 				df = df.filter(expr) if expr is not None else df
 				csv_bytes = df.write_csv().encode("utf-8")
 				zf.writestr(f"{name}.csv", csv_bytes)

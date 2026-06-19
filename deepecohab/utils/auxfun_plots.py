@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass
 from itertools import combinations, product
-from typing import Any, Literal
+from typing import Literal
 
 import networkx as nx
 import numpy as np
@@ -74,7 +74,7 @@ def create_edges_trace(
 	G: nx.Graph,
 	pos: dict,
 	cmap: str = "Viridis",
-	edge_weight: Literal["chasings", "time_together"] = "chasings",
+	edge_weight: Literal["chasings", "proportion_together"] = "chasings",
 ) -> list:
 	"""Auxfun to create edges trace with color mapping based on edge width."""
 	edge_widths = np.array([G.edges[e][edge_weight] for e in G.edges()])
@@ -166,7 +166,7 @@ def prep_ranking_over_time(store: dict[str, pl.DataFrame], days_range: list[int]
 	df = (
 		store["ranking"]
 		.lazy()
-		.filter(pl.col("day").is_between(*days_range))
+		.filter(pl.col("day").is_between(days_range[0], days_range[1]))
 		.sort("datetime")
 		.group_by("day", "hour", "animal_id", "datetime", maintain_order=True)
 		.agg(pl.when(pl.first("day") == 1).then(pl.first("ordinal")).otherwise(pl.last("ordinal")))
@@ -182,7 +182,7 @@ def prep_ranking_day_stability(
 	ranking = store["ranking"]
 	daily_rank = (
 		ranking.lazy()
-		.filter(pl.col("day").is_between(*days_range))
+		.filter(pl.col("day").is_between(days_range[0], days_range[1]))
 		.group_by(["day", "animal_id"])
 		.agg(pl.col("ordinal").last())
 		.with_columns(
@@ -207,7 +207,7 @@ def prep_polar_df(
 		.lazy()
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 		)
 		.group_by("animal_id", "metric", "day")
 		.agg(pl.mean("z-score"))
@@ -262,7 +262,7 @@ def prep_network_dominance(
 	store: dict[str, pl.DataFrame],
 	animals: list[str],
 	days_range: list[int],
-) -> tuple[pl.DataFrame]:
+) -> tuple[pl.DataFrame, pl.DataFrame]:
 	"""Return a tuple of (edges, nodes) dataframes representing chasing interactions and final rankings."""
 	join_df = pl.LazyFrame(
 		data=(product(animals, animals)),
@@ -275,7 +275,7 @@ def prep_network_dominance(
 	connections = (
 		store["chasings_df"]
 		.lazy()
-		.filter(pl.col("day").is_between(*days_range))
+		.filter(pl.col("day").is_between(days_range[0], days_range[1]))
 		.group_by("chased", "chaser")
 		.agg(pl.sum("chasings"))
 		.join(
@@ -328,7 +328,7 @@ def prep_chasings_heatmap(
 		.sort("chased", "chaser")
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 		)
 		.group_by("day", "chaser", "chased")
 		.agg(pl.sum("chasings"))
@@ -376,7 +376,7 @@ def prep_chasings_line(
 	df = (
 		store["chasings_df"]
 		.lazy()
-		.filter(pl.col("day").is_between(*days_range))
+		.filter(pl.col("day").is_between(days_range[0], days_range[1]))
 		.join(
 			join_df,
 			on=["chaser", "chased", "hour", "day"],
@@ -413,7 +413,7 @@ def prep_activity(
 		.with_columns(pl.col("position").cast(pl.String))
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 		)
 		.group_by(["day", "animal_id", "position"])
 		.agg(
@@ -453,7 +453,7 @@ def prep_activity_line(
 	df = (
 		store["main_df"]
 		.lazy()
-		.filter(pl.col("day").is_between(*days_range))
+		.filter(pl.col("day").is_between(days_range[0], days_range[1]))
 		.group_by("day", "hour", "animal_id")
 		.agg(pl.len().alias("n_detections"))
 		.join(
@@ -484,7 +484,7 @@ def prep_time_per_cage(
 	days_range: list[int],
 	agg_switch: Literal["mean", "sum"],
 	cages: list[str],
-) -> np.ndarray:
+) -> pl.DataFrame:
 	"""Pivot time spent in specific cages into an hourly format for heatmaps plots."""
 	join_df = pl.LazyFrame(
 		(
@@ -510,7 +510,9 @@ def prep_time_per_cage(
 	df = (
 		store["activity_df"]
 		.lazy()
-		.filter(pl.col("day").is_between(*days_range), pl.col("position").is_in(cages))
+		.filter(
+			pl.col("day").is_between(days_range[0], days_range[1]), pl.col("position").is_in(cages)
+		)
 		.sort("day", "hour")
 		.group_by(["position", "animal_id", "hour"], maintain_order=True)
 		.agg(agg_func)
@@ -549,7 +551,7 @@ def prep_pairwise_sociability(
 		.with_columns(pl.col(pairwise_switch))
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 		)
 		.group_by(["animal_id", "animal_id_2", "position"], maintain_order=True)
 		.agg(
@@ -594,7 +596,7 @@ def prep_within_cohort_sociability(
 		.with_columns(pl.col(sociability_switch).round(3))
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 		)
 		.group_by(["animal_id", "animal_id_2"], maintain_order=True)
 		.agg(pl.mean(sociability_switch).round(2).alias("mean"))
@@ -625,7 +627,7 @@ def prep_time_alone(
 		store["activity_df"]
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 			pl.col("position")
 			.cast(pl.String)
 			.str.contains("cage"),  # NOTE: To be decided whether the plot should show tunnels
@@ -654,7 +656,7 @@ def prep_network_sociability(
 	connections = (
 		store["incohort_sociability"]
 		.lazy()
-		.filter(pl.col("day").is_between(*days_range))
+		.filter(pl.col("day").is_between(days_range[0], days_range[1]))
 		.group_by("animal_id", "animal_id_2")
 		.agg(pl.sum("proportion_together"))
 		.join(
@@ -690,7 +692,7 @@ def prep_social_stability(
 	df = (
 		df.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 		)
 		.group_by("day", "animal_id", "animal_id_2")
 		.agg(pl.mean("proportion_together"))
@@ -725,7 +727,7 @@ def prep_cage_preference(
 		.lazy()
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 		)
 		.with_columns(
 			pl.col("position").cast(pl.String),
@@ -768,7 +770,7 @@ def prep_tube_test_heatmap(
 		.sort("loser", "winner")
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 		)
 		.group_by("day", "winner", "loser")
 		.agg(pl.sum("tube_test"))
@@ -794,7 +796,7 @@ def prep_cage_preference_evolution(
 	days_range: list[int],
 	agg_switch: Literal["mean", "sum"],
 	cages: list[str],
-) -> np.ndarray:
+) -> pl.DataFrame:
 	"""Pivot time spent in specific cages into daily format for heatmaps plots."""
 	join_df = pl.LazyFrame(
 		(
@@ -821,7 +823,7 @@ def prep_cage_preference_evolution(
 		.lazy()
 		.with_columns(pl.col("position").cast(pl.String))
 		.filter(
-			pl.col("day").is_between(*days_range),
+			pl.col("day").is_between(days_range[0], days_range[1]),
 			pl.col("position").str.contains("cage"),
 		)
 		.fill_null(0)
@@ -835,32 +837,3 @@ def prep_cage_preference_evolution(
 	).collect(engine="in-memory")
 
 	return df
-
-
-def apply_color_settings(
-	cfg: dict[str, Any],
-	color_by: Literal["animal_id", "feature"],
-	feature_to_color_by: str,
-	colormap: str = "Phase",
-):
-	"""Build the color mapping for plots, keyed by animal id or by feature."""
-	animals = cfg.get("animals")
-	positions = cfg.get("positions")
-	positions_colors = color_sampling(positions, colormap)
-
-	if color_by == "animal_id":
-		animal_ids = list(animals.keys())
-		animal_colors = color_sampling(animal_ids, colormap)
-	else:
-		# TODO switch this to reading from config
-		unique_feature_values = list({animal[feature_to_color_by] for animal in animals.values()})
-
-		values_colors = color_sampling(unique_feature_values, colormap)
-
-		values_colors_map = dict(zip(unique_feature_values, values_colors, strict=False))
-
-		animal_ids = sorted(animals, key=lambda k: animals[k][feature_to_color_by])
-
-		animal_colors = [values_colors_map[animals[aid][feature_to_color_by]] for aid in animal_ids]
-
-	return animal_colors, animal_ids, positions_colors, positions

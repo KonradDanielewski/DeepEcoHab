@@ -5,7 +5,6 @@ from typing import (
 
 import dash
 import plotly.graph_objects as go
-import polars as pl
 from dash import (
 	callback,
 	clientside_callback,
@@ -69,7 +68,8 @@ layout = html.Div(
 def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 	"""Render page layout for both tabs."""
 	if not cfg:
-		return html.Div("Please load a project to see graphs."), no_update
+		# Dash no_update sentinel leaves the comparison container untouched.
+		return html.Div("Please load a project to see graphs."), no_update  # ty: ignore[invalid-return-type]
 
 	current_days_range = cfg.get("days_range", [0, 1])
 
@@ -98,14 +98,14 @@ def update_plots(
 	days_range: list[int],
 	days_single: int,
 	phase_type: str,
-	agg_switch: str,
-	pos_switch: str,
-	pair_switch: str,
-	sociability_switch: str,
-	ranking_switch: str,
+	agg_switch: Literal["sum", "mean"],
+	pos_switch: Literal["visits", "time"],
+	pair_switch: Literal["time_together", "pairwise_encounters"],
+	sociability_switch: Literal["proportion_together", "sociability"],
+	ranking_switch: Literal["intime", "stability"],
 	slider_mode: Literal["days_single", "days_range"],
 	cfg: dict[str, Any],
-) -> tuple[go.Figure, dict]:
+) -> go.Figure:
 	"""Perform a selective plot update on the main layout.
 
 	Args:
@@ -135,7 +135,7 @@ def update_plots(
 	)
 
 	if id_check is not None and id_check not in plot_attributes:
-		return no_update
+		return no_update  # ty: ignore[invalid-return-type] — Dash no_update sentinel skips this output.
 
 	if slider_mode == "days_single":
 		days_range = [days_single, days_single]
@@ -146,14 +146,14 @@ def update_plots(
 	store = cache_config.get_project_data(cfg_tuple)
 
 	store = cache_config.get_project_data(cfg)
-	animals = cfg.get("animal_ids")
+	animals = cfg["animal_ids"]
 	animal_colors = auxfun_plots.color_sampling(animals)
-	positions = cfg.get("positions")
+	positions = cfg["positions"]
 	positions_colors = auxfun_plots.color_sampling(positions)
 	cages = cfg.get("cages")
 	light_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60
-		for name, time in cfg.get("phase").items()
+		for name, time in cfg["phase"].items()
 		for parts in [time.split(":")]
 	}
 
@@ -190,7 +190,9 @@ def update_plots(
 	Input({"type": ALL, "side": MATCH}, "value"),
 	State("project-config-store", "data"),
 )
-def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go.Figure, dict]:
+def update_comparison_plot(
+	switches: list[Any], cfg: dict[str, Any]
+) -> tuple[go.Figure, bool, bool, bool, bool]:
 	"""Render plots in the comparisons tab."""
 	input_dict: dict[str, Any] = {
 		item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches, strict=False)
@@ -211,7 +213,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 	positions_colors = auxfun_plots.color_sampling(animals)
 	light_dark_onset = {
 		name: int(parts[0]) + int(parts[1]) / 60
-		for name, time in cfg.get("phase").items()
+		for name, time in cfg["phase"].items()
 		for parts in [time.split(":")]
 	}
 
@@ -266,7 +268,7 @@ def update_comparison_plot(switches: list[Any], cfg: dict[str, Any]) -> tuple[go
 )
 def download_selected_data(
 	btn_clicks: int,
-	selected_dfs: list[pl.DataFrame],
+	selected_dfs: list[str],
 	selected_plots: list[str],
 	phase_type: str,
 	days_range: list[int],
@@ -323,12 +325,12 @@ def download_comparison_data(btn_click: int, figure: dict, plot_type: str) -> di
 	if not triggered:
 		raise dash.exceptions.PreventUpdate
 
-	figure = go.Figure(figure)
 	if figure is None:
 		raise dash.exceptions.PreventUpdate
 
+	fig = go.Figure(figure)
 	plot_name = f"comparison_{plot_type}"
-	fname, content = auxfun_dashboard.get_plot_file(figure, triggered["fmt"], plot_name)
+	fname, content = auxfun_dashboard.get_plot_file(fig, triggered["fmt"], plot_name)
 	return dcc.send_bytes(lambda b: b.write(content), filename=fname)
 
 

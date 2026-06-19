@@ -43,7 +43,8 @@ def start_analysis(
 ) -> tuple[bool, bool]:
 	"""Run analysis for antenna data."""
 	if not n_clicks or not config:
-		return no_update, no_update
+		# Dash no_update sentinels leave both outputs untouched until analysis is triggered.
+		return no_update, no_update  # ty: ignore[invalid-return-type]
 
 	pipeline_generator = df_registry.run_pipeline(
 		config,
@@ -82,7 +83,8 @@ def update_progress_bar(n_clicks: int) -> tuple[float, str, str, str, bool]:
 	status = cache_config.launch_cache.get("analysis_status")
 
 	if not status:
-		return 0, "", "primary", "Waiting for analysis to start...", no_update
+		# Dash no_update keeps the interval enabled while waiting for analysis to start.
+		return 0, "", "primary", "Waiting for analysis to start...", no_update  # ty: ignore[invalid-return-type]
 
 	percent = status.get("percent", 0)
 	msg = status.get("msg", "")
