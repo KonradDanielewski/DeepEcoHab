@@ -1,18 +1,16 @@
+import datetime as dt
 import io
 import json
-import webbrowser
 import zipfile
-from argparse import ArgumentParser
-from typing import Any, Literal
-
+from pathlib import Path
+from typing import Any
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import polars as pl
 from dash import dcc, exceptions, html
 
-from deepecohab.utils.auxfun import df_registry
-from deepecohab.plotting.plot_catalog import plot_registry
+from deepecohab.core.registries import df_registry, plot_registry
 
 COMMON_CFG = {"displayModeBar": False}
 
@@ -20,8 +18,9 @@ COMMON_CFG = {"displayModeBar": False}
 def generate_settings_block(
 	phase_type_id: dict | str,
 	aggregate_stats_id: dict | str,
-	slider_id: dict | str,
-	days_range: list[int, int],
+	slider_id: str | list[dict],
+	slider_switch_id: dict | str,
+	days_range: list[int],
 	position_switch_id: dict | str | None = None,
 	pairwise_switch_id: dict | str | None = None,
 	sociability_switch_id: dict | str | None = None,
@@ -29,7 +28,7 @@ def generate_settings_block(
 	include_download: bool = False,
 	comparison_layout: bool = False,
 ) -> html.Div:
-	"""Generates settings block for the dashboard tabs"""
+	"""Generates settings block for the dashboard tabs."""
 	block = html.Div(
 		[
 			html.Div(
@@ -39,16 +38,14 @@ def generate_settings_block(
 							dcc.RadioItems(
 								id=phase_type_id,
 								options=[
+									{"label": "All", "value": "all"},
 									{"label": "Dark", "value": "dark_phase"},
 									{"label": "Light", "value": "light_phase"},
-									{"label": "All", "value": "all"},
 								],
-								value="dark_phase",
-								labelStyle={"display": "block", "marginBottom": "5px"},
-								inputStyle={"marginRight": "6px"},
+								value="all",
+								className="dash-radio",
 							)
 						],
-						className="control-radio-btns",
 					),
 					html.Div(className="divider"),
 					html.Div(
@@ -60,41 +57,86 @@ def generate_settings_block(
 									{"label": "Mean", "value": "mean"},
 								],
 								value="sum",
-								labelStyle={"display": "block", "marginBottom": "5px"},
-								inputStyle={"marginRight": "6px"},
+								className="dash-radio",
 							)
 						],
-						className="control-radio-btns",
+					),
+					*(
+						[
+							html.Div(className="divider"),
+							html.Div(
+								dcc.RadioItems(
+									id=slider_switch_id,
+									options=[
+										{"label": "Range", "value": f"{slider_id}_range"},
+										{"label": "Single", "value": f"{slider_id}_single"},
+									],
+									value=f"{slider_id}_range",
+									className="dash-radio",
+								),
+							),
+						]
+						if not comparison_layout
+						else []
 					),
 					html.Div(className="divider"),
 					html.Div(
-						[
+						id=f"{slider_id}_range_container"
+						if isinstance(slider_id, str)
+						else slider_id[0],
+						children=[
 							html.Label("Days of experiment", className="slider-label"),
 							dcc.RangeSlider(
-								id=slider_id,
+								id=f"{slider_id}_range"
+								if isinstance(slider_id, str)
+								else slider_id[1],
 								min=days_range[0],
 								max=days_range[1],
 								value=[*days_range],
+								pushable=1,
 								step=1,
-								count=1,
 								marks={i: str(i) for i in days_range},
 								tooltip={
 									"placement": "bottom",
 									"always_visible": True,
-									"style": {
-										"color": "LightSteelBlue",
-										"fontSize": "12px",
-									},
 								},
 								updatemode="mouseup",
 								included=True,
 								vertical=False,
 								persistence=True,
 								persistence_type="session",
-								className="slider",
+								allow_direct_input=False,
+								className="dash-slider",
 							),
 						],
 						className="flex-container",
+						hidden=False,
+					),
+					html.Div(
+						id=f"{slider_id}_single_container",
+						children=[
+							html.Label("Days of experiment", className="slider-label"),
+							dcc.Slider(
+								id=f"{slider_id}_single",
+								min=days_range[0],
+								max=days_range[1],
+								value=days_range[0],
+								step=1,
+								marks={i: str(i) for i in days_range},
+								tooltip={
+									"placement": "bottom",
+									"always_visible": True,
+								},
+								updatemode="mouseup",
+								included=False,
+								vertical=False,
+								persistence=False,
+								allow_direct_input=False,
+								className="dash-slider",
+							),
+						],
+						className="flex-container",
+						hidden=True,
 					),
 					# Conditional block
 					*(
@@ -105,7 +147,12 @@ def generate_settings_block(
 									dbc.Container(
 										[
 											html.Button(
-												"Downloads",
+												[
+													html.I(
+														className="fa-solid fa-download fa-lg me-2"
+													),
+													"Downloads",
+												],
 												id="open-modal",
 												n_clicks=0,
 												className="DownloadButton",
@@ -123,110 +170,38 @@ def generate_settings_block(
 					*(
 						[
 							html.Div(className="divider"),
-							html.Div(
-								id={
-									"container": position_switch_id["type"],
-									"side": position_switch_id["side"],
-								},
-								hidden=True,
-								className="flex-container",
-								children=[
-									html.Div(
-										dcc.RadioItems(
-											id=position_switch_id,
-											inline=True,
-											options=[
-												{"label": "Visits", "value": "visits"},
-												{"label": "Time", "value": "time"},
-											],
-											value="visits",
-											labelStyle={
-												"display": "block",
-												"marginBottom": "5px",
-											},
-										),
-									),
+							generate_hidden_radio_switch(
+								position_switch_id,  # ty: ignore[invalid-argument-type] — always a dict id in the comparison layout.
+								[
+									{"label": "Visits", "value": "visits"},
+									{"label": "Time", "value": "time"},
 								],
 							),
-							html.Div(
-								id={
-									"container": pairwise_switch_id["type"],
-									"side": pairwise_switch_id["side"],
-								},
-								hidden=True,
-								className="flex-container",
-								children=[
-									html.Div(
-										dcc.RadioItems(
-											id=pairwise_switch_id,
-											inline=True,
-											options=[
-												{"label": "Visits", "value": "pairwise_encounters"},
-												{"label": "Time", "value": "time_together"},
-											],
-											value="pairwise_encounters",
-											labelStyle={
-												"display": "block",
-												"marginBottom": "5px",
-											},
-										),
-									),
+							generate_hidden_radio_switch(
+								pairwise_switch_id,  # ty: ignore[invalid-argument-type] — always a dict id in the comparison layout.
+								[
+									{"label": "Visits", "value": "pairwise_encounters"},
+									{"label": "Time", "value": "time_together"},
 								],
 							),
-							html.Div(
-								id={
-									"container": sociability_switch_id["type"],
-									"side": sociability_switch_id["side"],
-								},
-								hidden=True,
-								className="flex-container",
-								children=[
-									html.Div(
-										dcc.RadioItems(
-											id=sociability_switch_id,
-											inline=True,
-											options=[
-												{
-													"label": "Time together",
-													"value": "proportion_together",
-												},
-												{
-													"label": "Incohort sociability",
-													"value": "sociability",
-												},
-											],
-											value="proportion_together",
-											labelStyle={
-												"display": "block",
-												"marginBottom": "5px",
-											},
-										),
-									),
+							generate_hidden_radio_switch(
+								sociability_switch_id,  # ty: ignore[invalid-argument-type] — always a dict id in the comparison layout.
+								[
+									{
+										"label": "Time together",
+										"value": "proportion_together",
+									},
+									{
+										"label": "Incohort sociability",
+										"value": "sociability",
+									},
 								],
 							),
-							html.Div(
-								id={
-									"container": ranking_switch_id["type"],
-									"side": ranking_switch_id["side"],
-								},
-								hidden=True,
-								className="flex-container",
-								children=[
-									html.Div(
-										dcc.RadioItems(
-											id=ranking_switch_id,
-											inline=True,
-											options=[
-												{"label": "In time", "value": "intime"},
-												{"label": "Day stability", "value": "stability"},
-											],
-											value="intime",
-											labelStyle={
-												"display": "block",
-												"marginBottom": "5px",
-											},
-										),
-									),
+							generate_hidden_radio_switch(
+								ranking_switch_id,  # ty: ignore[invalid-argument-type] — always a dict id in the comparison layout.
+								[
+									{"label": "In time", "value": "intime"},
+									{"label": "Day stability", "value": "stability"},
 								],
 							),
 						]
@@ -243,8 +218,8 @@ def generate_settings_block(
 	return block
 
 
-def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div:
-	""" "Generates a side of a comparisons block"""
+def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
+	"""Generate one side of a comparisons block."""
 	return html.Div(
 		[
 			html.Label("Select Plot", style={"fontWeight": "bold"}),
@@ -257,15 +232,19 @@ def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div
 				[
 					dcc.Graph(
 						id={"figure": "comparison-plot", "side": side},
-						config=COMMON_CFG,
+						config=COMMON_CFG,  # ty: ignore[invalid-argument-type] — dcc.Graph.config stub is a TypedDict; a plain dict is accepted at runtime.
+						className="plot-600",
 					),
-					dcc.Store(id={"store": "comparison-plot", "side": side}),
 				]
 			),
 			generate_settings_block(
 				phase_type_id={"type": "phase_type", "side": side},
 				aggregate_stats_id={"type": "agg_switch", "side": side},
-				slider_id={"type": "days_range", "side": side},
+				slider_id=[
+					{"type": "days_range_container", "side": side},
+					{"type": "days_range", "side": side},
+				],
+				slider_switch_id={"type": "slider_switch", "side": side},
 				days_range=days_range,
 				position_switch_id={"type": "position_switch", "side": side},
 				pairwise_switch_id={"type": "pairwise_switch", "side": side},
@@ -275,7 +254,7 @@ def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div
 			),
 			get_fmt_download_buttons(
 				"download-btn-comparison",
-				["svg", "png", "json", "csv"],
+				["svg", "png", "json"],
 				side,
 				is_vertical=False,
 			),
@@ -286,8 +265,9 @@ def generate_comparison_block(side: str, days_range: list[int, int]) -> html.Div
 
 
 def generate_plot_download_tab() -> dcc.Tab:
-	"""Generates Plots download tab in the Downloads modal component"""
+	"""Generates Plots download tab in the Downloads modal component."""  # TODO: Add select all
 	return dcc.Tab(
+		id="download_tab",
 		label="Plots",
 		value="tab-plots",
 		className="dash-tab",
@@ -296,30 +276,37 @@ def generate_plot_download_tab() -> dcc.Tab:
 			dbc.Row(
 				[
 					dbc.Col(
-						dbc.Checklist(
-							id="plot-checklist",
-							options=[],
-							value=[],
-							inline=False,
-							className="download-dropdown",
-						),
+						[
+							dbc.Checkbox(
+								id={"type": "select-all", "index": "plots"},
+								label="Select All",
+								value=False,
+								className="mb-2 fw-bold",
+							),
+							dbc.Checklist(
+								id={"type": "main-checklist", "index": "plots"},
+								options=[],
+								value=[],
+								inline=False,
+								className="download-dropdown",
+							),
+						],
 						width=8,
 					),
 					dbc.Col(
-						get_fmt_download_buttons(
-							"download-btn", ["svg", "png", "json", "csv"], "plots"
-						),
+						get_fmt_download_buttons("download-btn", ["svg", "png", "json"], "plots"),
 						width=4,
 						className="d-flex flex-column align-items-start",
 					),
-				]
+				],
+				className="modal-download-content",
 			)
 		],
 	)
 
 
 def generate_csv_download_tab() -> dcc.Tab:
-	"""Generates DataFrames download tab in the Downloads modal component"""
+	"""Generates DataFrames download tab in the Downloads modal component."""
 	options = get_options_from_ids(df_registry.list_available(), "_", delist=["binary_df"])
 
 	return dcc.Tab(
@@ -331,13 +318,21 @@ def generate_csv_download_tab() -> dcc.Tab:
 			dbc.Row(
 				[
 					dbc.Col(
-						dbc.Checklist(
-							id="data-keys-checklist",
-							options=options,
-							value=[],
-							inline=False,
-							className="download-dropdown",
-						),
+						[
+							dbc.Checkbox(
+								id={"type": "select-all", "index": "dfs"},
+								label="Select All",
+								value=False,
+								className="mb-2 fw-bold",
+							),
+							dbc.Checklist(
+								id={"type": "main-checklist", "index": "dfs"},
+								options=options,  # ty: ignore[invalid-argument-type] — Dash Checklist options stub is a strict TypedDict; list[dict] is accepted at runtime.
+								value=[],
+								inline=False,
+								className="download-dropdown",
+							),
+						],
 						align="center",
 						width=8,
 					),
@@ -366,10 +361,10 @@ def generate_csv_download_tab() -> dcc.Tab:
 
 
 def generate_download_block() -> dbc.Modal:
-	"""Generate Downloads modal component"""
+	"""Generate Downloads modal component."""
 	modal = dbc.Modal(
 		[
-			dbc.ModalHeader([dbc.ModalTitle("Downloads")]),
+			dbc.ModalHeader([dbc.ModalTitle("Downloads", className="fw-bold")]),
 			dbc.ModalBody(
 				dcc.Tabs(
 					id="download-tabs",
@@ -378,10 +373,8 @@ def generate_download_block() -> dbc.Modal:
 						generate_plot_download_tab(),
 						generate_csv_download_tab(),
 					],
-					style={
-						"backgroundColor": "#1f2c44",
-					},
-				)
+					className="modal-tabs-size",
+				),
 			),
 			dcc.Download(id="download-component"),
 		],
@@ -392,24 +385,77 @@ def generate_download_block() -> dbc.Modal:
 	return modal
 
 
-def generate_standard_graph(graph_id: str, css_class: str = "plot-450") -> html.Div:
-	"""Generate Div that contains graph and corresponding data"""
+def generate_sidebar(
+	icon_map: dict[str, str], page_registry: dict[str, dict], tooltips: list[str]
+) -> html.Div:
+	"""Build the navigation sidebar with page links and tooltips."""
+	return html.Div(
+		[
+			html.Div("MENU", className="sidebar-label"),
+			html.Div(
+				[
+					dcc.Link(
+						html.Button(
+							html.I(className=icon_map.get(page["relative_path"], "fas fa-file")),
+							title=tooltip,
+							className="icon-btn",
+						),
+						href=page["relative_path"],
+						className="nav-link-wrapper",
+					)
+					for page, tooltip in zip(page_registry.values(), tooltips, strict=False)
+				],
+				className="tab-buttons",
+			),
+		],
+		id="sidebar",
+	)
+
+
+def generate_hidden_radio_switch(switch_id: dict, switch_options: list[dict]) -> html.Div:
+	"""Build a hidden radio-button switch used to drive plot options."""
+	return html.Div(
+		id={
+			"container": switch_id["type"],
+			"side": switch_id["side"],
+		},
+		hidden=True,
+		className="flex-container",
+		children=[
+			html.Div(
+				dcc.RadioItems(
+					id=switch_id,
+					inline=True,
+					options=switch_options,
+					value=switch_options[0]["value"],
+					className="dash-radio",
+				),
+			),
+		],
+	)
+
+
+def generate_standard_graph(graph_id: str, css_class: str = "plot-450", **kwargs) -> html.Div:
+	"""Generate Div that contains graph and corresponding data."""
+	animate = kwargs.get("animate", False)
 	return html.Div(
 		[
 			dcc.Graph(
 				id={"type": "graph", "name": graph_id},
+				animate=animate,
 				className=css_class,
-				config=COMMON_CFG,
+				config=COMMON_CFG,  # ty: ignore[invalid-argument-type] — dcc.Graph.config stub is a TypedDict; a plain dict is accepted at runtime.
 			),
-			dcc.Store(id={"type": "store", "name": graph_id}),
-		]
+		],
+		className=css_class,
 	)
 
 
 def get_options_from_ids(
-	obj_ids: list[str], sep: str = "-", delist: list[str] = []
+	obj_ids: list[str], sep: str = "-", delist: list[str] | None = None
 ) -> list[dict[str, str]]:
-	"""Generate options in the Downloads -> Plots tab from available IDs"""
+	"""Generate options in the Downloads -> Plots tab from available IDs."""
+	delist = delist or []
 	return [
 		{"label": get_display_name(obj_id, sep), "value": obj_id}
 		for obj_id in obj_ids
@@ -418,12 +464,12 @@ def get_options_from_ids(
 
 
 def get_display_name(name: str, sep: str = "-") -> str:
-	"""Helper to beautify option names for Downloads -> Plots tab"""
+	"""Helper to beautify option names for Downloads -> Plots tab."""
 	return " ".join(word.capitalize() for word in name.split(sep))
 
 
 def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool = True) -> dbc.Row:
-	"""Generate buttons for Downloads -> Plot tab"""
+	"""Generate buttons for Downloads -> Plot tab."""
 	buttons: list[dbc.Col] = []
 	width_col = 12
 	if not is_vertical:
@@ -441,12 +487,11 @@ def get_fmt_download_buttons(type: str, fmts: list, side: str, is_vertical: bool
 
 
 def get_plot_file(
-	df_data: pl.DataFrame,
 	figure: go.Figure,
-	fmt: Literal["csv", "json", "png", "svg"],
+	fmt: str,
 	plot_name: str,
-) -> bytes:
-	"""Helper for content download"""
+) -> tuple[str, bytes]:
+	"""Helper for content download."""
 	match fmt:
 		case "svg":
 			content = figure.to_image(format="svg")
@@ -457,10 +502,6 @@ def get_plot_file(
 		case "json":
 			content = json.dumps(figure.to_plotly_json()).encode("utf-8")
 			return (f"{plot_name}.json", content)
-		case "csv":
-			df = pl.read_json(io.StringIO(df_data)).explode(pl.all())
-			csv_bytes = df.write_csv().encode("utf-8")
-			return (f"{plot_name}.csv", csv_bytes)
 		case _:
 			raise exceptions.PreventUpdate
 
@@ -468,23 +509,22 @@ def get_plot_file(
 def download_plots(
 	selected_plots: list[str],
 	fmt: str,
-	all_figures: list[go.Figure],
+	all_figures: list[dict],
 	all_ids: list[dict],
-	all_stores: list[dict],
 ) -> dict[str, Any | None]:
-	"""Downloads chosen plot/s related object via the browser"""
+	"""Downloads chosen plot/s related object via the browser."""
 	if not selected_plots or not fmt:
 		raise exceptions.PreventUpdate
 
-	files: list[bytes] = []
+	files: list[tuple[str, bytes]] = []
 
-	for fig_id, fig, data in zip(all_ids, all_figures, all_stores):
+	for fig_id, fig in zip(all_ids, all_figures, strict=False):
 		plot_id = fig_id["name"]
-		if plot_id not in selected_plots or fig is None or data is None:
+		if plot_id not in selected_plots or fig is None:
 			continue
 		figure = go.Figure(fig)
 		plot_name = f"plot_{plot_id}"
-		plt_file = get_plot_file(data, figure, fmt, plot_name)
+		plt_file = get_plot_file(figure, fmt, plot_name)
 		files.append(plt_file)
 
 	if len(files) == 1:
@@ -505,47 +545,52 @@ def download_plots(
 
 def build_filter_expr(
 	columns: list[str],
-	days_range: list[int, int] = None,
-	phase_type: list[str] = None,
-) -> pl.Expr:
-	"Builds filtering expressions for DF download by checking column presence"
+	days_range: list[int] | None = None,
+	phase_type: list[str] | None = None,
+) -> list[pl.Expr] | None:
+	"""Builds filtering expressions for DF download by checking column presence."""
 	exprs: list[pl.Expr] = []
 
 	if days_range is not None and "day" in columns:
-		exprs.append(pl.col("day").is_between(*days_range))
+		exprs.append(pl.col("day").is_between(*days_range, closed="both"))
 
 	if phase_type is not None and "phase" in columns:
 		exprs.append(pl.col("phase").is_in(phase_type))
+
+	if not exprs:
+		return None
 
 	return exprs
 
 
 def download_dataframes(
-	selected_dfs: list[pl.DataFrame],
-	phase_type: list[str],
-	days_range: list[int, int],
+	selected_dfs: list[str],
+	phase_type: str,
+	days_range: list[int],
 	store: dict,
 ) -> dict[str, Any | None]:
-	"""Downloads the selected DataFrame/s via the browser"""
+	"""Downloads the selected DataFrame/s via the browser."""
 	if not selected_dfs:
 		raise exceptions.PreventUpdate
 
-	phase_type = [phase_type] if not phase_type == "all" else ["dark_phase", "light_phase"]
+	phase_types: list[str] = [phase_type] if phase_type != "all" else ["dark_phase", "light_phase"]
 
 	if len(selected_dfs) == 1:
 		name = selected_dfs[0]
 		if name in store:
 			df = store[name]
-			df = df.filter(build_filter_expr(df.schema, days_range, phase_type))
+			expr = build_filter_expr(df.schema, days_range, phase_types)
+			df = df.filter(expr) if expr is not None else df
 			return dcc.send_string(df.write_csv, f"{name}.csv")
-		return None
+		raise exceptions.PreventUpdate
 
 	zip_buffer = io.BytesIO()
 	with zipfile.ZipFile(zip_buffer, "w") as zf:
 		for name in selected_dfs:
 			if name in store:
 				df = store[name]
-				df = df.filter(build_filter_expr(df.schema, days_range, phase_type))
+				expr = build_filter_expr(df.schema, days_range, phase_types)
+				df = df.filter(expr) if expr is not None else df
 				csv_bytes = df.write_csv().encode("utf-8")
 				zf.writestr(f"{name}.csv", csv_bytes)
 
@@ -556,29 +601,31 @@ def download_dataframes(
 	)
 
 
-def parse_arguments() -> ArgumentParser:
-	parser = ArgumentParser(description="Run DeepEcoHab Dashboard")
-	parser.add_argument(
-		"--results-path",
-		type=str,
-		required=True,
-		help="h5 file path extracted from the config (examples/test_name2_2025-04-18/results/test_name2_data.h5)",
-	)
-	parser.add_argument(
-		"--config-path",
-		type=str,
-		required=True,
-		help="path to the config file of the project",
-	)
-	return parser.parse_args()
+def _is_valid_time(time_str: str) -> bool:
+	"""Helper to check if provided time a valid time."""
+	try:
+		dt.datetime.strptime(time_str, "%H:%M")
+		return True
+	except (ValueError, TypeError):
+		return False
 
 
-def open_browser() -> None:
-	"""Opens browser with dashboard."""
-	webbrowser.open_new("http://127.0.0.1:8050/")
+def _get_status(idx: str, input: str) -> bool:
+	"""Helper to validate required inputs."""
+	if not (input and input.strip()):
+		return False
 
+	if idx == "proj-loc":
+		try:
+			Path(input)
+			return True
+		except OSError:
+			return False
 
-def to_store_json(df: pl.DataFrame | None) -> dict | None:
-	if not isinstance(df, pl.DataFrame):
-		return None
-	return json.dumps(df.to_dict(as_series=False), default=str)
+	if idx == "data-loc":
+		return Path(input).is_dir()
+
+	if idx in ["light-start", "dark-start"]:
+		return _is_valid_time(input)
+
+	return True

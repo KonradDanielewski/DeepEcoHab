@@ -6,5 +6,4 @@ root: intro
 chapters:
 - file: get_started
 - file: tutorial_antenna
-- file: data_keys
 - file: dashboard

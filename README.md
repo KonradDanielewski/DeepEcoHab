@@ -28,9 +28,7 @@ To install DeepEcoHab please run the following commands line by line in the term
 
 Turn slashes the other way for Linux and MacOS
 ```
-cd where\you\want\to_clone_to
-git clone https://github.com/KonradDanielewski/DeepEcoHab.git
-cd DeepEcoHab
+cd where\you\want\venv
 uv venv
 .venv\Scripts\activate
 uv pip install deepecohab

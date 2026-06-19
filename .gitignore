@@ -1,6 +1,25 @@
+# Byte-compiled / build artifacts
 *.pyc
+__pycache__/
 *.egg-info/
-test*/
 build/
 dist/
-uv*
+
+# Virtual environment
+.venv/
+
+# Tool caches
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# DeepEcoHab generated artifacts
+examples/example_project*
+deepecohab/cache/

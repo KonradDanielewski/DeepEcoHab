@@ -1,20 +1,26 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires      = [ "setuptools>=61.0" ]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepecohab"
-version = "0.4.2.6"
+version = "0.5.0"
 description = "EcoHab with some machine learning"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = [ "LICENSE" ]
 authors = [
-    {name = "Konrad Danielewski", email = "k.danielewski@nencki.edu.pl"},
-    {name = "Ula Włodkowska", email = "u.wlodkowska@nencki.edu.pl"},
+    { name = "Konrad Danielewski", email = "k.danielewski@nencki.edu.pl" },
+    { name = "Ula Włodkowska", email = "u.wlodkowska@nencki.edu.pl" },
 ]
-keywords = ["neuroscience", "ecology", "dash", "data-visualization", "data-analysis"]
+keywords = [
+    "neuroscience",
+    "ecology",
+    "dash",
+    "data-visualization",
+    "data-analysis",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -24,7 +30,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "dash",
+    "dash[diskcache]",
     "dash-bootstrap-components",
     "ipykernel",
     "kaleido",
@@ -39,27 +45,82 @@ dependencies = [
     "tzlocal",
 ]
 
-[project.urls]
-Homepage = "https://github.com/KonradDanielewski/DeepEcoHab"
-Issues = "https://github.com/KonradDanielewski/DeepEcoHab/issues"
+    [project.optional-dependencies]
+    test = [
+        "pytest",
+        "hypothesis",
+    ]
+
+    dev = [
+        "deepecohab[test]",
+        "ruff>=0.15.17",
+        "ty>=0.0.50",
+        "pre-commit",
+    ]
+
+    [project.urls]
+    Homepage = "https://github.com/KonradDanielewski/DeepEcoHab"
+    Issues   = "https://github.com/KonradDanielewski/DeepEcoHab/issues"
+
+    [project.scripts]
+    deepecohab = "deepecohab.app.__main__:main"
 
 [tool.setuptools]
 include-package-data = true
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["deepecohab*"]
-namespaces = true
+    [tool.setuptools.packages.find]
+    where      = [ "." ]
+    include    = [ "deepecohab*" ]
+    namespaces = true
 
-[tool.setuptools.package-data]
-"deepecohab.dash.assets" = ["style.css"]
+    [tool.setuptools.package-data]
+    "deepecohab.app.assets" = ["*"]
+    "deepecohab.config" = ["*"]
 
 [tool.ruff]
 line-length = 100
+target-version = "py312"
 
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "tab"
+    [tool.ruff.format]
+    quote-style  = "double"
+    indent-style = "tab"
 
-docstring-code-format = true
+    docstring-code-format = true
 
+    [tool.ruff.lint]
+    extend-select = [
+        "UP",   # pyupgrade
+        "D",    # pydocstyle
+        "I",    # isort — own import ordering
+        "B",    # bugbear — mutable defaults, zip strict, etc.
+        "RUF",  # ruff-specific — implicit Optional, etc.
+        "SIM",  # flake8-simplify
+        "C4",   # comprehensions
+        "NPY",  # numpy-specific lints
+    ]
+
+    ignore = [
+        "D206",  # docstring tab indentation — conflicts with indent-style = "tab"
+        "D100",  # missing module docstring — ceremonial
+        "D104",  # missing package docstring — __init__.py re-exports
+        "D105",  # missing magic-method docstring — dunders are self-explanatory
+        "D107",  # missing __init__ docstring — args documented at class level
+        "D417",  # missing param description — noise from **kwargs registry passthrough
+    ]
+
+    [tool.ruff.lint.per-file-ignores]
+    "tests/**" = ["D"]   # no docstring rules in tests
+
+    [tool.ruff.lint.pydocstyle]
+    convention = "google"
+
+[tool.ty.src]
+# Type-check shipping source only; tests intentionally exercise odd types.
+include = ["deepecohab"]
+
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]
+addopts   = "-ra"
+markers   = [
+    "e2e: full end-to-end pipeline test on the bundled field example data (slow).",
+]

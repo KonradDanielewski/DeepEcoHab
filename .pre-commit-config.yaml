@@ -1,0 +1,22 @@
+# Run `pre-commit install` once to enable these hooks locally.
+# Keep the ruff `rev` below in sync with the `ruff` pin in pyproject.toml
+# [project.optional-dependencies].dev (the weekly autoupdate workflow bumps this rev).
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.17
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # ty type-checking. Runs the project-pinned ty (pyproject dev extra) via uv so
+  # the hook never drifts from the version used in CI / locally.
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty (type check)
+        entry: uv run --extra dev ty check
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true

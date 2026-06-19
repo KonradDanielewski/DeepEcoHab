@@ -11,10 +11,11 @@ from deepecohab.utils import auxfun_plots
 
 def plot_activity(
 	df: pl.DataFrame,
-	colors: np.ndarray,
+	positions: list[str],
+	colors: list[str],
 	type_switch: Literal["visits", "time"],
 	agg_switch: Literal["sum", "mean"],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots bar graph of sum of cage and tunnel visits or time spent."""
 	match type_switch:
 		case "visits":
@@ -26,23 +27,27 @@ def plot_activity(
 
 	match agg_switch:
 		case "sum":
-			fig = px.histogram(
+			# TODO: Investigate inconsistent px.histogram behavior (if position and animal_id swaped it works as expected)
+			# Currently needs this group_by to present as necessary and px.bar
+			df = df.group_by("animal_id", "position", maintain_order=True).agg(pl.sum(type_switch))
+			fig = px.bar(
 				df,
-				x="animal_id",
+				x="position",
 				y=type_switch,
-				color="position",
+				color="animal_id",
 				color_discrete_sequence=colors,
-				hover_data=["animal_id", "position", "day", type_switch],
+				hover_data=["animal_id", "position", type_switch],
 				title=position_title,
 				barmode="group",
 			)
 			fig.update_layout(barcornerradius=10)
+			fig.update_traces(marker_line_width=0)
 		case "mean":
 			fig = px.box(
 				df,
-				x="animal_id",
+				x="position",
 				y=type_switch,
-				color="position",
+				color="animal_id",
 				color_discrete_sequence=colors,
 				hover_data=["animal_id", "position", "day", type_switch],
 				title=position_title,
@@ -51,17 +56,21 @@ def plot_activity(
 			)
 			fig.update_traces(boxmean=True)
 
-	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_layout(legend={"title": "<b>Animal ID</b>"})
+	fig.update_xaxes(
+		title_text="<b>Position</b>",
+		tickvals=[i for i, pos in enumerate(positions)],
+		ticktext=[position.capitalize().replace("_", " ") for position in positions],
+	)
 	fig.update_yaxes(title_text=position_y_title)
 
-	return fig, df
+	return fig
 
 
 def plot_time_alone(
-	df: pl.DataFrame, colors: list[str], agg_switch: Literal["mean", "sum"]
-) -> tuple[go.Figure, pl.DataFrame]:
-	"""Plot time alone as a relative bar plot TODO: consider normalization
-	for visualization and hover info with real value"""
+	df: pl.DataFrame, cages: list[str], colors: list[str], agg_switch: Literal["mean", "sum"]
+) -> go.Figure:
+	"""Plot time alone as a relative bar plot."""
 	match agg_switch:
 		case "sum":
 			fig = px.histogram(
@@ -88,45 +97,87 @@ def plot_time_alone(
 			)
 			fig.update_traces(boxmean=True)
 
-	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_xaxes(
+		title_text="<b>Cage</b>",
+		tickvals=[i for i, cage in enumerate(cages)],
+		ticktext=[cage.capitalize().replace("_", " ") for cage in cages],
+	)
 	fig.update_yaxes(title_text="<b>Time alone [s]</b>")
-	fig.update_layout(barcornerradius=10)
+	fig.update_layout(
+		barcornerradius=10,
+		legend_title_text="<b>Animal ID</b>",
+	)
 
-	return fig, df
+	return fig
 
 
 def plot_sum_line_per_hour(
 	df: pl.DataFrame,
 	animals: list[str],
-	colors: list[tuple[int, int, int]],
+	colors: list[str],
 	input_type: Literal["activity", "chasings"],
-) -> tuple[go.Figure, pl.DataFrame]:
+	light_dark: dict[str, float],
+) -> go.Figure:
 	"""Plots line graph for activity or chasings."""
-
 	match input_type:
 		case "activity":
 			title = "<b>Activity over time</b>"
-			y_axes_label = "Antenna detections"
+			y_axes_label = "<b>Antenna detections</b>"
 			color_col = "animal_id"
+			legend_title = "<b>Animal ID</b>"
 		case "chasings":
 			title = "<b>Chasing over time</b>"
-			y_axes_label = "# of chasing events"
+			y_axes_label = "<b># of chasing events</b>"
 			color_col = "chaser"
+			legend_title = "<b>Chaser</b>"
 
 	fig = px.line(
 		df,
 		x="hour",
 		y="total",
 		color=color_col,
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
 		category_orders={color_col: animals},
 		line_shape="spline",
 		title=title,
 	)
-	fig.update_yaxes(title=y_axes_label)
-	fig.update_xaxes(title="<b>Hours</b>", range=[0, 23])
 
-	return fig, df
+	fig.update_layout(legend={"title": legend_title})
+	fig.update_yaxes(title=y_axes_label)
+	fig.update_xaxes(title="<b>Hour of day</b>", range=[0, 23])
+
+	light_onset = light_dark["light_phase"]
+	dark_onset = light_dark["dark_phase"]
+
+	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash="dash", line_width=4)
+	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash="dash", line_width=4)
+
+	fig.add_annotation(
+		x=(light_onset + 6) % 24,
+		y=1.15,
+		xref="x",
+		yref="paper",
+		text="☀️",
+		showarrow=False,
+		font={"size": 25},
+	)
+
+	fig.add_annotation(
+		x=(dark_onset + 6) % 24,
+		y=1.15,
+		xref="x",
+		yref="paper",
+		text="🌙",
+		showarrow=False,
+		font={"size": 25},
+	)
+
+	fig.update_layout(
+		xaxis={"dtick": 1},
+		margin={"t": 80},
+	)
+
+	return fig
 
 
 def plot_mean_line_per_hour(
@@ -134,22 +185,22 @@ def plot_mean_line_per_hour(
 	animals: list[str],
 	colors: list[str],
 	input_type: Literal["activity", "chasings"],
-) -> tuple[go.Figure, pl.DataFrame]:
+	light_dark: dict[str, float],
+) -> go.Figure:
 	"""Plots line graph for activity or chasings with SEM shading."""
-
 	match input_type:
 		case "activity":
 			title = "<b>Activity over time</b>"
-			y_axes_label = "Antenna detections"
+			y_axes_label = "<b>Antenna detections</b>"
 			animal_col = "animal_id"
 		case "chasings":
 			title = "<b>Chasing over time</b>"
-			y_axes_label = "# of chasing events"
+			y_axes_label = "<b># of chasing events</b>"
 			animal_col = "chaser"
 
 	fig = go.Figure()
 
-	for animal, color in zip(animals, colors):
+	for animal, color in zip(animals, colors, strict=False):
 		animal_df = df.filter(pl.col(animal_col) == animal)
 
 		x = animal_df["hour"].to_list()
@@ -170,7 +221,7 @@ def plot_mean_line_per_hour(
 				showlegend=False,
 				name=animal,
 				legendgroup=animal,
-				line=dict(shape="spline"),
+				line={"shape": "spline"},
 			)
 		)
 
@@ -181,151 +232,225 @@ def plot_mean_line_per_hour(
 				line_color=color,
 				name=animal,
 				legendgroup=animal,
-				line=dict(shape="spline"),
+				line={"shape": "spline"},
 			)
 		)
 
 	fig.update_layout(
 		title=title,
-		legend=dict(
-			title="animal_id",
-			tracegroupgap=0,
-		),
+		legend={
+			"title": "<b>Animal ID</b>",
+			"tracegroupgap": 0,
+		},
 	)
 	fig.update_yaxes(title=y_axes_label)
-	fig.update_xaxes(title="<b>Hours</b>")
+	fig.update_xaxes(title="<b>Hour of day</b>")
 
-	return fig, df
+	light_onset = light_dark["light_phase"]
+	dark_onset = light_dark["dark_phase"]
+
+	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash="dash", line_width=4)
+	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash="dash", line_width=4)
+
+	fig.add_annotation(
+		x=(light_onset + 6) % 24,
+		y=1.15,
+		xref="x",
+		yref="paper",
+		text="☀️",
+		showarrow=False,
+		font={"size": 25},
+	)
+
+	fig.add_annotation(
+		x=(dark_onset + 6) % 24,
+		y=1.15,
+		xref="x",
+		yref="paper",
+		text="🌙",
+		showarrow=False,
+		font={"size": 25},
+	)
+
+	fig.update_layout(
+		xaxis={"dtick": 1},
+		margin={"t": 80},
+	)
+
+	return fig
 
 
 def plot_ranking_line(
 	df: pl.DataFrame,
 	animals: list[str],
-	colors: list[tuple[int, int, int, float]],
-) -> tuple[go.Figure, pl.DataFrame]:
+	colors: list[str],
+) -> go.Figure:
 	"""Plots line graph of ranking over time."""
 	fig = px.line(
 		df,
 		x="datetime",
 		y="ordinal",
 		color="animal_id",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
 	)
 
 	fig.update_layout(
 		title="<b>Social dominance ranking in time</b>",
-		legend=dict(
-			title="animal_id",
-			tracegroupgap=0,
-		),
-		xaxis=dict(title="Timeline"),
-		yaxis=dict(
-			title="Ranking",
-		),
+		legend={
+			"title": "<b>Animal ID</b>",
+			"tracegroupgap": 0,
+		},
+		xaxis={"title": "<b>Timeline</b>"},
+		yaxis={
+			"title": "<b>Ranking</b>",
+		},
 	)
 
-	return fig, df
+	return fig
 
 
 def plot_ranking_distribution(
 	df: pl.DataFrame,
 	animals: list[str],
-	colors: list[tuple[int, int, int, float]],
-) -> tuple[go.Figure, pl.DataFrame]:
+	colors: list[str],
+) -> go.Figure:
 	"""Plots line graph of ranking distribution with shaded area."""
 	fig = px.line(
 		df,
 		x="ranking",
 		y="probability_density",
 		color="animal_id",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
 		hover_data=["animal_id", "ranking", "probability_density"],
 	)
 	fig.update_traces(fill="tozeroy")
 
 	fig.update_layout(
 		title="<b>Ranking probability distribution</b>",
-		xaxis=dict(
-			title="Ranking",
-		),
-		yaxis=dict(
-			title="Probability density",
-		),
-		legend=dict(
-			title="animal_id",
-			tracegroupgap=0,
-		),
+		xaxis={
+			"title": "<b>Ranking</b>",
+		},
+		yaxis={
+			"title": "<b>Probability density</b>",
+		},
+		legend={
+			"title": "<b>Animal ID</b>",
+			"tracegroupgap": 0,
+		},
 	)
 
-	return fig, df
+	return fig
 
 
 def plot_ranking_stability(
 	df: pl.DataFrame,
 	animals: list[str],
-	colors: list[tuple[int, int, int, float]],
-) -> tuple[go.Figure, pl.DataFrame]:
-	"""Plots animal rank on a per day basis"""
-	fig = px.line(
+	colors: list[str],
+) -> go.Figure:
+	"""Plots animal rank on a per day basis."""
+	color_map = dict(zip(animals, colors, strict=False))
+
+	fig = go.Figure(
+		layout={
+			"title_x": 0.5,
+			"title": "<b>Daily dominance rank trajectories</b>",
+			"legend_title_text": "<b>Animal ID</b>",
+			"yaxis": {
+				"title": "<b>Rank</b>",
+				"autorange": "reversed",
+				"type": "category",
+				"categoryorder": "array",
+				"categoryarray": df["rank"].unique().sort(),
+			},
+			"xaxis": {
+				"title": "<b>Day</b>",
+			},
+		}
+	)
+	for animal in animals:
+		temp = df.filter(pl.col("animal_id") == animal).sort("day")
+		fig.add_trace(
+			go.Scatter(
+				x=temp["day"],
+				y=temp["rank"],
+				mode="lines+markers",
+				name=animal,
+				line={"color": color_map[animal]},
+				marker={"color": color_map[animal]},
+			)
+		)
+
+	return fig
+
+
+def time_spent_per_cage(df: pl.DataFrame, type: Literal["hourly", "daily"]) -> go.Figure:
+	"""Plots N-cages of heatmaps with per hour time spent for each animal."""
+	match type:  # TODO: improve column naming consistency to avoid this mess
+		case "hourly":
+			title = "<b>Time spent per cage</b>"
+			x_col = "hour"
+			facet_col = "position"
+			z_col = "time_in_position"
+			x = "Hour: %{x}"
+			x_title = "Hour of day"
+			z = "Time [min]: %{z}"
+			legend_title = "<b>Minutes</b>"
+			nbins = 24
+		case "daily":
+			title = "<b>Cage preference over time</b>"
+			x_col = "day"
+			facet_col = "position"
+			z_col = "time_in_position"
+			x = "Day: %{x}"
+			x_title = "Day"
+			z = "Time [h]: %{z}"
+			nbins = None
+			legend_title = "<b>Hours</b>"
+
+	fig = px.density_heatmap(
 		df,
-		x="day",
-		y="rank",
-		color="animal_id",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
-		markers=True,
-		title="<b>Daily dominance rank Trajectories</b>",
-	)
-
-	fig.update_layout(
-		title_x=0.5,
-		legend_title_text="Animal ID",
-		yaxis=dict(
-			title="Rank",
-			autorange="reversed",
-			type="category",
-		),
-		xaxis=dict(
-			title="Day",
-		),
-	)
-
-	return fig, df
-
-
-def time_spent_per_cage(
-	img: np.ndarray,
-	animals: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
-	"""Plots N-cages of heatmaps with per hour time spent for each animal"""
-	fig = px.imshow(
-		img,  # 24 hours in a day,
-		y=animals,
-		facet_col=0,
+		x=x_col,
+		y="animal_id",
+		z=z_col,
+		facet_col=facet_col,
 		facet_col_wrap=2,
-		title="<b>Time spent per cage</b>",
+		color_continuous_scale="Viridis",
+		nbinsx=nbins,
+		title=title,
 	)
 
 	for annotation in fig.layout.annotations:
-		annotation["text"] = f"Cage {int(annotation['text'].split('=')[1]) + 1}"
+		annotation["text"] = f"<b>Cage {annotation['text'].split('_')[1]}</b>"
 
-	fig.update_traces(
-		hovertemplate="<br>".join(
-			[
-				"Hour: %{x}",
-				"Animal ID: %{y}",
-				"Time [s]: %{z}",
-			]
-		)
+	fig.update_layout(
+		xaxis={"title": x_title},
+		xaxis2={"title": x_title},
+		yaxis={"automargin": True, "title": "Animal ID"},
+		yaxis3={"automargin": True, "title": "Animal ID"},
+		coloraxis_colorbar={"title": {"text": legend_title}},
 	)
 
-	return fig, img
+	fig.update_traces(hovertemplate="<br>".join([x, "Animal ID: %{y}", z]))
+
+	return fig
 
 
-def plot_chasings_heatmap(
+def plot_heatmap(
 	img: np.ndarray,
 	animals: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
+	input_type: Literal["chasings", "tube_test"],
+) -> go.Figure:
 	"""Plots heatmap for number of chasings."""
+	match input_type:
+		case "chasings":
+			title = "<b>Chasings</b>"
+			hover_x = "Chaser: %{x}"
+			hover_y = "Chased: %{y}"
+		case "tube_test":
+			title = "<b>Spontaneous tube-test</b>"
+			hover_x = "Winner: %{x}"
+			hover_y = "Loser: %{y}"
+
 	z_label = "Number: %{z}"
 
 	fig = px.imshow(
@@ -334,35 +459,37 @@ def plot_chasings_heatmap(
 		y=animals,
 		zmin=0,
 		color_continuous_scale="Viridis",
-		title="<b>Number of chasings</b>",
+		title=title,
 	)
 
 	fig.update_traces(
 		hovertemplate="<br>".join(
 			[
-				"Chaser: %{x}",
-				"Chased: %{y}",
+				hover_x,
+				hover_y,
 				z_label,
 			]
 		)
 	)
 
-	return fig, img
+	fig.update_layout(yaxis={"automargin": True}, xaxis={"automargin": True})
+
+	return fig
 
 
 def plot_sociability_heatmap(
 	img: np.ndarray,
 	type_switch: Literal["pairwise_encounters", "time_together"],
 	animals: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots heatmaps for pairwise encounters or time spent together."""
 	match type_switch:
 		case "pairwise_encounters":
 			pairwise_title = "<b>Number of pairwise encounters</b>"
-			pairwise_z_label = "Number: %{z}"
+			pairwise_z_label = "<b>Number: %{z}</b>"
 		case "time_together":
 			pairwise_title = "<b>Time spent together</b>"
-			pairwise_z_label = "Time [s]: %{z}"
+			pairwise_z_label = "<b>Time [s]: %{z}</b>"
 
 	fig = px.imshow(
 		img,
@@ -376,7 +503,7 @@ def plot_sociability_heatmap(
 	)
 
 	for annotation in fig.layout.annotations:
-		annotation["text"] = f"Cage {int(annotation['text'].split('=')[1]) + 1}"
+		annotation["text"] = f"<b>Cage {int(annotation['text'].split('=')[1]) + 1}</b>"
 
 	fig.update_traces(
 		hovertemplate="<br>".join(
@@ -388,20 +515,30 @@ def plot_sociability_heatmap(
 		)
 	)
 
-	return fig, img
+	fig.update_layout(yaxis={"automargin": True}, xaxis={"automargin": True})
+
+	return fig
 
 
 def plot_within_cohort_heatmap(
-	img: np.ndarray, animals: list[str]
-) -> tuple[go.Figure, pl.DataFrame]:
+	img: np.ndarray,
+	animals: list[str],
+	sociability_switch: Literal["proportion_together", "sociability"],
+) -> go.Figure:
 	"""Plots heatmap for within-cohort sociability."""
+	match sociability_switch:
+		case "proportion_together":
+			title = "<b>Proportional time spent together</b>"
+		case "sociability":
+			title = "<b>Within-cohort sociability</b>"
+
 	fig = px.imshow(
 		img,
 		zmin=0,
 		x=animals,
 		y=animals,
 		color_continuous_scale="Viridis",
-		title="<b>Within-cohort sociability</b>",
+		title=title,
 	)
 
 	fig.update_traces(
@@ -414,31 +551,87 @@ def plot_within_cohort_heatmap(
 		)
 	)
 
-	return fig, img
+	fig.update_layout(yaxis={"automargin": True}, xaxis={"automargin": True})
+
+	return fig
 
 
-def plot_metrics_polar(
-	df: pl.DataFrame,
-	animals: list[str],
-	colors: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
-	"""Plots a polar line with different metrics per animal."""
-	fig = px.line_polar(
-		df,
-		r="value",
-		theta="metric",
-		color="animal_id",
-		line_close=True,
-		line_shape="spline",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
-		range_r=[df["value"].min() - 0.5, df["value"].max() + 0.5],
-		title="<b>Social dominance metrics</b>",
+def plot_metrics_polar(df: pl.DataFrame, colors: list[str]):
+	"""Plots mean z-scores (across animals) of metrics with shading showing SEM as polar plot."""
+	fig = go.Figure()
+
+	for i, (name, group) in enumerate(df.partition_by("animal_id", as_dict=True).items()):
+		group_closed = pl.concat([group, group.head(1)])
+		theta = group_closed["metric"]
+		mean = group_closed["mean"]
+		upper = group_closed["upper"]
+		lower = group_closed["lower"]
+
+		color = colors[i]
+		shade_color = color.replace("rgb", "rgba").replace(")", ", 0.2)")
+		leg_group = f"group_{name}"
+
+		fig.add_trace(
+			go.Scatterpolar(
+				r=lower,
+				theta=theta,
+				mode="lines",
+				line={"width": 0, "color": color},
+				line_shape="spline",
+				legendgroup=leg_group,
+				showlegend=False,
+				hoverinfo="skip",
+				name=f"{name}_lower",
+			)
+		)
+
+		fig.add_trace(
+			go.Scatterpolar(
+				r=upper,
+				theta=theta,
+				mode="lines",
+				fill="tonext",
+				fillcolor=shade_color,
+				line={"width": 0, "color": color},
+				line_shape="spline",
+				legendgroup=leg_group,
+				showlegend=False,
+				hoverinfo="skip",
+				name=f"{name}_upper",
+			)
+		)
+
+		fig.add_trace(
+			go.Scatterpolar(
+				r=mean,
+				theta=theta,
+				mode="lines",
+				line={"color": color, "width": 2},
+				line_shape="spline",
+				legendgroup=leg_group,
+				marker={"size": 6},
+				name=f"{name[0]}",
+			)
+		)
+
+	fig.update_layout(
+		title="<b>Animal feature overview</b>",
+		title_y=0.95,
+		legend_title_text="<b>Animal ID</b>",
+		title_x=0.45,
+		polar={
+			"radialaxis": {
+				"visible": True,
+				# Series.min/max is typed as a broad union; arithmetic is valid for this numeric column.
+				"range": [df["mean"].min() - 0.5, df["mean"].max() + 0.5],  # ty: ignore[unsupported-operator]
+			}
+		},
+		legend={"tracegroupgap": 0},
+		showlegend=True,
 	)
-
 	fig.update_polars(bgcolor="rgba(0,0,0,0)")
-	fig.update_layout(title_y=0.95, title_x=0.45)
 
-	return fig, df
+	return fig
 
 
 def plot_network_graph(
@@ -446,69 +639,64 @@ def plot_network_graph(
 	nodes: pl.DataFrame | None,
 	animals: list[str],
 	colors: list[str],
-	graph_type: Literal["chasings", "sociability"],
-) -> tuple[go.Figure, pl.DataFrame]:
+	graph_type: Literal["chasings", "proportion_together"],
+) -> go.Figure:
 	"""Plots network graph of social structure."""
 	match graph_type:
 		case "chasings":
 			edge_weight = "chasings"
 			graph = nx.DiGraph
 			title = "<b>Dominance network graph</b>"
-		case "sociability":
-			edge_weight = "sociability"
+			include_ranking = True
+		case "proportion_together":
+			edge_weight = "proportion_together"
 			graph = nx.Graph
 			title = "<b>Sociability network graph</b>"
+			include_ranking = False
 
 	G = nx.from_pandas_edgelist(connections, create_using=graph, edge_attr=edge_weight)
-	pos = nx.spring_layout(G, k=0.1, iterations=200, seed=42, weight=edge_weight, method="energy")
+	pos = nx.spring_layout(G, k=0.1, iterations=50, seed=42, weight=edge_weight, method="energy")
 
 	for animal in animals:
 		match graph_type:
 			case "chasings":
+				assert nodes is not None, "Ranking nodes are required for a chasings network graph."
 				ordinal = nodes.filter(pl.col("animal_id") == animal).select("ordinal").item()
-			case "sociability":
-				ordinal = 20
+			case "proportion_together":
+				ordinal = 30
 		pos[animal] = np.append(pos[animal], ordinal)
 
 	edge_trace = auxfun_plots.create_edges_trace(G, pos, edge_weight=edge_weight)
-	node_trace = auxfun_plots.create_node_trace(pos, colors, animals)
+	node_trace = auxfun_plots.create_node_trace(pos, colors, animals, include_ranking)
 
 	fig = go.Figure(
-		data=edge_trace + [node_trace],
+		data=[*edge_trace, node_trace],
 		layout=go.Layout(
 			showlegend=False,
 			hovermode="closest",
-			title=dict(text=title, x=0.5, y=0.95),
+			title={"text": title, "x": 0.5, "y": 0.95},
 		),
 	)
 
-	fig.update_xaxes(
-		showticklabels=False,
-		showgrid=False,
-		zeroline=False,
-	)
-	fig.update_yaxes(
-		showticklabels=False,
-		showgrid=False,
-		zeroline=False,
-	)
+	fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, automargin=True)
+	fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, automargin=True)
 
-	return fig, connections
+	return fig
 
 
 def plot_social_stability(
 	df: pl.DataFrame | None,
 	animals: list[str],
 	colors: list[str],
-) -> tuple[go.Figure, pl.DataFrame]:
+) -> go.Figure:
 	"""Plots the stability of a social relationship based on time spent together."""
 	fig = px.scatter(
 		df,
 		x="stability",
 		y="proportion_together",
 		color="animal_id",
-		color_discrete_map={animal: color for animal, color in zip(animals, colors)},
-		hover_data={"animal_id", "animal_id_2"},
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		hover_data={"animal_id_2"},
 		range_x=[0, 1],
 		range_y=[0, 1],
 		range_color=[0, 1],
@@ -516,13 +704,39 @@ def plot_social_stability(
 	)
 
 	fig.update_layout(
-		xaxis=dict(
-			title="Relationship stability",
-		),
-		yaxis=dict(
-			title="Median proportion together",
-		),
+		xaxis={"title": "<b>Relationship stability</b>"},
+		yaxis={"title": "<b>Median proportion together</b>"},
+		legend_title_text="<b>Animal ID</b>",
 	)
 	fig.update_traces(marker_size=12)
 
-	return fig, df
+	return fig
+
+
+def plot_cage_preference(
+	df: pl.DataFrame | None,
+	cages: list[str],
+	colors: list[str],
+) -> go.Figure:
+	"""Plots cage preference on a per cage basis (cohort preference summary)."""
+	fig = px.box(
+		df,
+		x="position",
+		y="time_in_position",
+		color="position",
+		points="outliers",
+		hover_data={"animal_id", "day"},
+		color_discrete_map=dict(zip(cages, colors, strict=False)),
+		title="<b>Cage preference</b>",
+	)
+
+	fig.update_traces(boxmean=True)
+	fig.update_yaxes(title_text="<b>Avg time per day [h]</b>")
+	fig.update_xaxes(
+		title_text="<b>Cages</b>",
+		tickvals=[i for i, cage in enumerate(cages)],
+		ticktext=[cage.capitalize().replace("_", " ") for cage in cages],
+	)
+	fig.update_layout(legend={"title": ""})
+
+	return fig
