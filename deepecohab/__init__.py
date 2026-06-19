@@ -1,3 +1,5 @@
+from importlib.metadata import version
+
 from deepecohab.analysis.antenna_analysis import (
 	calculate_activity as calculate_activity,
 )
@@ -47,6 +49,7 @@ from deepecohab.utils.auxfun_plots import (
 from deepecohab.utils.auxfun_plots import (
 	set_default_theme as set_default_theme,
 )
-from deepecohab.version import __version__ as __version__
+
+__version__ = version("deepecohab")
 
 set_default_theme()
