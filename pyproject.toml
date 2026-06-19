@@ -64,6 +64,7 @@ dependencies = [
 
     [project.scripts]
     deepecohab = "deepecohab.app.__main__:main"
+    deepecohab-shortcut = "deepecohab.app.shortcut:main"
 
 [tool.setuptools]
 include-package-data = true
