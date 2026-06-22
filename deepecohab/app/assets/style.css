@@ -872,6 +872,52 @@ body.sidebar-open #main-content {
   color: rgb(255, 255, 255)
 }
 
+/* Antenna analysis form card */
+.analysis-form-card {
+  width: 540px;
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+.card-intro {
+  color: #9fb0c9;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin-bottom: 1.5rem;
+}
+
+.form-field {
+  margin-bottom: 1.25rem;
+}
+
+.input-label {
+  color: #d9e2f1 !important;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+
+/* Keep the input tight to its label inside the form card, overriding the
+   shared .filled-input top margin used elsewhere. */
+.form-field .filled-input {
+  margin-top: 0;
+}
+
+.form-help {
+  color: #9fb0c9 !important;
+  font-size: 0.8rem;
+  margin-top: 0.35rem;
+}
+
+.card-divider {
+  border-color: rgba(217, 226, 241, 0.15);
+  margin: 1.5rem 0;
+}
+
+.overwrite-switch {
+  color: #d9e2f1;
+  margin-bottom: 0.5rem;
+}
+
 #overwrite-label {
   color: #d9e2f1 !important;
   font-weight: bold !important;

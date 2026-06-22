@@ -21,7 +21,33 @@ SCHEMA: dict[str, pl.DataType] = {
 CFG: dict = {
 	"phase": {"light_phase": "07:00:00", "dark_phase": "20:00:00"},
 	"tunnels": {"c1_c2": "tunnel_1"},
+	# _get_time_alone now looks phase_count up from build_time_grid (see
+	# auxfun.get_grid_phase_count), which needs the experiment window and timezone.
+	# This span covers every datetime used by the example-based tests below.
+	"timezone": str(TZ),
+	"experiment_timeline": {
+		"start_date": "2023-05-24 00:00:00",
+		"finish_date": "2023-05-26 23:00:00",
+	},
 }
+
+
+def _cfg_with_window(base: dict, frame: pl.DataFrame, tz: str) -> dict:
+	"""Augment a phase/tunnels cfg with the experiment window spanning *frame*.
+
+	The property tests draw datetimes from across the year, so the grid window is
+	derived from the data itself (mirroring append_start_end_to_config in the real
+	pipeline) rather than hard-coded.
+	"""
+	return {
+		**base,
+		"timezone": tz,
+		"experiment_timeline": {
+			"start_date": str(frame["datetime"].min()),
+			"finish_date": str(frame["datetime"].max()),
+		},
+	}
+
 
 EXPECTED_COLUMNS = {
 	"animal_id",
@@ -303,8 +329,9 @@ def test_alone_never_exceeds_presence(events, tz, pcfg):
 	"""No animal can be alone longer than the total time it is present: summed
 	time_alone per animal <= summed visit duration per animal.
 	"""
-	cfg = {"phase": pcfg, "tunnels": {}}
-	result = _get_time_alone(strat.time_alone_frame(events, tz), cfg)
+	frame = strat.time_alone_frame(events, tz)
+	cfg = _cfg_with_window({"phase": pcfg, "tunnels": {}}, frame, tz)
+	result = _get_time_alone(frame, cfg)
 
 	alone = dict(result.group_by("animal_id").agg(pl.sum("time_alone")).iter_rows())
 	presence: dict[str, float] = {}
@@ -329,12 +356,13 @@ def test_full_overlap_means_nobody_alone(animals, position, start, duration, tz,
 	"""When >=2 animals occupy the exact same interval in one cage, at no instant
 	is exactly one present, so the result is empty.
 	"""
-	cfg = {"phase": pcfg, "tunnels": {}}
 	events = [
 		{"animal_id": a, "position": position, "start": start, "duration": duration}
 		for a in animals
 	]
-	result = _get_time_alone(strat.time_alone_frame(events, tz), cfg)
+	frame = strat.time_alone_frame(events, tz)
+	cfg = _cfg_with_window({"phase": pcfg, "tunnels": {}}, frame, tz)
+	result = _get_time_alone(frame, cfg)
 	assert result.height == 0
 
 
@@ -349,9 +377,10 @@ def test_full_overlap_means_nobody_alone(animals, position, start, duration, tz,
 )
 def test_lone_animal_is_alone_for_its_whole_visit(animal, position, start, duration, tz, pcfg):
 	"""A single animal with a single visit is alone for exactly that duration."""
-	cfg = {"phase": pcfg, "tunnels": {}}
 	events = [{"animal_id": animal, "position": position, "start": start, "duration": duration}]
-	result = _get_time_alone(strat.time_alone_frame(events, tz), cfg)
+	frame = strat.time_alone_frame(events, tz)
+	cfg = _cfg_with_window({"phase": pcfg, "tunnels": {}}, frame, tz)
+	result = _get_time_alone(frame, cfg)
 
 	assert result.height == 1
 	assert result["animal_id"].to_list() == [animal]

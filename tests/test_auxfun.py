@@ -148,6 +148,46 @@ def test_phase_count_dtype_is_u16():
 	assert "run_id" not in out.columns
 
 
+GRID_CFG = {
+	**CFG,
+	"timezone": TZ_NAME,
+	"experiment_timeline": {
+		"start_date": "2023-05-24 00:00:00",
+		"finish_date": "2023-05-26 23:00:00",
+	},
+}
+
+
+def test_grid_phase_count_matches_build_time_grid():
+	"""get_grid_phase_count reproduces build_time_grid's numbering by construction.
+
+	The dark phase wraps midnight, so an evening (hours 20-23) and the following
+	morning (hours 0-6) share one occurrence. Looking phase_count up from the grid
+	keeps the two halves consistent, unlike run-length-encoding rows by calendar day.
+	"""
+	grid = auxfun.build_time_grid(GRID_CFG).collect()
+	expected = {(r["day"], r["phase"], r["hour"]): r["phase_count"] for r in grid.to_dicts()}
+
+	# A sparse subset of the grid's (day, phase, hour) keys, deliberately including
+	# evening dark hours (the case the old rle-by-(day,phase) sort mis-numbered).
+	probe = grid.select("day", "phase", "hour").sample(fraction=0.5, seed=0, shuffle=True)
+	out = auxfun.get_grid_phase_count(probe.lazy(), GRID_CFG).collect()
+
+	assert out.schema["phase_count"] == pl.UInt16
+	for row in out.to_dicts():
+		assert row["phase_count"] == expected[(row["day"], row["phase"], row["hour"])]
+
+
+def test_grid_phase_count_evening_dark_shares_count_with_next_morning():
+	"""The wrap-around night links day N evening with day N+1 morning under one count."""
+	grid = auxfun.build_time_grid(GRID_CFG).collect()
+	dark = grid.filter(pl.col("phase") == "dark_phase")
+
+	day1_evening = dark.filter((pl.col("day") == 1) & (pl.col("hour") == 22))["phase_count"][0]
+	day2_morning = dark.filter((pl.col("day") == 2) & (pl.col("hour") == 2))["phase_count"][0]
+	assert day1_evening == day2_morning
+
+
 def test_day_single_date_is_one():
 	df = pl.DataFrame(
 		{"datetime": aware_dt_series([at(2023, 5, 24, h, 0, 0) for h in (0, 12, 23)])}

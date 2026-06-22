@@ -159,6 +159,33 @@ def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
 	return lf
 
 
+@overload
+def get_grid_phase_count(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame: ...
+@overload
+def get_grid_phase_count(lf: pl.DataFrame, cfg: dict[str, Any]) -> pl.DataFrame: ...
+def get_grid_phase_count(
+	lf: pl.LazyFrame | pl.DataFrame, cfg: dict[str, Any]
+) -> pl.LazyFrame | pl.DataFrame:
+	"""Attach the grid-authoritative ``phase_count`` by lookup against the time grid.
+
+	Unlike :func:`get_phase_count`, which run-length-encodes whatever rows it is
+	handed -- and so depends on those rows being in chronological order and on every
+	phase occurrence being represented -- this joins against the dense experiment
+	skeleton from :func:`build_time_grid` on ``(day, phase, hour)``. The result
+	therefore equals ``build_time_grid``'s numbering by construction, which is what
+	tables later reindexed onto that grid (via :func:`reindex_onto_grid`) require.
+
+	``lf`` must already carry ``day``, ``phase`` and ``hour`` (e.g. derived via
+	:func:`get_day`, :func:`get_phase` and :func:`get_hour`); ``(day, phase, hour)``
+	functionally determines ``phase_count`` in the grid, so the join is one-to-one.
+	"""
+	grid_counts = build_time_grid(cfg).select("day", "phase", "hour", "phase_count").unique()
+	on = ["day", "phase", "hour"]
+	if isinstance(lf, pl.DataFrame):
+		return lf.join(grid_counts.collect(), on=on, how="left")
+	return lf.join(grid_counts, on=on, how="left")
+
+
 def get_day(dt_col: str = "datetime") -> pl.Expr:
 	"""Auxfun for getting the day."""
 	return (

@@ -100,8 +100,7 @@ def _get_time_alone(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 			pl.col("id_active").alias("id_code"),
 		)
 		.with_columns(auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour())
-		.sort("day", "phase")
-		.pipe(auxfun.get_phase_count)
+		.pipe(auxfun.get_grid_phase_count, cfg)
 		.group_by("id_code", "position", "phase", "day", "phase_count", "hour")
 		.agg(pl.col("duration").sum().dt.total_seconds(fractional=True).alias("time_alone"))
 		.join(id_lookup, on="id_code", how="left")
@@ -445,16 +444,21 @@ def calculate_pairwise_meetings(
 ) -> pl.LazyFrame:
 	"""Count co-occurrences and shared time for every pair of animals per cage and hour.
 
-	Self-joins cage occupancy intervals and, for each unordered pair sharing a
-	cage, measures the temporal overlap of their stays. Overlaps shorter than
-	``minimum_time`` are discarded, then the survivors are summed into shared time
-	and meeting counts and reindexed onto the dense grid. Slow, because it
-	materialises every overlapping interval pair before aggregating.
+	Uses the same sweep-line over occupancy intervals as :func:`_get_time_alone`:
+	each cage stay becomes an enter (+1) and a leave (-1) event, and the per-cage
+	running counts expose, at every instant, who is present. Here the per-animal
+	signed counter is generalised from a sum of codes to a *bitmask* (``2**code``
+	per animal): because an animal occupies a cage 0 or 1 times at any instant, the
+	signed cumulative sum is an exact presence bitmask that decodes to the full set
+	of co-present animals for any number of simultaneous occupants. Pairs are formed
+	from each span's occupant set, temporally contiguous spans of the same pair are
+	stitched into one continuous meeting, meetings shorter than ``minimum_time`` are
+	dropped, and the rest are summed onto the dense grid.
 
 	Args:
 	    cfg: resolved project config.
-	    minimum_time: minimum overlap, in seconds, for a co-occurrence to count as
-	        a meeting; shorter overlaps are dropped. Defaults to 2.
+	    minimum_time: minimum continuous co-presence, in seconds, for a meeting to
+	        count; shorter meetings are dropped. Defaults to 2.
 
 	Returns:
 	    LazyFrame with ``time_together`` (seconds) and ``pairwise_encounters`` per
@@ -467,41 +471,110 @@ def calculate_pairwise_meetings(
 	lf = (
 		padded_df.filter(pl.col("position").is_in(cages))
 		.with_columns(
-			(pl.col("datetime") - pl.duration(seconds=pl.col("time_spent"))).alias("event_start")
+			pl.col("datetime").alias("end"),
+			(pl.col("datetime") - pl.duration(seconds=pl.col("time_spent"))).alias("start"),
+			pl.col("animal_id").to_physical().cast(pl.Int64).alias("code"),
 		)
-		.rename({"datetime": "event_end"})
+		.with_columns(pl.lit(2, dtype=pl.Int64).pow(pl.col("code")).cast(pl.Int64).alias("bit"))
 	)
 
-	joined = (
-		lf.join(
-			lf,
-			on=["phase", "day", "phase_count", "position"],
-			how="inner",
-			suffix="_2",
+	# One row per animal: physical enum code -> its single-bit mask value.
+	id_lookup = lf.select("animal_id", "bit").unique()
+
+	enters = lf.select(
+		pl.col("start").alias("time"),
+		"position",
+		pl.lit(1, dtype=pl.Int32).alias("delta"),
+		pl.col("bit").alias("bit_delta"),
+	)
+	leaves = lf.select(
+		pl.col("end").alias("time"),
+		"position",
+		pl.lit(-1, dtype=pl.Int32).alias("delta"),
+		pl.col("bit").neg().alias("bit_delta"),
+	)
+
+	# Sweep per cage: n_active counts occupants, mask is the OR-set of their bits
+	# (an animal is present 0/1 times in a cage at any instant, so the signed
+	# cumulative sum of single-bit values is a true presence bitmask).
+	events = (
+		pl.concat([enters, leaves])
+		.sort("position", "time")
+		.with_columns(
+			pl.col("delta").cum_sum().over("position").alias("n_active"),
+			pl.col("bit_delta").cum_sum().over("position").alias("mask"),
+			pl.col("time").shift(-1).over("position").alias("time_next"),
 		)
-		.filter(
-			pl.col("animal_id") < pl.col("animal_id_2"),
+	)
+
+	spans = events.filter(
+		pl.col("time_next").is_not_null(),
+		pl.col("n_active") >= 2,
+		pl.col("time_next") > pl.col("time"),
+	).select(
+		"position",
+		pl.col("time"),
+		pl.col("time_next").alias("end"),
+		pl.col("mask"),
+	)
+
+	# Decode each span's bitmask into the set of present animals (cross with the
+	# tiny per-animal bit table, keep animals whose bit is set), then pair them up.
+	active = spans.join(id_lookup, how="cross").filter((pl.col("mask") & pl.col("bit")) != 0)
+
+	pairs = (
+		active.join(active, on=["position", "time", "end"], suffix="_2")
+		.filter(pl.col("animal_id") < pl.col("animal_id_2"))
+		.select(
+			"position",
+			"time",
+			"end",
+			"animal_id",
+			"animal_id_2",
+			(pl.col("end") - pl.col("time")).dt.total_seconds(fractional=True).alias("duration"),
+		)
+	)
+
+	# Stitch temporally-contiguous spans of the same pair into one meeting: a new
+	# meeting starts whenever there is a time gap (this span's start != previous
+	# span's end) within the same pair and cage.
+	pairs = (
+		pairs.sort("animal_id", "animal_id_2", "position", "time")
+		.with_columns(
+			(pl.col("time") != pl.col("end").shift(1).over("animal_id", "animal_id_2", "position"))
+			.fill_null(True)
+			.alias("is_new")
 		)
 		.with_columns(
-			(
-				pl.min_horizontal(["event_end", "event_end_2"])
-				- pl.max_horizontal(["event_start", "event_start_2"])
-			)
-			.dt.total_seconds(fractional=True)
-			.round(3)
-			.alias("overlap_duration")
+			pl.col("is_new")
+			.cum_sum()
+			.over("animal_id", "animal_id_2", "position")
+			.alias("meeting_id")
 		)
-		.filter(pl.col("overlap_duration") > minimum_time)
 	)
 
+	# Drop meetings whose total continuous co-presence is below minimum_time
+	# (the sweep analogue of the self-join's per-overlap minimum_time filter).
+	meeting_dur = pairs.group_by("animal_id", "animal_id_2", "position", "meeting_id").agg(
+		pl.sum("duration").alias("meeting_duration")
+	)
+	pairs = pairs.join(
+		meeting_dur, on=["animal_id", "animal_id_2", "position", "meeting_id"]
+	).filter(pl.col("meeting_duration") > minimum_time)
+
+	# Bin by each span's start time; phase_count is looked up from build_time_grid so
+	# it aligns with the reindex grid by construction. Each meeting counted once via is_new.
 	pairwise_meetings = (
-		joined.group_by(
-			"phase", "day", "phase_count", "hour", "position", "animal_id", "animal_id_2"
-		).agg(
-			pl.sum("overlap_duration").alias("time_together"),
-			pl.len().alias("pairwise_encounters"),
+		pairs.with_columns(
+			auxfun.get_phase(cfg, "time"), auxfun.get_day("time"), auxfun.get_hour("time")
 		)
-	).sort(["phase", "day", "phase_count", "hour", "position", "animal_id", "animal_id_2"])
+		.pipe(auxfun.get_grid_phase_count, cfg)
+		.group_by("phase", "day", "phase_count", "hour", "position", "animal_id", "animal_id_2")
+		.agg(
+			pl.sum("duration").alias("time_together"),
+			pl.col("is_new").sum().alias("pairwise_encounters"),
+		)
+	)
 
 	return auxfun.reindex_onto_grid(
 		pairwise_meetings,

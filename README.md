@@ -89,20 +89,23 @@ extension to run the example notebooks provided in the repository.
 
 ## How it works
 
-A DeepEcoHab analysis follows three stages. The first two run from Python (the
-[example notebooks](#example-data) walk through them end to end); the third is
-the interactive dashboard.
+A DeepEcoHab analysis follows three stages — and you can run all of them from
+the dashboard, no Python required. Launch the app (run `deepecohab` or
+double-click the desktop shortcut) and:
 
-1. **Create a project** from your raw EcoHab `.txt` files with
-   `deepecohab.create_ecohab_project(...)`. This builds a project folder with a
-   `config.toml` describing your layout, light/dark phases, timezone and animal
-   IDs.
-2. **Run the analysis pipeline** with `deepecohab.df_registry.run_pipeline(config_path)`.
-   Results (chasings, activity, sociability, social hierarchy, …) are written to
-   the project as fast parquet files.
-3. **Explore the results** by launching the dashboard — run `deepecohab` (or
-   double-click the desktop shortcut), select your project in the app, and
-   browse and compare plots interactively.
+1. **Create a project** from your raw EcoHab `.txt` files on the **Home** page.
+   Point it at your data, describe your layout, light/dark phases, timezone and
+   animal IDs, and the app builds a project folder with a `config.toml`. You can
+   also load an existing project's config to continue working on it.
+2. **Run the analysis pipeline** on the **Analysis** page. Results (chasings,
+   activity, sociability, social hierarchy, …) are computed and written to the
+   project as fast parquet files, with a live progress bar.
+3. **Explore the results** in the dashboard — browse and compare plots
+   interactively across days, phases and animals.
+
+Prefer to script it? Every stage is also available from Python — see the
+[example notebooks](#example-data) for the `deepecohab.create_ecohab_project(...)`
+and `deepecohab.df_registry.run_pipeline(config_path)` API.
 
 ## Example data
 
