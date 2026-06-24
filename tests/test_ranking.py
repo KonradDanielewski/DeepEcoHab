@@ -209,3 +209,29 @@ def test_round_trip_continues_from_prev(monkeypatch):
 	assert final2["A"] == final1["A"]
 	assert final2["B"] == final1["B"]
 	assert final2["A"] > final2["B"]
+
+
+# --- empty match_df (no chasing events at all) ------------------------------
+
+
+def test_empty_match_df_emits_empty_schema(monkeypatch):
+	"""With no chasing events to replay, ranking returns an empty, well-typed frame.
+
+	Exercises the dedicated ``else`` branch in calculate_ranking that builds an
+	empty result from an explicit schema; the derived phase/day/hour columns are
+	still appended, so the schema must match the populated case.
+	"""
+	empty = make_match_df([])
+	result = run_ranking(monkeypatch, empty, ["A", "B", "C"])
+
+	assert result.height == 0
+	assert set(result.columns) == {
+		"animal_id",
+		"mu",
+		"sigma",
+		"ordinal",
+		"datetime",
+		"phase",
+		"day",
+		"hour",
+	}

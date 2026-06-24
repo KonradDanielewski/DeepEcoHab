@@ -11,10 +11,13 @@ local wall clock still sweeps those transitions.
 
 import datetime as dt
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import polars as pl
 import toml
 from hypothesis import strategies as st
+
+from deepecohab.utils import auxfun
 
 # --- domains -----------------------------------------------------------------
 # America/New_York covers EDT (and EST); the zones have DST transitions on
@@ -246,3 +249,172 @@ def expected_cages(antenna_map: dict[str, str]) -> list[str]:
 def expected_positions(antenna_map: dict[str, str], tunnels: dict[str, str]) -> list[str]:
 	"""Reference for add_positions_to_config: undirected positions plus 'undefined'."""
 	return sorted({tunnels.get(v, v) for v in antenna_map.values()} | {"undefined"})
+
+
+# === antenna_analysis fixtures ===============================================
+# Shared config + frame builders for the analysis steps in
+# deepecohab.analysis.antenna_analysis. The steps read their input table via
+# auxfun._get_data, so tests monkeypatch that to return one of these hand-built
+# frames and call ``calculate_*.__wrapped__`` to exercise the pure compute body
+# (bypassing the lifecycle cache/parquet sink), exactly as test_ranking does.
+
+# A small linear EcoHAB layout: four cages in a row joined by three tunnels.
+ANALYSIS_CAGES = ["cage_1", "cage_2", "cage_3", "cage_4"]
+# Directional tunnel positions as they appear in main_df (before
+# remove_tunnel_directionality collapses the two ends).
+ANALYSIS_DIRECTIONAL = ["c1_c2", "c2_c1", "c2_c3", "c3_c2", "c3_c4", "c4_c3"]
+# Directional tunnel -> undirected tunnel (cfg["tunnels"]).
+ANALYSIS_TUNNELS_MAP = {
+	"c1_c2": "tunnel_1",
+	"c2_c1": "tunnel_1",
+	"c2_c3": "tunnel_2",
+	"c3_c2": "tunnel_2",
+	"c3_c4": "tunnel_3",
+	"c4_c3": "tunnel_3",
+}
+ANALYSIS_UNDIRECTED_TUNNELS = ["tunnel_1", "tunnel_2", "tunnel_3"]
+ANALYSIS_POSITIONS = sorted([*ANALYSIS_CAGES, *ANALYSIS_UNDIRECTED_TUNNELS, "undefined"])
+# antenna_combinations: get_positions(cfg, "tunnels_directional") reads the
+# non-cage values from here, so the directional tunnels must appear.
+ANALYSIS_ANTENNA_COMBINATIONS = {
+	"1_1": "cage_1",
+	"2_2": "cage_2",
+	"3_3": "cage_3",
+	"4_4": "cage_4",
+	"1_2": "c1_c2",
+	"2_1": "c2_c1",
+	"2_3": "c2_c3",
+	"3_2": "c3_c2",
+	"3_4": "c3_c4",
+	"4_3": "c4_c3",
+}
+
+DEFAULT_PHASE = {"light_phase": "07:00:00", "dark_phase": "20:00:00"}
+
+
+def analysis_cfg(
+	animal_ids: list[str] | None = None,
+	tz: str = "UTC",
+	start: str = "2023-05-24 00:00:00",
+	finish: str = "2023-05-26 23:00:00",
+	phase: dict[str, str] | None = None,
+) -> dict:
+	"""A fully-populated cfg for the antenna_analysis steps.
+
+	Carries everything the grid/reindex helpers need (experiment_timeline,
+	timezone, phase, animal_ids) plus the linear-layout cages/tunnels/positions.
+	"""
+	return {
+		"animal_ids": animal_ids or ["A", "B", "C"],
+		"timezone": tz,
+		"phase": phase or DEFAULT_PHASE,
+		"cages": ANALYSIS_CAGES,
+		"tunnels": ANALYSIS_TUNNELS_MAP,
+		"positions": ANALYSIS_POSITIONS,
+		"antenna_combinations": ANALYSIS_ANTENNA_COMBINATIONS,
+		"experiment_timeline": {"start_date": start, "finish_date": finish},
+	}
+
+
+def at(*args: int, tz: str = "UTC") -> dt.datetime:
+	"""Construct a zone-aware datetime in the given timezone."""
+	return dt.datetime(*args, tzinfo=ZoneInfo(tz))
+
+
+def main_df_frame(rows: list[dict], cfg: dict) -> pl.LazyFrame:
+	"""Build a main_df-shaped LazyFrame from plain row dicts.
+
+	Each row needs ``animal_id``, ``position`` (directional), ``datetime``
+	(tz-aware) and ``time_spent``; ``antenna`` defaults to 0. phase/day/hour/
+	phase_count are derived exactly as the real pipeline derives them, so the
+	frame matches what the analysis steps consume.
+	"""
+	df = pl.DataFrame(
+		{
+			"animal_id": pl.Series(
+				[r["animal_id"] for r in rows], dtype=pl.Enum(cfg["animal_ids"])
+			),
+			"antenna": pl.Series([r.get("antenna", 0) for r in rows], dtype=pl.UInt8),
+			"position": pl.Series([r["position"] for r in rows], dtype=pl.Categorical),
+			"datetime": pl.Series("datetime", [r["datetime"] for r in rows]),
+			"time_spent": pl.Series([float(r["time_spent"]) for r in rows], dtype=pl.Float64),
+		}
+	)
+	return (
+		df.lazy()
+		.sort("datetime")
+		.with_columns(auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour())
+		.pipe(auxfun.get_phase_count)
+	)
+
+
+def match_df_frame(rows: list[dict], cfg: dict) -> pl.LazyFrame:
+	"""Build a match_df-shaped LazyFrame (the calculate_matches output) from rows.
+
+	Each row needs ``winner``, ``loser``, ``position`` (directional tunnel) and
+	``datetime`` (tz-aware). phase/day/hour are derived from the datetime and
+	``phase_count`` is taken from the dense time grid (via get_grid_phase_count) so
+	it aligns with the reindex grid used downstream. With no rows, an empty frame
+	carrying the full typed schema is returned.
+	"""
+	enum = pl.Enum(cfg["animal_ids"])
+	phase_enum = pl.Enum(list(cfg["phase"]))
+	if not rows:
+		return pl.LazyFrame(
+			schema={
+				"winner": enum,
+				"loser": enum,
+				"position": pl.Categorical,
+				"datetime": pl.Datetime("us", cfg["timezone"]),
+				"chasing_length": pl.Float64,
+				"phase": phase_enum,
+				"day": pl.UInt16,
+				"hour": pl.UInt8,
+				"phase_count": pl.UInt16,
+			}
+		)
+	df = pl.DataFrame(
+		{
+			"winner": pl.Series([r["winner"] for r in rows], dtype=enum),
+			"loser": pl.Series([r["loser"] for r in rows], dtype=enum),
+			"position": pl.Series([r["position"] for r in rows], dtype=pl.Categorical),
+			"datetime": pl.Series("datetime", [r["datetime"] for r in rows]),
+			"chasing_length": pl.Series(
+				[float(r.get("chasing_length", 0.5)) for r in rows], dtype=pl.Float64
+			),
+		}
+	)
+	return (
+		df.lazy()
+		.with_columns(auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour())
+		.pipe(auxfun.get_grid_phase_count, cfg)
+	)
+
+
+def padded_df_frame(rows: list[dict], cfg: dict) -> pl.LazyFrame:
+	"""Build a padded_df-shaped LazyFrame from plain row dicts.
+
+	Each row needs ``animal_id``, ``position`` (undirected or cage), ``datetime``
+	(the interval END, tz-aware) and ``time_spent``; ``interpolated`` defaults to
+	False. phase/day/hour/phase_count are derived from the interval end, matching
+	the columns the activity/pairwise steps group on.
+	"""
+	df = pl.DataFrame(
+		{
+			"animal_id": pl.Series(
+				[r["animal_id"] for r in rows], dtype=pl.Enum(cfg["animal_ids"])
+			),
+			"position": pl.Series([r["position"] for r in rows], dtype=pl.Categorical),
+			"datetime": pl.Series("datetime", [r["datetime"] for r in rows]),
+			"time_spent": pl.Series([float(r["time_spent"]) for r in rows], dtype=pl.Float64),
+			"interpolated": pl.Series(
+				[bool(r.get("interpolated", False)) for r in rows], dtype=pl.Boolean
+			),
+		}
+	)
+	return (
+		df.lazy()
+		.sort("datetime")
+		.with_columns(auxfun.get_phase(cfg), auxfun.get_day(), auxfun.get_hour())
+		.pipe(auxfun.get_phase_count)
+	)

@@ -438,7 +438,7 @@ def _get_minute_padding(lf: pl.LazyFrame, cfg: dict[str, Any]):
 			pl.concat_list("__start", "__marks").alias("__pstart"),
 			pl.concat_list("__marks", "datetime").alias("__pend"),
 		)
-		.explode("__pstart", "__pend")
+		.explode("__pstart", "__pend", empty_as_null=True)
 		.with_columns(
 			(pl.col("datetime") - pl.col("__start")).dt.total_microseconds().alias("__total_us"),
 			(pl.col("__pend") - pl.col("__pstart")).dt.total_microseconds().alias("__piece_us"),
