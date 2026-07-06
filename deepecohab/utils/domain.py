@@ -1,8 +1,18 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+import polars as pl
 import datetime as dt
 
-
+@dataclass(frozen=True, slots=True)
+class Experiment:
+    name: str
+    start: dt.datetime
+    end: dt.datetime
+    light_start: str
+    dark_start: str
+    recording_timezone: str
+    animals: list[Animal]
+    layout: Arena
 
 @dataclass(frozen=True, slots=True)
 class Animal:
@@ -74,7 +84,6 @@ class Arena:
             assert a.adjacent_cage_id in self.cages, f"antenna {a.id} bad cage"
 
     def to_dimension_frames(self) -> dict:
-        import polars as pl
         cages = pl.DataFrame([{"cage_id": c.id, "cage_no": c.cage_no,
                                "cell_id": c.cell_id, "cage_type": c.cage_type}
                               for c in self.cages.values()]).sort("cage_no")
