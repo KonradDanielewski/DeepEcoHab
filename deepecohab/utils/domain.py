@@ -123,16 +123,24 @@ class Arena:
 
 
 def roster_from_v2_json(cfg: dict) -> dict[str, Animal]:
-    import re
     out = {}
-    for tag, r in cfg["animals"]["rows"].items():
+    animals = cfg["animals"]
+    for tag, r in animals["rows"].items():
         notes = r.get("notes", "") or ""
-        m = re.search(r"[Cc]ohort\s*(\d+)", notes)
+        match animals["age_input_mode"]:
+            case "age":
+                age = {"age" : r.get("age")["value"], "unit" : r.get("age")["unit"]}
+                dob = None
+            case "dob":
+                age = None
+                dob = r.get("dob")
+        
         out[tag] = Animal(
             tag_no=tag, sex=r.get("sex"), genotype=r.get("genotype"),
-            treatment=r.get("treatment"),
+            treatment=r.get("treatment"), age = age, dob = dob,
             notes=notes,
         )
+
     return out
 
 
