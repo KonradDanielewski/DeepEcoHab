@@ -1,7 +1,8 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from domain import Animal, Arena, Cage, Antenna, Crossing
+import datetime as dt
+from domain import Experiment, Animal, Arena, Cage, Antenna, Crossing, Tunnel
 
 
 class JsonConfigLoader:
@@ -36,7 +37,7 @@ class JsonConfigLoader:
             a, b = (int(x) for x in key.split("_"))
             if interp.startswith("cage_"):
                 pairs[(a, b)] = cages[interp]
-            else:                                   # e.g. "c2_c1"
+            else:                                   
                 ft, tt = interp.split("_")
                 pairs[(a, b)] = Crossing(tunnel_id=tmap[interp],
                                          from_cage_id=f"cage_{ft[1:]}",
@@ -65,3 +66,17 @@ class JsonConfigLoader:
                 notes=notes,
             )
         return out
+    
+    def load_experiment(self, interpolate: bool = False) -> Experiment:
+        meta = self._cfg["experiment"]          
+        env = self._cfg["environment"]
+        return Experiment(
+            name=meta["name"],
+            start=dt.datetime.fromisoformat(meta["start"]),
+            end=dt.datetime.fromisoformat(meta["end"]),
+            recording_timezone=meta["recording_timezone"],
+            light_start=env["light_start_hhmm"],
+            dark_start=env["light_start_hhmm"],
+            animals=self.load_animals(),
+            layout=self.load_arena(interpolate),
+        )

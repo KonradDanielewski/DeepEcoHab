@@ -11,7 +11,7 @@ class Experiment:
     light_start: str
     dark_start: str
     recording_timezone: str
-    animals: list[Animal]
+    animals: dict[str, Animal]
     layout: Arena
 
 @dataclass(frozen=True, slots=True)
