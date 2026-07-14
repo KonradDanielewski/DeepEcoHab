@@ -33,6 +33,7 @@ class PlotConfig:
 	cages: list[str] | None = None
 	positions: list[str] | None = None
 	position_colors: list[str] | None = None
+	tunnel_positions: list[str] | None = None
 	light_dark_onset: dict[str, float] | None = None
 
 
@@ -476,6 +477,85 @@ def prep_activity_line(
 	).collect(engine="in-memory")
 
 	return df
+
+
+def prep_animal_speed(
+	store: dict[str, pl.DataFrame],
+	days_range: list[int],
+	phase_type: list[str],
+	tunnel_positions: list[str],
+	tunnel_length_cm: float = 20,
+	max_dwell: float = 10,
+) -> pl.DataFrame:
+	"""Calculate tunnel-crossing speeds from the selected main data."""
+	return (
+		store["main_df"]
+		.lazy()
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(days_range[0], days_range[1]),
+			pl.col("position").is_in(tunnel_positions),
+			pl.col("time_spent").is_between(0, max_dwell, closed="right"),
+		)
+		.with_columns(
+			(tunnel_length_cm / pl.col("time_spent")).alias("speed_cm_s"),
+			pl.len().over("animal_id").alias("crossings"),
+		)
+		.sort("animal_id", "speed_cm_s")
+		.collect(engine="in-memory")
+	)
+
+
+def prep_animal_speed_daily(
+	store: dict[str, pl.DataFrame],
+	days_range: list[int],
+	phase_type: list[str],
+	tunnel_positions: list[str],
+	tunnel_length_cm: float = 20,
+	max_dwell: float = 10,
+) -> pl.DataFrame:
+	"""Calculate each animal's mean valid crossing speed per day."""
+	return (
+		prep_animal_speed(
+			store,
+			days_range,
+			phase_type,
+			tunnel_positions,
+			tunnel_length_cm,
+			max_dwell,
+		)
+		.group_by("day", "animal_id")
+		.agg(pl.mean("speed_cm_s").round(2).alias("mean_speed_cm_s"))
+		.sort("day", "animal_id")
+	)
+
+
+def prep_slow_crossings(
+	store: dict[str, pl.DataFrame],
+	days_range: list[int],
+	phase_type: list[str],
+	tunnel_positions: list[str],
+	max_dwell: float = 10,
+) -> pl.DataFrame:
+	"""Summarize crossings longer than the movement-speed cutoff."""
+	return (
+		store["main_df"]
+		.lazy()
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(days_range[0], days_range[1]),
+			pl.col("position").is_in(tunnel_positions),
+			pl.col("time_spent") > 0,
+		)
+		.group_by("animal_id")
+		.agg(
+			pl.len().alias("crossings"),
+			(pl.col("time_spent") > max_dwell).sum().alias("slow_crossings"),
+			((pl.col("time_spent") > max_dwell).mean() * 100).round(2).alias("slow_percentage"),
+		)
+		.sort("animal_id")
+		.collect(engine="in-memory")
+	)
 
 
 def prep_time_per_cage(

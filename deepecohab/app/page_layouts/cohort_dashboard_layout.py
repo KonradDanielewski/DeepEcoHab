@@ -185,6 +185,43 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 							dbc.Col(
 								dbc.Spinner(
 									auxfun_dashboard.generate_standard_graph(
+										"animal-speed", css_class="plot-400"
+									),
+									color="primary",
+								),
+								width=6,
+							),
+							dbc.Col(
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"slow-crossings", css_class="plot-400"
+									),
+									color="primary",
+								),
+								width=6,
+							),
+						],
+						className="row-size",
+					),
+					dbc.Row(
+						[
+							dbc.Col(
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"animal-speed-daily", css_class="plot-400"
+									),
+									color="primary",
+								),
+								width=12,
+							),
+						],
+						className="row-size",
+					),
+					dbc.Row(
+						[
+							dbc.Col(
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
 										"time-per-cage-heatmap", css_class="plot-400"
 									),
 									color="primary",
