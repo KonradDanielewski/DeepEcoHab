@@ -136,13 +136,13 @@ def _rename_antennas(lf: pl.LazyFrame, rename_dicts: dict) -> pl.LazyFrame:
 	return lf
 
 
-def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str) -> pl.LazyFrame:
+def _prepare_columns(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Cast raw columns to their final types and build the ``datetime`` column.
 
 	Animal ids become an enum, antennas a small int and ``time_under`` a duration.
-	The separate date/time strings are combined into a single timezone-aware
-	``datetime`` (offset by ``time_under`` so it marks the end of the reading), and
-	duplicate (datetime, animal) rows are dropped.
+	The separate date/time strings are combined into a single naive ``datetime``
+	(offset by ``time_under`` so it marks the end of the reading), and duplicate
+	(datetime, animal) rows are dropped.
 	"""
 	animal_ids: list[str] = cfg["animal_ids"]
 	return (
@@ -156,8 +156,7 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str) -> pl.LazyFrame
 				pl.concat_str([pl.col("date"), pl.col("time")], separator=" ").str.to_datetime(
 					"%Y.%m.%d %H:%M:%S%.f",
 					time_unit="us",
-					time_zone=timezone,
-				)
+				)  # timezone handled in apply_timezone_fix
 				+ pl.col("time_under")
 			).alias("datetime"),
 		)
@@ -291,7 +290,7 @@ def get_ecohab_data_structure(
 
 	cfg = auxfun.read_config(config_path)
 
-	lf = _prepare_columns(cfg, lf, str(timezone))
+	lf = _prepare_columns(cfg, lf)
 
 	try:
 		start_date: str = cfg["experiment_timeline"]["start_date"]

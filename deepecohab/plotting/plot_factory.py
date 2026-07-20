@@ -420,7 +420,7 @@ def time_spent_per_cage(
 			x = f"{label}: %{{x}}"
 			x_title = label
 			z = "Time [h]: %{z}"
-			nbins = None
+			nbins = df[x_col].max() - df[x_col].min() + 1  # ty: ignore[unsupported-operator]
 			legend_title = "<b>Hours</b>"
 
 	fig = px.density_heatmap(
