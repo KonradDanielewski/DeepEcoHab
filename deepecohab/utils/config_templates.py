@@ -31,6 +31,7 @@ class ExperimentConfig(ABC):
 	dark_phase_start: str
 	light_phase_start: str
 	days_range: list[int] | None = None
+	phase_range: list[int] | None = None
 	start_datetime: str | None = None
 	finish_datetime: str | None = None
 	timezone: str | None = None
@@ -66,6 +67,7 @@ class ExperimentConfig(ABC):
 		data["experiment_timeline"] = self.experiment_timeline
 		data["timezone"] = self.timezone
 		data["days_range"] = self.days_range
+		data["phase_range"] = self.phase_range
 		data["antenna_combinations"] = self.antenna_combinations
 		data["tunnels"] = self.tunnels
 

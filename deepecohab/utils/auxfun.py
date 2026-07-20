@@ -143,20 +143,16 @@ def get_phase(cfg: dict[str, Any], dt_col: str = "datetime") -> pl.Expr:
 
 
 def get_phase_count(lf: pl.LazyFrame) -> pl.LazyFrame:
-	"""Number each phase's successive occurrences in a ``phase_count`` column.
+	"""Number successive phase occurrences globally in a ``phase_count`` column.
 
 	Consecutive rows sharing a ``phase`` form one run (via run-length ids); the runs
-	of a given phase are then densely ranked so the first dark phase is 1, the second
-	2, and so on. Requires a ``phase`` column and the frame to be in chronological order.
+	are numbered in chronological order regardless of phase type, so the first phase
+	of the experiment is 1, the next (of either type) is 2, and so on. This gives a
+	single monotonic ordering of phases -- a lower count always came earlier -- rather
+	than a per-type count. Requires a ``phase`` column and the frame to be in
+	chronological order.
 	"""
-	lf = (
-		lf.with_columns(pl.col("phase").rle_id().alias("run_id"))
-		.with_columns(
-			pl.col("run_id").rank("dense").over("phase").cast(pl.UInt16).alias("phase_count")
-		)
-		.drop("run_id")
-	)
-	return lf
+	return lf.with_columns((pl.col("phase").rle_id() + 1).cast(pl.UInt16).alias("phase_count"))
 
 
 @overload
@@ -374,13 +370,20 @@ def add_positions_to_config(config_path: str | Path) -> None:
 
 
 def add_days_to_config(config_path: str | Path, lf: pl.LazyFrame) -> None:
-	"""Auxfun to add days range to config for reading convenience."""
+	"""Auxfun to add day and phase ranges to config for reading convenience.
+
+	Stores both ``days_range`` (min/max calendar day) and ``phase_range`` (min/max
+	global ``phase_count``) so the dashboard slider can switch granularity.
+	"""
 	cfg: dict[str, Any] = read_config(config_path)
 
-	days: pl.Series = lf.collect().get_column("day").unique(maintain_order=True)
+	frame = lf.collect()
+	days: pl.Series = frame.get_column("day").unique(maintain_order=True)
+	phases: pl.Series = frame.get_column("phase_count").unique(maintain_order=True)
 
 	with open(config_path, "w") as config:
 		cfg["days_range"] = [days.min(), days.max()]
+		cfg["phase_range"] = [phases.min(), phases.max()]
 		toml.dump(cfg, config)
 
 
@@ -388,6 +391,38 @@ def remove_tunnel_directionality(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.La
 	"""Auxfun to map directional tunnels in a LazyFrame to undirected ones."""
 	return lf.with_columns(
 		pl.col("position").cast(pl.Utf8).replace(cfg["tunnels"]).cast(pl.Categorical)
+	)
+
+
+def add_occupancy_bounds(lf: pl.LazyFrame) -> pl.LazyFrame:
+	"""Add exact ``[start, end)`` bounds for each occupancy interval.
+
+	``datetime`` is the interval end; ``start`` is reconstructed as
+	``datetime - time_spent``. The subtraction is done in **integer microseconds**
+	(``time_spent`` is scaled to whole microseconds before building the duration),
+	so every boundary is exact to the microsecond and pieces that abut in time
+	share an identical timestamp.
+
+	This exactness matters for the co-occupancy sweep in
+	:func:`calculate_pairwise_meetings`: reconstructing via a fractional-second
+	``pl.duration(seconds=...)`` instead re-rounds each boundary through a float, and
+	the resulting sub-microsecond gaps split otherwise continuous stays into extra
+	spans -- silently inflating ``pairwise_encounters``. It also assumes
+	``time_spent`` is the unrounded gap to the previous read (see
+	``calculate_time_spent``); a rounded ``time_spent`` shifts ``start`` off the true
+	entry time and reintroduces the same fragmentation.
+
+	Args:
+		lf: Frame with ``datetime`` (interval end) and ``time_spent`` (seconds).
+
+	Returns:
+		The frame with added ``start`` and ``end`` datetime columns.
+	"""
+	return lf.with_columns(
+		pl.col("datetime").alias("end"),
+		pl.col("datetime")
+		.sub(pl.duration(microseconds=(pl.col("time_spent") * 1_000_000).round().cast(pl.Int64)))
+		.alias("start"),
 	)
 
 
@@ -404,7 +439,10 @@ def _get_minute_padding(lf: pl.LazyFrame, cfg: dict[str, Any]):
 	redistributed across pieces in proportion to their duration (the parent total
 	is preserved up to rounding). Pieces are timestamped by their start: ``phase``,
 	``day`` and ``hour`` are derived from the piece start, while ``datetime`` is set
-	to the piece end. Rows that were actually split are flagged ``interpolated``.
+	to the piece end. For a split row only the first piece keeps
+	``interpolated=False`` (standing in for the original visit); every later piece is
+	flagged ``interpolated=True``, so filtering ``interpolated==False`` recovers one
+	row per original visit.
 
 	Args:
 		lf: Frame with at least ``datetime``, ``time_spent`` (seconds) and
@@ -459,7 +497,9 @@ def _get_minute_padding(lf: pl.LazyFrame, cfg: dict[str, Any]):
 			)
 			.otherwise(pl.col("time_under"))
 			.alias("time_under"),
-			(pl.len().over("row_id") > 1).alias("interpolated"),
+			# First piece of each original row stands in for the visit (interpolated=False);
+			# only the extra pieces produced by a split are flagged.
+			(pl.int_range(pl.len()).over("row_id") > 0).alias("interpolated"),
 		)
 		.with_columns(
 			get_phase(cfg, "__pstart"),
@@ -483,8 +523,10 @@ def padded_df(
 
 	Each row is the half-open interval [datetime - time_spent, datetime).
 	Intervals crossing one or more minute marks are cut into per-minute pieces.
-	Pieces originating from a cut are flagged interpolated=True; untouched
-	rows are interpolated=False.
+	Within a cut row the first piece stays interpolated=False (representing the
+	original visit) and the extra pieces are interpolated=True; untouched rows are
+	interpolated=False. Filtering interpolated==False therefore yields the same
+	number of rows per animal as the pre-padding table.
 	"""
 	cfg: dict[str, Any] = read_config(cfg)
 	key = "padded_df"

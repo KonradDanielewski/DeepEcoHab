@@ -15,13 +15,14 @@ def cage_preference(
 	store: dict,
 	phase_type: list[str],
 	days_range: list[int],
+	granularity: str,
 	cages: list[str],
 	position_colors: list[str],
 ) -> go.Figure:
 	"""Generates a cage preference box plot."""
-	df = auxfun_plots.prep_cage_preference(store, phase_type, days_range)
+	df = auxfun_plots.prep_cage_preference(store, phase_type, days_range, granularity)
 
-	return plot_factory.plot_cage_preference(df, cages, position_colors)
+	return plot_factory.plot_cage_preference(df, cages, position_colors, granularity)
 
 
 @plot_registry.register("cage-preference-evolution")
@@ -29,19 +30,23 @@ def cage_preference_evolution(
 	store: dict,
 	animals: list[str],
 	days_range: list[int],
+	granularity: str,
 	agg_switch: Literal["sum", "mean"],
 	cages: list[str],
 ) -> go.Figure:
 	"""Generates a cage preference box plot."""
-	img = auxfun_plots.prep_cage_preference_evolution(store, animals, days_range, agg_switch, cages)
+	img = auxfun_plots.prep_cage_preference_evolution(
+		store, animals, days_range, agg_switch, cages, granularity
+	)
 
-	return plot_factory.time_spent_per_cage(img, type="daily")
+	return plot_factory.time_spent_per_cage(img, type="daily", granularity=granularity)
 
 
 @plot_registry.register("metrics-polar-line")
 def polar_metrics(
 	store: dict,
 	days_range: list[int],
+	granularity: str,
 	phase_type: list[str],
 	animal_colors: list[str],
 ) -> go.Figure:
@@ -50,7 +55,7 @@ def polar_metrics(
 	Visualizes z-scored values for chasing behavior, activity levels, and social
 	proximity (time alone vs. together) for each animal on a unified circular scale.
 	"""
-	df = auxfun_plots.prep_polar_df(store, days_range, phase_type)
+	df = auxfun_plots.prep_polar_df(store, days_range, phase_type, granularity)
 
 	return plot_factory.plot_metrics_polar(df, animal_colors)
 
@@ -59,6 +64,7 @@ def polar_metrics(
 def ranking_over_time(
 	store: dict,
 	days_range: list[int],
+	granularity: str,
 	animals: list[str],
 	animal_colors: list[str],
 	ranking_switch: Literal["intime", "stability"],
@@ -66,18 +72,19 @@ def ranking_over_time(
 	"""Generates ranking plots either over time or as day-to-day stability."""
 	match ranking_switch:
 		case "intime":
-			df = auxfun_plots.prep_ranking_over_time(store, days_range)
+			df = auxfun_plots.prep_ranking_over_time(store, days_range, granularity)
 			return plot_factory.plot_ranking_line(df, animals, animal_colors)
 
 		case "stability":
-			df = auxfun_plots.prep_ranking_day_stability(store, days_range)
-			return plot_factory.plot_ranking_stability(df, animals, animal_colors)
+			df = auxfun_plots.prep_ranking_day_stability(store, days_range, granularity)
+			return plot_factory.plot_ranking_stability(df, animals, animal_colors, granularity)
 
 
 @plot_registry.register("ranking-distribution-line")
 def ranking_distribution(
 	store: dict,
 	days_range: list[int],
+	granularity: str,
 	animals: list[str],
 	animal_colors: list[str],
 ) -> go.Figure:
@@ -86,7 +93,7 @@ def ranking_distribution(
 	Fits and displays the probability density functions (PDF) for each animal's
 	ranking based on Mu and Sigma values for the final day in the selected range.
 	"""
-	df = auxfun_plots.prep_ranking_distribution(store, days_range)
+	df = auxfun_plots.prep_ranking_distribution(store, days_range, granularity)
 
 	return plot_factory.plot_ranking_distribution(df, animals, animal_colors)
 
@@ -96,6 +103,7 @@ def network_dominance(
 	store: dict,
 	animals: list[str],
 	days_range: list[int],
+	granularity: str,
 	animal_colors: list[str],
 ) -> go.Figure:
 	"""Generates a social dominance network graph of animal interactions.
@@ -103,7 +111,9 @@ def network_dominance(
 	Visualizes hierarchy and aggression where node size represents ranking
 	and edges represent the sum of chasing events in a directional fashion.
 	"""
-	connections, nodes = auxfun_plots.prep_network_dominance(store, animals, days_range)
+	connections, nodes = auxfun_plots.prep_network_dominance(
+		store, animals, days_range, granularity
+	)
 
 	return plot_factory.plot_network_graph(connections, nodes, animals, animal_colors, "chasings")
 
@@ -113,6 +123,7 @@ def tube_test_heatmap(
 	store: dict,
 	animals: list[str],
 	days_range: list[int],
+	granularity: str,
 	phase_type: list[str],
 	agg_switch: Literal["sum", "mean"],
 ) -> go.Figure:
@@ -122,7 +133,9 @@ def tube_test_heatmap(
 	individual animals and cells show the sum or mean of chasing events. Columns
 	represent Chasers and rows represent Chased.
 	"""
-	img = auxfun_plots.prep_tube_test_heatmap(store, animals, days_range, phase_type, agg_switch)
+	img = auxfun_plots.prep_tube_test_heatmap(
+		store, animals, days_range, phase_type, agg_switch, granularity
+	)
 
 	return plot_factory.plot_heatmap(img, animals, input_type="tube_test")
 
@@ -132,6 +145,7 @@ def chasings_heatmap(
 	store: dict,
 	animals: list[str],
 	days_range: list[int],
+	granularity: str,
 	phase_type: list[str],
 	agg_switch: Literal["sum", "mean"],
 ) -> go.Figure:
@@ -141,7 +155,9 @@ def chasings_heatmap(
 	individual animals and cells show the sum or mean of chasing events. Columns
 	represent Chasers and rows represent Chased.
 	"""
-	img = auxfun_plots.prep_chasings_heatmap(store, animals, days_range, phase_type, agg_switch)
+	img = auxfun_plots.prep_chasings_heatmap(
+		store, animals, days_range, phase_type, agg_switch, granularity
+	)
 
 	return plot_factory.plot_heatmap(img, animals, input_type="chasings")
 
@@ -151,6 +167,7 @@ def chasings_line(
 	store: dict,
 	animals: list[str],
 	days_range: list[int],
+	granularity: str,
 	animal_colors: list[str],
 	agg_switch: Literal["sum", "mean"],
 	light_dark_onset: dict[str, float],
@@ -160,7 +177,7 @@ def chasings_line(
 	Shows the diurnal rhythm of aggression. For mean includes a shaded area representing
 	the Standard Error of the Mean (SEM) across the selected days.
 	"""
-	df = auxfun_plots.prep_chasings_line(store, animals, days_range)
+	df = auxfun_plots.prep_chasings_line(store, animals, days_range, granularity)
 
 	match agg_switch:
 		case "sum":
@@ -177,6 +194,7 @@ def chasings_line(
 def activity(
 	store: dict,
 	days_range: list[int],
+	granularity: str,
 	phase_type: list[str],
 	positions: list[str],
 	position_switch: Literal["visits", "time"],
@@ -188,9 +206,11 @@ def activity(
 	Quantifies behavior either by the number of visits to specific locations
 	or the total time spent in those locations.
 	"""
-	df = auxfun_plots.prep_activity(store, days_range, phase_type)
+	df = auxfun_plots.prep_activity(store, days_range, phase_type, granularity)
 
-	return plot_factory.plot_activity(df, positions, animal_colors, position_switch, agg_switch)
+	return plot_factory.plot_activity(
+		df, positions, animal_colors, position_switch, agg_switch, granularity
+	)
 
 
 @plot_registry.register("activity-line")
@@ -198,6 +218,7 @@ def activity_line(
 	store: dict,
 	animals: list[str],
 	days_range: list[int],
+	granularity: str,
 	animal_colors: list[str],
 	agg_switch: Literal["sum", "mean"],
 	light_dark_onset: dict[str, float],
@@ -208,7 +229,7 @@ def activity_line(
 	comparison of circadian rhythms between animals. For mean includes a shaded area
 	representing the Standard Error of the Mean (SEM) across the selected days.
 	"""
-	df = auxfun_plots.prep_activity_line(store, animals, days_range)
+	df = auxfun_plots.prep_activity_line(store, animals, days_range, granularity)
 
 	match agg_switch:
 		case "sum":
@@ -226,6 +247,7 @@ def time_per_cage(
 	store: dict,
 	animals: list[str],
 	days_range: list[int],
+	granularity: str,
 	cages: list[str],
 	agg_switch: Literal["sum", "mean"],
 ) -> go.Figure:
@@ -234,7 +256,9 @@ def time_per_cage(
 	Creates a subplot for each cage, visualizing when and for how long specific animals
 	occupy that space throughout the day.
 	"""
-	img = auxfun_plots.prep_time_per_cage(store, animals, days_range, agg_switch, cages)
+	img = auxfun_plots.prep_time_per_cage(
+		store, animals, days_range, agg_switch, cages, granularity
+	)
 
 	return plot_factory.time_spent_per_cage(img, type="hourly")
 
@@ -245,6 +269,7 @@ def pairwise_sociability(
 	animals: list[str],
 	phase_type: list[str],
 	days_range: list[int],
+	granularity: str,
 	cages: list[str],
 	agg_switch: Literal["sum", "mean"],
 	pairwise_switch: Literal["time_together", "pairwise_encounters"],
@@ -255,7 +280,7 @@ def pairwise_sociability(
 	broken down by physical location (cages).
 	"""
 	img = auxfun_plots.prep_pairwise_sociability(
-		store, phase_type, animals, days_range, agg_switch, pairwise_switch, cages
+		store, phase_type, animals, days_range, agg_switch, pairwise_switch, cages, granularity
 	)
 
 	return plot_factory.plot_sociability_heatmap(img, pairwise_switch, animals)
@@ -267,6 +292,7 @@ def within_cohort_sociability(
 	animals: list[str],
 	phase_type: list[str],
 	days_range: list[int],
+	granularity: str,
 	sociability_switch: Literal["proportion_together", "sociability"],
 ) -> go.Figure:
 	"""Generates a normalized heatmap of sociability within the entire cohort.
@@ -275,7 +301,7 @@ def within_cohort_sociability(
 	sociability index between all animal pairs across the specified range.
 	"""
 	img = auxfun_plots.prep_within_cohort_sociability(
-		store, phase_type, animals, days_range, sociability_switch
+		store, phase_type, animals, days_range, sociability_switch, granularity
 	)
 
 	return plot_factory.plot_within_cohort_heatmap(img, animals, sociability_switch)
@@ -286,6 +312,7 @@ def time_alone(
 	store: dict,
 	phase_type: list[str],
 	days_range: list[int],
+	granularity: str,
 	agg_switch: Literal["sum", "mean"],
 	animal_colors: list[str],
 	cages: list[str],
@@ -295,9 +322,9 @@ def time_alone(
 	Shows the duration each animal spent without any other animals present,
 	segmented by the specific cages where this behavior occurred.
 	"""
-	df = auxfun_plots.prep_time_alone(store, phase_type, days_range)
+	df = auxfun_plots.prep_time_alone(store, phase_type, days_range, granularity)
 
-	return plot_factory.plot_time_alone(df, cages, animal_colors, agg_switch)
+	return plot_factory.plot_time_alone(df, cages, animal_colors, agg_switch, granularity)
 
 
 @plot_registry.register("network-sociability")
@@ -306,13 +333,14 @@ def network_sociability(
 	animals: list[str],
 	animal_colors: list[str],
 	days_range: list[int],
+	granularity: str,
 ) -> go.Figure:
 	"""Generates a social dominance network graph of animal interactions.
 
 	Visualizes hierarchy and aggression where node size represents ranking
 	and edges represent the sum of chasing events in a directional fashion.
 	"""
-	connections = auxfun_plots.prep_network_sociability(store, animals, days_range)
+	connections = auxfun_plots.prep_network_sociability(store, animals, days_range, granularity)
 
 	return plot_factory.plot_network_graph(
 		connections, None, animals, animal_colors, "proportion_together"
@@ -326,6 +354,7 @@ def social_stability(
 	animal_colors: list[str],
 	phase_type: list[str],
 	days_range: list[int],
+	granularity: str,
 ) -> go.Figure:
 	"""Generates a social stability scatter plot.
 
@@ -333,6 +362,6 @@ def social_stability(
 	based on proportional time spent together and coefficient of variation like metric
 	calculated through median absolute deviation.
 	"""
-	df = auxfun_plots.prep_social_stability(store, phase_type, days_range)
+	df = auxfun_plots.prep_social_stability(store, phase_type, days_range, granularity)
 
 	return plot_factory.plot_social_stability(df, animals, animal_colors)

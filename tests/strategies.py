@@ -121,16 +121,16 @@ def expected_phase(local_time: dt.time, phase_cfg: dict[str, str]) -> str:
 
 
 def expected_phase_count(labels: list[str]) -> list[int]:
-	"""Reference for get_phase_count: the ordinal of each contiguous run within
-	its own phase (1,1,2,2,3... for an alternating L/D sequence).
+	"""Reference for get_phase_count: the global ordinal of each contiguous run,
+	regardless of phase type (1,1,2,3,4... for an alternating L/D sequence).
 	"""
-	counts: dict[str, int] = {}
 	out: list[int] = []
+	count = 0
 	prev: object = None
 	for label in labels:
 		if label != prev:
-			counts[label] = counts.get(label, 0) + 1
-		out.append(counts[label])
+			count += 1
+		out.append(count)
 		prev = label
 	return out
 

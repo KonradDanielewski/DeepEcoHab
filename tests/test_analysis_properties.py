@@ -25,6 +25,7 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from deepecohab.analysis import antenna_analysis
+from deepecohab.utils import auxfun
 
 ANIMALS = ["A", "B", "C"]
 CFG = strat.analysis_cfg(animal_ids=ANIMALS)
@@ -130,6 +131,69 @@ def test_pairwise_time_together_never_exceeds_either_occupancy(plan):
 		a, b, cage, tt = r["animal_id"], r["animal_id_2"], r["position"], r["time_together"]
 		bound = min(occ.get((a, cage), 0.0), occ.get((b, cage), 0.0))
 		assert tt <= bound + 1e-6, f"{a},{b}@{cage}: together {tt} > min-occupancy {bound}"
+
+
+# One cage stay that may span several minutes: (cage, gap-before, dwell). Dwells
+# reach past a minute mark and start on a fractional second, so padding really
+# splits them -- the exact scenario that used to inflate encounters.
+_long_stay = st.tuples(
+	st.sampled_from(CAGES),
+	st.floats(min_value=0, max_value=30, allow_nan=False),
+	st.floats(min_value=0.5, max_value=200, allow_nan=False),
+)
+long_cage_plans = st.fixed_dictionaries({a: st.lists(_long_stay, max_size=4) for a in ANIMALS})
+
+
+def split_padded_from_plan(plan: dict[str, list[tuple]]) -> tuple[pl.LazyFrame, dict]:
+	"""Lay each animal's stays end-to-end, then minute-split them via real padding.
+
+	Returns the padded_df and the per-(animal, cage) visit counts taken straight from
+	the plan (one stay == one visit), so a test can bound encounters by visit totals.
+	"""
+	rows = []
+	visits: dict[tuple[str, str], int] = {}
+	for animal, stays in plan.items():
+		t = 0.5  # fractional second so pieces have fractional time_spent
+		for cage, gap, dwell in stays:
+			t += gap
+			end = BASE + dt.timedelta(seconds=t + dwell)
+			rows.append(
+				{"animal_id": animal, "position": cage, "datetime": end, "time_spent": float(dwell)}
+			)
+			visits[(animal, cage)] = visits.get((animal, cage), 0) + 1
+			t += dwell
+	frame = pl.DataFrame(
+		{
+			"animal_id": pl.Series([r["animal_id"] for r in rows], dtype=pl.Enum(ANIMALS)),
+			"position": pl.Series([r["position"] for r in rows], dtype=pl.Categorical),
+			"datetime": pl.Series("datetime", [r["datetime"] for r in rows]),
+			"time_spent": pl.Series([r["time_spent"] for r in rows], dtype=pl.Float64),
+			"time_under": pl.Series([dt.timedelta(0) for _ in rows], dtype=pl.Duration("us")),
+		}
+	)
+	return auxfun._get_minute_padding(frame.lazy(), CFG), visits
+
+
+@settings(max_examples=60, deadline=None)
+@given(plan=long_cage_plans)
+def test_pairwise_encounters_never_exceed_visit_sum(plan):
+	"""A pair can't meet in a cage more often than their combined visits to it.
+
+	The user's invariant. Stays span minute marks so padded_df splits them into many
+	pieces; the sweep must re-stitch those pieces per visit rather than count each
+	piece as a fresh encounter (the bug that pushed encounters above the visit sum).
+	minimum_time=None keeps every meeting, making the bound tightest.
+	"""
+	assume(any(plan.values()))
+	padded, visits = split_padded_from_plan(plan)
+	pairwise = run(
+		antenna_analysis.calculate_pairwise_meetings, lambda c, key: padded, minimum_time=None
+	)
+
+	for r in pairwise.filter(pl.col("pairwise_encounters") > 0).iter_rows(named=True):
+		a, b, cage, enc = r["animal_id"], r["animal_id_2"], r["position"], r["pairwise_encounters"]
+		bound = visits.get((a, cage), 0) + visits.get((b, cage), 0)
+		assert enc <= bound, f"{a},{b}@{cage}: {enc} encounters > {bound} combined visits"
 
 
 # --- chasings totals reconcile with the event table -------------------------

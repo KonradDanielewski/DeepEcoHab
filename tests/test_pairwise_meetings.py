@@ -10,13 +10,38 @@ padded_df rows carry the interval END in ``datetime`` and its length in
 ``time_spent``; all events sit in day-1 light_phase.
 """
 
+import datetime as dt
+
 import polars as pl
+import pytest
 import strategies as strat
 
 from deepecohab.analysis import antenna_analysis
+from deepecohab.utils import auxfun
 
 CFG = strat.analysis_cfg(animal_ids=["A", "B", "C"])
 at = strat.at
+
+
+def padded_pieces(rows, cfg) -> pl.LazyFrame:
+	"""Split each ``stay`` row at minute marks with the real padding, as padded_df does.
+
+	Feeds the actual ``_get_minute_padding`` so a multi-minute stay becomes several
+	per-minute pieces (interpolated flags and all), exactly like the production
+	padded_df the pairwise step consumes. This exercises the split -> re-stitch path.
+	"""
+	df = pl.DataFrame(
+		{
+			"animal_id": pl.Series(
+				[r["animal_id"] for r in rows], dtype=pl.Enum(cfg["animal_ids"])
+			),
+			"position": pl.Series([r["position"] for r in rows], dtype=pl.Categorical),
+			"datetime": pl.Series("datetime", [r["datetime"] for r in rows]),
+			"time_spent": pl.Series([float(r["time_spent"]) for r in rows], dtype=pl.Float64),
+			"time_under": pl.Series([dt.timedelta(0) for _ in rows], dtype=pl.Duration("us")),
+		}
+	)
+	return auxfun._get_minute_padding(df.lazy(), cfg)
 
 
 def run_pairwise(monkeypatch, padded_lf, **kwargs) -> pl.DataFrame:
@@ -145,6 +170,62 @@ def test_contiguous_spans_stitched_into_one_meeting(monkeypatch):
 	c = pair_cell(run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG)), "A", "B", "cage_1")
 	assert c["pairwise_encounters"] == 1
 	assert c["time_together"] == 20.0
+
+
+def test_continuous_costay_split_across_minutes_is_one_encounter(monkeypatch):
+	"""A single continuous co-stay counts once, even though padding splits it.
+
+	Regression for the elevated pairwise_encounters: A and B sit together in a cage
+	across several wall-clock minute marks. padded_df cuts that stay into per-minute
+	pieces, but reconstructing exact interval bounds lets the sweep re-stitch them
+	into ONE meeting. A boundary-rounding bug fragments the pieces into many spurious
+	encounters instead. The fractional-second offset makes it sensitive to that bug.
+	"""
+	# both continuously in cage_1 over [12:00:20.5, 12:03:40.5]: 200 s across 3 marks.
+	start = at(2023, 5, 24, 12, 0, 20, 500_000)
+	end = at(2023, 5, 24, 12, 3, 40, 500_000)
+	length = (end - start).total_seconds()
+	rows = [
+		{"animal_id": "A", "position": "cage_1", "datetime": end, "time_spent": length},
+		{"animal_id": "B", "position": "cage_1", "datetime": end, "time_spent": length},
+	]
+	padded = padded_pieces(rows, CFG)
+	# sanity: the stay really was split into multiple pieces per animal.
+	assert padded.collect().filter(pl.col("animal_id") == "A").height > 1
+
+	c = pair_cell(run_pairwise(monkeypatch, padded), "A", "B", "cage_1")
+	assert c["pairwise_encounters"] == 1
+	assert c["time_together"] == pytest.approx(length)
+
+
+def test_encounters_never_exceed_sum_of_visits(monkeypatch):
+	"""User's invariant: a pair can't meet more often than their combined visit count.
+
+	A has three cage_1 visits and B two; some overlap, some don't. However the
+	meetings fall out, the encounter count for the pair in that cage cannot exceed
+	3 + 2 = 5 -- a pair meeting requires at least one of them to (re-)enter.
+	"""
+
+	def visit(a, s, e):
+		return {
+			"animal_id": a,
+			"position": "cage_1",
+			"datetime": e,
+			"time_spent": (e - s).total_seconds(),
+		}
+
+	rows = [
+		visit("A", at(2023, 5, 24, 12, 0, 0), at(2023, 5, 24, 12, 0, 10)),
+		visit("B", at(2023, 5, 24, 12, 0, 5), at(2023, 5, 24, 12, 0, 15)),  # overlaps A#1
+		visit("A", at(2023, 5, 24, 12, 0, 30), at(2023, 5, 24, 12, 0, 40)),  # alone
+		visit("A", at(2023, 5, 24, 12, 1, 0), at(2023, 5, 24, 12, 1, 20)),
+		visit("B", at(2023, 5, 24, 12, 1, 10), at(2023, 5, 24, 12, 1, 25)),  # overlaps A#3
+	]
+	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG), minimum_time=None)
+	c = pair_cell(result, "A", "B", "cage_1")
+	visits_a, visits_b = 3, 2
+	assert c["pairwise_encounters"] <= visits_a + visits_b
+	assert c["pairwise_encounters"] == 2  # exactly the two overlapping bouts
 
 
 def test_no_cooccupancy_yields_zero_grid(monkeypatch):

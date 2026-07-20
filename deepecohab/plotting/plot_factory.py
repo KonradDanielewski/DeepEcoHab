@@ -9,12 +9,18 @@ import polars as pl
 from deepecohab.utils import auxfun_plots
 
 
+def _unit_label(granularity: str) -> str:
+	"""Human-readable axis/hover label for the slider granularity column."""
+	return "Phase" if granularity == "phase_count" else "Day"
+
+
 def plot_activity(
 	df: pl.DataFrame,
 	positions: list[str],
 	colors: list[str],
 	type_switch: Literal["visits", "time"],
 	agg_switch: Literal["sum", "mean"],
+	granularity: str = "day",
 ) -> go.Figure:
 	"""Plots bar graph of sum of cage and tunnel visits or time spent."""
 	match type_switch:
@@ -49,7 +55,7 @@ def plot_activity(
 				y=type_switch,
 				color="animal_id",
 				color_discrete_sequence=colors,
-				hover_data=["animal_id", "position", "day", type_switch],
+				hover_data=["animal_id", "position", granularity, type_switch],
 				title=position_title,
 				boxmode="group",
 				points="outliers",
@@ -68,7 +74,11 @@ def plot_activity(
 
 
 def plot_time_alone(
-	df: pl.DataFrame, cages: list[str], colors: list[str], agg_switch: Literal["mean", "sum"]
+	df: pl.DataFrame,
+	cages: list[str],
+	colors: list[str],
+	agg_switch: Literal["mean", "sum"],
+	granularity: str = "day",
 ) -> go.Figure:
 	"""Plot time alone as a relative bar plot."""
 	match agg_switch:
@@ -79,7 +89,7 @@ def plot_time_alone(
 				y="time_alone",
 				color="animal_id",
 				color_discrete_sequence=colors,
-				hover_data=["animal_id", "cage", "day", "time_alone"],
+				hover_data=["animal_id", "cage", granularity, "time_alone"],
 				title="<b>Time spent alone</b>",
 				barmode="group",
 			)
@@ -90,7 +100,7 @@ def plot_time_alone(
 				y="time_alone",
 				color="animal_id",
 				color_discrete_sequence=colors,
-				hover_data=["animal_id", "cage", "day", "time_alone"],
+				hover_data=["animal_id", "cage", granularity, "time_alone"],
 				title="<b>Time spent alone</b>",
 				boxmode="group",
 				points="outliers",
@@ -346,14 +356,17 @@ def plot_ranking_stability(
 	df: pl.DataFrame,
 	animals: list[str],
 	colors: list[str],
+	granularity: str = "day",
 ) -> go.Figure:
-	"""Plots animal rank on a per day basis."""
+	"""Plots animal rank on a per day (or per phase) basis."""
 	color_map = dict(zip(animals, colors, strict=False))
+	label = _unit_label(granularity)
+	cadence = "Daily" if granularity == "day" else "Per-phase"
 
 	fig = go.Figure(
 		layout={
 			"title_x": 0.5,
-			"title": "<b>Daily dominance rank trajectories</b>",
+			"title": f"<b>{cadence} dominance rank trajectories</b>",
 			"legend_title_text": "<b>Animal ID</b>",
 			"yaxis": {
 				"title": "<b>Rank</b>",
@@ -363,15 +376,15 @@ def plot_ranking_stability(
 				"categoryarray": df["rank"].unique().sort(),
 			},
 			"xaxis": {
-				"title": "<b>Day</b>",
+				"title": f"<b>{label}</b>",
 			},
 		}
 	)
 	for animal in animals:
-		temp = df.filter(pl.col("animal_id") == animal).sort("day")
+		temp = df.filter(pl.col("animal_id") == animal).sort(granularity)
 		fig.add_trace(
 			go.Scatter(
-				x=temp["day"],
+				x=temp[granularity],
 				y=temp["rank"],
 				mode="lines+markers",
 				name=animal,
@@ -383,7 +396,9 @@ def plot_ranking_stability(
 	return fig
 
 
-def time_spent_per_cage(df: pl.DataFrame, type: Literal["hourly", "daily"]) -> go.Figure:
+def time_spent_per_cage(
+	df: pl.DataFrame, type: Literal["hourly", "daily"], granularity: str = "day"
+) -> go.Figure:
 	"""Plots N-cages of heatmaps with per hour time spent for each animal."""
 	match type:  # TODO: improve column naming consistency to avoid this mess
 		case "hourly":
@@ -397,12 +412,13 @@ def time_spent_per_cage(df: pl.DataFrame, type: Literal["hourly", "daily"]) -> g
 			legend_title = "<b>Minutes</b>"
 			nbins = 24
 		case "daily":
+			label = _unit_label(granularity)
 			title = "<b>Cage preference over time</b>"
-			x_col = "day"
+			x_col = granularity
 			facet_col = "position"
 			z_col = "time_in_position"
-			x = "Day: %{x}"
-			x_title = "Day"
+			x = f"{label}: %{{x}}"
+			x_title = label
 			z = "Time [h]: %{z}"
 			nbins = None
 			legend_title = "<b>Hours</b>"
@@ -717,6 +733,7 @@ def plot_cage_preference(
 	df: pl.DataFrame | None,
 	cages: list[str],
 	colors: list[str],
+	granularity: str = "day",
 ) -> go.Figure:
 	"""Plots cage preference on a per cage basis (cohort preference summary)."""
 	fig = px.box(
@@ -725,7 +742,7 @@ def plot_cage_preference(
 		y="time_in_position",
 		color="position",
 		points="outliers",
-		hover_data={"animal_id", "day"},
+		hover_data={"animal_id", granularity},
 		color_discrete_map=dict(zip(cages, colors, strict=False)),
 		title="<b>Cage preference</b>",
 	)

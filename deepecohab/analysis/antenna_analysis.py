@@ -174,7 +174,8 @@ def calculate_ranking(cfg: dict[str, Any], **kwargs) -> pl.LazyFrame:
 
 	Returns:
 	    LazyFrame with ``mu``, ``sigma``, ``ordinal`` and ``datetime`` per animal,
-	    one row per animal after each match.
+	    one row per animal after each match, carrying the grid columns
+	    ``phase``/``day``/``phase_count``/``hour`` derived from the match timestamp.
 	"""
 	prev_ranking = kwargs.get("prev_ranking")
 	animal_ids: list[str] = cfg["animal_ids"]
@@ -243,7 +244,7 @@ def calculate_ranking(cfg: dict[str, Any], **kwargs) -> pl.LazyFrame:
 		auxfun.get_phase(cfg),
 		auxfun.get_day(),
 		auxfun.get_hour(),
-	)
+	).pipe(auxfun.get_grid_phase_count, cfg)
 
 	return ranking_df
 
@@ -471,7 +472,9 @@ def calculate_tube_test(
 	        overlaps. Defaults to 10.0.
 
 	Returns:
-	    LazyFrame of tube test events
+	    LazyFrame with a ``tube_test`` count per winner/loser pair for each
+	    tunnel (``position``) and hour, reindexed onto the dense grid (absent
+	    cells ``0``).
 	"""
 	# Sorted at load so the order-dependent ops below (run-length encoding, shift().over) are chronological.
 	lf: pl.LazyFrame = auxfun._get_data(cfg, key="main_df").sort("datetime")
@@ -528,15 +531,27 @@ def calculate_tube_test(
 		case "BOTH":
 			intermediate = intermediate.filter(chase | guard)
 
+	# phase_count is re-derived from the grid before reindexing: main_df's load-time
+	# count run-length-encodes only observed events, so a phase with no events would
+	# misalign it with the dense grid. The self-join above still uses main_df's own
+	# phase_count, which is internally consistent and distinguishes wrap-around nights.
 	tube_test = (
 		intermediate.group_by(
-			["phase", "day", "phase_count", "hour", "animal_id", "animal_id_winner"]
+			["phase", "day", "phase_count", "hour", "position", "animal_id", "animal_id_winner"]
 		)
 		.len(name="tube_test")
 		.rename({"animal_id": "loser", "animal_id_winner": "winner"})
+		.drop("phase_count")
+		.pipe(auxfun.get_grid_phase_count, cfg)
 	)
 
-	return auxfun.reindex_onto_grid(tube_test, cfg, ("winner", "loser"), ordered=True)
+	return auxfun.reindex_onto_grid(
+		tube_test,
+		cfg,
+		("winner", "loser"),
+		ordered=True,
+		positions=auxfun.get_positions(cfg, "tunnels"),
+	)
 
 
 @df_registry.register_step("pairwise_meetings", requires=["padded_df"])
@@ -573,11 +588,8 @@ def calculate_pairwise_meetings(
 
 	lf = (
 		padded_df.filter(pl.col("position").is_in(cages))
-		.with_columns(
-			pl.col("datetime").alias("end"),
-			(pl.col("datetime") - pl.duration(seconds=pl.col("time_spent"))).alias("start"),
-			pl.col("animal_id").to_physical().cast(pl.Int64).alias("code"),
-		)
+		.pipe(auxfun.add_occupancy_bounds)
+		.with_columns(pl.col("animal_id").to_physical().cast(pl.Int64).alias("code"))
 		.with_columns(pl.lit(2, dtype=pl.Int64).pow(pl.col("code")).cast(pl.Int64).alias("bit"))
 	)
 

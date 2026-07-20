@@ -178,6 +178,20 @@ def test_same_origin_is_not_head_on(monkeypatch):
 	assert run_tube(monkeypatch, strat.main_df_frame(rows, CFG))["tube_test"].sum() == 0
 
 
+def test_event_carries_tunnel_position(monkeypatch):
+	"""The counted event is attributed to the tunnel it occurred in (tunnel_1)."""
+	result = run_tube(monkeypatch, strat.main_df_frame(encounter(behavior="chase"), CFG))
+
+	# Grid is reindexed over the undirected tunnels, so every tunnel is present...
+	assert set(result["position"].cast(pl.String).unique()) == set(
+		antenna_analysis.auxfun.get_positions(CFG, "tunnels")
+	)
+	# ...but the single A-beats-B event sits in tunnel_1 (c1_c2 / c2_c1).
+	event = result.filter(pl.col("tube_test") > 0)
+	assert event.height == 1
+	assert event["position"].cast(pl.String).to_list() == ["tunnel_1"]
+
+
 def test_no_events_yields_all_zero_grid(monkeypatch):
 	"""No head-on encounters (a lone retreating animal) -> a full grid of zeros."""
 	rows = [

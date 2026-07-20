@@ -72,11 +72,11 @@ def test_interval_exactly_one_aligned_minute_not_split():
 
 
 def test_single_minute_crossing_splits_into_two():
-	"""12:00:40 -> 12:01:20 crosses 12:01:00 -> two 20s pieces, both interpolated."""
+	"""12:00:40 -> 12:01:20 crosses 12:01:00 -> two 20s pieces; first kept, second interpolated."""
 	lf = make_lf([{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": 40, "time_under": MINUTE}])
 	out = auxfun._get_minute_padding(lf, CFG).collect().sort("datetime")
 	assert out.height == 2
-	assert out["interpolated"].to_list() == [True, True]
+	assert out["interpolated"].to_list() == [False, True]
 	assert out["time_spent"].to_list() == pytest.approx([20, 20])
 	halves = out["time_under"].to_list()
 	assert halves[0] == pytest.approx(MINUTE / 2, abs=dt.timedelta(microseconds=2))
@@ -88,9 +88,10 @@ def test_multi_minute_crossing_piece_count():
 	lf = make_lf(
 		[{"end": at(2023, 6, 15, 12, 3, 20), "time_spent": 40 + 120, "time_under": MINUTE}]
 	)  # 12:00:40 -> 12:03:20 spans minutes 0,1,2,3 -> 4 pieces
-	out = auxfun._get_minute_padding(lf, CFG).collect()
+	out = auxfun._get_minute_padding(lf, CFG).collect().sort("datetime")
 	assert out.height == 4
-	assert out["interpolated"].to_list() == [True, True, True, True]
+	# only the first per-minute piece represents the visit; the rest are interpolated
+	assert out["interpolated"].to_list() == [False, True, True, True]
 
 
 def test_time_spent_conserved():
@@ -199,6 +200,41 @@ def test_dedup_first_piece_holds_piece_values_not_original():
 	assert first["time_spent"] == pytest.approx(20)  # first piece, not 40
 
 
+def test_non_interpolated_filter_recovers_original_count_per_animal():
+	"""Filtering interpolated==False yields the same row count per animal as the input.
+
+	Each original visit contributes exactly one non-interpolated piece regardless of
+	how many minute marks it crosses, so padded_df.filter(interpolated==False) matches
+	main_df row-for-row per animal.
+	"""
+	rows = [
+		{
+			"animal_id": "A",
+			"end": at(2023, 6, 15, 12, 0, 40),
+			"time_spent": 20,
+			"time_under": MINUTE,
+		},  # no split
+		{
+			"animal_id": "A",
+			"end": at(2023, 6, 15, 12, 1, 20),
+			"time_spent": 40,
+			"time_under": MINUTE,
+		},  # 2 pieces
+		{
+			"animal_id": "B",
+			"end": at(2023, 6, 15, 12, 3, 20),
+			"time_spent": 160,
+			"time_under": MINUTE,
+		},  # 4 pieces
+	]
+	out = auxfun._get_minute_padding(make_lf(rows), CFG).collect()
+	kept = out.filter(~pl.col("interpolated"))
+
+	assert kept.height == len(rows)  # more pieces overall, but one kept row per visit
+	per_animal = dict(kept.group_by("animal_id").len().sort("animal_id").iter_rows())
+	assert per_animal == {"A": 2, "B": 1}
+
+
 # --- property-based tests ----------------------------------------------------
 # Timezone and phase config are drawn inside @given (st.sampled_from), so each
 # example exercises a random combination, including DST zones and midnight
@@ -224,14 +260,16 @@ def test_property_conserves_time_spent(v, tz, pcfg):
 )
 def test_property_preserves_identity_and_dedup(rows, tz, pcfg):
 	"""Padding may explode rows into per-minute pieces, but unique(row_id,
-	keep="first") recovers exactly one row per original visit, and every piece
-	keeps the animal_id/position of the visit it came from (row_id i == row i).
+	keep="first") recovers exactly one row per original visit, filtering
+	interpolated==False keeps exactly one piece per visit, and every piece keeps the
+	animal_id/position of the visit it came from (row_id i == row i).
 	"""
 	out = auxfun._get_minute_padding(strat.padding_frame(rows, tz), {"phase": pcfg}).collect()
 
 	assert out["row_id"].n_unique() == len(rows)
 	assert sorted(out["row_id"].unique().to_list()) == list(range(len(rows)))
 	assert out.unique("row_id", keep="first").height == len(rows)
+	assert out.filter(~pl.col("interpolated")).height == len(rows)
 
 	for i, r in enumerate(rows):
 		pieces = out.filter(pl.col("row_id") == i)

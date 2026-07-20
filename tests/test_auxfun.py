@@ -102,12 +102,12 @@ def test_phase_dst_fall_back():
 
 
 def test_phase_count_simple_alternation():
-	"""Each contiguous run of a phase gets the next number for that phase."""
+	"""Each contiguous run gets the next global number, regardless of phase type."""
 	phases = ["light_phase", "light_phase", "dark_phase", "light_phase", "dark_phase"]
 	lf = pl.LazyFrame({"phase": pl.Series(phases, dtype=pl.Enum(["light_phase", "dark_phase"]))})
 	out = auxfun.get_phase_count(lf).collect()
-	# runs: light#1 (rows 0-1), dark#1 (row2), light#2 (row3), dark#2 (row4)
-	assert out["phase_count"].to_list() == [1, 1, 1, 2, 2]
+	# runs: phase#1 (rows 0-1), #2 (row2), #3 (row3), #4 (row4)
+	assert out["phase_count"].to_list() == [1, 1, 2, 3, 4]
 
 
 def test_phase_count_single_run():
@@ -118,7 +118,7 @@ def test_phase_count_single_run():
 
 
 def test_phase_count_full_experiment_sequence():
-	"""A long L/D/L/D... sequence numbers each phase 1,1,2,2,3,3,..."""
+	"""A long L/D/L/D... sequence numbers phases globally 1,1,2,2,3,3,..."""
 	units = ["light_phase", "dark_phase"] * 3  # 3 full days
 	# expand each into a run of 2 rows to mimic multiple events per phase
 	phases = [p for p in units for _ in range(2)]
@@ -126,17 +126,17 @@ def test_phase_count_full_experiment_sequence():
 	out = auxfun.get_phase_count(lf).collect()
 	assert out["phase_count"].to_list() == [
 		1,
-		1,  # light #1
-		1,
-		1,  # dark #1
+		1,  # light (phase #1)
 		2,
-		2,  # light #2
-		2,
-		2,  # dark #2
+		2,  # dark (phase #2)
 		3,
-		3,  # light #3
-		3,
-		3,  # dark #3
+		3,  # light (phase #3)
+		4,
+		4,  # dark (phase #4)
+		5,
+		5,  # light (phase #5)
+		6,
+		6,  # dark (phase #6)
 	]
 
 
@@ -277,8 +277,8 @@ def test_phase_matches_reference_oracle(naive, tz, pcfg):
 @settings(max_examples=300)
 @given(labels=strat.phase_label_lists)
 def test_phase_count_matches_reference_oracle(labels):
-	"""phase_count equals the ordinal of each contiguous run within its phase,
-	for any sequence of phase labels, and stays UInt16.
+	"""phase_count equals the global ordinal of each contiguous run, regardless of
+	phase type, for any sequence of phase labels, and stays UInt16.
 	"""
 	lf = pl.LazyFrame({"phase": pl.Series(labels, dtype=pl.Enum(strat.PHASE_NAMES))})
 	out = auxfun.get_phase_count(lf).collect()
@@ -333,6 +333,77 @@ def test_time_spent_matches_reference_oracle(rows, tz):
 	# right oracle input regardless of the display timezone (avoids DST round-trip).
 	expected = strat.expected_time_spent([r["animal_id"] for r in rows], [r["end"] for r in rows])
 	assert out["time_spent"].to_list() == expected
+
+
+def test_time_spent_is_not_rounded():
+	"""time_spent keeps full microsecond precision (regression: it was rounded to 10ms).
+
+	The occupancy interval start is reconstructed as ``datetime - time_spent`` by the
+	pairwise / time-alone sweeps; rounding time_spent here would shift that start off
+	the true entry time and fragment continuous stays into spurious extra meetings.
+	"""
+	# A 1.234567 s gap: rounding to 2 decimals (the old behaviour) would report 1.23.
+	frame = pl.LazyFrame(
+		{
+			"animal_id": pl.Series(["A", "A"], dtype=pl.Enum(["A"])),
+			"datetime": aware_dt_series(
+				[at(2023, 6, 15, 12, 0, 0), at(2023, 6, 15, 12, 0, 1, 234_567)]
+			),
+		}
+	)
+	out = calculate_time_spent(frame).collect()
+	assert out["time_spent"].to_list() == [0.0, pytest.approx(1.234567, abs=1e-9)]
+
+
+def test_add_occupancy_bounds_reconstructs_exact_start():
+	"""``start`` is ``datetime - time_spent`` reconstructed to the exact microsecond.
+
+	Regression guard: reconstructing via ``pl.duration(seconds=time_spent)`` rounds the
+	boundary through a float and can land 1 us off (e.g. for 2087.043558 s), which
+	accumulates into extra pairwise encounters. add_occupancy_bounds must build the
+	duration from whole microseconds so the boundary is exact.
+	"""
+	end = at(2023, 6, 15, 12, 0, 0)
+	# time_spent whose float-seconds duration is off by 1 us from the true value.
+	time_spent = 2087.043558
+	frame = pl.LazyFrame(
+		{
+			"animal_id": pl.Series(["A"], dtype=pl.Enum(["A"])),
+			"datetime": aware_dt_series([end]),
+			"time_spent": pl.Series([time_spent], dtype=pl.Float64),
+		}
+	)
+	out = auxfun.add_occupancy_bounds(frame).collect()
+
+	expected_start = end - dt.timedelta(microseconds=round(time_spent * 1_000_000))
+	assert out["end"][0] == end
+	assert out["start"][0] == expected_start
+	# exact to the microsecond, not merely close
+	assert (out["end"][0] - out["start"][0]) == dt.timedelta(microseconds=2_087_043_558)
+
+
+def test_add_occupancy_bounds_abutting_intervals_share_boundary():
+	"""Two consecutive stays of one animal reconstruct to a shared, identical boundary.
+
+	The exit of one interval (its ``datetime``/``end``) must equal the reconstructed
+	``start`` of the next, so the sweep sees them as touching, not overlapping or
+	gapped. A fractional gap makes this sensitive to boundary rounding.
+	"""
+	t0 = at(2023, 6, 15, 12, 0, 0)
+	first_len = 5.5
+	second_len = 12.25
+	t1 = t0 + dt.timedelta(seconds=first_len)  # end of the first interval
+	t2 = t1 + dt.timedelta(seconds=second_len)  # end of the second interval
+	frame = pl.LazyFrame(
+		{
+			"animal_id": pl.Series(["A", "A"], dtype=pl.Enum(["A"])),
+			"datetime": aware_dt_series([t1, t2]),
+			"time_spent": pl.Series([first_len, second_len], dtype=pl.Float64),
+		}
+	)
+	out = auxfun.add_occupancy_bounds(frame).collect().sort("datetime")
+	# second interval's start == first interval's end, exactly.
+	assert out["start"][1] == out["end"][0] == t1
 
 
 @given(

@@ -100,8 +100,13 @@ def test_add_positions_to_config(antenna_map, tunnels):
 # --- add_days_to_config / append_start_end_to_config -------------------------
 def test_add_days_to_config(tmp_path):
 	path = strat.config_file(tmp_path, {})
-	auxfun.add_days_to_config(path, pl.LazyFrame({"day": [3, 1, 2, 2, 5]}))
-	assert auxfun.read_config(path)["days_range"] == [1, 5]
+	auxfun.add_days_to_config(
+		path,
+		pl.LazyFrame({"day": [3, 1, 2, 2, 5], "phase_count": [4, 1, 2, 2, 6]}),
+	)
+	cfg = auxfun.read_config(path)
+	assert cfg["days_range"] == [1, 5]
+	assert cfg["phase_range"] == [1, 6]
 
 
 def test_append_start_end_to_config(tmp_path):

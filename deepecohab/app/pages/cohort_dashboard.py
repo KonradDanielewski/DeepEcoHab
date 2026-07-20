@@ -72,9 +72,14 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 		return html.Div("Please load a project to see graphs."), no_update  # ty: ignore[invalid-return-type]
 
 	current_days_range = cfg.get("days_range", [0, 1])
+	current_phase_range = cfg.get("phase_range", [0, 1])
 
-	dashboard_layout = cohort_dashboard_layout.generate_graphs_layout(current_days_range)
-	comparison_tab = cohort_dashboard_layout.generate_comparison_layout(current_days_range)
+	dashboard_layout = cohort_dashboard_layout.generate_graphs_layout(
+		current_days_range, current_phase_range
+	)
+	comparison_tab = cohort_dashboard_layout.generate_comparison_layout(
+		current_days_range, current_phase_range
+	)
 
 	return dashboard_layout, comparison_tab
 
@@ -91,6 +96,7 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 		Input("sociability_switch", "value"),
 		Input("ranking_switch", "value"),
 		Input("slider_switch", "value"),
+		Input("granularity", "value"),
 	],
 	State("project-config-store", "data"),
 )
@@ -104,6 +110,7 @@ def update_plots(
 	sociability_switch: Literal["proportion_together", "sociability"],
 	ranking_switch: Literal["intime", "stability"],
 	slider_mode: Literal["days_single", "days_range"],
+	granularity: Literal["day", "phase_count"],
 	cfg: dict[str, Any],
 ) -> go.Figure:
 	"""Perform a selective plot update on the main layout.
@@ -118,6 +125,7 @@ def update_plots(
 		sociability_switch: sociability plot switch (proportion together or incohort sociability)
 		ranking_switch: ranking switch (per hour update or per day rank)
 		slider_mode: toogle for which slider type is visible
+		granularity: slider axis unit ("day" or "phase_count")
 		cfg: config of the loaded project
 
 	Returns:
@@ -160,6 +168,7 @@ def update_plots(
 	plot_cfg = plot_catalog.PlotConfig(
 		store=store,
 		days_range=days_range,
+		granularity=granularity,
 		phase_type=phase_list,
 		agg_switch=agg_switch,
 		position_switch=pos_switch,
@@ -220,6 +229,7 @@ def update_comparison_plot(
 	plot_cfg = plot_catalog.PlotConfig(
 		store=store,
 		days_range=input_dict["days_range"],
+		granularity=input_dict["granularity"],
 		phase_type=phase_type,
 		agg_switch=input_dict["agg_switch"],
 		position_switch=input_dict["position_switch"],
@@ -260,6 +270,7 @@ def update_comparison_plot(
 		State("days_range", "value"),
 		State("days_single", "value"),
 		State("slider_switch", "value"),
+		State("granularity", "value"),
 		State({"type": "graph", "name": ALL}, "figure"),
 		State({"type": "graph", "name": ALL}, "id"),
 		State("project-config-store", "data"),
@@ -274,6 +285,7 @@ def download_selected_data(
 	days_range: list[int],
 	days_single: int,
 	slider_mode: Literal["days_single", "days_range"],
+	granularity: Literal["day", "phase_count"],
 	all_figures: list[dict],
 	all_ids: list[dict],
 	cfg: dict[str, Any],
@@ -287,7 +299,9 @@ def download_selected_data(
 
 	if triggered["side"] == "dfs":
 		store = cache_config.get_project_data(cfg)
-		return auxfun_dashboard.download_dataframes(selected_dfs, phase_type, days_range, store)
+		return auxfun_dashboard.download_dataframes(
+			selected_dfs, phase_type, days_range, granularity, store
+		)
 	elif triggered["side"] == "plots":
 		return auxfun_dashboard.download_plots(
 			selected_plots,
@@ -332,6 +346,63 @@ def download_comparison_data(btn_click: int, figure: dict, plot_type: str) -> di
 	plot_name = f"comparison_{plot_type}"
 	fname, content = auxfun_dashboard.get_plot_file(fig, triggered["fmt"], plot_name)
 	return dcc.send_bytes(lambda b: b.write(content), filename=fname)
+
+
+def _slider_bounds(
+	granularity: Literal["day", "phase_count"], cfg: dict[str, Any]
+) -> tuple[int, int, dict[int, str], str]:
+	"""Resolve slider min/max, marks and label for the selected granularity."""
+	rng = cfg.get("phase_range") if granularity == "phase_count" else cfg.get("days_range")
+	rng = rng or [0, 1]
+	lo, hi = rng[0], rng[1]
+	marks = {lo: str(lo), hi: str(hi)}
+	label = "Phases of experiment" if granularity == "phase_count" else "Days of experiment"
+	return lo, hi, marks, label
+
+
+@callback(
+	[
+		Output("days_range", "min"),
+		Output("days_range", "max"),
+		Output("days_range", "marks"),
+		Output("days_range", "value"),
+		Output("days_single", "min"),
+		Output("days_single", "max"),
+		Output("days_single", "marks"),
+		Output("days_single", "value"),
+		Output("days_range_label", "children"),
+		Output("days_single_label", "children"),
+	],
+	Input("granularity", "value"),
+	State("project-config-store", "data"),
+	prevent_initial_call=True,
+)
+def update_slider_bounds(
+	granularity: Literal["day", "phase_count"], cfg: dict[str, Any]
+) -> tuple[int, int, dict[int, str], list[int], int, int, dict[int, str], int, str, str]:
+	"""Re-axis the main-tab sliders between day and phase ranges on toggle."""
+	lo, hi, marks, label = _slider_bounds(granularity, cfg)
+	return lo, hi, marks, [lo, hi], lo, hi, marks, lo, label, label
+
+
+@callback(
+	[
+		Output({"type": "days_range", "side": MATCH}, "min"),
+		Output({"type": "days_range", "side": MATCH}, "max"),
+		Output({"type": "days_range", "side": MATCH}, "marks"),
+		Output({"type": "days_range", "side": MATCH}, "value"),
+		Output({"type": "days_range_label", "side": MATCH}, "children"),
+	],
+	Input({"type": "granularity", "side": MATCH}, "value"),
+	State("project-config-store", "data"),
+	prevent_initial_call=True,
+)
+def update_comparison_slider_bounds(
+	granularity: Literal["day", "phase_count"], cfg: dict[str, Any]
+) -> tuple[int, int, dict[int, str], list[int], str]:
+	"""Re-axis a comparison-tab slider between day and phase ranges on toggle."""
+	lo, hi, marks, label = _slider_bounds(granularity, cfg)
+	return lo, hi, marks, [lo, hi], label
 
 
 clientside_callback(

@@ -54,6 +54,7 @@ SWITCHES_PRIMARY = {
 	"position_switch": "time",
 	"pairwise_switch": "time_together",
 	"sociability_switch": "sociability",
+	"granularity": "day",
 }
 SWITCHES_ALTERNATE = {
 	"agg_switch": "mean",
@@ -61,6 +62,7 @@ SWITCHES_ALTERNATE = {
 	"position_switch": "visits",
 	"pairwise_switch": "pairwise_encounters",
 	"sociability_switch": "proportion_together",
+	"granularity": "phase_count",
 }
 
 # Resolved once at import; both registries are populated on `import deepecohab`.
@@ -134,9 +136,12 @@ def _plot_config(store, cfg, **switches) -> auxfun_plots.PlotConfig:
 	"""A fully populated PlotConfig spanning the whole experiment."""
 	animals = cfg["animal_ids"]
 	phase = cfg["phase"]
+	axis_range = (
+		cfg["phase_range"] if switches.get("granularity") == "phase_count" else cfg["days_range"]
+	)
 	return auxfun_plots.PlotConfig(
 		store=store,
-		days_range=cfg["days_range"],
+		days_range=axis_range,
 		phase_type=list(phase.keys()),
 		animals=animals,
 		animal_colors=auxfun_plots.color_sampling(animals),
