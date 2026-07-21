@@ -12,7 +12,7 @@ class Experiment:
     dark_start: str
     recording_timezone: str
     animals: dict[str, Animal]
-    layout: Arena
+    layout: Layout
 
 @dataclass(frozen=True, slots=True)
 class Animal:
@@ -30,8 +30,7 @@ class Animal:
 @dataclass(frozen=True, slots=True)
 class Cage:
     id: str                          
-    cage_no: int
-    cell_id: str                     
+    cage_no: int                   
     cage_type: str                   
 
 @dataclass(frozen=True, slots=True)
@@ -48,8 +47,7 @@ Position = Cage | Tunnel
 class Antenna:
     id: int                          
     tunnel_id: str
-    adjacent_cage_id: str
-    side: str                        
+    cage_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +57,7 @@ class Crossing:
     to_cage_id: str
 
 @dataclass
-class Arena:
+class Layout:
     cages: dict[str, Cage]
     tunnels: dict[str, Tunnel]
     antennas: dict[int, Antenna]
@@ -67,7 +65,7 @@ class Arena:
     _pairs: dict[tuple[int, int], Cage | Crossing] = field(default_factory=dict)
 
     def classify(self, a_from: int, a_to: int) -> Cage | Crossing | None:
-        """Resolve an ordered antenna pair to a dwelling (Cage) or Crossing."""
+        """Resolve an ordered antenna pair to Cage or Crossing."""
         return self._pairs.get((a_from, a_to))
 
     def tunnel_between(self, cage_a: str, cage_b: str) -> Tunnel | None:
@@ -81,15 +79,14 @@ class Arena:
                 assert cid in self.cages, f"{t.id} references unknown {cid}"
         for a in self.antennas.values():
             assert a.tunnel_id in self.tunnels, f"antenna {a.id} bad tunnel"
-            assert a.adjacent_cage_id in self.cages, f"antenna {a.id} bad cage"
+            assert a.cage_id in self.cages, f"antenna {a.id} bad cage"
 
     def to_dimension_frames(self) -> dict:
         cages = pl.DataFrame([{"cage_id": c.id, "cage_no": c.cage_no,
-                               "cell_id": c.cell_id, "cage_type": c.cage_type}
+                               "cage_type": c.cage_type}
                               for c in self.cages.values()]).sort("cage_no")
         antennas = pl.DataFrame([{"antenna_id": a.id, "tunnel_id": a.tunnel_id,
-                                  "tunnel_side": a.side,
-                                  "adjacent_cage_id": a.adjacent_cage_id}
+                                  "cage_id": a.cage_id}
                                  for a in self.antennas.values()]).sort("antenna_id")
         return {"cages": cages, "antennas": antennas}
 
