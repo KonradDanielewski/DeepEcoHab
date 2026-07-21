@@ -7,7 +7,7 @@ import datetime as dt
 class Experiment:
     name: str
     start: dt.datetime
-    end: dt.datetime
+    end: dt.datetime | None
     light_start: str
     dark_start: str
     recording_timezone: str
@@ -63,6 +63,10 @@ class Layout:
     antennas: dict[int, Antenna]
 
     _pairs: dict[tuple[int, int], Cage | Crossing] = field(default_factory=dict)
+
+    @property
+    def pairs(self) -> dict[tuple[int, int], Cage | Crossing]:
+        return self._pairs
 
     def classify(self, a_from: int, a_to: int) -> Cage | Crossing | None:
         """Resolve an ordered antenna pair to Cage or Crossing."""

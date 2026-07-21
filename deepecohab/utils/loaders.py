@@ -75,15 +75,16 @@ class JsonConfigLoader:
         return out
     
     def load_experiment(self, interpolate: bool = False) -> Experiment:
-        meta = self._cfg["experiment"]          
+        meta = self._cfg["experiment"]
         env = self._cfg["environment"]
+        end = meta.get("end")
         return Experiment(
             name=meta["name"],
-            start=dt.datetime.fromisoformat(meta["start"]),
-            end=dt.datetime.fromisoformat(meta["end"]),
+            start=dt.datetime.fromisoformat(meta["start_datetime"]),
+            end=dt.datetime.fromisoformat(end) if end else None,
             recording_timezone=meta["recording_timezone"],
             light_start=env["light_start_hhmm"],
-            dark_start=env["dark_start_hhmm"],
+            dark_start=env["light_end_hhmm"],  # dark phase begins when the light phase ends
             animals=self.load_animals(),
             layout=self.load_layout(interpolate),
         )
