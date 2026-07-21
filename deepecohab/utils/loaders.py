@@ -1,8 +1,45 @@
 import json
-from dataclasses import dataclass
 from pathlib import Path
 import datetime as dt
-from domain import Experiment, Animal, Arena, Cage, Antenna, Crossing, Tunnel
+from .domain import Experiment, Animal, Layout, Cage, Antenna, Crossing, Tunnel
+
+
+def build_layout(layout_cfg: dict, interpolate: bool = False) -> Layout:
+    cages = {cid: Cage(id=cid, cage_no=int(c["cage_no"]),
+                       cage_type=c["cage_type"])
+             for cid, c in layout_cfg["cages"].items()}
+    # cell_id is a raw-config detail used only to resolve which cage a
+    # tunnel connects to; it has no place on the domain Cage object.
+    cell_to_cage = {c["cell_id"]: cid for cid, c in layout_cfg["cages"].items()}
+
+    tunnels, antennas = {}, {}
+    for tid, t in layout_cfg["tunnels"].items():
+        a_start, a_end = (int(x) for x in t["antennas"])
+        cage_start = cell_to_cage[t["start_cell_id"]]
+        cage_end = cell_to_cage[t["end_cell_id"]]
+        tunnels[tid] = Tunnel(id=tid, name=t["name"],
+                              endpoints=frozenset({cage_start, cage_end}),
+                              antennas={cage_start: a_start, cage_end: a_end})
+        antennas[a_start] = Antenna(a_start, tid, cage_start)
+        antennas[a_end] = Antenna(a_end, tid, cage_end)
+
+    combos = (layout_cfg["antenna_combinations_interp"] if interpolate
+              else layout_cfg["antenna_combinations"])
+    tmap = layout_cfg["tunnels_map"]
+    pairs: dict[tuple[int, int], Cage | Crossing] = {}
+    for key, interp in combos.items():
+        a, b = (int(x) for x in key.split("_"))
+        if interp.startswith("cage_"):
+            pairs[(a, b)] = cages[interp]
+        else:
+            ft, tt = interp.split("_")
+            pairs[(a, b)] = Crossing(tunnel_id=tmap[interp],
+                                     from_cage_id=f"cage_{ft[1:]}",
+                                     to_cage_id=f"cage_{tt[1:]}")
+
+    layout = Layout(cages, tunnels, antennas, pairs)
+    layout.validate()
+    return layout
 
 
 class JsonConfigLoader:
@@ -10,42 +47,12 @@ class JsonConfigLoader:
     def __init__(self, path: Path):
         self._cfg = json.loads(Path(path).read_text())
 
-    def load_arena(self, interpolate: bool = False) -> Arena:
-        layout = self._cfg["layout"]
+    @property
+    def layout_cfg(self) -> dict:
+        return self._cfg["layout"]
 
-        cages = {cid: Cage(id=cid, cage_no=int(c["cage_no"]),
-                           cell_id=c["cell_id"], cage_type=c["cage_type"])
-                 for cid, c in layout["cages"].items()}
-        cell_to_cage = {c.cell_id: c.id for c in cages.values()}
-
-        tunnels, antennas = {}, {}
-        for tid, t in layout["tunnels"].items():
-            a_start, a_end = (int(x) for x in t["antennas"])
-            cage_start = cell_to_cage[t["start_cell_id"]]
-            cage_end = cell_to_cage[t["end_cell_id"]]
-            tunnels[tid] = Tunnel(id=tid, name=t["name"],
-                                  endpoints=frozenset({cage_start, cage_end}),
-                                  antennas={cage_start: a_start, cage_end: a_end})
-            antennas[a_start] = Antenna(a_start, tid, cage_start, "start")
-            antennas[a_end] = Antenna(a_end, tid, cage_end, "end")
-
-        combos = (layout["antenna_combinations_interp"] if interpolate
-                  else layout["antenna_combinations"])
-        tmap = layout["tunnels_map"]
-        pairs: dict[tuple[int, int], Cage | Crossing] = {}
-        for key, interp in combos.items():
-            a, b = (int(x) for x in key.split("_"))
-            if interp.startswith("cage_"):
-                pairs[(a, b)] = cages[interp]
-            else:                                   
-                ft, tt = interp.split("_")
-                pairs[(a, b)] = Crossing(tunnel_id=tmap[interp],
-                                         from_cage_id=f"cage_{ft[1:]}",
-                                         to_cage_id=f"cage_{tt[1:]}")
-
-        arena = Arena(cages, tunnels, antennas, pairs)
-        arena.validate()   
-        return arena
+    def load_layout(self, interpolate: bool = False) -> Layout:
+        return build_layout(self.layout_cfg, interpolate)
 
     def load_animals(self) -> dict[str, Animal]:
         out = {}
@@ -76,7 +83,7 @@ class JsonConfigLoader:
             end=dt.datetime.fromisoformat(meta["end"]),
             recording_timezone=meta["recording_timezone"],
             light_start=env["light_start_hhmm"],
-            dark_start=env["light_start_hhmm"],
+            dark_start=env["dark_start_hhmm"],
             animals=self.load_animals(),
-            layout=self.load_arena(interpolate),
+            layout=self.load_layout(interpolate),
         )
