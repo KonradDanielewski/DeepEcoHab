@@ -300,7 +300,12 @@ def download_selected_data(
 	if triggered["side"] == "dfs":
 		store = cache_config.get_project_data(cfg)
 		return auxfun_dashboard.download_dataframes(
-			selected_dfs, phase_type, days_range, granularity, store
+			selected_dfs,
+			phase_type,
+			days_range,
+			granularity,
+			store,
+			triggered["fmt"],
 		)
 	elif triggered["side"] == "plots":
 		return auxfun_dashboard.download_plots(

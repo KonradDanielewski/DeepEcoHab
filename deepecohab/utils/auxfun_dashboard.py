@@ -3,7 +3,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -379,7 +379,7 @@ def generate_csv_download_tab() -> dcc.Tab:
 					dbc.Col(
 						[
 							dbc.Button(
-								"Download DataFrame/s",
+								"Download CSV",
 								id={
 									"type": "download-btn",
 									"fmt": "csv",
@@ -388,7 +388,18 @@ def generate_csv_download_tab() -> dcc.Tab:
 								n_clicks=0,
 								color="primary",
 								className="ModalButton",
-							)
+							),
+							dbc.Button(
+								"Download PARQUET",
+								id={
+									"type": "download-btn",
+									"fmt": "parquet",
+									"side": "dfs",
+								},
+								n_clicks=0,
+								color="primary",
+								className="ModalButton",
+							),
 						],
 						width=4,
 						align="center",
@@ -604,12 +615,29 @@ def build_filter_expr(
 	return exprs
 
 
+def _prepare_download_dataframe(
+	store: dict,
+	name: str,
+	days_range: list[int],
+	phase_types: list[str],
+	granularity: str,
+	fmt: Literal["csv", "parquet"],
+) -> pl.DataFrame:
+	"""Helper to prepare dataframe download."""
+	df = store[name]
+	if name in ["main_df", "padded_df"] and fmt == "csv":
+		df = df.with_columns(pl.col("time_under").dt.total_seconds(fractional=True))
+	expr = build_filter_expr(df.schema, days_range, phase_types, granularity)
+	return df.filter(expr) if expr is not None else df
+
+
 def download_dataframes(
 	selected_dfs: list[str],
 	phase_type: str,
 	days_range: list[int],
 	granularity: str,
 	store: dict,
+	fmt: Literal["csv", "parquet"],
 ) -> dict[str, Any | None]:
 	"""Downloads the selected DataFrame/s via the browser."""
 	if not selected_dfs:
@@ -620,21 +648,41 @@ def download_dataframes(
 	if len(selected_dfs) == 1:
 		name = selected_dfs[0]
 		if name in store:
-			df = store[name]
-			expr = build_filter_expr(df.schema, days_range, phase_types, granularity)
-			df = df.filter(expr) if expr is not None else df
-			return dcc.send_string(df.write_csv, f"{name}.csv")
+			df = _prepare_download_dataframe(
+				store,
+				name,
+				days_range,
+				phase_types,
+				granularity,
+				fmt,
+			)
+			match fmt:
+				case "csv":
+					return dcc.send_string(df.write_csv, f"{name}.csv")
+				case "parquet":
+					return dcc.send_bytes(df.write_parquet, f"{name}.parquet")
 		raise exceptions.PreventUpdate
 
 	zip_buffer = io.BytesIO()
 	with zipfile.ZipFile(zip_buffer, "w") as zf:
 		for name in selected_dfs:
 			if name in store:
-				df = store[name]
-				expr = build_filter_expr(df.schema, days_range, phase_types, granularity)
-				df = df.filter(expr) if expr is not None else df
-				csv_bytes = df.write_csv().encode("utf-8")
-				zf.writestr(f"{name}.csv", csv_bytes)
+				df = _prepare_download_dataframe(
+					store,
+					name,
+					days_range,
+					phase_types,
+					granularity,
+					fmt,
+				)
+				match fmt:
+					case "csv":
+						csv_bytes = df.write_csv().encode("utf-8")
+						zf.writestr(f"{name}.csv", csv_bytes)
+					case "parquet":
+						parquet_buffer = io.BytesIO()
+						df.write_parquet(parquet_buffer)
+						zf.writestr(f"{name}.parquet", parquet_buffer.getvalue())
 
 	zip_buffer.seek(0)
 
