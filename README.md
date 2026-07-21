@@ -65,10 +65,7 @@ deepecohab-shortcut
 
 This places a **DeepEcoHab** shortcut on your desktop. Double-clicking it starts
 the dashboard and opens it in your browser — no terminal required. This is the
-recommended way to launch DeepEcoHab on Windows.
-
-> On Linux / macOS there is no desktop shortcut — simply run `deepecohab` from
-> the terminal to launch the dashboard.
+recommended way to launch DeepEcoHab for most users.
 
 ### Using DeepEcoHab as a library
 

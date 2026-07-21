@@ -395,6 +395,7 @@ dependencies = [
     { name = "openskill" },
     { name = "plotly" },
     { name = "polars" },
+    { name = "pyshortcuts" },
     { name = "scipy" },
     { name = "toml" },
     { name = "tqdm" },
@@ -429,6 +430,7 @@ requires-dist = [
     { name = "plotly" },
     { name = "polars" },
     { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "pyshortcuts" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.17" },
     { name = "scipy" },
@@ -1398,6 +1400,20 @@ crypto = [
 ]
 
 [[package]]
+name = "pyshortcuts"
+version = "1.9.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "tabulate" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/70/0c2371e9cec9cf42ec883b213dbf4ec22330ccb82a98fc34d268067c767b/pyshortcuts-1.9.9.tar.gz", hash = "sha256:f164591d459c3f0e6fd52ab57bbd8c05227857a26c8791c0cb23e14e9db85398", size = 1007009, upload-time = "2026-05-13T16:41:22.474Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/f6/adea1c67504932b416afa775e8b20f44d46d753ccc9432213a5cffee1626/pyshortcuts-1.9.9-py3-none-any.whl", hash = "sha256:baf777ba3df7e65eb17df499569622a6911a244c810bf91c42dae8b8bf993cfa", size = 167415, upload-time = "2026-05-13T16:41:21.051Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1906,6 +1922,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/eb/e3/7c1dc7381d9f8ab7d854328ebfa884e62cb3f3d8549ddfd37c7814f42afa/starlette-1.3.1.tar.gz", hash = "sha256:05d0213193f2fbaae60e2ecb593b4add4262ad4e46536b54abe36f11a71724e0", size = 2703240, upload-time = "2026-06-12T09:23:11.602Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/bb/2799cc2ede3ed41131f8975621e7213dfc7ef4acbbaadfa440f32500c370/starlette-1.3.1-py3-none-any.whl", hash = "sha256:c7372aae11c3c3f26a42df7bd626cec2f47d03483d261d369516a615a53714c6", size = 73632, upload-time = "2026-06-12T09:23:10.017Z" },
+]
+
+[[package]]
+name = "tabulate"
+version = "0.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/58/8c37dea7bbf769b20d58e7ace7e5edfe65b849442b00ffcdd56be88697c6/tabulate-0.10.0.tar.gz", hash = "sha256:e2cfde8f79420f6deeffdeda9aaec3b6bc5abce947655d17ac662b126e48a60d", size = 91754, upload-time = "2026-03-04T18:55:34.402Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/55/db07de81b5c630da5cbf5c7df646580ca26dfaefa593667fc6f2fe016d2e/tabulate-0.10.0-py3-none-any.whl", hash = "sha256:f0b0622e567335c8fabaaa659f1b33bcb6ddfe2e496071b743aa113f8774f2d3", size = 39814, upload-time = "2026-03-04T18:55:31.284Z" },
 ]
 
 [[package]]
