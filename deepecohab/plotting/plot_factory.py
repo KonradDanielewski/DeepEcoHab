@@ -79,7 +79,7 @@ def plot_animal_speed(df: pl.DataFrame, animals: list[str], colors: list[str]) -
 		hover_data=["day", "phase", "position", "time_spent", "crossings"],
 		title="<b>Tunnel-crossing speed</b>",
 		points="outliers",
-		box=True,
+		# box=True,
 	)
 	fig.update_layout(showlegend=False)
 	fig.update_xaxes(title_text="<b>Animal ID</b>")
@@ -465,7 +465,7 @@ def time_spent_per_cage(df: pl.DataFrame, type: Literal["hourly", "daily"]) -> g
 			x = "Day: %{x}"
 			x_title = "Day"
 			z = "Time [h]: %{z}"
-			nbins = None
+			nbins = df["day"].n_unique()
 			legend_title = "<b>Hours</b>"
 
 	fig = px.density_heatmap(
