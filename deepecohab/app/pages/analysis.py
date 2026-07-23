@@ -30,6 +30,7 @@ layout = analysis_layout.generate_layout()
 		State("project-config-store", "data"),
 		State("numeric-input", "value"),
 		State("chasing_window", "value"),
+		State("tube-dwell-input", "value"),
 		State("overwrite-check", "value"),
 	],
 	prevent_initial_call=True,
@@ -39,6 +40,7 @@ def start_analysis(
 	config: dict[str, Any],
 	min_time: float,
 	chasing_window: list[float],
+	max_dwell: float,
 	overwrite: bool,
 ) -> tuple[bool, bool]:
 	"""Run analysis for antenna data."""
@@ -50,6 +52,7 @@ def start_analysis(
 		config,
 		minimum_time=min_time,
 		chasing_time_window=chasing_window,
+		max_dwell=max_dwell,
 		overwrite=overwrite,
 	)
 

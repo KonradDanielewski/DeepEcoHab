@@ -4,7 +4,7 @@ from dash import dcc, html
 from deepecohab.utils import auxfun_dashboard
 
 
-def generate_graphs_layout(days_range: list[int]) -> html.Div:
+def generate_graphs_layout(days_range: list[int], phase_range: list[int]) -> html.Div:
 	"""Generates layout of the main dashboard tab."""
 	return html.Div(
 		[
@@ -14,11 +14,13 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 					aggregate_stats_id="agg_switch",
 					slider_id="days",
 					slider_switch_id="slider_switch",
+					granularity_switch_id="granularity",
 					position_switch_id="position_switch",
 					pairwise_switch_id="pairwise_switch",
 					ranking_switch_id="ranking_switch",
 					sociability_switch_id="sociability_switch",
 					days_range=days_range,
+					phase_range=phase_range,
 					include_download=True,
 				),
 				className="sticky-settings-block",
@@ -334,7 +336,7 @@ def generate_graphs_layout(days_range: list[int]) -> html.Div:
 	)
 
 
-def generate_comparison_layout(phase_range: list[int]) -> html.Div:
+def generate_comparison_layout(days_range: list[int], phase_range: list[int]) -> html.Div:
 	"""Generates layout for the comparisons tab."""
 	return html.Div(
 		[
@@ -343,14 +345,18 @@ def generate_comparison_layout(phase_range: list[int]) -> html.Div:
 				[
 					dbc.Col(
 						dbc.Spinner(
-							auxfun_dashboard.generate_comparison_block("left", phase_range),
+							auxfun_dashboard.generate_comparison_block(
+								"left", days_range, phase_range
+							),
 							color="primary",
 						),
 						width=6,
 					),
 					dbc.Col(
 						dbc.Spinner(
-							auxfun_dashboard.generate_comparison_block("right", phase_range),
+							auxfun_dashboard.generate_comparison_block(
+								"right", days_range, phase_range
+							),
 							color="primary",
 						),
 						width=6,

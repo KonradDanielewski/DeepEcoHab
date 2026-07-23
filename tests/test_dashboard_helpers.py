@@ -108,6 +108,23 @@ def test_build_filter_expr_only_present_columns():
 	assert len(dash_helpers.build_filter_expr(["phase"], [1, 5], ["dark_phase"])) == 1
 
 
+def test_build_filter_expr_phase_count_granularity():
+	"""In phase granularity the range filters the phase_count column, not day."""
+	df = pl.DataFrame(
+		{
+			"day": [1, 1, 2, 2],
+			"phase_count": [1, 2, 3, 4],
+			"phase": ["dark_phase", "light_phase", "dark_phase", "light_phase"],
+		}
+	)
+	expr = dash_helpers.build_filter_expr(df.columns, [2, 3], None, granularity="phase_count")
+	out = df.filter(expr)
+	assert out.get_column("phase_count").to_list() == [2, 3]
+
+	# Day column absent in the frame -> no range expr is added.
+	assert dash_helpers.build_filter_expr(["phase_count"], [1, 5], None, granularity="day") is None
+
+
 @given(
 	rows=st.lists(
 		st.tuples(st.integers(1, 12), st.sampled_from(strat.PHASE_NAMES)),

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepecohab"
-version = "0.5.1"
+version = "0.5.3"
 description = "EcoHab with some machine learning"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -42,7 +42,9 @@ dependencies = [
     "polars",
     "scipy",
     "toml",
+    "tqdm",
     "tzlocal",
+    "pyshortcuts",
 ]
 
     [project.optional-dependencies]

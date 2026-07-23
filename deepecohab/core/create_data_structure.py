@@ -85,8 +85,12 @@ def calculate_time_spent(lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Add a ``time_spent`` column: seconds between consecutive rows per animal.
 
 	The value is the gap to the previous registration of the same animal, i.e. the
-	time spent in the current state, rounded to two decimals (tens of milliseconds).
-	The first registration of each animal has no predecessor and gets 0.
+	time spent in the current state. It is kept at full (microsecond) precision --
+	not rounded -- because the occupancy interval start is later reconstructed as
+	``datetime - time_spent`` (see ``auxfun.add_occupancy_bounds``); rounding here
+	would shift that start off the true entry time and fragment continuous stays in
+	the pairwise/time-alone sweeps. The first registration of each animal has no
+	predecessor and gets 0.
 	"""
 	time_spent = (
 		(pl.col("datetime") - pl.col("datetime").shift(1))
@@ -94,7 +98,6 @@ def calculate_time_spent(lf: pl.LazyFrame) -> pl.LazyFrame:
 		.dt.total_seconds(fractional=True)
 		.fill_null(0)
 		.cast(pl.Float64)
-		.round(2)
 	)
 	return lf.with_columns(time_spent.alias("time_spent"))
 
@@ -133,13 +136,13 @@ def _rename_antennas(lf: pl.LazyFrame, rename_dicts: dict) -> pl.LazyFrame:
 	return lf
 
 
-def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str) -> pl.LazyFrame:
+def _prepare_columns(cfg: dict, lf: pl.LazyFrame) -> pl.LazyFrame:
 	"""Cast raw columns to their final types and build the ``datetime`` column.
 
 	Animal ids become an enum, antennas a small int and ``time_under`` a duration.
-	The separate date/time strings are combined into a single timezone-aware
-	``datetime`` (offset by ``time_under`` so it marks the end of the reading), and
-	duplicate (datetime, animal) rows are dropped.
+	The separate date/time strings are combined into a single naive ``datetime``
+	(offset by ``time_under`` so it marks the end of the reading), and duplicate
+	(datetime, animal) rows are dropped.
 	"""
 	animal_ids: list[str] = cfg["animal_ids"]
 	return (
@@ -153,8 +156,7 @@ def _prepare_columns(cfg: dict, lf: pl.LazyFrame, timezone: str) -> pl.LazyFrame
 				pl.concat_str([pl.col("date"), pl.col("time")], separator=" ").str.to_datetime(
 					"%Y.%m.%d %H:%M:%S%.f",
 					time_unit="us",
-					time_zone=timezone,
-				)
+				)  # timezone handled in apply_timezone_fix
 				+ pl.col("time_under")
 			).alias("datetime"),
 		)
@@ -288,7 +290,7 @@ def get_ecohab_data_structure(
 
 	cfg = auxfun.read_config(config_path)
 
-	lf = _prepare_columns(cfg, lf, str(timezone))
+	lf = _prepare_columns(cfg, lf)
 
 	try:
 		start_date: str = cfg["experiment_timeline"]["start_date"]
@@ -330,9 +332,7 @@ def get_ecohab_data_structure(
 	auxfun.add_cages_to_config(config_path)
 	auxfun.add_positions_to_config(config_path)
 
-	try:
-		cfg["days_range"]
-	except KeyError:
+	if "days_range" not in cfg or "phase_range" not in cfg:
 		auxfun.add_days_to_config(config_path, lf)
 
 	auxfun.padded_df(lf, cfg, save_data, overwrite)

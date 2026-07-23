@@ -3,7 +3,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -21,6 +21,8 @@ def generate_settings_block(
 	slider_id: str | list[dict],
 	slider_switch_id: dict | str,
 	days_range: list[int],
+	phase_range: list[int] | None = None,
+	granularity_switch_id: dict | str | None = None,
 	position_switch_id: dict | str | None = None,
 	pairwise_switch_id: dict | str | None = None,
 	sociability_switch_id: dict | str | None = None,
@@ -29,6 +31,16 @@ def generate_settings_block(
 	comparison_layout: bool = False,
 ) -> html.Div:
 	"""Generates settings block for the dashboard tabs."""
+	range_label_id: dict | str = (
+		f"{slider_id}_range_label"
+		if isinstance(slider_id, str)
+		else {"type": "days_range_label", "side": slider_id[0]["side"]}
+	)
+	single_label_id: dict | str = (
+		f"{slider_id}_single_label"
+		if isinstance(slider_id, str)
+		else {"type": "days_single_label", "side": slider_id[0]["side"]}
+	)
 	block = html.Div(
 		[
 			html.Div(
@@ -66,6 +78,24 @@ def generate_settings_block(
 							html.Div(className="divider"),
 							html.Div(
 								dcc.RadioItems(
+									id=granularity_switch_id,
+									options=[
+										{"label": "Days", "value": "day"},
+										{"label": "Phases", "value": "phase_count"},
+									],
+									value="day",
+									className="dash-radio",
+								),
+							),
+						]
+						if granularity_switch_id is not None
+						else []
+					),
+					*(
+						[
+							html.Div(className="divider"),
+							html.Div(
+								dcc.RadioItems(
 									id=slider_switch_id,
 									options=[
 										{"label": "Range", "value": f"{slider_id}_range"},
@@ -85,7 +115,11 @@ def generate_settings_block(
 						if isinstance(slider_id, str)
 						else slider_id[0],
 						children=[
-							html.Label("Days of experiment", className="slider-label"),
+							html.Label(
+								"Days of experiment",
+								id=range_label_id,
+								className="slider-label",
+							),
 							dcc.RangeSlider(
 								id=f"{slider_id}_range"
 								if isinstance(slider_id, str)
@@ -115,7 +149,11 @@ def generate_settings_block(
 					html.Div(
 						id=f"{slider_id}_single_container",
 						children=[
-							html.Label("Days of experiment", className="slider-label"),
+							html.Label(
+								"Days of experiment",
+								id=single_label_id,
+								className="slider-label",
+							),
 							dcc.Slider(
 								id=f"{slider_id}_single",
 								min=days_range[0],
@@ -218,7 +256,7 @@ def generate_settings_block(
 	return block
 
 
-def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
+def generate_comparison_block(side: str, days_range: list[int], phase_range: list[int]) -> html.Div:
 	"""Generate one side of a comparisons block."""
 	return html.Div(
 		[
@@ -246,6 +284,8 @@ def generate_comparison_block(side: str, days_range: list[int]) -> html.Div:
 				],
 				slider_switch_id={"type": "slider_switch", "side": side},
 				days_range=days_range,
+				phase_range=phase_range,
+				granularity_switch_id={"type": "granularity", "side": side},
 				position_switch_id={"type": "position_switch", "side": side},
 				pairwise_switch_id={"type": "pairwise_switch", "side": side},
 				sociability_switch_id={"type": "sociability_switch", "side": side},
@@ -339,7 +379,7 @@ def generate_csv_download_tab() -> dcc.Tab:
 					dbc.Col(
 						[
 							dbc.Button(
-								"Download DataFrame/s",
+								"Download CSV",
 								id={
 									"type": "download-btn",
 									"fmt": "csv",
@@ -348,7 +388,18 @@ def generate_csv_download_tab() -> dcc.Tab:
 								n_clicks=0,
 								color="primary",
 								className="ModalButton",
-							)
+							),
+							dbc.Button(
+								"Download PARQUET",
+								id={
+									"type": "download-btn",
+									"fmt": "parquet",
+									"side": "dfs",
+								},
+								n_clicks=0,
+								color="primary",
+								className="ModalButton",
+							),
 						],
 						width=4,
 						align="center",
@@ -547,12 +598,13 @@ def build_filter_expr(
 	columns: list[str],
 	days_range: list[int] | None = None,
 	phase_type: list[str] | None = None,
+	granularity: str = "day",
 ) -> list[pl.Expr] | None:
 	"""Builds filtering expressions for DF download by checking column presence."""
 	exprs: list[pl.Expr] = []
 
-	if days_range is not None and "day" in columns:
-		exprs.append(pl.col("day").is_between(*days_range, closed="both"))
+	if days_range is not None and granularity in columns:
+		exprs.append(pl.col(granularity).is_between(*days_range, closed="both"))
 
 	if phase_type is not None and "phase" in columns:
 		exprs.append(pl.col("phase").is_in(phase_type))
@@ -563,11 +615,29 @@ def build_filter_expr(
 	return exprs
 
 
+def _prepare_download_dataframe(
+	store: dict,
+	name: str,
+	days_range: list[int],
+	phase_types: list[str],
+	granularity: str,
+	fmt: Literal["csv", "parquet"],
+) -> pl.DataFrame:
+	"""Helper to prepare dataframe download."""
+	df = store[name]
+	if name in ["main_df", "padded_df"] and fmt == "csv":
+		df = df.with_columns(pl.col("time_under").dt.total_seconds(fractional=True))
+	expr = build_filter_expr(df.schema, days_range, phase_types, granularity)
+	return df.filter(expr) if expr is not None else df
+
+
 def download_dataframes(
 	selected_dfs: list[str],
 	phase_type: str,
 	days_range: list[int],
+	granularity: str,
 	store: dict,
+	fmt: Literal["csv", "parquet"],
 ) -> dict[str, Any | None]:
 	"""Downloads the selected DataFrame/s via the browser."""
 	if not selected_dfs:
@@ -578,21 +648,41 @@ def download_dataframes(
 	if len(selected_dfs) == 1:
 		name = selected_dfs[0]
 		if name in store:
-			df = store[name]
-			expr = build_filter_expr(df.schema, days_range, phase_types)
-			df = df.filter(expr) if expr is not None else df
-			return dcc.send_string(df.write_csv, f"{name}.csv")
+			df = _prepare_download_dataframe(
+				store,
+				name,
+				days_range,
+				phase_types,
+				granularity,
+				fmt,
+			)
+			match fmt:
+				case "csv":
+					return dcc.send_string(df.write_csv, f"{name}.csv")
+				case "parquet":
+					return dcc.send_bytes(df.write_parquet, f"{name}.parquet")
 		raise exceptions.PreventUpdate
 
 	zip_buffer = io.BytesIO()
 	with zipfile.ZipFile(zip_buffer, "w") as zf:
 		for name in selected_dfs:
 			if name in store:
-				df = store[name]
-				expr = build_filter_expr(df.schema, days_range, phase_types)
-				df = df.filter(expr) if expr is not None else df
-				csv_bytes = df.write_csv().encode("utf-8")
-				zf.writestr(f"{name}.csv", csv_bytes)
+				df = _prepare_download_dataframe(
+					store,
+					name,
+					days_range,
+					phase_types,
+					granularity,
+					fmt,
+				)
+				match fmt:
+					case "csv":
+						csv_bytes = df.write_csv().encode("utf-8")
+						zf.writestr(f"{name}.csv", csv_bytes)
+					case "parquet":
+						parquet_buffer = io.BytesIO()
+						df.write_parquet(parquet_buffer)
+						zf.writestr(f"{name}.parquet", parquet_buffer.getvalue())
 
 	zip_buffer.seek(0)
 

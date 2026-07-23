@@ -54,7 +54,17 @@ def make_match_df(rows: list[tuple[str, str, dt.datetime]]) -> pl.LazyFrame:
 def run_ranking(monkeypatch, match_df, animal_ids, prev_ranking=None) -> pl.DataFrame:
 	"""Call the pure ranking body with match_df injected in place of _get_data."""
 	monkeypatch.setattr(antenna_analysis.auxfun, "_get_data", lambda cfg, key: match_df)
-	cfg = {"animal_ids": animal_ids, "phase": PHASE_CFG}
+	# experiment_timeline/timezone are needed by get_grid_phase_count's build_time_grid;
+	# the window spans the match datetimes below so phase_count resolves off the grid.
+	cfg = {
+		"animal_ids": animal_ids,
+		"phase": PHASE_CFG,
+		"timezone": str(TZ),
+		"experiment_timeline": {
+			"start_date": "2023-05-24 00:00:00",
+			"finish_date": "2023-05-26 23:00:00",
+		},
+	}
 	kwargs = {} if prev_ranking is None else {"prev_ranking": prev_ranking}
 	return antenna_analysis.calculate_ranking.__wrapped__(cfg, **kwargs).collect()
 
@@ -77,8 +87,21 @@ def test_output_schema(monkeypatch):
 		"datetime",
 		"phase",
 		"day",
+		"phase_count",
 		"hour",
 	}
+
+
+def test_phase_count_aligned_to_grid(monkeypatch):
+	"""phase_count is resolved off the dense grid, counting phases globally.
+
+	The grid starts at 2023-05-24 00:00 (dark phase = #1), so the noon light-phase
+	event falls in the experiment's second phase.
+	"""
+	match_df = make_match_df([("B", "A", at(2023, 5, 24, 12, 0, 0))])
+	result = run_ranking(monkeypatch, match_df, ["A", "B"])
+	assert result["phase_count"].null_count() == 0
+	assert set(result["phase_count"].unique().to_list()) == {2}
 
 
 def test_one_row_per_animal_per_match(monkeypatch):
@@ -209,3 +232,30 @@ def test_round_trip_continues_from_prev(monkeypatch):
 	assert final2["A"] == final1["A"]
 	assert final2["B"] == final1["B"]
 	assert final2["A"] > final2["B"]
+
+
+# --- empty match_df (no chasing events at all) ------------------------------
+
+
+def test_empty_match_df_emits_empty_schema(monkeypatch):
+	"""With no chasing events to replay, ranking returns an empty, well-typed frame.
+
+	Exercises the dedicated ``else`` branch in calculate_ranking that builds an
+	empty result from an explicit schema; the derived phase/day/hour columns are
+	still appended, so the schema must match the populated case.
+	"""
+	empty = make_match_df([])
+	result = run_ranking(monkeypatch, empty, ["A", "B", "C"])
+
+	assert result.height == 0
+	assert set(result.columns) == {
+		"animal_id",
+		"mu",
+		"sigma",
+		"ordinal",
+		"datetime",
+		"phase",
+		"day",
+		"phase_count",
+		"hour",
+	}
