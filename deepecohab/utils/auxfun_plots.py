@@ -861,6 +861,7 @@ def prep_cage_preference_evolution(
 			on=[granularity, "position", "animal_id"],
 			how="right",
 		)
+		.sort(granularity, "animal_id", "position")
 	).collect(engine="in-memory")
 
 	return df
