@@ -1,7 +1,12 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-import polars as pl
 import datetime as dt
+import polars as pl
+
+@dataclass(frozen=True, slots=True)
+class Project:
+    name: str
+    experiments: dict[str, Experiment]
 
 @dataclass(frozen=True, slots=True)
 class Experiment:
@@ -18,8 +23,7 @@ class Experiment:
 class Animal:
     tag_no: str                      
     sex: str | None = None
-    age: dict[int, str] = None
-    dob: dt.datetime = None
+    age: pl.duration
     genetic_background: str | None = None
     mouse_line: str | None = None
     genotype: str | None = None
