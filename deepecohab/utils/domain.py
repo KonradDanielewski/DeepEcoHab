@@ -21,9 +21,9 @@ class Experiment:
 
 @dataclass(frozen=True, slots=True)
 class Animal:
-    tag_no: str                      
+    tag_no: str
     sex: str | None = None
-    age: pl.duration
+    age: str | None = None           # ISO 8601 duration string, e.g. "P6M"
     genetic_background: str | None = None
     mouse_line: str | None = None
     genotype: str | None = None
