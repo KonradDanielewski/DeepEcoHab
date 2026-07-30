@@ -59,17 +59,9 @@ class JsonConfigLoader:
         animals = self._cfg["animals"]
         for tag, r in animals["rows"].items():
             notes = r.get("notes", "") or ""
-            match animals["age_input_mode"]:
-                case "age":
-                    age = {"age" : r.get("age")["value"], "unit" : r.get("age")["unit"]}
-                    dob = None
-                case "dob":
-                    age = None
-                    dob = r.get("dob")
-            
             out[tag] = Animal(
                 tag_no=tag, sex=r.get("sex"), genotype=r.get("genotype"),
-                treatment=r.get("treatment"), age = age, dob = dob,
+                treatment=r.get("treatment"), age=r.get("age"),
                 notes=notes,
             )
         return out
