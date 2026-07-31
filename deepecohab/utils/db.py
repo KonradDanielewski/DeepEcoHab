@@ -94,6 +94,18 @@ class PostgresExperimentRepository:
             "SELECT 1 FROM experiment WHERE name = %s", [name]
         ).fetchone() is not None
 
+    def delete(self, name: str) -> None:
+        with self._con.transaction():
+            row = self._con.execute(
+                "SELECT experiment_id FROM experiment WHERE name = %s", [name]
+            ).fetchone()
+            if row is None:
+                return
+            exp_id = row[0]
+            # children before parents, respecting the FK graph
+            for table in ("antenna_pair", "antenna", "tunnel", "cage", "animal", "experiment"):
+                self._con.execute(f"DELETE FROM {table} WHERE experiment_id = %s", [exp_id])
+
     def save(self, exp: Experiment, interpolate: bool) -> None:
         with self._con.transaction():
             exp_id = self._con.execute(
