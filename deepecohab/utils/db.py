@@ -1,6 +1,5 @@
-import duckdb
-import polars as pl
-from pathlib import Path
+import psycopg
+
 from .domain import Experiment, Animal, Layout, Cage, Tunnel, Antenna, Crossing
 
 
@@ -81,62 +80,52 @@ SCHEMA = """
     );
 """
 
-def connect(path: str | Path = "ecohab.duckdb") -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect(str(path))
+def connect(dsn: str) -> psycopg.Connection:
+    con = psycopg.connect(dsn, autocommit=True)
     con.execute(SCHEMA)
     return con
 
-class DuckDBExperimentRepository:
-    def __init__(self, con):
+class PostgresExperimentRepository:
+    def __init__(self, con: psycopg.Connection):
         self._con = con
 
     def exists(self, name: str) -> bool:
         return self._con.execute(
-            "SELECT 1 FROM experiment WHERE name = ?", [name]
+            "SELECT 1 FROM experiment WHERE name = %s", [name]
         ).fetchone() is not None
 
     def save(self, exp: Experiment, interpolate: bool) -> None:
-        self._con.execute("BEGIN TRANSACTION")
-        try:
+        with self._con.transaction():
             exp_id = self._con.execute(
                 """INSERT INTO experiment
                    (name, start_ts, end_ts, light_start, dark_start,
                     recording_timezone, layout_interpolated)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
                    RETURNING experiment_id""",
                 [exp.name, exp.start, exp.end, exp.light_start,
                  exp.dark_start, exp.recording_timezone, interpolate],
             ).fetchone()[0]
 
             if exp.animals:
-                animals_df = pl.DataFrame([
-                    {"experiment_id": exp_id, "tag_no": a.tag_no, "sex": a.sex,
-                     "genotype": a.genotype, "treatment": a.treatment,
-                     "genetic_background": a.genetic_background,
-                     "mouse_line": a.mouse_line, "age": a.age,
-                     "notes": a.notes}
-                    for a in exp.animals.values()
-                ])
-                self._con.execute(
+                self._con.cursor().executemany(
                     """INSERT INTO animal
                        (experiment_id, tag_no, sex, genotype, treatment,
                         genetic_background, mouse_line, age, notes)
-                       SELECT experiment_id, tag_no, sex, genotype, treatment,
-                              genetic_background, mouse_line, age, notes
-                       FROM animals_df"""
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    [
+                        (exp_id, a.tag_no, a.sex, a.genotype, a.treatment,
+                         a.genetic_background, a.mouse_line, a.age, a.notes)
+                        for a in exp.animals.values()
+                    ],
                 )
 
             layout = exp.layout
 
             if layout.cages:
-                cages_df = pl.DataFrame([
-                    {"experiment_id": exp_id, "cage_id": c.id,
-                     "cage_no": c.cage_no, "cage_type": c.cage_type}
-                    for c in layout.cages.values()
-                ])
-                self._con.execute(
+                self._con.cursor().executemany(
                     """INSERT INTO cage (experiment_id, cage_id, cage_no, cage_type)
-                       SELECT experiment_id, cage_id, cage_no, cage_type FROM cages_df"""
+                       VALUES (%s, %s, %s, %s)""",
+                    [(exp_id, c.id, c.cage_no, c.cage_type) for c in layout.cages.values()],
                 )
 
             if layout.tunnels:
@@ -144,66 +133,46 @@ class DuckDBExperimentRepository:
                 for t in layout.tunnels.values():
                     # antennas dict preserves the start/end insertion order set by build_layout
                     cage_a_id, cage_b_id = t.antennas.keys()
-                    tunnel_rows.append({
-                        "experiment_id": exp_id, "tunnel_id": t.id, "name": t.name,
-                        "cage_a_id": cage_a_id, "cage_b_id": cage_b_id,
-                        "is_deadend": t.is_deadend,
-                    })
-                tunnels_df = pl.DataFrame(tunnel_rows)
-                self._con.execute(
+                    tunnel_rows.append((exp_id, t.id, t.name, cage_a_id, cage_b_id, t.is_deadend))
+                self._con.cursor().executemany(
                     """INSERT INTO tunnel
                        (experiment_id, tunnel_id, name, cage_a_id, cage_b_id, is_deadend)
-                       SELECT experiment_id, tunnel_id, name, cage_a_id, cage_b_id, is_deadend
-                       FROM tunnels_df"""
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    tunnel_rows,
                 )
 
             if layout.antennas:
-                antennas_df = pl.DataFrame([
-                    {"experiment_id": exp_id, "antenna_id": a.id,
-                     "tunnel_id": a.tunnel_id, "cage_id": a.cage_id}
-                    for a in layout.antennas.values()
-                ])
-                self._con.execute(
+                self._con.cursor().executemany(
                     """INSERT INTO antenna (experiment_id, antenna_id, tunnel_id, cage_id)
-                       SELECT experiment_id, antenna_id, tunnel_id, cage_id FROM antennas_df"""
+                       VALUES (%s, %s, %s, %s)""",
+                    [(exp_id, a.id, a.tunnel_id, a.cage_id) for a in layout.antennas.values()],
                 )
 
             if layout.pairs:
                 pair_rows = []
                 for (a_from, a_to), target in layout.pairs.items():
                     if isinstance(target, Cage):
-                        pair_rows.append({
-                            "experiment_id": exp_id, "antenna_from": a_from, "antenna_to": a_to,
-                            "kind": "cage", "cage_id": target.id,
-                            "tunnel_id": None, "from_cage_id": None, "to_cage_id": None,
-                        })
+                        pair_rows.append(
+                            (exp_id, a_from, a_to, "cage", target.id, None, None, None)
+                        )
                     else:
-                        pair_rows.append({
-                            "experiment_id": exp_id, "antenna_from": a_from, "antenna_to": a_to,
-                            "kind": "crossing", "cage_id": None,
-                            "tunnel_id": target.tunnel_id,
-                            "from_cage_id": target.from_cage_id, "to_cage_id": target.to_cage_id,
-                        })
-                pairs_df = pl.DataFrame(pair_rows)
-                self._con.execute(
+                        pair_rows.append((
+                            exp_id, a_from, a_to, "crossing", None,
+                            target.tunnel_id, target.from_cage_id, target.to_cage_id,
+                        ))
+                self._con.cursor().executemany(
                     """INSERT INTO antenna_pair
                        (experiment_id, antenna_from, antenna_to, kind, cage_id,
                         tunnel_id, from_cage_id, to_cage_id)
-                       SELECT experiment_id, antenna_from, antenna_to, kind, cage_id,
-                              tunnel_id, from_cage_id, to_cage_id
-                       FROM pairs_df"""
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    pair_rows,
                 )
-
-            self._con.execute("COMMIT")
-        except Exception:
-            self._con.execute("ROLLBACK")
-            raise
 
     def get(self, name: str) -> Experiment | None:
         exp_row = self._con.execute(
             """SELECT experiment_id, name, start_ts, end_ts, light_start,
                       dark_start, recording_timezone
-               FROM experiment WHERE name = ?""", [name]
+               FROM experiment WHERE name = %s""", [name]
         ).fetchone()
         if exp_row is None:
             return None
@@ -212,7 +181,7 @@ class DuckDBExperimentRepository:
         animal_rows = self._con.execute(
             """SELECT tag_no, sex, genotype, treatment, genetic_background,
                       mouse_line, age, notes
-               FROM animal WHERE experiment_id = ?""", [exp_id]
+               FROM animal WHERE experiment_id = %s""", [exp_id]
         ).fetchall()
         animals = {
             r[0]: Animal(
@@ -223,12 +192,12 @@ class DuckDBExperimentRepository:
         }
 
         cage_rows = self._con.execute(
-            "SELECT cage_id, cage_no, cage_type FROM cage WHERE experiment_id = ?", [exp_id]
+            "SELECT cage_id, cage_no, cage_type FROM cage WHERE experiment_id = %s", [exp_id]
         ).fetchall()
         cages = {r[0]: Cage(id=r[0], cage_no=r[1], cage_type=r[2]) for r in cage_rows}
 
         antenna_rows = self._con.execute(
-            "SELECT antenna_id, tunnel_id, cage_id FROM antenna WHERE experiment_id = ?", [exp_id]
+            "SELECT antenna_id, tunnel_id, cage_id FROM antenna WHERE experiment_id = %s", [exp_id]
         ).fetchall()
         antennas = {r[0]: Antenna(id=r[0], tunnel_id=r[1], cage_id=r[2]) for r in antenna_rows}
 
@@ -238,7 +207,7 @@ class DuckDBExperimentRepository:
 
         tunnel_rows = self._con.execute(
             """SELECT tunnel_id, name, cage_a_id, cage_b_id, is_deadend
-               FROM tunnel WHERE experiment_id = ?""", [exp_id]
+               FROM tunnel WHERE experiment_id = %s""", [exp_id]
         ).fetchall()
         tunnels = {
             r[0]: Tunnel(
@@ -251,7 +220,7 @@ class DuckDBExperimentRepository:
         pair_rows = self._con.execute(
             """SELECT antenna_from, antenna_to, kind, cage_id, tunnel_id,
                       from_cage_id, to_cage_id
-               FROM antenna_pair WHERE experiment_id = ?""", [exp_id]
+               FROM antenna_pair WHERE experiment_id = %s""", [exp_id]
         ).fetchall()
         pairs: dict[tuple[int, int], Cage | Crossing] = {}
         for a_from, a_to, kind, cage_id, tunnel_id, from_cage_id, to_cage_id in pair_rows:
