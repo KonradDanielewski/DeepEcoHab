@@ -23,6 +23,9 @@ def plot_activity(
 	granularity: str = "day",
 ) -> go.Figure:
 	"""Plots bar graph of sum of cage and tunnel visits or time spent."""
+	if granularity not in df.columns:
+		granularity = "day"
+
 	match type_switch:
 		case "visits":
 			position_title = "<b>Visits to each position</b>"
@@ -142,6 +145,9 @@ def plot_time_alone(
 	granularity: str = "day",
 ) -> go.Figure:
 	"""Plot time alone as a relative bar plot."""
+	if granularity not in df.columns:
+		granularity = "day"
+
 	match agg_switch:
 		case "sum":
 			fig = px.histogram(
@@ -420,6 +426,9 @@ def plot_ranking_stability(
 	granularity: str = "day",
 ) -> go.Figure:
 	"""Plots animal rank on a per day (or per phase) basis."""
+	if granularity not in df.columns:
+		granularity = "day"
+
 	color_map = dict(zip(animals, colors, strict=False))
 	label = _unit_label(granularity)
 	cadence = "Daily" if granularity == "day" else "Per-phase"
@@ -461,6 +470,9 @@ def time_spent_per_cage(
 	df: pl.DataFrame, type: Literal["hourly", "daily"], granularity: str = "day"
 ) -> go.Figure:
 	"""Plots N-cages of heatmaps with per hour time spent for each animal."""
+	if granularity not in df.columns:
+		granularity = "day"
+
 	match type:  # TODO: improve column naming consistency to avoid this mess
 		case "hourly":
 			title = "<b>Time spent per cage</b>"
@@ -481,8 +493,12 @@ def time_spent_per_cage(
 			x = f"{label}: %{{x}}"
 			x_title = label
 			z = "Time [h]: %{z}"
-			nbins = df["day"].n_unique()
-			nbins = df[x_col].max() - df[x_col].min() + 1  # ty: ignore[unsupported-operator]
+			if x_col in df.columns:
+				# Compute inclusive range; cast to int for Plotly's bin count.
+				nbins = int(df[x_col].max() - df[x_col].min() + 1)  # type: ignore[unsupported-operator]
+			else:
+				# Fall back to the unique count of the day column.
+				nbins = int(df["day"].n_unique())
 			legend_title = "<b>Hours</b>"
 
 	fig = px.density_heatmap(
@@ -798,6 +814,9 @@ def plot_cage_preference(
 	granularity: str = "day",
 ) -> go.Figure:
 	"""Plots cage preference on a per cage basis (cohort preference summary)."""
+	if df is not None and granularity not in df.columns:
+		granularity = "day"
+
 	fig = px.box(
 		df,
 		x="position",
