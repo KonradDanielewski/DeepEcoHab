@@ -194,6 +194,10 @@ The Dashboard tab is organized top-to-bottom into the following sections:
 Each plot is interactive (hover for values, zoom, pan). A spinner is shown while a plot is
 recomputing.
 
+> For a plot-by-plot explanation of what every visualization shows, how it is computed, and
+> which controls affect it, see the
+> [Cohort Dashboard — Visualization Reference](cohort_dashboard_plots.md).
+
 ### Downloading data and plots
 
 The **Downloads** button in the settings bar opens a dialog with two tabs:
