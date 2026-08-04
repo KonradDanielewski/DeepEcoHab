@@ -190,6 +190,35 @@ def plot_sum_line_per_hour(
 	return fig
 
 
+def plot_daily_chasing(
+	df: pl.DataFrame,
+	animals: list[str],
+	colors: list[str],
+) -> go.Figure:
+	"""Plot each animal's total number of chasing events per day as stacked bars."""
+	fig = px.bar(
+		df,
+		x="day",
+		y="total_chasing",
+		color="animal_id",
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		title="<b>Chasing per day</b>",
+		barmode="stack",
+	)
+
+	fig.update_layout(
+		barcornerradius=10,
+		legend={"title": "<b>Chaser</b>"},
+		hovermode="x unified",
+	)
+	fig.update_traces(marker_line_width=0)
+	fig.update_xaxes(title="<b>Day</b>", dtick=1)
+	fig.update_yaxes(title="<b># of chasing events</b>", rangemode="tozero")
+
+	return fig
+
+
 def plot_mean_line_per_hour(
 	df: pl.DataFrame,
 	animals: list[str],

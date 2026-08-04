@@ -416,6 +416,27 @@ def prep_chasings_line(
 	return df
 
 
+def prep_daily_chasing(
+	store: dict[str, pl.DataFrame], animals: list[str], days_range: list[int]
+) -> pl.DataFrame:
+	"""Sum chasing-event counts for each selected chaser and day."""
+	df = store["chasings_df"]
+	required_columns = {"chaser", "day", "chasings"}
+	missing = required_columns.difference(df.columns)
+	if missing:
+		raise ValueError(f"missing required columns: {', '.join(sorted(missing))}")
+
+	return (
+		df.filter(
+			pl.col("chaser").is_in(animals) & pl.col("day").is_between(days_range[0], days_range[1])
+		)
+		.group_by("chaser", "day")
+		.agg(pl.sum("chasings").alias("total_chasing"))
+		.rename({"chaser": "animal_id"})
+		.sort("animal_id", "day")
+	)
+
+
 def prep_activity(
 	store: dict[str, pl.DataFrame],
 	days_range: list[int],

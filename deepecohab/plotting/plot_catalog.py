@@ -190,6 +190,19 @@ def chasings_line(
 			)
 
 
+@plot_registry.register("chasings-daily-bar")
+def chasings_daily_bar(
+	store: dict,
+	animals: list[str],
+	days_range: list[int],
+	animal_colors: list[str],
+) -> go.Figure:
+	"""Generate a stacked bar chart of each animal's daily chasing total."""
+	df = auxfun_plots.prep_daily_chasing(store, animals, days_range)
+
+	return plot_factory.plot_daily_chasing(df, animals, animal_colors)
+
+
 @plot_registry.register("activity-bar")
 def activity(
 	store: dict,

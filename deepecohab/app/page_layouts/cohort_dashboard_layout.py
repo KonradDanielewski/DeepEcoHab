@@ -121,6 +121,18 @@ def generate_graphs_layout(days_range: list[int], phase_range: list[int]) -> htm
 						],
 						className="row-size",
 					),
+					dbc.Row(
+						[
+							dbc.Col(
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph("chasings-daily-bar"),
+									color="primary",
+								),
+								width=6,
+							),
+						],
+						className="row-size",
+					),
 					# Activity per hour line and per position bar
 					dbc.Row([dbc.Col(html.H2("Activity", className="text-left mb-2"))]),
 					dbc.Row(
