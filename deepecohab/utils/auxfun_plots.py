@@ -691,7 +691,8 @@ def prep_daily_time_alone(
 			pl.col("position").cast(pl.String).str.contains("cage"),
 		)
 		.group_by("animal_id", "day", maintain_order=True)
-		.agg(pl.sum("time_alone"))
+		.agg(pl.sum("time_alone").alias("total_time_alone"))
+		.sort("day", maintain_order=True)
 	)
 
 

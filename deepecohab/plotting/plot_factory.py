@@ -130,7 +130,7 @@ def plot_daily_time_alone(
 	fig = px.line(
 		df,
 		x="day",
-		y="time_alone",
+		y="total_time_alone",
 		color="animal_id",
 		color_discrete_map=dict(zip(animals, colors, strict=False)),
 		category_orders={"animal_id": animals},
