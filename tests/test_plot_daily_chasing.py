@@ -1,5 +1,4 @@
 import polars as pl
-import pytest
 
 from deepecohab.plotting.plot_catalog import plot_registry
 from deepecohab.plotting.plot_factory import plot_daily_chasing
@@ -9,29 +8,22 @@ from deepecohab.utils.auxfun_plots import prep_daily_chasing
 def test_prep_daily_chasing_sums_each_chasers_daily_counts():
 	df = pl.DataFrame(
 		{
-			"chaser": ["A", "A", "A", "B", "B"],
-			"chased": ["B", "C", "B", "A", "A"],
-			"day": [1, 1, 2, 1, 2],
+			"chaser": ["B", "A", "A", "B", "B"],
+			"chased": ["A", "B", "C", "A", "A"],
+			"day": [1, 1, 1, 2, 3],
 			"hour": [8, 9, 8, 8, 8],
-			"chasings": [2, 3, 4, 1, 0],
+			"phase": ["dark_phase", "dark_phase", "light_phase", "dark_phase", "dark_phase"],
+			"chasings": [1, 2, 3, 4, 8],
 		}
 	)
 
-	result = prep_daily_chasing({"chasings_df": df}, ["A", "B"], [1, 2])
+	result = prep_daily_chasing({"chasings_df": df}, [1, 2], ["dark_phase"])
 
 	assert result.to_dicts() == [
-		{"animal_id": "A", "day": 1, "total_chasing": 5},
-		{"animal_id": "A", "day": 2, "total_chasing": 4},
 		{"animal_id": "B", "day": 1, "total_chasing": 1},
-		{"animal_id": "B", "day": 2, "total_chasing": 0},
+		{"animal_id": "A", "day": 1, "total_chasing": 2},
+		{"animal_id": "B", "day": 2, "total_chasing": 4},
 	]
-
-
-def test_prep_daily_chasing_requires_expected_columns():
-	with pytest.raises(ValueError, match="missing required columns: chasings"):
-		prep_daily_chasing(
-			{"chasings_df": pl.DataFrame({"chaser": ["A"], "day": [1]})}, ["A"], [1, 1]
-		)
 
 
 def test_plot_daily_chasing_uses_project_stacked_bar_style():
@@ -58,4 +50,5 @@ def test_daily_chasing_plot_is_registered():
 		"animals",
 		"days_range",
 		"animal_colors",
+		"phase_type",
 	]

@@ -54,6 +54,8 @@ SWITCHES_PRIMARY = {
 	"position_switch": "time",
 	"pairwise_switch": "time_together",
 	"sociability_switch": "sociability",
+	"chasing_plot_switch": "diurnal",
+	"time_alone_plot_switch": "cage",
 	"granularity": "day",
 }
 SWITCHES_ALTERNATE = {
@@ -62,6 +64,8 @@ SWITCHES_ALTERNATE = {
 	"position_switch": "visits",
 	"pairwise_switch": "pairwise_encounters",
 	"sociability_switch": "proportion_together",
+	"chasing_plot_switch": "daily",
+	"time_alone_plot_switch": "daily",
 	"granularity": "phase_count",
 }
 

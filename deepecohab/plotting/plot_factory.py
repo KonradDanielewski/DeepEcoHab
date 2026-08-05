@@ -121,6 +121,34 @@ def plot_time_alone(
 	return fig
 
 
+def plot_daily_time_alone(
+	df: pl.DataFrame,
+	animals: list[str],
+	colors: list[str],
+) -> go.Figure:
+	"""Plot each animal's daily time alone as colored lines and markers."""
+	fig = px.line(
+		df,
+		x="day",
+		y="time_alone",
+		color="animal_id",
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		title="<b>Time alone per day</b>",
+		markers=True,
+	)
+
+	fig.update_layout(
+		legend={"title": "<b>Animal ID</b>"},
+		hovermode="x unified",
+	)
+	fig.update_traces(line={"width": 2}, marker={"size": 7, "line": {"width": 0}})
+	fig.update_xaxes(title="<b>Day</b>", dtick=1)
+	fig.update_yaxes(title="<b>Time alone [s]</b>", rangemode="tozero")
+
+	return fig
+
+
 def plot_sum_line_per_hour(
 	df: pl.DataFrame,
 	animals: list[str],

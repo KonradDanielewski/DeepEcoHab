@@ -252,6 +252,8 @@ p,
 #position_switch.dash-radio,
 #pairwise_switch.dash-radio,
 #ranking_switch.dash-radio,
+#chasing_plot_switch.dash-radio,
+#time_alone_plot_switch.dash-radio,
 #sociability_switch.dash-radio {
   flex-direction: row;
   align-items: center;
@@ -261,6 +263,8 @@ p,
 #position_switch.dash-options-list,
 #pairwise_switch.dash-options-list,
 #ranking_switch.dash-options-list,
+#chasing_plot_switch.dash-options-list,
+#time_alone_plot_switch.dash-options-list,
 #sociability_switch.dash-options-list {
   background-color: #161f34;
 }
