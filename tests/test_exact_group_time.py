@@ -137,17 +137,18 @@ def test_native_plot_filters_to_groups_with_only_selected_animals():
 
 
 def test_exact_group_plot_arranges_four_cages_in_two_by_two_grid():
+	animals = ["0D2", "23E"]
 	df = pl.DataFrame(
 		{
 			"cage": [f"cage_{index}" for index in range(1, 5)],
-			"group": ["A + B"] * 4,
+			"group": ["0D2 + 23E"] * 4,
 			"seconds": [60.0, 120.0, 180.0, 360.0],
 		}
 	)
 	fig = plot_exact_group_time(
 		df,
 		[f"cage_{index}" for index in range(1, 5)],
-		["A", "B"],
+		animals,
 		["red", "blue"],
 	)
 
@@ -157,7 +158,11 @@ def test_exact_group_plot_arranges_four_cages_in_two_by_two_grid():
 	assert list(fig.layout.xaxis2.range) == list(fig.layout.xaxis4.range)
 	assert list(fig.layout.xaxis5.range) == list(fig.layout.xaxis7.range)
 	assert list(fig.layout.xaxis6.range) == list(fig.layout.xaxis8.range)
-	for axis_name in ("yaxis3", "yaxis4", "yaxis7", "yaxis8"):
+	for axis_name in ("yaxis3", "yaxis7"):
+		axis = getattr(fig.layout, axis_name)
+		assert axis.showticklabels is True
+		assert list(axis.ticktext) == animals
+	for axis_name in ("yaxis4", "yaxis8"):
 		assert getattr(fig.layout, axis_name).showticklabels is False
 	bar_ranges = [
 		list(getattr(fig.layout, axis_name).range)

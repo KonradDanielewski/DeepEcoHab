@@ -273,9 +273,12 @@ def plot_exact_group_time(
 			col=column,
 		)
 		fig.update_yaxes(
-			showticklabels=False,
+			showticklabels=column == 1,
+			tickvals=list(range(len(animals))),
+			ticktext=animals,
 			showgrid=False,
 			zeroline=False,
+			automargin=True,
 			row=matrix_row,
 			col=column,
 		)
