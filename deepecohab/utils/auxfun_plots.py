@@ -1,5 +1,7 @@
 import math
+from collections import defaultdict
 from dataclasses import dataclass
+from datetime import timedelta
 from itertools import combinations, product
 from typing import Literal
 
@@ -30,6 +32,7 @@ class PlotConfig:
 	sociability_switch: Literal["proportion_together", "sociability"] | None = None
 	ranking_switch: Literal["intime", "stability"] | None = None
 	animals: list[str] | None = None
+	exact_group_animals: list[str] | None = None
 	animal_colors: list[str] | None = None
 	cages: list[str] | None = None
 	positions: list[str] | None = None
@@ -69,6 +72,78 @@ def color_sampling(
 	colors: list[str] = px.colors.sample_colorscale(cmap, x)
 
 	return colors
+
+
+def prep_exact_group_time(
+	store: dict[str, pl.DataFrame],
+	phase_type: list[str],
+	days_range: list[int],
+	cages: list[str],
+	granularity: str = "day",
+) -> pl.DataFrame:
+	"""Calculate time occupied by each exact simultaneous group in every cage.
+
+	The calculation mirrors the Cage Metrics Explorer: ``padded_df.datetime`` is
+	the end of an occupancy interval and ``time_spent`` is its length in seconds.
+	A sweep over all interval boundaries attributes each span to the complete set
+	of animals present, so time for ``A + B`` excludes spans where C was also there.
+	Only groups of at least two animals are returned.
+	"""
+	padded = store["padded_df"].filter(
+		pl.col(granularity).is_between(days_range[0], days_range[1]),
+		pl.col("phase").cast(pl.String).is_in(phase_type),
+		pl.col("position").is_in(cages),
+		pl.col("time_spent") > 0,
+	)
+
+	intervals_by_cage: dict[tuple[int, str, str], list[dict]] = defaultdict(list)
+	for row in padded.select(
+		"datetime", "time_spent", "day", "phase", "animal_id", "position"
+	).iter_rows(named=True):
+		key = (int(row["day"]), str(row["phase"]), str(row["position"]))
+		intervals_by_cage[key].append(row)
+
+	rows: list[dict] = []
+	for (day, phase, cage), intervals in intervals_by_cage.items():
+		events: dict = defaultdict(lambda: {"enter": set(), "leave": set()})
+		for row in intervals:
+			end = row["datetime"]
+			start = end - timedelta(seconds=float(row["time_spent"]))
+			animal = str(row["animal_id"])
+			events[start]["enter"].add(animal)
+			events[end]["leave"].add(animal)
+
+		active: set[str] = set()
+		totals: dict[tuple[str, ...], float] = defaultdict(float)
+		times = sorted(events)
+		for index, timestamp in enumerate(times[:-1]):
+			active.difference_update(events[timestamp]["leave"])
+			active.update(events[timestamp]["enter"])
+			if len(active) >= 2:
+				group = tuple(sorted(active))
+				totals[group] += (times[index + 1] - timestamp).total_seconds()
+
+		for group, seconds in totals.items():
+			rows.append(
+				{
+					"day": day,
+					"phase": phase,
+					"cage": cage,
+					"group_size": len(group),
+					"group": " + ".join(group),
+					"seconds": seconds,
+				}
+			)
+
+	schema = {
+		"day": pl.Int64,
+		"phase": pl.String,
+		"cage": pl.String,
+		"group_size": pl.Int64,
+		"group": pl.String,
+		"seconds": pl.Float64,
+	}
+	return pl.DataFrame(rows, schema=schema).sort("cage", "group_size", "group")
 
 
 def create_edges_trace(

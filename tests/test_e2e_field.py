@@ -144,6 +144,7 @@ def _plot_config(store, cfg, **switches) -> auxfun_plots.PlotConfig:
 		days_range=axis_range,
 		phase_type=list(phase.keys()),
 		animals=animals,
+		exact_group_animals=animals[:6],
 		animal_colors=auxfun_plots.color_sampling(animals),
 		cages=cfg["cages"],
 		positions=cfg["positions"],

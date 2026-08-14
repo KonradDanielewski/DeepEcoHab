@@ -5,6 +5,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
+from plotly.subplots import make_subplots
 
 from deepecohab.utils import auxfun_plots
 
@@ -118,6 +119,197 @@ def plot_time_alone(
 		legend_title_text="<b>Animal ID</b>",
 	)
 
+	return fig
+
+
+def plot_exact_group_time(
+	df: pl.DataFrame,
+	cages: list[str],
+	animals: list[str],
+	colors: list[str],
+	all_animals: list[str] | None = None,
+	all_colors: list[str] | None = None,
+) -> go.Figure:
+	"""Plot exact simultaneous cage occupancy as one UpSet panel per cage."""
+	all_animals = all_animals or animals
+	all_colors = all_colors or colors
+	visible_cages = [cage for cage in cages if not df.filter(pl.col("cage") == cage).is_empty()]
+	if not visible_cages:
+		fig = go.Figure()
+		fig.add_annotation(
+			text="No exact group occupancy for the selected range.",
+			x=0.5,
+			y=0.5,
+			xref="paper",
+			yref="paper",
+			showarrow=False,
+		)
+		fig.update_layout(title="<b>Exact group time</b>")
+		return fig
+
+	# Each cage occupies a bar/membership pair. Cages 1-2 form the top row and
+	# cages 3-4 the bottom row so the full plot aligns with the dashboard width.
+	panel_titles = [""] * 8
+	for index, cage in enumerate(visible_cages[:4]):
+		panel_row = index // 2
+		panel_col = index % 2
+		panel_titles[panel_row * 4 + panel_col] = cage.replace("_", " ").title()
+	fig = make_subplots(
+		rows=4,
+		cols=2,
+		vertical_spacing=0.08,
+		horizontal_spacing=0.1,
+		row_heights=[0.3, 0.16, 0.3, 0.16],
+		subplot_titles=panel_titles,
+	)
+	color_map = dict(zip(animals, colors, strict=False))
+	all_color_map = dict(zip(all_animals, all_colors, strict=False))
+	cage_totals = {
+		cage: (
+			df.filter(pl.col("cage") == cage)
+			.group_by("group")
+			.agg(pl.sum("seconds"))
+			.sort(["seconds", "group"], descending=[True, False])
+		)
+		for cage in visible_cages[:4]
+	}
+	maximum_hours = max(
+		(cage_df["seconds"].max() or 0) / 3600 for cage_df in cage_totals.values()
+	)
+	shared_bar_range = [0, maximum_hours * 1.05] if maximum_hours > 0 else [0, 1]
+
+	for panel_index, cage in enumerate(visible_cages[:4]):
+		bar_row = 1 + (panel_index // 2) * 2
+		matrix_row = bar_row + 1
+		column = panel_index % 2 + 1
+		cage_df = cage_totals[cage]
+		groups = cage_df["group"].to_list()
+		hours = (cage_df["seconds"] / 3600).to_list()
+		x = list(range(len(groups)))
+		fig.add_trace(
+			go.Bar(
+				x=x,
+				y=hours,
+				customdata=groups,
+				marker_color="#4fc3f7",
+				hovertemplate="<b>%{customdata}</b><br>Exact group time: %{y:.4f} h<extra></extra>",
+				showlegend=False,
+			),
+			row=bar_row,
+			col=column,
+		)
+
+		memberships = [set(group.split(" + ")) for group in groups]
+		for group_index, members in enumerate(memberships):
+			member_rows = [animals.index(animal) for animal in animals if animal in members]
+			if len(member_rows) > 1:
+				fig.add_trace(
+					go.Scatter(
+						x=[group_index, group_index],
+						y=[min(member_rows), max(member_rows)],
+						mode="lines",
+						line={"color": "#dce6f5", "width": 3},
+						hoverinfo="skip",
+						showlegend=False,
+					),
+					row=matrix_row,
+					col=column,
+				)
+		fig.add_trace(
+			go.Scatter(
+				x=[group_index for group_index in x for _ in animals],
+				y=list(range(len(animals))) * len(x),
+				mode="markers",
+				marker={"size": 7, "color": "#465166"},
+				hoverinfo="skip",
+				showlegend=False,
+			),
+			row=matrix_row,
+			col=column,
+		)
+		for animal_index, animal in enumerate(animals):
+			active_x = [i for i, members in enumerate(memberships) if animal in members]
+			fig.add_trace(
+				go.Scatter(
+					x=active_x,
+					y=[animal_index] * len(active_x),
+					mode="markers",
+					marker={"size": 11, "color": color_map.get(animal, "#4fc3f7")},
+					hovertemplate=f"<b>{animal}</b><extra></extra>",
+					name=animal,
+					legendgroup=animal,
+					legendrank=all_animals.index(animal),
+					showlegend=panel_index == 0,
+				),
+				row=matrix_row,
+				col=column,
+			)
+
+		# Plotly otherwise auto-ranges the bar and matrix axes independently, which
+		# shifts columns once many group combinations are present.
+		column_range = [-0.5, max(len(groups) - 0.5, 0.5)]
+		fig.update_xaxes(
+			showticklabels=False,
+			range=column_range,
+			row=bar_row,
+			col=column,
+		)
+		fig.update_xaxes(
+			showticklabels=False,
+			showgrid=False,
+			range=column_range,
+			row=matrix_row,
+			col=column,
+		)
+		fig.update_yaxes(
+			title_text="<b>Hours</b>" if column == 1 else None,
+			range=shared_bar_range,
+			row=bar_row,
+			col=column,
+		)
+		fig.update_yaxes(
+			showticklabels=False,
+			showgrid=False,
+			zeroline=False,
+			row=matrix_row,
+			col=column,
+		)
+
+	# Keep every cohort animal in the legend. Unselected animals use legend-only
+	# placeholder traces; Dash consumes legend clicks and rebuilds the plot with
+	# the corresponding exact-group subset.
+	for animal in all_animals:
+		if animal in animals:
+			continue
+		fig.add_trace(
+			go.Scatter(
+				x=[None],
+				y=[None],
+				mode="markers",
+				marker={"size": 11, "color": all_color_map.get(animal, "#4fc3f7")},
+				name=animal,
+				legendgroup=animal,
+				legendrank=all_animals.index(animal),
+				visible="legendonly",
+				hoverinfo="skip",
+			),
+			row=1,
+			col=1,
+		)
+	fig.update_layout(
+		title="<b>Exact group time</b>",
+		height=max(860, 700 + len(animals) * 22),
+		margin={"l": 60, "r": 190, "t": 90, "b": 35},
+		legend={
+			"title": "<b>Animal ID</b>",
+			"orientation": "v",
+			"x": 1.02,
+			"xanchor": "left",
+			"y": 1,
+			"yanchor": "top",
+		},
+		barcornerradius=6,
+	)
 	return fig
 
 
