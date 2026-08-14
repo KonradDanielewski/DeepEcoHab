@@ -30,9 +30,7 @@ def test_exact_group_time_excludes_larger_group_spans():
 		]
 	)
 
-	result = prep_exact_group_time(
-		{"padded_df": padded}, ["light_phase"], [1, 1], ["cage_1"]
-	)
+	result = prep_exact_group_time({"padded_df": padded}, ["light_phase"], [1, 1], ["cage_1"])
 	times = dict(result.select("group", "seconds").iter_rows())
 
 	assert times["A + B"] == pytest.approx(7)
@@ -42,9 +40,7 @@ def test_exact_group_time_excludes_larger_group_spans():
 
 def test_exact_group_time_respects_phase_and_range_filters():
 	start = datetime(2026, 1, 1, 12)
-	rows = [
-		occupancy(animal, start, start + timedelta(seconds=5)) for animal in ("A", "B")
-	]
+	rows = [occupancy(animal, start, start + timedelta(seconds=5)) for animal in ("A", "B")]
 	rows.extend(
 		{**occupancy(animal, start, start + timedelta(seconds=9)), "day": 2}
 		for animal in ("A", "B")
@@ -133,9 +129,7 @@ def test_exact_group_plot_arranges_four_cages_in_two_by_two_grid():
 
 
 def test_exact_group_plot_keeps_unselected_animals_in_legend():
-	df = pl.DataFrame(
-		{"cage": ["cage_1"], "group": ["A + B"], "seconds": [60.0]}
-	)
+	df = pl.DataFrame({"cage": ["cage_1"], "group": ["A + B"], "seconds": [60.0]})
 	fig = plot_exact_group_time(
 		df,
 		["cage_1"],

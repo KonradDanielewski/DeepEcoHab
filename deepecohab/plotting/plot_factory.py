@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, cast
 
 import networkx as nx
 import numpy as np
@@ -173,9 +173,14 @@ def plot_exact_group_time(
 		)
 		for cage in visible_cages[:4]
 	}
-	maximum_hours = max(
-		(cage_df["seconds"].max() or 0) / 3600 for cage_df in cage_totals.values()
+	max_seconds = cast(
+		float,
+		max(
+			(cage_df["seconds"].max() or 0 for cage_df in cage_totals.values()),
+			default=0,
+		),
 	)
+	maximum_hours = max_seconds / 3600
 	shared_bar_range = [0, maximum_hours * 1.05] if maximum_hours > 0 else [0, 1]
 
 	for panel_index, cage in enumerate(visible_cages[:4]):

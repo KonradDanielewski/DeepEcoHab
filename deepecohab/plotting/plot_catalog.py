@@ -340,9 +340,7 @@ def exact_group_time(
 	animal_colors: list[str],
 ) -> go.Figure:
 	"""Plot time spent by each exact simultaneous animal group per cage."""
-	df = auxfun_plots.prep_exact_group_time(
-		store, phase_type, days_range, cages, granularity
-	)
+	df = auxfun_plots.prep_exact_group_time(store, phase_type, days_range, cages, granularity)
 	selected = exact_group_animals[:6]
 	selected_set = set(selected)
 	df = df.filter(
