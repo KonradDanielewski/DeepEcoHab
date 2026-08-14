@@ -1,6 +1,6 @@
 import math
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from itertools import combinations, product
 from typing import Literal
@@ -38,6 +38,48 @@ class PlotConfig:
 	positions: list[str] | None = None
 	position_colors: list[str] | None = None
 	light_dark_onset: dict[str, float] | None = None
+
+	def with_short_animal_ids(self, length: int = 3) -> "PlotConfig":
+		"""Return plotting inputs with animal IDs shortened to display labels."""
+		short_animals = [animal[:length] for animal in self.animals] if self.animals else None
+		if short_animals and len(short_animals) != len(set(short_animals)):
+			raise ValueError(f"Animal IDs must have unique first {length} characters for plotting.")
+		animal_columns = {
+			"animal_id",
+			"animal_id_2",
+			"chased",
+			"chaser",
+			"loser",
+			"source",
+			"target",
+			"winner",
+		}
+		plot_store = None
+		if self.store is not None:
+			plot_store = {}
+			for name, frame in self.store.items():
+				if short_animals and isinstance(frame, (pl.DataFrame, pl.LazyFrame)):
+					columns = animal_columns.intersection(frame.collect_schema().names())
+					frame = frame.with_columns(
+						pl.col(column)
+						.cast(pl.String)
+						.str.slice(0, length)
+						.cast(pl.Enum(short_animals))
+						.alias(column)
+						for column in columns
+					)
+				plot_store[name] = frame
+
+		return replace(
+			self,
+			store=plot_store,
+			animals=short_animals,
+			exact_group_animals=(
+				[animal[:length] for animal in self.exact_group_animals]
+				if self.exact_group_animals
+				else self.exact_group_animals
+			),
+		)
 
 
 def set_default_theme() -> None:

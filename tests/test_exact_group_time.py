@@ -5,7 +5,7 @@ import pytest
 
 from deepecohab.plotting.plot_catalog import exact_group_time
 from deepecohab.plotting.plot_factory import plot_exact_group_time
-from deepecohab.utils.auxfun_plots import prep_exact_group_time
+from deepecohab.utils.auxfun_plots import PlotConfig, prep_activity_line, prep_exact_group_time
 
 
 def occupancy(animal: str, start: datetime, end: datetime, cage: str = "cage_1") -> dict:
@@ -18,6 +18,46 @@ def occupancy(animal: str, start: datetime, end: datetime, cage: str = "cage_1")
 		"animal_id": animal,
 		"position": cage,
 	}
+
+
+def test_plot_config_shortens_animal_ids_without_changing_source_data():
+	frame = pl.DataFrame(
+		{
+			"animal_id": ["0D234C1A04"],
+			"animal_id_2": ["23E4FF1904"],
+			"position": ["cage_1"],
+		}
+	)
+	config = PlotConfig(
+		store={"pairwise_meetings": frame},
+		animals=["0D234C1A04", "23E4FF1904"],
+		exact_group_animals=["0D234C1A04"],
+	)
+
+	short_config = config.with_short_animal_ids()
+
+	assert short_config.animals == ["0D2", "23E"]
+	assert short_config.exact_group_animals == ["0D2"]
+	assert short_config.store["pairwise_meetings"]["animal_id"].to_list() == ["0D2"]
+	assert short_config.store["pairwise_meetings"]["animal_id_2"].to_list() == ["23E"]
+	assert frame["animal_id"].to_list() == ["0D234C1A04"]
+	assert short_config.store["pairwise_meetings"].schema["animal_id"] == pl.Enum(["0D2", "23E"])
+
+
+def test_shortened_animal_ids_remain_join_compatible():
+	main_df = pl.DataFrame(
+		{
+			"animal_id": pl.Series(["0D234C1A04"], dtype=pl.Enum(["0D234C1A04"])),
+			"day": [1],
+			"hour": [0],
+		}
+	)
+	config = PlotConfig(store={"main_df": main_df}, animals=["0D234C1A04"])
+	short_config = config.with_short_animal_ids()
+
+	result = prep_activity_line(short_config.store, short_config.animals, [1, 1])
+
+	assert result["animal_id"].unique().to_list() == ["0D2"]
 
 
 def test_exact_group_time_excludes_larger_group_spans():

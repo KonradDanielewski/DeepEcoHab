@@ -287,8 +287,12 @@ def cap_exact_group_selection(
 			curve_index = curve_indices[0]
 			traces = figure.get("data", [])
 			if 0 <= curve_index < len(traces):
-				animal = traces[curve_index].get("name")
-				if animal in animals:
+				animal_label = traces[curve_index].get("name")
+				animal = next(
+					(full_id for full_id in animals if full_id[:3] == animal_label),
+					None,
+				)
+				if animal is not None:
 					if animal in selected:
 						selected.remove(animal)
 					else:
