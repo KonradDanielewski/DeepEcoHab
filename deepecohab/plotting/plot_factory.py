@@ -73,6 +73,43 @@ def plot_activity(
 	return fig
 
 
+def plot_animal_speed(df: pl.DataFrame, animals: list[str], colors: list[str]) -> go.Figure:
+	"""Plot the distribution of valid tunnel-crossing speeds per animal."""
+	fig = px.violin(
+		df,
+		x="animal_id",
+		y="speed_cm_s",
+		color="animal_id",
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		hover_data=["day", "phase", "position", "time_spent"],
+		title="<b>Tunnel-crossing speed</b>",
+		points="outliers",
+	)
+	fig.update_layout(showlegend=False)
+	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_yaxes(title_text="<b>Speed [cm/s]</b>")
+	return fig
+
+
+def plot_animal_speed_daily(df: pl.DataFrame, animals: list[str], colors: list[str]) -> go.Figure:
+	"""Plot mean valid tunnel-crossing speed per animal and day."""
+	fig = px.line(
+		df,
+		x="day",
+		y="mean_speed_cm_s",
+		color="animal_id",
+		markers=True,
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		title="<b>Mean tunnel-crossing speed over days</b>",
+	)
+	fig.update_layout(legend_title_text="<b>Animal ID</b>")
+	fig.update_xaxes(title_text="<b>Day</b>", dtick=1)
+	fig.update_yaxes(title_text="<b>Mean speed [cm/s]</b>")
+	return fig
+
+
 def plot_time_alone(
 	df: pl.DataFrame,
 	cages: list[str],

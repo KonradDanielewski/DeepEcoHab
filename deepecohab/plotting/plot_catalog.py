@@ -261,6 +261,32 @@ def activity_line(
 			)
 
 
+@plot_registry.register("animal-speed")
+def animal_speed(
+	store: dict,
+	animals: list[str],
+	days_range: list[int],
+	phase_type: list[str],
+	animal_colors: list[str],
+) -> go.Figure:
+	"""Show the distribution of tunnel-crossing speeds per animal."""
+	df = auxfun_plots.prep_animal_speed(store, days_range, phase_type)
+	return plot_factory.plot_animal_speed(df, animals, animal_colors)
+
+
+@plot_registry.register("animal-speed-daily")
+def animal_speed_daily(
+	store: dict,
+	animals: list[str],
+	days_range: list[int],
+	phase_type: list[str],
+	animal_colors: list[str],
+) -> go.Figure:
+	"""Show mean valid tunnel-crossing speed per animal and day."""
+	df = auxfun_plots.prep_animal_speed_daily(store, days_range, phase_type)
+	return plot_factory.plot_animal_speed_daily(df, animals, animal_colors)
+
+
 @plot_registry.register("time-per-cage-heatmap")
 def time_per_cage(
 	store: dict,

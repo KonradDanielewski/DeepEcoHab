@@ -4,6 +4,9 @@ from deepecohab.analysis.antenna_analysis import (
 	calculate_activity as calculate_activity,
 )
 from deepecohab.analysis.antenna_analysis import (
+	calculate_animal_speed as calculate_animal_speed,
+)
+from deepecohab.analysis.antenna_analysis import (
 	calculate_chasings as calculate_chasings,
 )
 from deepecohab.analysis.antenna_analysis import (

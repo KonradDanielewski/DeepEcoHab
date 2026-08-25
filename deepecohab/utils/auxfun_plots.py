@@ -513,6 +513,38 @@ def prep_activity_line(
 	return df
 
 
+def prep_animal_speed(
+	store: dict[str, pl.DataFrame],
+	days_range: list[int],
+	phase_type: list[str],
+) -> pl.DataFrame:
+	"""Select analyzed tunnel crossings for the dashboard filters."""
+	return (
+		store["speed_df"]
+		.lazy()
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(days_range[0], days_range[1]),
+		)
+		.sort("animal_id", "speed_cm_s")
+		.collect(engine="in-memory")
+	)
+
+
+def prep_animal_speed_daily(
+	store: dict[str, pl.DataFrame],
+	days_range: list[int],
+	phase_type: list[str],
+) -> pl.DataFrame:
+	"""Aggregate mean analyzed crossing speed per animal and day."""
+	return (
+		prep_animal_speed(store, days_range, phase_type)
+		.group_by("day", "animal_id")
+		.agg(pl.mean("speed_cm_s").round(2).alias("mean_speed_cm_s"))
+		.sort("day", "animal_id")
+	)
+
+
 def prep_time_per_cage(
 	store: dict[str, pl.DataFrame],
 	animals: list[str],

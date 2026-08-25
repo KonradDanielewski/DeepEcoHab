@@ -7,6 +7,33 @@ from deepecohab.core.registries import df_registry
 from deepecohab.utils import auxfun
 
 
+@df_registry.register_step("speed_df", requires=["main_df"])
+def calculate_animal_speed(
+	cfg: dict[str, Any],
+	**kwargs,
+) -> pl.LazyFrame:
+	"""Calculate speed for valid tunnel crossings.
+
+	Crossings with zero dwell time or a dwell longer than ``max_dwell`` are
+	excluded. The EcoHAB tunnel length defaults to 20 cm and can be overridden
+	when the analysis pipeline is run.
+	"""
+	main_df: pl.LazyFrame = auxfun._get_data(cfg, key="main_df")
+	tunnel_length_cm = kwargs.get("tunnel_length_cm", 20.0)
+	max_dwell = kwargs.get("max_dwell", 10.0)
+	tunnel_positions = auxfun.get_positions(cfg, "tunnels_directional")
+
+	return (
+		main_df.filter(
+			pl.col("position").is_in(tunnel_positions),
+			pl.col("time_spent") > 0,
+			pl.col("time_spent") <= max_dwell,
+		)
+		.with_columns((tunnel_length_cm / pl.col("time_spent")).alias("speed_cm_s"))
+		.sort("datetime")
+	)
+
+
 def _get_activity(lf: pl.LazyFrame, cfg: dict[str, Any]) -> pl.LazyFrame:
 	"""Aggregate per-animal occupancy and visit counts for every position.
 
