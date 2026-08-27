@@ -23,3 +23,6 @@ Thumbs.db
 # DeepEcoHab generated artifacts
 examples/example_project*
 deepecohab/cache/
+
+# Local dev Postgres data dir (see examples/setup_postgres.sh)
+.pgdata/
