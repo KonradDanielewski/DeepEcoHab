@@ -221,6 +221,7 @@ class PlotRegistry:
 		plotter = self._registry.get(name)
 		if not plotter:
 			return {}
+		config = config.with_short_animal_ids()
 		values = {dep: getattr(config, dep) for dep in self._plot_dependencies[name]}
 		missing = [key for key, value in values.items() if value is None]
 		if missing:

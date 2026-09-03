@@ -4,7 +4,9 @@ from dash import dcc, html
 from deepecohab.utils import auxfun_dashboard
 
 
-def generate_graphs_layout(days_range: list[int], phase_range: list[int]) -> html.Div:
+def generate_graphs_layout(
+	days_range: list[int], phase_range: list[int], animals: list[str]
+) -> html.Div:
 	"""Generates layout of the main dashboard tab."""
 	return html.Div(
 		[
@@ -288,6 +290,21 @@ def generate_graphs_layout(days_range: list[int], phase_range: list[int]) -> htm
 									color="primary",
 								),
 								width=4,
+							),
+						],
+						className="row-size",
+					),
+					dcc.Store(id="exact_group_animals", data=animals[:6]),
+					dbc.Row(
+						[
+							dbc.Col(
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"exact-group-time", css_class="plot-900"
+									),
+									color="primary",
+								),
+								width=12,
 							),
 						],
 						className="row-size",

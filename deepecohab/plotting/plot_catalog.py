@@ -1,6 +1,7 @@
 from typing import Literal
 
 import plotly.graph_objects as go
+import polars as pl
 
 from deepecohab.core.registries import plot_registry
 from deepecohab.plotting import plot_factory
@@ -325,6 +326,38 @@ def time_alone(
 	df = auxfun_plots.prep_time_alone(store, phase_type, days_range, granularity)
 
 	return plot_factory.plot_time_alone(df, cages, animal_colors, agg_switch, granularity)
+
+
+@plot_registry.register("exact-group-time")
+def exact_group_time(
+	store: dict,
+	phase_type: list[str],
+	days_range: list[int],
+	granularity: str,
+	cages: list[str],
+	animals: list[str],
+	exact_group_animals: list[str],
+	animal_colors: list[str],
+) -> go.Figure:
+	"""Plot time spent by each exact simultaneous animal group per cage."""
+	df = auxfun_plots.prep_exact_group_time(store, phase_type, days_range, cages, granularity)
+	selected = exact_group_animals[:6]
+	selected_set = set(selected)
+	df = df.filter(
+		pl.col("group").map_elements(
+			lambda group: set(group.split(" + ")).issubset(selected_set),
+			return_dtype=pl.Boolean,
+		)
+	)
+	color_map = dict(zip(animals, animal_colors, strict=False))
+	return plot_factory.plot_exact_group_time(
+		df,
+		cages,
+		selected,
+		[color_map[animal] for animal in selected],
+		animals,
+		animal_colors,
+	)
 
 
 @plot_registry.register("network-sociability")

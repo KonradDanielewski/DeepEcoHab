@@ -371,6 +371,20 @@ split by cage.
   cohort should spend relatively little time alone.
 - **Responds to:** Phase, day/phase slider, Granularity, Aggregation (bars ↔ boxes).
 
+### Exact group time
+
+An UpSet-style view of the time spent by each exact set of animals in every cage.
+
+- **What it shows.** Each bar is the total occupancy time for one exact group. For example,
+  `A + B` excludes every interval in which C or another animal was also present. The dot matrix
+  beneath the bars identifies the members of each group.
+- **Animal selection.** Click animals in the legend to toggle them. Up to six are displayed;
+  selecting a seventh replaces the earliest selection. Groups containing any unselected animal
+  are omitted rather than collapsed into a smaller group.
+- **How to read it.** Taller bars identify exact combinations that persist together longest in
+  that cage. Compare panels to see whether a group favors a particular cage.
+- **Responds to:** Phase, day/phase slider, Granularity, and exact-group animal selection.
+
 ---
 
 ## Comparing and exporting plots

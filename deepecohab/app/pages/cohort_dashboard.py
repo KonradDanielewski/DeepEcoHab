@@ -75,7 +75,7 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 	current_phase_range = cfg.get("phase_range", [0, 1])
 
 	dashboard_layout = cohort_dashboard_layout.generate_graphs_layout(
-		current_days_range, current_phase_range
+		current_days_range, current_phase_range, cfg["animal_ids"]
 	)
 	comparison_tab = cohort_dashboard_layout.generate_comparison_layout(
 		current_days_range, current_phase_range
@@ -97,6 +97,7 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 		Input("ranking_switch", "value"),
 		Input("slider_switch", "value"),
 		Input("granularity", "value"),
+		Input("exact_group_animals", "data"),
 	],
 	State("project-config-store", "data"),
 )
@@ -111,6 +112,7 @@ def update_plots(
 	ranking_switch: Literal["intime", "stability"],
 	slider_mode: Literal["days_single", "days_range"],
 	granularity: Literal["day", "phase_count"],
+	exact_group_animals: list[str],
 	cfg: dict[str, Any],
 ) -> go.Figure:
 	"""Perform a selective plot update on the main layout.
@@ -176,6 +178,7 @@ def update_plots(
 		sociability_switch=sociability_switch,
 		ranking_switch=ranking_switch,
 		animals=animals,
+		exact_group_animals=exact_group_animals,
 		animal_colors=animal_colors,
 		cages=cages,
 		positions=positions,
@@ -237,6 +240,7 @@ def update_comparison_plot(
 		sociability_switch=input_dict["sociability_switch"],
 		ranking_switch=input_dict["ranking_switch"],
 		animals=animals,
+		exact_group_animals=animals[:6],
 		animal_colors=animal_colors,
 		cages=cages,
 		positions=positions,
@@ -258,6 +262,44 @@ def update_comparison_plot(
 		sociability_hidden,
 		ranking_hidden,
 	)
+
+
+@callback(
+	Output("exact_group_animals", "data"),
+	Input({"type": "graph", "name": "exact-group-time"}, "restyleData"),
+	State("exact_group_animals", "data"),
+	State("project-config-store", "data"),
+	State({"type": "graph", "name": "exact-group-time"}, "figure"),
+	prevent_initial_call=True,
+)
+def cap_exact_group_selection(
+	restyle_data: list[Any] | None,
+	selected: list[str] | None,
+	cfg: dict[str, Any],
+	figure: dict[str, Any] | None,
+) -> list[str]:
+	"""Update the hidden six-animal selection from Plotly legend clicks."""
+	animals = cfg.get("animal_ids", []) if cfg else []
+	selected = [animal for animal in (selected or []) if animal in animals][:6]
+	if isinstance(ctx.triggered_id, dict) and restyle_data and figure:
+		curve_indices = restyle_data[1] if len(restyle_data) > 1 else []
+		if curve_indices:
+			curve_index = curve_indices[0]
+			traces = figure.get("data", [])
+			if 0 <= curve_index < len(traces):
+				animal_label = traces[curve_index].get("name")
+				animal = next(
+					(full_id for full_id in animals if full_id[:3] == animal_label),
+					None,
+				)
+				if animal is not None:
+					if animal in selected:
+						selected.remove(animal)
+					else:
+						if len(selected) >= 6:
+							selected.pop(0)
+						selected.append(animal)
+	return selected
 
 
 @callback(
