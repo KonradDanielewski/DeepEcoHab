@@ -95,6 +95,8 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 		Input("pairwise_switch", "value"),
 		Input("sociability_switch", "value"),
 		Input("ranking_switch", "value"),
+		Input("chasing_plot_switch", "value"),
+		Input("time_alone_plot_switch", "value"),
 		Input("slider_switch", "value"),
 		Input("granularity", "value"),
 	],
@@ -109,6 +111,8 @@ def update_plots(
 	pair_switch: Literal["time_together", "pairwise_encounters"],
 	sociability_switch: Literal["proportion_together", "sociability"],
 	ranking_switch: Literal["intime", "stability"],
+	chasing_plot_switch: Literal["diurnal", "daily"],
+	time_alone_plot_switch: Literal["cage", "daily"],
 	slider_mode: Literal["days_single", "days_range"],
 	granularity: Literal["day", "phase_count"],
 	cfg: dict[str, Any],
@@ -124,6 +128,8 @@ def update_plots(
 		pair_switch: pairwise meetings plot switch (encounters or time together).
 		sociability_switch: sociability plot switch (proportion together or incohort sociability)
 		ranking_switch: ranking switch (per hour update or per day rank)
+		chasing_plot_switch: chasing plot type (diurnal rhythm or daily totals)
+		time_alone_plot_switch: time-alone plot type (by cage or daily totals)
 		slider_mode: toogle for which slider type is visible
 		granularity: slider axis unit ("day" or "phase_count")
 		cfg: config of the loaded project
@@ -175,6 +181,8 @@ def update_plots(
 		pairwise_switch=pair_switch,
 		sociability_switch=sociability_switch,
 		ranking_switch=ranking_switch,
+		chasing_plot_switch=chasing_plot_switch,
+		time_alone_plot_switch=time_alone_plot_switch,
 		animals=animals,
 		animal_colors=animal_colors,
 		cages=cages,

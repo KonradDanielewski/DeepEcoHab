@@ -171,12 +171,17 @@ def chasings_line(
 	animal_colors: list[str],
 	agg_switch: Literal["sum", "mean"],
 	light_dark_onset: dict[str, float],
+	chasing_plot_switch: Literal["diurnal", "daily"],
+	phase_type: list[str],
 ) -> go.Figure:
-	"""Generates a line plot of chasing frequency per hour.
+	"""Generate either diurnal chasing frequency or daily chasing totals.
 
-	Shows the diurnal rhythm of aggression. For mean includes a shaded area representing
-	the Standard Error of the Mean (SEM) across the selected days.
+	The diurnal mean includes a shaded area representing the Standard Error of the Mean
+	(SEM) across the selected days.
 	"""
+	if chasing_plot_switch == "daily":
+		return chasings_daily_bar(store, animals, days_range, animal_colors, phase_type)
+
 	df = auxfun_plots.prep_chasings_line(store, animals, days_range, granularity)
 
 	match agg_switch:
@@ -188,6 +193,20 @@ def chasings_line(
 			return plot_factory.plot_mean_line_per_hour(
 				df, animals, animal_colors, "chasings", light_dark_onset
 			)
+
+
+@plot_registry.register("chasings-daily-bar")
+def chasings_daily_bar(
+	store: dict,
+	animals: list[str],
+	days_range: list[int],
+	animal_colors: list[str],
+	phase_type: list[str],
+) -> go.Figure:
+	"""Generate a stacked bar chart of each animal's daily chasing total."""
+	df = auxfun_plots.prep_daily_chasing(store, days_range, phase_type)
+
+	return plot_factory.plot_daily_chasing(df, animals, animal_colors)
 
 
 @plot_registry.register("activity-bar")
@@ -240,6 +259,32 @@ def activity_line(
 			return plot_factory.plot_mean_line_per_hour(
 				df, animals, animal_colors, "activity", light_dark_onset
 			)
+
+
+@plot_registry.register("animal-speed")
+def animal_speed(
+	store: dict,
+	animals: list[str],
+	days_range: list[int],
+	phase_type: list[str],
+	animal_colors: list[str],
+) -> go.Figure:
+	"""Show the distribution of tunnel-crossing speeds per animal."""
+	df = auxfun_plots.prep_animal_speed(store, days_range, phase_type)
+	return plot_factory.plot_animal_speed(df, animals, animal_colors)
+
+
+@plot_registry.register("animal-speed-daily")
+def animal_speed_daily(
+	store: dict,
+	animals: list[str],
+	days_range: list[int],
+	phase_type: list[str],
+	animal_colors: list[str],
+) -> go.Figure:
+	"""Show mean valid tunnel-crossing speed per animal and day."""
+	df = auxfun_plots.prep_animal_speed_daily(store, days_range, phase_type)
+	return plot_factory.plot_animal_speed_daily(df, animals, animal_colors)
 
 
 @plot_registry.register("time-per-cage-heatmap")
@@ -316,15 +361,33 @@ def time_alone(
 	agg_switch: Literal["sum", "mean"],
 	animal_colors: list[str],
 	cages: list[str],
+	animals: list[str],
+	time_alone_plot_switch: Literal["cage", "daily"],
 ) -> go.Figure:
-	"""Generates a stacked bar plot of time spent alone.
+	"""Generate time alone by cage or as daily points.
 
-	Shows the duration each animal spent without any other animals present,
-	segmented by the specific cages where this behavior occurred.
+	The cage view segments time alone by cage; the daily view totals cage time per animal.
 	"""
+	if time_alone_plot_switch == "daily":
+		return time_alone_daily(store, phase_type, days_range, animals, animal_colors)
+
 	df = auxfun_plots.prep_time_alone(store, phase_type, days_range, granularity)
 
 	return plot_factory.plot_time_alone(df, cages, animal_colors, agg_switch, granularity)
+
+
+@plot_registry.register("time-alone-daily-line")
+def time_alone_daily(
+	store: dict,
+	phase_type: list[str],
+	days_range: list[int],
+	animals: list[str],
+	animal_colors: list[str],
+) -> go.Figure:
+	"""Generate a line plot of each animal's daily time alone."""
+	df = auxfun_plots.prep_daily_time_alone(store, days_range, phase_type)
+
+	return plot_factory.plot_daily_time_alone(df, animals, animal_colors)
 
 
 @plot_registry.register("network-sociability")
