@@ -112,10 +112,21 @@ def generate_graphs_layout(days_range: list[int], phase_range: list[int]) -> htm
 								width=3,
 							),
 							dbc.Col(
-								dbc.Spinner(
-									auxfun_dashboard.generate_standard_graph("chasings-line"),
-									color="primary",
-								),
+								[
+									dcc.RadioItems(
+										id="chasing_plot_switch",
+										options=[
+											{"label": "Diurnal", "value": "diurnal"},
+											{"label": "Daily", "value": "daily"},
+										],
+										value="diurnal",
+										className="dash-radio",
+									),
+									dbc.Spinner(
+										auxfun_dashboard.generate_standard_graph("chasings-line"),
+										color="primary",
+									),
+								],
 								width=6,
 							),
 						],
@@ -281,12 +292,23 @@ def generate_graphs_layout(days_range: list[int], phase_range: list[int]) -> htm
 								width=4,
 							),
 							dbc.Col(
-								dbc.Spinner(
-									auxfun_dashboard.generate_standard_graph(
-										"time-alone-bar", css_class="plot-500"
+								[
+									dcc.RadioItems(
+										id="time_alone_plot_switch",
+										options=[
+											{"label": "Cage", "value": "cage"},
+											{"label": "Daily", "value": "daily"},
+										],
+										value="cage",
+										className="dash-radio",
 									),
-									color="primary",
-								),
+									dbc.Spinner(
+										auxfun_dashboard.generate_standard_graph(
+											"time-alone-bar", css_class="plot-500"
+										),
+										color="primary",
+									),
+								],
 								width=4,
 							),
 						],

@@ -29,6 +29,8 @@ class PlotConfig:
 	pairwise_switch: Literal["time_together", "pairwise_encounters"] | None = None
 	sociability_switch: Literal["proportion_together", "sociability"] | None = None
 	ranking_switch: Literal["intime", "stability"] | None = None
+	chasing_plot_switch: Literal["diurnal", "daily"] = "diurnal"
+	time_alone_plot_switch: Literal["cage", "daily"] = "cage"
 	animals: list[str] | None = None
 	animal_colors: list[str] | None = None
 	cages: list[str] | None = None
@@ -416,6 +418,22 @@ def prep_chasings_line(
 	return df
 
 
+def prep_daily_chasing(
+	store: dict[str, pl.DataFrame], days_range: list[int], phase_type: list[str]
+) -> pl.DataFrame:
+	"""Sum chasing-event counts for each selected chaser and day."""
+	return (
+		store["chasings_df"]
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(days_range[0], days_range[1]),
+		)
+		.group_by("chaser", "day", maintain_order=True)
+		.agg(pl.sum("chasings").alias("total_chasing"))
+		.rename({"chaser": "animal_id"})
+	)
+
+
 def prep_activity(
 	store: dict[str, pl.DataFrame],
 	days_range: list[int],
@@ -659,6 +677,23 @@ def prep_time_alone(
 	)
 
 	return df
+
+
+def prep_daily_time_alone(
+	store: dict[str, pl.DataFrame], days_range: list[int], phase_type: list[str]
+) -> pl.DataFrame:
+	"""Sum daily time alone in cages for each animal."""
+	return (
+		store["activity_df"]
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(days_range[0], days_range[1]),
+			pl.col("position").cast(pl.String).str.contains("cage"),
+		)
+		.group_by("animal_id", "day", maintain_order=True)
+		.agg(pl.sum("time_alone").alias("total_time_alone"))
+		.sort("day", maintain_order=True)
+	)
 
 
 def prep_network_sociability(
