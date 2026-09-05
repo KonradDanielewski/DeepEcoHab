@@ -23,6 +23,9 @@ def plot_activity(
 	granularity: str = "day",
 ) -> go.Figure:
 	"""Plots bar graph of sum of cage and tunnel visits or time spent."""
+	if granularity not in df.columns:
+		granularity = "day"
+
 	match type_switch:
 		case "visits":
 			position_title = "<b>Visits to each position</b>"
@@ -73,6 +76,67 @@ def plot_activity(
 	return fig
 
 
+def plot_animal_speed(df: pl.DataFrame, animals: list[str], colors: list[str]) -> go.Figure:
+	"""Plot the distribution of valid tunnel-crossing speeds per animal."""
+	fig = px.violin(
+		df,
+		x="animal_id",
+		y="speed_cm_s",
+		color="animal_id",
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		hover_data=["day", "phase", "position", "time_spent", "crossings"],
+		title="<b>Tunnel-crossing speed</b>",
+		points="outliers",
+		# box=True,
+	)
+	fig.update_layout(showlegend=False)
+	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_yaxes(title_text="<b>Speed [cm/s]</b>")
+
+	return fig
+
+
+def plot_animal_speed_daily(df: pl.DataFrame, animals: list[str], colors: list[str]) -> go.Figure:
+	"""Plot mean valid tunnel-crossing speed per animal and day."""
+	fig = px.line(
+		df,
+		x="day",
+		y="mean_speed_cm_s",
+		color="animal_id",
+		markers=True,
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		title="<b>Mean tunnel-crossing speed over days</b>",
+	)
+	fig.update_layout(legend_title_text="<b>Animal ID</b>")
+	fig.update_xaxes(title_text="<b>Day</b>", dtick=1)
+	fig.update_yaxes(title_text="<b>Mean speed [cm/s]</b>")
+
+	return fig
+
+
+def plot_slow_crossings(df: pl.DataFrame, animals: list[str], colors: list[str]) -> go.Figure:
+	"""Plot the percentage of tunnel crossings taking over 10 seconds."""
+	fig = px.bar(
+		df,
+		x="animal_id",
+		y="slow_percentage",
+		color="animal_id",
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		hover_data=["crossings", "slow_crossings"],
+		text_auto=".1f",
+		title="<b>Slow tunnel crossings (&gt;10 s)</b>",
+	)
+	fig.update_layout(showlegend=False)
+	fig.update_traces(texttemplate="%{y:.1f}%", textposition="outside")
+	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_yaxes(title_text="<b>Crossings over 10 s [%]</b>", range=[0, 100])
+
+	return fig
+
+
 def plot_time_alone(
 	df: pl.DataFrame,
 	cages: list[str],
@@ -81,6 +145,9 @@ def plot_time_alone(
 	granularity: str = "day",
 ) -> go.Figure:
 	"""Plot time alone as a relative bar plot."""
+	if granularity not in df.columns:
+		granularity = "day"
+
 	match agg_switch:
 		case "sum":
 			fig = px.histogram(
@@ -359,6 +426,9 @@ def plot_ranking_stability(
 	granularity: str = "day",
 ) -> go.Figure:
 	"""Plots animal rank on a per day (or per phase) basis."""
+	if granularity not in df.columns:
+		granularity = "day"
+
 	color_map = dict(zip(animals, colors, strict=False))
 	label = _unit_label(granularity)
 	cadence = "Daily" if granularity == "day" else "Per-phase"
@@ -400,6 +470,9 @@ def time_spent_per_cage(
 	df: pl.DataFrame, type: Literal["hourly", "daily"], granularity: str = "day"
 ) -> go.Figure:
 	"""Plots N-cages of heatmaps with per hour time spent for each animal."""
+	if granularity not in df.columns:
+		granularity = "day"
+
 	match type:  # TODO: improve column naming consistency to avoid this mess
 		case "hourly":
 			title = "<b>Time spent per cage</b>"
@@ -420,7 +493,12 @@ def time_spent_per_cage(
 			x = f"{label}: %{{x}}"
 			x_title = label
 			z = "Time [h]: %{z}"
-			nbins = df[x_col].max() - df[x_col].min() + 1  # ty: ignore[unsupported-operator]
+			if x_col in df.columns:
+				# Compute inclusive range; cast to int for Plotly's bin count.
+				nbins = int(df[x_col].max() - df[x_col].min() + 1)  # type: ignore[unsupported-operator]
+			else:
+				# Fall back to the unique count of the day column.
+				nbins = int(df["day"].n_unique())
 			legend_title = "<b>Hours</b>"
 
 	fig = px.density_heatmap(
@@ -736,6 +814,9 @@ def plot_cage_preference(
 	granularity: str = "day",
 ) -> go.Figure:
 	"""Plots cage preference on a per cage basis (cohort preference summary)."""
+	if df is not None and granularity not in df.columns:
+		granularity = "day"
+
 	fig = px.box(
 		df,
 		x="position",

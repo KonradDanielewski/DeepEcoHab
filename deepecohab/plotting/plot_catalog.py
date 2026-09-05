@@ -242,6 +242,51 @@ def activity_line(
 			)
 
 
+@plot_registry.register("animal-speed")
+def animal_speed(
+	store: dict,
+	animals: list[str],
+	days_range: list[int],
+	phase_type: list[str],
+	animal_colors: list[str],
+	tunnel_positions: list[str],
+) -> go.Figure:
+	"""Show the distribution of tunnel-crossing speeds per animal."""
+	df = auxfun_plots.prep_animal_speed(store, days_range, phase_type, tunnel_positions)
+
+	return plot_factory.plot_animal_speed(df, animals, animal_colors)
+
+
+@plot_registry.register("animal-speed-daily")
+def animal_speed_daily(
+	store: dict,
+	animals: list[str],
+	days_range: list[int],
+	phase_type: list[str],
+	animal_colors: list[str],
+	tunnel_positions: list[str],
+) -> go.Figure:
+	"""Show mean valid tunnel-crossing speed per day."""
+	df = auxfun_plots.prep_animal_speed_daily(store, days_range, phase_type, tunnel_positions)
+
+	return plot_factory.plot_animal_speed_daily(df, animals, animal_colors)
+
+
+@plot_registry.register("slow-crossings")
+def slow_crossings(
+	store: dict,
+	animals: list[str],
+	days_range: list[int],
+	phase_type: list[str],
+	animal_colors: list[str],
+	tunnel_positions: list[str],
+) -> go.Figure:
+	"""Show the share of tunnel crossings that exceed 10 seconds."""
+	df = auxfun_plots.prep_slow_crossings(store, days_range, phase_type, tunnel_positions)
+
+	return plot_factory.plot_slow_crossings(df, animals, animal_colors)
+
+
 @plot_registry.register("time-per-cage-heatmap")
 def time_per_cage(
 	store: dict,

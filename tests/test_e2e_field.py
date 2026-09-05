@@ -152,6 +152,7 @@ def _plot_config(store, cfg, **switches) -> auxfun_plots.PlotConfig:
 			"light_phase": int(phase["light_phase"].split(":")[0]),
 			"dark_phase": int(phase["dark_phase"].split(":")[0]),
 		},
+		tunnel_positions=list(cfg["tunnels"]),
 		**switches,
 	)
 

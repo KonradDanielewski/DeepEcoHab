@@ -180,6 +180,7 @@ def update_plots(
 		cages=cages,
 		positions=positions,
 		position_colors=positions_colors,
+		tunnel_positions=list(cfg["tunnels"]),
 		light_dark_onset=light_dark_onset,
 	)
 
@@ -241,6 +242,7 @@ def update_comparison_plot(
 		cages=cages,
 		positions=positions,
 		position_colors=positions_colors,
+		tunnel_positions=list(cfg["tunnels"]),
 		light_dark_onset=light_dark_onset,
 	)
 
