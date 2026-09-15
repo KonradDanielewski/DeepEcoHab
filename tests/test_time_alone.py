@@ -4,49 +4,43 @@ import polars as pl
 import pytest
 import strategies as strat
 import tzlocal
-from hypothesis import given, settings
-from hypothesis import strategies as st
+from hypothesis import given, settings, strategies as st
 
-from deepecohab.analysis.antenna_analysis import _get_time_alone
+from deepecohab.core.antenna_analysis import _get_time_alone
+from deepecohab.core.data_model import AnalysisParams
 
 TZ = tzlocal.get_localzone()
 
 SCHEMA: dict[str, pl.DataType] = {
 	"animal_id": pl.Enum(["A", "B", "C"]),
 	"position": pl.Categorical,
-	"datetime": pl.Datetime("ms", str(TZ)),
-	"time_spent": pl.Float64,
+	"datetime": pl.Datetime("us", str(TZ)),
+	"time_spent": pl.Duration("us"),
 }
 
-CFG: dict = {
-	"phase": {"light_phase": "07:00:00", "dark_phase": "20:00:00"},
-	"tunnels": {"c1_c2": "tunnel_1"},
-	# _get_time_alone now looks phase_count up from build_time_grid (see
-	# auxfun.get_grid_phase_count), which needs the experiment window and timezone.
-	# This span covers every datetime used by the example-based tests below.
-	"timezone": str(TZ),
-	"experiment_timeline": {
-		"start_date": "2023-05-24 00:00:00",
-		"finish_date": "2023-05-26 23:00:00",
-	},
-}
+# The span covers every datetime used by the example-based tests below; the grid it
+# builds is what _get_time_alone looks phase_count up from.
+RECORDING = strat.analysis_recording(
+	animal_ids=["A", "B", "C"],
+	tz=str(TZ),
+	start="2023-05-24 00:00:00",
+	finish="2023-05-26 23:00:00",
+)
 
 
-def _cfg_with_window(base: dict, frame: pl.DataFrame, tz: str) -> dict:
-	"""Augment a phase/tunnels cfg with the experiment window spanning *frame*.
+def _recording_spanning(frame: pl.DataFrame, tz: str, phases=None):
+	"""A recording whose window spans *frame*.
 
 	The property tests draw datetimes from across the year, so the grid window is
-	derived from the data itself (mirroring append_start_end_to_config in the real
-	pipeline) rather than hard-coded.
+	derived from the data itself rather than hard-coded.
 	"""
-	return {
-		**base,
-		"timezone": tz,
-		"experiment_timeline": {
-			"start_date": str(frame["datetime"].min()),
-			"finish_date": str(frame["datetime"].max()),
-		},
-	}
+	# Padded a day either side so the window is non-empty even for a single event,
+	# and so the grid covers the hour every event falls in.
+	first = frame["datetime"].min().replace(tzinfo=None) - dt.timedelta(days=1)
+	last = frame["datetime"].max().replace(tzinfo=None) + dt.timedelta(days=1)
+	return strat.analysis_recording(
+		animal_ids=["A", "B", "C"], tz=tz, start=str(first), finish=str(last), phases=phases
+	)
 
 
 EXPECTED_COLUMNS = {
@@ -70,9 +64,22 @@ def make_df():
 	"""Build a typed, zone-aware DataFrame from plain column dicts."""
 
 	def _make(data: dict) -> pl.DataFrame:
+		# Cases state time_spent in seconds, which reads better than timedeltas.
+		data = {**data, "time_spent": [dt.timedelta(seconds=v) for v in data["time_spent"]]}
 		return pl.DataFrame(data, schema=SCHEMA)
 
 	return _make
+
+
+def alone(frame: pl.DataFrame, recording=None, minimum_time_alone: float = 0.0) -> pl.DataFrame:
+	"""Solitary time, with time_alone read back in seconds as the cases state it.
+
+	These cases exercise the sweep, so the threshold is off unless a case sets it.
+	"""
+	params = AnalysisParams(minimum_time_alone=minimum_time_alone)
+	return _get_time_alone(frame, recording or RECORDING, params).with_columns(
+		pl.col("time_alone").dt.total_seconds(fractional=True)
+	)
 
 
 def alone_row(result: pl.DataFrame, animal: str) -> dict:
@@ -92,7 +99,7 @@ def test_output_schema(make_df):
 			"time_spent": [10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 	assert set(result.columns) == EXPECTED_COLUMNS
 
 
@@ -106,7 +113,7 @@ def test_single_animal_alone(make_df):
 			"time_spent": [10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 
 	assert result.height == 1
 	row = alone_row(result, "A")
@@ -128,7 +135,7 @@ def test_two_animals_overlapping_completely(make_df):
 			"time_spent": [10.0, 10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 	assert result.height == 0
 
 
@@ -147,7 +154,7 @@ def test_partial_overlap(make_df):
 			"time_spent": [10.0, 10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 
 	assert result.height == 2
 	assert alone_row(result, "A")["time_alone"] == 5
@@ -167,7 +174,7 @@ def test_empty_gap_not_counted(make_df):
 			"time_spent": [5.0, 5.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 
 	assert result.height == 2
 	assert alone_row(result, "A")["time_alone"] == 5
@@ -188,7 +195,7 @@ def test_multiple_positions_independent(make_df):
 			"time_spent": [10.0, 10.0, 10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 
 	assert result.filter(pl.col("position") == "cage_2").height == 1
 	assert result.filter(pl.col("position") == "cage_1").height == 0
@@ -211,7 +218,7 @@ def test_accumulated_alone_time_same_phase(make_df):
 			"time_spent": [10.0, 10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 
 	assert result.height == 1
 	assert alone_row(result, "A")["time_alone"] == 20
@@ -230,7 +237,7 @@ def test_phase_split(make_df):
 			"time_spent": [10.0, 10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG).sort("phase")
+	result = alone(df).sort("phase")
 
 	assert result.height == 2
 	by_phase = {r["phase"]: r for r in result.iter_rows(named=True)}
@@ -252,7 +259,7 @@ def test_day_split(make_df):
 			"time_spent": [10.0, 10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG).sort("day")
+	result = alone(df).sort("day")
 
 	assert result.height == 2
 	assert result["day"].to_list() == [1, 3]
@@ -269,7 +276,7 @@ def test_boundary_time_is_light(make_df):
 			"time_spent": [5.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 	assert alone_row(result, "A")["phase"] == "light_phase"
 
 
@@ -284,7 +291,7 @@ def test_simultaneous_handoff(make_df):
 			"time_spent": [10.0, 10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 
 	assert result.height == 2
 	assert alone_row(result, "A")["time_alone"] == 10
@@ -306,7 +313,7 @@ def test_simultaneous_swap_with_bystander(make_df):
 			"time_spent": [10.0, 20.0, 10.0],
 		}
 	)
-	result = _get_time_alone(df, CFG)
+	result = alone(df)
 
 	assert result.height == 0
 
@@ -330,16 +337,19 @@ def test_alone_never_exceeds_presence(events, tz, pcfg):
 	time_alone per animal <= summed visit duration per animal.
 	"""
 	frame = strat.time_alone_frame(events, tz)
-	cfg = _cfg_with_window({"phase": pcfg, "tunnels": {}}, frame, tz)
-	result = _get_time_alone(frame, cfg)
+	recording = _recording_spanning(frame, tz, phases=pcfg)
+	result = alone(frame, recording)
 
-	alone = dict(result.group_by("animal_id").agg(pl.sum("time_alone")).iter_rows())
+	totals = dict(result.group_by("animal_id").agg(pl.sum("time_alone")).iter_rows())
+	# Durations reach the pipeline quantised to whole microseconds, so the reference
+	# quantises the same way rather than summing the raw floats.
 	presence: dict[str, float] = {}
 	for e in events:
-		presence[e["animal_id"]] = presence.get(e["animal_id"], 0.0) + e["duration"]
+		quantised = dt.timedelta(seconds=e["duration"]).total_seconds()
+		presence[e["animal_id"]] = presence.get(e["animal_id"], 0.0) + quantised
 
 	assert (result["time_alone"] >= 0).all()
-	for animal, total_alone in alone.items():
+	for animal, total_alone in totals.items():
 		assert total_alone <= presence[str(animal)] + 1e-6
 
 
@@ -361,8 +371,8 @@ def test_full_overlap_means_nobody_alone(animals, position, start, duration, tz,
 		for a in animals
 	]
 	frame = strat.time_alone_frame(events, tz)
-	cfg = _cfg_with_window({"phase": pcfg, "tunnels": {}}, frame, tz)
-	result = _get_time_alone(frame, cfg)
+	recording = _recording_spanning(frame, tz, phases=pcfg)
+	result = alone(frame, recording)
 	assert result.height == 0
 
 
@@ -379,8 +389,8 @@ def test_lone_animal_is_alone_for_its_whole_visit(animal, position, start, durat
 	"""A single animal with a single visit is alone for exactly that duration."""
 	events = [{"animal_id": animal, "position": position, "start": start, "duration": duration}]
 	frame = strat.time_alone_frame(events, tz)
-	cfg = _cfg_with_window({"phase": pcfg, "tunnels": {}}, frame, tz)
-	result = _get_time_alone(frame, cfg)
+	recording = _recording_spanning(frame, tz, phases=pcfg)
+	result = alone(frame, recording)
 
 	assert result.height == 1
 	assert result["animal_id"].to_list() == [animal]

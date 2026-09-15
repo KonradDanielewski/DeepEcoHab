@@ -4,21 +4,33 @@ from zoneinfo import ZoneInfo
 import polars as pl
 import pytest
 import strategies as strat
-from hypothesis import given, settings
-from hypothesis import strategies as st
+from hypothesis import given, settings, strategies as st
+from pydantic import ValidationError
 
-from deepecohab.core.create_data_structure import calculate_time_spent
-from deepecohab.utils import auxfun
+from deepecohab.core import grids, transforms
+from deepecohab.core.data_model import Timeline
+from deepecohab.core.transforms import calculate_time_spent
 
 TZ_NAME = "Europe/Warsaw"
 TZ = ZoneInfo(TZ_NAME)
 
-CFG = {"phase": {"light_phase": "07:00:00", "dark_phase": "20:00:00"}}
+# Default phases put the light onset at midnight, so the origin is the recording start
+# and day/hour come out equal to calendar day and wall-clock hour.
+RECORDING = strat.analysis_recording(
+	tz=TZ_NAME, start="2023-05-24 00:00:00", finish="2023-05-26 23:00:00"
+)
+
+# Onsets that make the dark phase wrap midnight, which the phase-mapping and grid tests
+# below are written against. The experiment then starts at the 07:00 light onset.
+WRAP_PHASES = {"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 0)}
+WRAP_RECORDING = strat.analysis_recording(
+	tz=TZ_NAME, start="2023-05-24 00:00:00", finish="2023-05-26 23:00:00", phases=WRAP_PHASES
+)
 
 
 def aware_dt_series(values: list[dt.datetime]) -> pl.Series:
-	"""Build a zone-aware Datetime series in the project timezone."""
-	return pl.Series("datetime", values).dt.replace_time_zone(TZ_NAME)
+	"""Build a Datetime series in the project timezone from zone-aware datetimes."""
+	return pl.Series("datetime", values, dtype=pl.Datetime("us", TZ_NAME))
 
 
 def at(*args: int) -> dt.datetime:
@@ -39,52 +51,41 @@ def at(*args: int) -> dt.datetime:
 )
 def test_phase_assignment_by_time_of_day(hour, minute, expected):
 	df = pl.DataFrame({"datetime": aware_dt_series([at(2023, 6, 15, hour, minute, 0)])})
-	out = df.with_columns(auxfun.get_phase(CFG))
+	out = df.with_columns(grids.get_phase(WRAP_RECORDING))
 	assert out["phase"][0] == expected
 
 
 def test_phase_is_enum_with_config_order():
 	df = pl.DataFrame({"datetime": aware_dt_series([at(2023, 6, 15, 12, 0, 0)])})
-	out = df.with_columns(auxfun.get_phase(CFG))
+	out = df.with_columns(grids.get_phase(WRAP_RECORDING))
 	dtype = out.schema["phase"]
 	assert isinstance(dtype, pl.Enum)
 	# Categories follow config key order, not sorted-by-time order.
 	assert dtype.categories.to_list() == ["light_phase", "dark_phase"]
 
 
-def test_phase_three_phases_tile_day():
-	"""Generalizes beyond two phases: morning/day/night tile the 24h clock."""
-	cfg = {
-		"phase": {
-			"morning": "06:00:00",
-			"day": "12:00:00",
-			"night": "22:00:00",
-		}
-	}
-	times = [
-		(5, "night"),  # before first boundary -> wraps to last phase
-		(6, "morning"),
-		(11, "morning"),
-		(12, "day"),
-		(21, "day"),
-		(22, "night"),
-		(23, "night"),
-	]
-	df = pl.DataFrame({"datetime": aware_dt_series([at(2023, 6, 15, h, 0, 0) for h, _ in times])})
-	out = df.with_columns(auxfun.get_phase(cfg))
-	assert out["phase"].to_list() == [name for _, name in times]
+def test_phase_names_are_constrained_to_light_and_dark():
+	"""The model names exactly two phases, so a third is rejected at validation."""
+	with pytest.raises(ValidationError):
+		Timeline(
+			start_datetime=at(2023, 6, 15, 0, 0, 0),
+			end_datetime=at(2023, 6, 16, 0, 0, 0),
+			recording_timezone=TZ,
+			phases={"morning": dt.time(6), "day": dt.time(12), "night": dt.time(22)},
+			start_from="light_phase",
+		)
 
 
 def test_phase_dst_spring_forward():
 	"""Spring forward: in Europe/Warsaw, 2023-03-26 02:00 -> 03:00 (CET->CEST).
-	The DST correction anchors to the first row's offset so that a fixed
+	The DST correction anchors to the experiment start's offset so that a fixed
 	wall-clock time keeps the same phase across the transition.
 	Rows before and after the jump that share a wall-clock hour should agree.
 	"""
 	before = at(2023, 3, 26, 1, 30, 0)  # 01:30 CET, before jump
 	after = at(2023, 3, 26, 12, 0, 0)  # 12:00 CEST, after jump
 	df = pl.DataFrame({"datetime": aware_dt_series([before, after])})
-	out = df.with_columns(auxfun.get_phase(CFG))
+	out = df.with_columns(grids.get_phase(WRAP_RECORDING))
 	# 01:30 -> dark, 12:00 -> light. Sanity: transition does not misclassify noon.
 	assert out["phase"].to_list() == ["dark_phase", "light_phase"]
 
@@ -97,65 +98,11 @@ def test_phase_dst_fall_back():
 	early = at(2023, 10, 29, 1, 0, 0)  # 01:00 CEST
 	noon = at(2023, 10, 29, 12, 0, 0)  # 12:00 CET
 	df = pl.DataFrame({"datetime": aware_dt_series([early, noon])})
-	out = df.with_columns(auxfun.get_phase(CFG))
+	out = df.with_columns(grids.get_phase(WRAP_RECORDING))
 	assert out["phase"].to_list() == ["dark_phase", "light_phase"]
 
 
-def test_phase_count_simple_alternation():
-	"""Each contiguous run gets the next global number, regardless of phase type."""
-	phases = ["light_phase", "light_phase", "dark_phase", "light_phase", "dark_phase"]
-	lf = pl.LazyFrame({"phase": pl.Series(phases, dtype=pl.Enum(["light_phase", "dark_phase"]))})
-	out = auxfun.get_phase_count(lf).collect()
-	# runs: phase#1 (rows 0-1), #2 (row2), #3 (row3), #4 (row4)
-	assert out["phase_count"].to_list() == [1, 1, 2, 3, 4]
-
-
-def test_phase_count_single_run():
-	phases = ["light_phase"] * 4
-	lf = pl.LazyFrame({"phase": pl.Series(phases, dtype=pl.Enum(["light_phase", "dark_phase"]))})
-	out = auxfun.get_phase_count(lf).collect()
-	assert out["phase_count"].to_list() == [1, 1, 1, 1]
-
-
-def test_phase_count_full_experiment_sequence():
-	"""A long L/D/L/D... sequence numbers phases globally 1,1,2,2,3,3,..."""
-	units = ["light_phase", "dark_phase"] * 3  # 3 full days
-	# expand each into a run of 2 rows to mimic multiple events per phase
-	phases = [p for p in units for _ in range(2)]
-	lf = pl.LazyFrame({"phase": pl.Series(phases, dtype=pl.Enum(["light_phase", "dark_phase"]))})
-	out = auxfun.get_phase_count(lf).collect()
-	assert out["phase_count"].to_list() == [
-		1,
-		1,  # light (phase #1)
-		2,
-		2,  # dark (phase #2)
-		3,
-		3,  # light (phase #3)
-		4,
-		4,  # dark (phase #4)
-		5,
-		5,  # light (phase #5)
-		6,
-		6,  # dark (phase #6)
-	]
-
-
-def test_phase_count_dtype_is_u16():
-	phases = ["light_phase", "dark_phase"]
-	lf = pl.LazyFrame({"phase": pl.Series(phases, dtype=pl.Enum(["light_phase", "dark_phase"]))})
-	out = auxfun.get_phase_count(lf).collect()
-	assert out.schema["phase_count"] == pl.UInt16
-	assert "run_id" not in out.columns
-
-
-GRID_CFG = {
-	**CFG,
-	"timezone": TZ_NAME,
-	"experiment_timeline": {
-		"start_date": "2023-05-24 00:00:00",
-		"finish_date": "2023-05-26 23:00:00",
-	},
-}
+GRID_RECORDING = WRAP_RECORDING
 
 
 def test_grid_phase_count_matches_build_time_grid():
@@ -165,34 +112,40 @@ def test_grid_phase_count_matches_build_time_grid():
 	morning (hours 0-6) share one occurrence. Looking phase_count up from the grid
 	keeps the two halves consistent, unlike run-length-encoding rows by calendar day.
 	"""
-	grid = auxfun.build_time_grid(GRID_CFG).collect()
+	grid = grids.build_time_grid(GRID_RECORDING).collect()
 	expected = {(r["day"], r["phase"], r["hour"]): r["phase_count"] for r in grid.to_dicts()}
 
 	# A sparse subset of the grid's (day, phase, hour) keys, deliberately including
 	# evening dark hours (the case the old rle-by-(day,phase) sort mis-numbered).
 	probe = grid.select("day", "phase", "hour").sample(fraction=0.5, seed=0, shuffle=True)
-	out = auxfun.get_grid_phase_count(probe.lazy(), GRID_CFG).collect()
+	out = grids.assign_phase_count(probe.lazy(), GRID_RECORDING).collect()
 
 	assert out.schema["phase_count"] == pl.UInt16
 	for row in out.to_dicts():
 		assert row["phase_count"] == expected[(row["day"], row["phase"], row["hour"])]
 
 
-def test_grid_phase_count_evening_dark_shares_count_with_next_morning():
-	"""The wrap-around night links day N evening with day N+1 morning under one count."""
-	grid = auxfun.build_time_grid(GRID_CFG).collect()
-	dark = grid.filter(pl.col("phase") == "dark_phase")
+def test_phase_never_straddles_an_experiment_day():
+	"""Anchoring day 1 on a phase onset puts every phase occurrence inside one day.
 
-	day1_evening = dark.filter((pl.col("day") == 1) & (pl.col("hour") == 22))["phase_count"][0]
-	day2_morning = dark.filter((pl.col("day") == 2) & (pl.col("hour") == 2))["phase_count"][0]
-	assert day1_evening == day2_morning
+	The dark phase wraps midnight here, which used to split one occurrence across two
+	calendar days and was the case grid-based numbering had to reconcile. Counting days
+	from the light onset removes it: every experiment day opens on a start_from onset,
+	so both phases of the cycle fall inside it.
+	"""
+	grid = grids.build_time_grid(GRID_RECORDING).collect()
+	spread = grid.group_by("phase_count").agg(pl.col("day").n_unique().alias("days"))
+
+	assert spread["days"].max() == 1
+	# Day 1 is complete, so it holds exactly one light and one dark occurrence.
+	assert grid.filter(pl.col("day") == 1)["phase_count"].n_unique() == 2
 
 
 def test_day_single_date_is_one():
 	df = pl.DataFrame(
 		{"datetime": aware_dt_series([at(2023, 5, 24, h, 0, 0) for h in (0, 12, 23)])}
 	)
-	out = df.with_columns(auxfun.get_day())
+	out = df.with_columns(grids.get_day(RECORDING))
 	assert out["day"].to_list() == [1, 1, 1]
 
 
@@ -204,7 +157,7 @@ def test_day_consecutive_dates():
 			)
 		}
 	)
-	out = df.with_columns(auxfun.get_day())
+	out = df.with_columns(grids.get_day(RECORDING))
 	assert out["day"].to_list() == [1, 2, 3]
 
 
@@ -216,44 +169,59 @@ def test_day_missing_day_leaves_gap():
 	df = pl.DataFrame(
 		{"datetime": aware_dt_series([at(2023, 5, 24, 12, 0, 0), at(2023, 5, 26, 12, 0, 0)])}
 	)
-	out = df.with_columns(auxfun.get_day())
+	out = df.with_columns(grids.get_day(RECORDING))
 	assert out["day"].to_list() == [1, 3]
 
 
-def test_day_offset_anchored_to_min_not_first_row():
-	"""Day is relative to the earliest date present, regardless of row order."""
-	df = pl.DataFrame(
+def test_day_anchored_to_experiment_start_not_to_the_frame():
+	"""Day counts from the recording's origin, so a frame missing day 1 still numbers right.
+
+	This is the regression: numbering from the frame's own earliest date made a sparse
+	table - match_df, say - call its first row day 1 whenever day 1 held no events.
+	"""
+	sparse = pl.DataFrame({"datetime": aware_dt_series([at(2023, 5, 26, 12, 0, 0)])})
+	assert sparse.with_columns(grids.get_day(RECORDING))["day"].to_list() == [3]
+
+	out_of_order = pl.DataFrame(
 		{
 			"datetime": aware_dt_series(
 				[at(2023, 5, 26, 12, 0, 0), at(2023, 5, 24, 12, 0, 0)]  # out of order
 			)
 		}
 	)
-	out = df.with_columns(auxfun.get_day())
-	assert out["day"].to_list() == [3, 1]
+	assert out_of_order.with_columns(grids.get_day(RECORDING))["day"].to_list() == [3, 1]
 
 
 def test_day_dtype_is_u16():
 	df = pl.DataFrame({"datetime": aware_dt_series([at(2023, 5, 24, 12, 0, 0)])})
-	out = df.with_columns(auxfun.get_day())
+	out = df.with_columns(grids.get_day(RECORDING))
 	assert out.schema["day"] == pl.UInt16
 
 
-def test_day_across_dst_boundary_counts_calendar_days():
-	"""Day numbering is by calendar date, unaffected by the 23h DST day."""
+def test_day_across_dst_boundary_is_24_elapsed_hours():
+	"""An experiment day is 24 elapsed hours, which the 23h calendar day shifts.
+
+	The origin is midnight on the 25th, so day 2 opens at midnight on the 26th. The
+	spring-forward makes that calendar day only 23 hours long, so day 3 opens at 01:00
+	on the 27th rather than at midnight - and 00:30 that morning is still day 2.
+	"""
+	recording = strat.analysis_recording(
+		tz=TZ_NAME, start="2023-03-25 00:00:00", finish="2023-03-28 00:00:00"
+	)
 	df = pl.DataFrame(
 		{
 			"datetime": aware_dt_series(
 				[
 					at(2023, 3, 25, 12, 0, 0),  # day before spring-forward
-					at(2023, 3, 26, 12, 0, 0),  # the 23h day
+					at(2023, 3, 26, 12, 0, 0),  # the 23h calendar day
+					at(2023, 3, 27, 0, 30, 0),  # still day 2: the boundary moved to 01:00
 					at(2023, 3, 27, 12, 0, 0),  # day after
 				]
 			)
 		}
 	)
-	out = df.with_columns(auxfun.get_day())
-	assert out["day"].to_list() == [1, 2, 3]
+	out = df.with_columns(grids.get_day(recording))
+	assert out["day"].to_list() == [1, 2, 2, 3]
 
 
 # --- property-based tests ----------------------------------------------------
@@ -269,34 +237,36 @@ def test_phase_matches_reference_oracle(naive, tz, pcfg):
 	pure-Python mapping based on the local wall-clock time of day.
 	"""
 	df = pl.DataFrame({"datetime": strat.aware([naive], tz)})
-	local_time = df["datetime"].dt.time()[0]  # single row -> dst_shift is zero
-	out = df.with_columns(auxfun.get_phase({"phase": pcfg}))
+	# Spans the drawn range, so every instant sits at or after the experiment start.
+	recording = strat.analysis_recording(
+		tz=tz, start="2022-12-30 00:00:00", finish="2023-12-31 23:00:00", phases=pcfg
+	)
+	local_time = strat.expected_time_of_day(df["datetime"][0], recording.timeline.experiment_start)
+	out = df.with_columns(grids.get_phase(recording))
 	assert out["phase"][0] == strat.expected_phase(local_time, pcfg)
 
 
-@settings(max_examples=300)
-@given(labels=strat.phase_label_lists)
-def test_phase_count_matches_reference_oracle(labels):
-	"""phase_count equals the global ordinal of each contiguous run, regardless of
-	phase type, for any sequence of phase labels, and stays UInt16.
-	"""
-	lf = pl.LazyFrame({"phase": pl.Series(labels, dtype=pl.Enum(strat.PHASE_NAMES))})
-	out = auxfun.get_phase_count(lf).collect()
-	assert out["phase_count"].to_list() == strat.expected_phase_count(labels)
-	assert out.schema["phase_count"] == pl.UInt16
-	assert "run_id" not in out.columns
+def test_phase_count_matches_reference_oracle():
+	"""The grid numbers each contiguous phase run with the next global ordinal."""
+	grid = grids.build_time_grid(GRID_RECORDING).collect()
+	assert grid["phase_count"].to_list() == strat.expected_phase_count(grid["phase"].to_list())
+	assert grid.schema["phase_count"] == pl.UInt16
 
 
 @settings(max_examples=200)
 @given(naives=st.lists(strat.naive_datetimes, min_size=1, max_size=30), tz=strat.timezones)
 def test_day_matches_reference_oracle(naives, tz):
-	"""Day is the 1-indexed calendar offset from the earliest date present,
+	"""Day is the 1-indexed 24h block of elapsed time from the experiment start,
 	regardless of order, gaps, timezone or DST, and stays UInt16.
 	"""
 	df = pl.DataFrame({"datetime": strat.aware(naives, tz)})
-	dates = df["datetime"].dt.date().to_list()
-	out = df.with_columns(auxfun.get_day())
-	assert out["day"].to_list() == strat.expected_day(dates)
+	recording = strat.analysis_recording(
+		tz=tz, start="2022-12-30 00:00:00", finish="2023-12-31 23:00:00"
+	)
+	origin = recording.timeline.experiment_start
+
+	out = df.with_columns(grids.get_day(recording))
+	assert out["day"].to_list() == strat.expected_day(df["datetime"].to_list(), origin)
 	assert out.schema["day"] == pl.UInt16
 
 
@@ -306,10 +276,15 @@ def test_day_matches_reference_oracle(naives, tz):
 @settings(max_examples=200)
 @given(naives=st.lists(strat.naive_datetimes, min_size=1, max_size=20), tz=strat.timezones)
 def test_hour_matches_reference_oracle(naives, tz):
-	"""get_hour == the local wall-clock hour for any instant/timezone, dtype UInt8."""
+	"""get_hour == the hour within the elapsed day from the experiment start, dtype UInt8."""
 	df = pl.DataFrame({"datetime": strat.aware(naives, tz)})
-	out = df.with_columns(auxfun.get_hour())
-	assert out["hour"].to_list() == strat.expected_hour(df["datetime"].to_list())
+	recording = strat.analysis_recording(
+		tz=tz, start="2022-12-30 00:00:00", finish="2023-12-31 23:00:00"
+	)
+	origin = recording.timeline.experiment_start
+
+	out = df.with_columns(grids.get_hour(recording))
+	assert out["hour"].to_list() == strat.expected_hour(df["datetime"].to_list(), origin)
 	assert out.schema["hour"] == pl.UInt8
 
 
@@ -352,7 +327,7 @@ def test_time_spent_is_not_rounded():
 		}
 	)
 	out = calculate_time_spent(frame).collect()
-	assert out["time_spent"].to_list() == [0.0, pytest.approx(1.234567, abs=1e-9)]
+	assert out["time_spent"].to_list() == [dt.timedelta(0), dt.timedelta(seconds=1.234567)]
 
 
 def test_add_occupancy_bounds_reconstructs_exact_start():
@@ -370,10 +345,10 @@ def test_add_occupancy_bounds_reconstructs_exact_start():
 		{
 			"animal_id": pl.Series(["A"], dtype=pl.Enum(["A"])),
 			"datetime": aware_dt_series([end]),
-			"time_spent": pl.Series([time_spent], dtype=pl.Float64),
+			"time_spent": strat.seconds([time_spent]),
 		}
 	)
-	out = auxfun.add_occupancy_bounds(frame).collect()
+	out = transforms.add_occupancy_bounds(frame).collect()
 
 	expected_start = end - dt.timedelta(microseconds=round(time_spent * 1_000_000))
 	assert out["end"][0] == end
@@ -398,10 +373,10 @@ def test_add_occupancy_bounds_abutting_intervals_share_boundary():
 		{
 			"animal_id": pl.Series(["A", "A"], dtype=pl.Enum(["A"])),
 			"datetime": aware_dt_series([t1, t2]),
-			"time_spent": pl.Series([first_len, second_len], dtype=pl.Float64),
+			"time_spent": strat.seconds([first_len, second_len]),
 		}
 	)
-	out = auxfun.add_occupancy_bounds(frame).collect().sort("datetime")
+	out = transforms.add_occupancy_bounds(frame).collect().sort("datetime")
 	# second interval's start == first interval's end, exactly.
 	assert out["start"][1] == out["end"][0] == t1
 
@@ -412,8 +387,8 @@ def test_add_occupancy_bounds_abutting_intervals_share_boundary():
 )
 def test_build_animal_grid_single_is_full_product(animals, positions):
 	"""A single-animal grid is the full animal x position cartesian product."""
-	cfg = {"animal_ids": animals}
-	out = auxfun.build_animal_grid(cfg, "animal_id", positions=positions).collect()
+	recording = strat.analysis_recording(animal_ids=animals)
+	out = grids.build_animal_grid(recording, "animal_id", positions=positions).collect()
 	assert set(out.columns) == {"animal_id", "position"}
 	assert out.height == len(animals) * len(positions)
 	if animals and positions:
@@ -425,24 +400,18 @@ def test_build_animal_grid_single_is_full_product(animals, positions):
 @given(animals=strat.animal_id_lists)
 def test_build_animal_grid_pairs(animals):
 	"""Ordered pair grids enumerate a != b both ways; unordered enumerate a < b once."""
-	cfg = {"animal_ids": animals}
+	recording = strat.analysis_recording(animal_ids=animals)
 	n = len(animals)
 
-	ordered = auxfun.build_animal_grid(cfg, ("winner", "loser"), ordered=True).collect()
+	ordered = grids.build_animal_grid(recording, ("winner", "loser"), ordered=True).collect()
 	assert ordered.columns == ["winner", "loser"]
 	assert ordered.height == n * (n - 1)
 	assert (ordered["winner"] == ordered["loser"]).sum() == 0
 
-	unordered = auxfun.build_animal_grid(cfg, ("animal_id", "animal_id_2"), ordered=False).collect()
+	unordered = grids.build_animal_grid(
+		recording, ("animal_id", "animal_id_2"), ordered=False
+	).collect()
 	assert unordered.height == n * (n - 1) // 2
-
-
-def test_build_animal_grid_rejects_bad_columns():
-	"""A non-pair tuple of column names is rejected."""
-	import pytest
-
-	with pytest.raises(ValueError):
-		auxfun.build_animal_grid({"animal_ids": ["A", "B"]}, ("a", "b", "c"))
 
 
 @given(
@@ -458,6 +427,7 @@ def test_remove_tunnel_directionality_maps_only_tunnels(positions, tunnels):
 	(cages, undefined) passes through; the column stays Categorical.
 	"""
 	lf = pl.LazyFrame({"position": pl.Series(positions, dtype=pl.Categorical)})
-	out = auxfun.remove_tunnel_directionality(lf, {"tunnels": tunnels}).collect()
+	recording = strat.analysis_recording(tunnels_map=tunnels)
+	out = transforms.remove_tunnel_directionality(lf, recording).collect()
 	assert out["position"].to_list() == [tunnels.get(p, p) for p in positions]
 	assert out.schema["position"] == pl.Categorical

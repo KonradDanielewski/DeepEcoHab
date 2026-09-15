@@ -385,8 +385,6 @@ name = "deepecohab"
 version = "0.5.3"
 source = { editable = "." }
 dependencies = [
-    { name = "dash", extra = ["diskcache"] },
-    { name = "dash-bootstrap-components" },
     { name = "ipykernel" },
     { name = "kaleido" },
     { name = "nbformat" },
@@ -395,19 +393,26 @@ dependencies = [
     { name = "openskill" },
     { name = "plotly" },
     { name = "polars" },
-    { name = "pyshortcuts" },
+    { name = "pydantic" },
     { name = "scipy" },
-    { name = "toml" },
     { name = "tqdm" },
     { name = "tzlocal" },
 ]
 
 [package.optional-dependencies]
+app = [
+    { name = "dash", extra = ["diskcache"] },
+    { name = "dash-bootstrap-components" },
+    { name = "toml" },
+]
 dev = [
+    { name = "dash", extra = ["diskcache"] },
+    { name = "dash-bootstrap-components" },
     { name = "hypothesis" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "toml" },
     { name = "ty" },
 ]
 test = [
@@ -417,9 +422,9 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dash", extras = ["diskcache"] },
-    { name = "dash-bootstrap-components" },
-    { name = "deepecohab", extras = ["test"], marker = "extra == 'dev'" },
+    { name = "dash", extras = ["diskcache"], marker = "extra == 'app'" },
+    { name = "dash-bootstrap-components", marker = "extra == 'app'" },
+    { name = "deepecohab", extras = ["app", "test"], marker = "extra == 'dev'" },
     { name = "hypothesis", marker = "extra == 'test'" },
     { name = "ipykernel" },
     { name = "kaleido" },
@@ -430,16 +435,16 @@ requires-dist = [
     { name = "plotly" },
     { name = "polars" },
     { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "pyshortcuts" },
+    { name = "pydantic" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.17" },
     { name = "scipy" },
-    { name = "toml" },
+    { name = "toml", marker = "extra == 'app'" },
     { name = "tqdm" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.50" },
     { name = "tzlocal" },
 ]
-provides-extras = ["test", "dev"]
+provides-extras = ["app", "test", "dev"]
 
 [[package]]
 name = "dill"
