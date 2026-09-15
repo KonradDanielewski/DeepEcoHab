@@ -1,49 +1,48 @@
-"""Tests for calculate_features (per-animal, z-scored EcoHAB feature table).
+"""Tests for calculate_features (per-animal metrics as value + exposure).
 
-calculate_features collapses the upstream tables to one value per animal per
-phase/day for eight metrics, aligns them, z-scores each metric across the table,
-and returns long form (one row per animal/metric). It reads chasings_df,
-tube_test_df, pairwise_meetings and activity_df via auxfun._get_data, which we
-monkeypatch with a key-dispatching stub; the body runs via ``__wrapped__``. All
-fixtures live in one light_phase occurrence (day 1, phase_count 1).
+calculate_features collapses the upstream tables to one value per animal per hour for
+seven metrics and pairs each with the opportunity it arose from, so a rate is
+sum(value)/sum(exposure) at any grouping. It reads chasings_df, pairwise_meetings,
+activity_df and main_df via Recording.load_results, which we monkeypatch with a
+key-dispatching stub; the step is called directly. Fixtures live in one light_phase
+occurrence (day 1, phase_count 1).
 """
-
-import math
 
 import polars as pl
 import strategies as strat
 
-from deepecohab.analysis import antenna_analysis
+from deepecohab.core import antenna_analysis
+from deepecohab.core.data_model import AnalysisParams, Recording
 
-CFG = strat.analysis_cfg(animal_ids=["A", "B", "C"])
+RECORDING = strat.analysis_recording(animal_ids=["A", "B", "C"])
 PHASE_ENUM = pl.Enum(["light_phase", "dark_phase"])
-ANIMAL_ENUM = pl.Enum(CFG["animal_ids"])
+ANIMAL_ENUM = pl.Enum(RECORDING.cohort.animal_tags)
 
-METRICS = {
-	"time_alone",
-	"n_chasing",
-	"n_chased",
-	"n_wins",
-	"n_loses",
-	"activity",
-	"time_together",
-	"pairwise_encounters",
-}
+# Every pair-derived metric is exposed per animal the subject could have met.
+PARTNERS = RECORDING.cohort.n_mice - 1
+
+SOLO = {"activity", "time_alone"}
+PAIRED = {"time_together", "pairwise_encounters", "n_chasing", "n_chased"}
+PER_DETECTION = {"n_chasing_per_detection"}
+METRICS = SOLO | PAIRED | PER_DETECTION
+
+HOUR = 3600.0
 
 
-def _base(n: int) -> dict:
+def _base(n: int, hour: int) -> dict:
 	return {
 		"phase": pl.Series(["light_phase"] * n, dtype=PHASE_ENUM),
 		"day": pl.Series([1] * n, dtype=pl.UInt16),
 		"phase_count": pl.Series([1] * n, dtype=pl.UInt16),
+		"hour": pl.Series([hour] * n, dtype=pl.UInt8),
 	}
 
 
-def chasings_frame(rows: list[tuple[str, str, int]]) -> pl.LazyFrame:
+def chasings_frame(rows: list[tuple[str, str, int]], hour: int = 0) -> pl.LazyFrame:
 	"""chasings_df rows (chaser, chased, chasings)."""
 	return pl.LazyFrame(
 		{
-			**_base(len(rows)),
+			**_base(len(rows), hour),
 			"chaser": pl.Series([r[0] for r in rows], dtype=ANIMAL_ENUM),
 			"chased": pl.Series([r[1] for r in rows], dtype=ANIMAL_ENUM),
 			"chasings": pl.Series([r[2] for r in rows], dtype=pl.UInt32),
@@ -51,116 +50,225 @@ def chasings_frame(rows: list[tuple[str, str, int]]) -> pl.LazyFrame:
 	)
 
 
-def tube_frame(rows: list[tuple[str, str, int]]) -> pl.LazyFrame:
-	"""tube_test_df rows (winner, loser, tube_test)."""
+def activity_frame(rows: list[tuple[str, int, float, float]], hour: int = 0) -> pl.LazyFrame:
+	"""activity_df rows (animal_id, visits, time_alone seconds, time_in_position seconds)."""
 	return pl.LazyFrame(
 		{
-			**_base(len(rows)),
-			"winner": pl.Series([r[0] for r in rows], dtype=ANIMAL_ENUM),
-			"loser": pl.Series([r[1] for r in rows], dtype=ANIMAL_ENUM),
-			"tube_test": pl.Series([r[2] for r in rows], dtype=pl.UInt32),
-		}
-	)
-
-
-def activity_frame(rows: list[tuple[str, int, float]]) -> pl.LazyFrame:
-	"""activity_df rows (animal_id, visits_to_position, time_alone)."""
-	return pl.LazyFrame(
-		{
-			**_base(len(rows)),
+			**_base(len(rows), hour),
 			"animal_id": pl.Series([r[0] for r in rows], dtype=ANIMAL_ENUM),
 			"visits_to_position": pl.Series([r[1] for r in rows], dtype=pl.UInt32),
-			"time_alone": pl.Series([float(r[2]) for r in rows], dtype=pl.Float64),
+			"time_alone": strat.seconds([float(r[2]) for r in rows]),
+			"time_in_position": strat.seconds([float(r[3]) for r in rows]),
 		}
 	)
 
 
-def pairwise_frame(rows: list[tuple[str, str, float, int]]) -> pl.LazyFrame:
-	"""pairwise_meetings rows (animal_id, animal_id_2, time_together, encounters)."""
+def pairwise_frame(rows: list[tuple[str, str, float, int]], hour: int = 0) -> pl.LazyFrame:
+	"""pairwise_meetings rows (animal_id, animal_id_2, time_together seconds, encounters).
+
+	The position is a cage: pairwise_meetings covers tunnels too, but calculate_features
+	counts cage co-presence only.
+	"""
 	return pl.LazyFrame(
 		{
-			**_base(len(rows)),
+			**_base(len(rows), hour),
+			"position": pl.Series(["cage_1"] * len(rows), dtype=pl.Categorical),
 			"animal_id": pl.Series([r[0] for r in rows], dtype=ANIMAL_ENUM),
 			"animal_id_2": pl.Series([r[1] for r in rows], dtype=ANIMAL_ENUM),
-			"time_together": pl.Series([float(r[2]) for r in rows], dtype=pl.Float64),
+			"time_together": strat.seconds([float(r[2]) for r in rows]),
 			"pairwise_encounters": pl.Series([r[3] for r in rows], dtype=pl.UInt32),
 		}
 	)
 
 
-def run_features(monkeypatch, *, chasings, tube, activity, pairwise) -> pl.DataFrame:
+def main_frame(rows: list[tuple[str, int]], hour: int = 0) -> pl.LazyFrame:
+	"""main_df rows, one antenna registration each, from (animal_id, n_detections)."""
+	animals = [animal for animal, detections in rows for _ in range(detections)]
+	return pl.LazyFrame(
+		{**_base(len(animals), hour), "animal_id": pl.Series(animals, dtype=ANIMAL_ENUM)}
+	)
+
+
+def run_features(monkeypatch, *, chasings, activity, pairwise, detections=None) -> pl.DataFrame:
 	tables = {
 		"chasings_df": chasings,
-		"tube_test_df": tube,
 		"pairwise_meetings": pairwise,
 		"activity_df": activity,
+		"main_df": detections if detections is not None else main_frame([]),
 	}
-	monkeypatch.setattr(antenna_analysis.auxfun, "_get_data", lambda c, key: tables[key])
-	return antenna_analysis.calculate_features.__wrapped__(CFG).collect()
+	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: tables[key])
+	return antenna_analysis.calculate_features(RECORDING, AnalysisParams()).collect()
 
 
-def metric_map(result: pl.DataFrame, metric: str) -> dict[str, float]:
+def quiet_hour(monkeypatch, activity, hour: int = 0) -> pl.DataFrame:
+	"""Features for an hour with the given activity and no social events at all."""
+	return run_features(
+		monkeypatch,
+		chasings=chasings_frame([("A", "B", 0)], hour),
+		activity=activity,
+		pairwise=pairwise_frame([("A", "B", 0.0, 0)], hour),
+	)
+
+
+def column_for(result: pl.DataFrame, metric: str, column: str) -> dict[str, float]:
+	"""One column of a metric's rows, keyed by animal."""
 	sub = result.filter(pl.col("metric") == metric)
-	return dict(sub.select("animal_id", "z-score").iter_rows())
+	return dict(sub.select("animal_id", column).iter_rows())
 
 
-def test_output_is_long_with_all_metrics(monkeypatch):
-	"""Result is long-format: one row per animal/metric over the eight metrics."""
+def rate_for(result: pl.DataFrame, metric: str) -> dict[str, float]:
+	"""The metric's rate per animal, aggregated the only correct way."""
+	sub = (
+		result.filter(pl.col("metric") == metric)
+		.group_by("animal_id")
+		.agg(pl.sum("value"), pl.sum("exposure"))
+	)
+	return {
+		row["animal_id"]: row["value"] / row["exposure"]
+		for row in sub.iter_rows(named=True)
+		if row["exposure"]
+	}
+
+
+def test_output_is_long_with_value_and_exposure(monkeypatch):
+	"""Result is long-format: one row per animal/metric, carrying both halves of a rate."""
 	result = run_features(
 		monkeypatch,
 		chasings=chasings_frame([("A", "B", 1)]),
-		tube=tube_frame([("A", "B", 1)]),
-		activity=activity_frame([("A", 10, 0.0), ("B", 20, 0.0)]),
+		activity=activity_frame([("A", 10, 0.0, HOUR), ("B", 20, 0.0, HOUR)]),
 		pairwise=pairwise_frame([("A", "B", 5.0, 1)]),
 	)
-	assert set(result.columns) == {"phase", "day", "phase_count", "animal_id", "metric", "z-score"}
+	assert set(result.columns) == {
+		"phase",
+		"day",
+		"phase_count",
+		"hour",
+		"animal_id",
+		"metric",
+		"value",
+		"exposure",
+	}
 	assert set(result["metric"].unique()) == METRICS
+	assert result.schema["value"] == pl.Float64
+	assert result.schema["exposure"] == pl.Float64
 
 
-def test_constant_metric_zscores_to_zero(monkeypatch):
-	"""A metric with zero variance must yield 0.0, never NaN/inf (the std==0 guard).
+def test_values_are_raw_not_rescaled(monkeypatch):
+	"""Magnitude survives: a value is the count itself, not a z-score of it."""
+	result = quiet_hour(
+		monkeypatch,
+		activity_frame([("A", 10, 0.0, HOUR), ("B", 20, 0.0, HOUR), ("C", 0, 0.0, HOUR)]),
+	)
+	assert column_for(result, "activity", "value") == {"A": 10.0, "B": 20.0, "C": 0.0}
 
-	This is the 'no behavior' case: with no chasings or tube tests anywhere, those
-	count metrics are constant 0 across animals and must z-score to 0.0.
+
+def test_solo_exposure_is_the_time_observed(monkeypatch):
+	"""activity and time_alone are exposed against the animal's own observed time."""
+	# A observed for a full hour, B for half of one, C not seen at all.
+	result = quiet_hour(
+		monkeypatch,
+		activity_frame([("A", 10, 0.0, HOUR), ("B", 20, 0.0, HOUR / 2), ("C", 0, 0.0, 0.0)]),
+	)
+	for metric in SOLO:
+		assert column_for(result, metric, "exposure") == {"A": 1.0, "B": 0.5, "C": 0.0}
+
+
+def test_paired_exposure_counts_available_partners(monkeypatch):
+	"""Pair-derived metrics are exposed per partner, so cohort size cancels out."""
+	result = quiet_hour(monkeypatch, activity_frame([("A", 10, 0.0, HOUR), ("B", 20, 0.0, HOUR)]))
+	for metric in PAIRED:
+		assert column_for(result, metric, "exposure")["A"] == 1.0 * PARTNERS
+
+
+def test_per_detection_exposure_is_the_detection_count(monkeypatch):
+	"""n_chasing_per_detection reads the same chase count against antenna detections."""
+	result = run_features(
+		monkeypatch,
+		chasings=chasings_frame([("A", "B", 4)]),
+		activity=activity_frame([("A", 10, 0.0, HOUR), ("B", 20, 0.0, HOUR)]),
+		pairwise=pairwise_frame([("A", "B", 0.0, 0)]),
+		detections=main_frame([("A", 8), ("B", 2)]),
+	)
+	assert column_for(result, "n_chasing_per_detection", "value")["A"] == 4.0
+	assert column_for(result, "n_chasing_per_detection", "exposure") == {"A": 8.0, "B": 2.0}
+	assert rate_for(result, "n_chasing_per_detection") == {"A": 0.5, "B": 0.0}
+	# The partner-hours row is a different question and keeps its own exposure.
+	assert column_for(result, "n_chasing", "exposure")["A"] == 1.0 * PARTNERS
+
+
+def test_time_alone_rate_is_a_fraction_of_time_observed(monkeypatch):
+	"""Both halves are durations, so the rate is dimensionless - and 1 minus it is
+	the fraction of time the animal had company.
+	"""
+	result = quiet_hour(
+		monkeypatch, activity_frame([("A", 0, HOUR / 4, HOUR), ("B", 0, HOUR, HOUR)])
+	)
+	assert rate_for(result, "time_alone") == {"A": 0.25, "B": 1.0}
+
+
+def test_rate_aggregates_correctly_across_hours(monkeypatch):
+	"""The point of storing both halves: sum then divide, never average the rates.
+
+	A makes 10 visits in a full hour and 30 in a half hour, so its rate over the pair
+	is 40/1.5 visits per hour. Averaging the two hourly rates would say 35.
 	"""
 	result = run_features(
 		monkeypatch,
-		chasings=chasings_frame([("A", "B", 0), ("B", "A", 0)]),
-		tube=tube_frame([("A", "B", 0), ("B", "A", 0)]),
-		activity=activity_frame([("A", 10, 0.0), ("B", 20, 0.0)]),
-		pairwise=pairwise_frame([("A", "B", 0.0, 0)]),
+		chasings=pl.concat(
+			[chasings_frame([("A", "B", 0)], 0), chasings_frame([("A", "B", 0)], 1)]
+		),
+		activity=pl.concat(
+			[
+				activity_frame([("A", 10, 0.0, HOUR)], 0),
+				activity_frame([("A", 30, 0.0, HOUR / 2)], 1),
+			]
+		),
+		pairwise=pl.concat(
+			[pairwise_frame([("A", "B", 0.0, 0)], 0), pairwise_frame([("A", "B", 0.0, 0)], 1)]
+		),
 	)
-	# No NaN / inf anywhere in the table.
-	zs = result["z-score"].to_list()
-	assert all(math.isfinite(z) for z in zs)
-	# The constant (all-zero) metrics z-score to exactly 0.
-	for metric in ("n_chasing", "n_chased", "n_wins", "n_loses", "time_alone"):
-		assert set(metric_map(result, metric).values()) == {0.0}
+	assert rate_for(result, "activity")["A"] == 40 / 1.5
+
+	hourly = result.filter((pl.col("metric") == "activity") & (pl.col("animal_id") == "A"))
+	naive = (hourly["value"] / hourly["exposure"]).mean()
+	assert naive == 35.0  # what averaging the rates would have given
 
 
-def test_all_zero_inputs_produce_all_zero_zscores(monkeypatch):
-	"""When every metric is constant (all zero), the whole table is 0.0, not NaN."""
+def test_directional_proportion_comes_from_the_sibling_rows(monkeypatch):
+	"""Chase win rate needs no metric of its own: the counts are stored side by side."""
 	result = run_features(
 		monkeypatch,
-		chasings=chasings_frame([("A", "B", 0), ("B", "A", 0)]),
-		tube=tube_frame([("A", "B", 0), ("B", "A", 0)]),
-		activity=activity_frame([("A", 0, 0.0), ("B", 0, 0.0)]),
+		chasings=chasings_frame([("A", "B", 3), ("B", "A", 1)]),
+		activity=activity_frame([("A", 0, 0.0, HOUR), ("B", 0, 0.0, HOUR)]),
 		pairwise=pairwise_frame([("A", "B", 0.0, 0)]),
 	)
-	assert result["z-score"].to_list() == [0.0] * result.height
+	chasing = column_for(result, "n_chasing", "value")
+	chased = column_for(result, "n_chased", "value")
+
+	assert chasing["A"] / (chasing["A"] + chased["A"]) == 0.75
+	assert chasing["B"] / (chasing["B"] + chased["B"]) == 0.25
 
 
-def test_zscore_values(monkeypatch):
-	"""A two-animal activity contrast z-scores to the expected ±value."""
-	# Only `activity` varies (A=10 visits, B=20). Sample std (ddof=1) of {10,20}
-	# is sqrt(50); z = (x-15)/sqrt(50) -> -/+0.7071, rounded to -/+0.71.
+def test_unobserved_animal_contributes_nothing(monkeypatch):
+	"""An animal with no observed time gets zero exposure, so it adds to neither sum.
+
+	activity_df is reindexed onto the dense grid upstream, so a silent animal is present
+	with zeros rather than missing - which is what keeps the metric rows complete.
+	"""
+	result = quiet_hour(monkeypatch, activity_frame([("A", 10, 0.0, HOUR), ("C", 0, 0.0, 0.0)]))
+	unobserved = result.filter(pl.col("animal_id") == "C")
+
+	assert unobserved.height == len(METRICS)
+	assert unobserved["exposure"].to_list() == [0.0] * unobserved.height
+	assert unobserved["value"].to_list() == [0.0] * unobserved.height
+
+
+def test_no_nulls_anywhere(monkeypatch):
+	"""Cells no upstream table mentioned are filled, not left null."""
 	result = run_features(
 		monkeypatch,
-		chasings=chasings_frame([("A", "B", 0), ("B", "A", 0)]),
-		tube=tube_frame([("A", "B", 0), ("B", "A", 0)]),
-		activity=activity_frame([("A", 10, 0.0), ("B", 20, 0.0)]),
-		pairwise=pairwise_frame([("A", "B", 0.0, 0)]),
+		chasings=chasings_frame([("A", "B", 1)]),
+		activity=activity_frame([("A", 10, 0.0, HOUR), ("B", 20, 0.0, HOUR)]),
+		pairwise=pairwise_frame([("A", "B", 5.0, 1)]),
 	)
-	activity = metric_map(result, "activity")
-	assert activity["A"] == -0.71
-	assert activity["B"] == 0.71
+	assert result.null_count().sum_horizontal().item() == 0

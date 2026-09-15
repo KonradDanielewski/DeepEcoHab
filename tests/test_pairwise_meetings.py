@@ -1,10 +1,11 @@
 """Tests for calculate_pairwise_meetings (co-occurrence time and encounter counts).
 
-A sweep-line over cage occupancy intervals (a bitmask variant of _get_time_alone)
-finds spans where >=2 animals share a cage, decodes the present set, stitches
+A sweep-line over occupancy intervals (the same intervals _get_time_alone reads, via
+_occupancy_intervals) finds spans where >=2 animals share a position - a cage or a
+tunnel, with tunnel directionality collapsed first - decodes the present set, stitches
 temporally-contiguous spans of the same pair into one meeting, drops meetings
 shorter than ``minimum_time`` and sums onto the dense grid. padded_df is read via
-auxfun._get_data (monkeypatched); the body runs via ``__wrapped__``.
+Recording.load_results (monkeypatched); the step is called directly.
 
 padded_df rows carry the interval END in ``datetime`` and its length in
 ``time_spent``; all events sit in day-1 light_phase.
@@ -13,40 +14,41 @@ padded_df rows carry the interval END in ``datetime`` and its length in
 import datetime as dt
 
 import polars as pl
-import pytest
 import strategies as strat
 
-from deepecohab.analysis import antenna_analysis
-from deepecohab.utils import auxfun
+from deepecohab.core import antenna_analysis, transforms
+from deepecohab.core.data_model import AnalysisParams, Recording
 
-CFG = strat.analysis_cfg(animal_ids=["A", "B", "C"])
+RECORDING = strat.analysis_recording(animal_ids=["A", "B", "C"])
 at = strat.at
 
 
-def padded_pieces(rows, cfg) -> pl.LazyFrame:
+def padded_pieces(rows, recording) -> pl.LazyFrame:
 	"""Split each ``stay`` row at minute marks with the real padding, as padded_df does.
 
-	Feeds the actual ``_get_minute_padding`` so a multi-minute stay becomes several
+	Feeds the actual splitter so a multi-minute stay becomes several
 	per-minute pieces (interpolated flags and all), exactly like the production
 	padded_df the pairwise step consumes. This exercises the split -> re-stitch path.
 	"""
 	df = pl.DataFrame(
 		{
 			"animal_id": pl.Series(
-				[r["animal_id"] for r in rows], dtype=pl.Enum(cfg["animal_ids"])
+				[r["animal_id"] for r in rows], dtype=pl.Enum(recording.cohort.animal_tags)
 			),
 			"position": pl.Series([r["position"] for r in rows], dtype=pl.Categorical),
 			"datetime": pl.Series("datetime", [r["datetime"] for r in rows]),
-			"time_spent": pl.Series([float(r["time_spent"]) for r in rows], dtype=pl.Float64),
+			"time_spent": strat.seconds([float(r["time_spent"]) for r in rows]),
 			"time_under": pl.Series([dt.timedelta(0) for _ in rows], dtype=pl.Duration("us")),
 		}
 	)
-	return auxfun._get_minute_padding(df.lazy(), cfg)
+	return transforms.split_on_minute_boundaries(df.lazy(), recording)
 
 
 def run_pairwise(monkeypatch, padded_lf, **kwargs) -> pl.DataFrame:
-	monkeypatch.setattr(antenna_analysis.auxfun, "_get_data", lambda c, key: padded_lf)
-	return antenna_analysis.calculate_pairwise_meetings.__wrapped__(CFG, **kwargs).collect()
+	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: padded_lf)
+	return antenna_analysis.calculate_pairwise_meetings(
+		RECORDING, AnalysisParams(**kwargs)
+	).collect()
 
 
 def pair_cell(result: pl.DataFrame, a: str, b: str, position: str) -> dict:
@@ -74,7 +76,7 @@ def test_output_schema_and_unordered_pairs(monkeypatch):
 		stay("A", "cage_1", at(2023, 5, 24, 12, 0, 10), 10),
 		stay("B", "cage_1", at(2023, 5, 24, 12, 0, 15), 10),
 	]
-	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG))
+	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING))
 
 	assert {"time_together", "pairwise_encounters"}.issubset(set(result.columns))
 	# unordered: animal_id is always the lexicographically smaller of the pair.
@@ -95,8 +97,10 @@ def test_shared_time_and_one_encounter(monkeypatch):
 		stay("A", "cage_1", at(2023, 5, 24, 12, 0, 10), 10),
 		stay("B", "cage_1", at(2023, 5, 24, 12, 0, 15), 10),
 	]
-	c = pair_cell(run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG)), "A", "B", "cage_1")
-	assert c["time_together"] == 5.0
+	c = pair_cell(
+		run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING)), "A", "B", "cage_1"
+	)
+	assert c["time_together"] == dt.timedelta(seconds=5.0)
 	assert c["pairwise_encounters"] == 1
 
 
@@ -107,24 +111,26 @@ def test_short_meeting_dropped_by_minimum_time(monkeypatch):
 		stay("A", "cage_1", at(2023, 5, 24, 12, 0, 10), 10),
 		stay("B", "cage_1", at(2023, 5, 24, 12, 0, 19), 10),
 	]
-	c = pair_cell(run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG)), "A", "B", "cage_1")
-	assert c["time_together"] == 0.0
+	c = pair_cell(
+		run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING)), "A", "B", "cage_1"
+	)
+	assert c["time_together"] == dt.timedelta(seconds=0.0)
 	assert c["pairwise_encounters"] == 0
 
 
-def test_minimum_time_none_keeps_short_meeting(monkeypatch):
-	"""With minimum_time=None the same 1 s meeting is retained."""
+def test_minimum_time_zero_keeps_short_meeting(monkeypatch):
+	"""With minimum_time=0 the same 1 s meeting is retained."""
 	rows = [
 		stay("A", "cage_1", at(2023, 5, 24, 12, 0, 10), 10),
 		stay("B", "cage_1", at(2023, 5, 24, 12, 0, 19), 10),
 	]
 	c = pair_cell(
-		run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG), minimum_time=None),
+		run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING), minimum_time=0),
 		"A",
 		"B",
 		"cage_1",
 	)
-	assert c["time_together"] == 1.0
+	assert c["time_together"] == dt.timedelta(seconds=1.0)
 	assert c["pairwise_encounters"] == 1
 
 
@@ -136,10 +142,10 @@ def test_three_animals_decode_all_pairs(monkeypatch):
 		stay("B", "cage_1", at(2023, 5, 24, 12, 0, 10), 10),
 		stay("C", "cage_1", at(2023, 5, 24, 12, 0, 10), 10),
 	]
-	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG))
+	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING))
 	for a, b in (("A", "B"), ("A", "C"), ("B", "C")):
 		c = pair_cell(result, a, b, "cage_1")
-		assert c["time_together"] == 10.0, f"pair {a},{b}"
+		assert c["time_together"] == dt.timedelta(seconds=10.0), f"pair {a},{b}"
 		assert c["pairwise_encounters"] == 1, f"pair {a},{b}"
 
 
@@ -151,9 +157,11 @@ def test_separate_meetings_counted_twice(monkeypatch):
 		stay("A", "cage_1", at(2023, 5, 24, 12, 0, 25), 5),
 		stay("B", "cage_1", at(2023, 5, 24, 12, 0, 25), 5),
 	]
-	c = pair_cell(run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG)), "A", "B", "cage_1")
+	c = pair_cell(
+		run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING)), "A", "B", "cage_1"
+	)
 	assert c["pairwise_encounters"] == 2
-	assert c["time_together"] == 10.0
+	assert c["time_together"] == dt.timedelta(seconds=10.0)
 
 
 def test_contiguous_spans_stitched_into_one_meeting(monkeypatch):
@@ -167,9 +175,11 @@ def test_contiguous_spans_stitched_into_one_meeting(monkeypatch):
 		stay("B", "cage_1", at(2023, 5, 24, 12, 0, 20), 20),  # [12:00:00, 12:00:20]
 		stay("C", "cage_1", at(2023, 5, 24, 12, 0, 10), 5),  # [12:00:05, 12:00:10]
 	]
-	c = pair_cell(run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG)), "A", "B", "cage_1")
+	c = pair_cell(
+		run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING)), "A", "B", "cage_1"
+	)
 	assert c["pairwise_encounters"] == 1
-	assert c["time_together"] == 20.0
+	assert c["time_together"] == dt.timedelta(seconds=20.0)
 
 
 def test_continuous_costay_split_across_minutes_is_one_encounter(monkeypatch):
@@ -189,13 +199,13 @@ def test_continuous_costay_split_across_minutes_is_one_encounter(monkeypatch):
 		{"animal_id": "A", "position": "cage_1", "datetime": end, "time_spent": length},
 		{"animal_id": "B", "position": "cage_1", "datetime": end, "time_spent": length},
 	]
-	padded = padded_pieces(rows, CFG)
+	padded = padded_pieces(rows, RECORDING)
 	# sanity: the stay really was split into multiple pieces per animal.
 	assert padded.collect().filter(pl.col("animal_id") == "A").height > 1
 
 	c = pair_cell(run_pairwise(monkeypatch, padded), "A", "B", "cage_1")
 	assert c["pairwise_encounters"] == 1
-	assert c["time_together"] == pytest.approx(length)
+	assert c["time_together"] == dt.timedelta(seconds=length)
 
 
 def test_encounters_never_exceed_sum_of_visits(monkeypatch):
@@ -221,7 +231,7 @@ def test_encounters_never_exceed_sum_of_visits(monkeypatch):
 		visit("A", at(2023, 5, 24, 12, 1, 0), at(2023, 5, 24, 12, 1, 20)),
 		visit("B", at(2023, 5, 24, 12, 1, 10), at(2023, 5, 24, 12, 1, 25)),  # overlaps A#3
 	]
-	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG), minimum_time=None)
+	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING), minimum_time=0)
 	c = pair_cell(result, "A", "B", "cage_1")
 	visits_a, visits_b = 3, 2
 	assert c["pairwise_encounters"] <= visits_a + visits_b
@@ -234,7 +244,51 @@ def test_no_cooccupancy_yields_zero_grid(monkeypatch):
 		stay("A", "cage_1", at(2023, 5, 24, 12, 0, 10), 10),
 		stay("B", "cage_2", at(2023, 5, 24, 12, 0, 10), 10),
 	]
-	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, CFG))
+	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING))
 	assert result.height > 0
-	assert result["time_together"].sum() == 0
+	assert result["time_together"].sum() == dt.timedelta(0)
+	assert result["pairwise_encounters"].sum() == 0
+
+
+def test_tunnel_cooccupancy_is_a_meeting(monkeypatch):
+	"""Two animals sharing a tunnel meet there, as they would in a cage."""
+	# A in c1_c2 [12:00:00, 12:00:10]; B [12:00:05, 12:00:15]; overlap 5 s.
+	rows = [
+		stay("A", "c1_c2", at(2023, 5, 24, 12, 0, 10), 10),
+		stay("B", "c1_c2", at(2023, 5, 24, 12, 0, 15), 10),
+	]
+	c = pair_cell(
+		run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING)), "A", "B", "tunnel_1"
+	)
+	assert c["time_together"] == dt.timedelta(seconds=5.0)
+	assert c["pairwise_encounters"] == 1
+
+
+def test_opposite_tunnel_directions_are_one_position(monkeypatch):
+	"""Animals passing through one tunnel in opposite directions still meet.
+
+	padded_df carries directional tunnel positions (``c1_c2``/``c2_c1``). Without
+	collapsing them first the two animals sit in different positions and the meeting
+	vanishes -- so this pins the directionality half of _occupancy_intervals.
+	"""
+	rows = [
+		stay("A", "c1_c2", at(2023, 5, 24, 12, 0, 10), 10),
+		stay("B", "c2_c1", at(2023, 5, 24, 12, 0, 15), 10),
+	]
+	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING))
+	c = pair_cell(result, "A", "B", "tunnel_1")
+
+	assert c["time_together"] == dt.timedelta(seconds=5.0)
+	assert c["pairwise_encounters"] == 1
+
+
+def test_undefined_position_yields_no_meeting(monkeypatch):
+	"""``undefined`` is not a place, so overlapping there is not a meeting."""
+	rows = [
+		stay("A", "undefined", at(2023, 5, 24, 12, 0, 10), 10),
+		stay("B", "undefined", at(2023, 5, 24, 12, 0, 15), 10),
+	]
+	result = run_pairwise(monkeypatch, strat.padded_df_frame(rows, RECORDING))
+
+	assert result["time_together"].sum() == dt.timedelta(0)
 	assert result["pairwise_encounters"].sum() == 0

@@ -2,8 +2,8 @@
 
 calculate_chasings aggregates the event-level match_df into per-(chaser, chased,
 tunnel, hour) counts and reindexes them onto the dense ordered-pair x tunnel grid
-so absent cells are 0. It reads match_df via auxfun._get_data, which we
-monkeypatch; the body is called via ``__wrapped__``.
+so absent cells are 0. It reads match_df via Recording.load_results, which we
+monkeypatch; the step is called directly.
 
 All events are placed in day-1 light_phase so the run-length phase_count of the
 hand-built match_df equals the grid's numbering (the first light phase is 1).
@@ -12,15 +12,16 @@ hand-built match_df equals the grid's numbering (the first light phase is 1).
 import polars as pl
 import strategies as strat
 
-from deepecohab.analysis import antenna_analysis
+from deepecohab.core import antenna_analysis
+from deepecohab.core.data_model import AnalysisParams, Recording
 
-CFG = strat.analysis_cfg(animal_ids=["A", "B", "C"])
+RECORDING = strat.analysis_recording(animal_ids=["A", "B", "C"])
 at = strat.at
 
 
 def run_chasings(monkeypatch, match_lf) -> pl.DataFrame:
-	monkeypatch.setattr(antenna_analysis.auxfun, "_get_data", lambda c, key: match_lf)
-	return antenna_analysis.calculate_chasings.__wrapped__(CFG).collect()
+	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: match_lf)
+	return antenna_analysis.calculate_chasings(RECORDING, AnalysisParams()).collect()
 
 
 def cell(result: pl.DataFrame, chaser: str, chased: str, position: str) -> int:
@@ -38,7 +39,7 @@ def test_output_schema_and_zero_fill(monkeypatch):
 	rows = [
 		{"winner": "A", "loser": "B", "position": "c1_c2", "datetime": at(2023, 5, 24, 12, 0, 0)}
 	]
-	result = run_chasings(monkeypatch, strat.match_df_frame(rows, CFG))
+	result = run_chasings(monkeypatch, strat.match_df_frame(rows, RECORDING))
 
 	assert {"chaser", "chased", "position", "chasings"}.issubset(set(result.columns))
 	# Every ordered pair appears (A!=B etc.), and unobserved cells are 0, not null.
@@ -54,7 +55,7 @@ def test_counts_per_ordered_pair(monkeypatch):
 		{"winner": "A", "loser": "B", "position": "c1_c2", "datetime": at(2023, 5, 24, 12, 0, 5)},
 		{"winner": "B", "loser": "A", "position": "c1_c2", "datetime": at(2023, 5, 24, 12, 0, 9)},
 	]
-	result = run_chasings(monkeypatch, strat.match_df_frame(rows, CFG))
+	result = run_chasings(monkeypatch, strat.match_df_frame(rows, RECORDING))
 
 	assert cell(result, "A", "B", "c1_c2") == 2
 	assert cell(result, "B", "A", "c1_c2") == 1
@@ -65,7 +66,7 @@ def test_winner_is_chaser_loser_is_chased(monkeypatch):
 	rows = [
 		{"winner": "A", "loser": "B", "position": "c1_c2", "datetime": at(2023, 5, 24, 12, 0, 0)}
 	]
-	result = run_chasings(monkeypatch, strat.match_df_frame(rows, CFG))
+	result = run_chasings(monkeypatch, strat.match_df_frame(rows, RECORDING))
 
 	assert cell(result, "A", "B", "c1_c2") == 1
 	assert cell(result, "B", "A", "c1_c2") == 0
@@ -76,7 +77,7 @@ def test_counts_are_per_tunnel(monkeypatch):
 	rows = [
 		{"winner": "A", "loser": "B", "position": "c2_c3", "datetime": at(2023, 5, 24, 12, 0, 0)}
 	]
-	result = run_chasings(monkeypatch, strat.match_df_frame(rows, CFG))
+	result = run_chasings(monkeypatch, strat.match_df_frame(rows, RECORDING))
 
 	assert cell(result, "A", "B", "c2_c3") == 1
 	assert cell(result, "A", "B", "c1_c2") == 0
@@ -84,7 +85,7 @@ def test_counts_are_per_tunnel(monkeypatch):
 
 def test_empty_match_df_yields_all_zero_grid(monkeypatch):
 	"""No chasing events anywhere (e.g. a quiet day) -> a full grid of zeros."""
-	result = run_chasings(monkeypatch, strat.match_df_frame([], CFG))
+	result = run_chasings(monkeypatch, strat.match_df_frame([], RECORDING))
 
 	assert result.height > 0  # the dense grid still exists
 	assert result["chasings"].sum() == 0

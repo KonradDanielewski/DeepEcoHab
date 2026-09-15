@@ -1,367 +1,568 @@
 from typing import Literal
 
 import plotly.graph_objects as go
+import polars as pl
 
-from deepecohab.core.registries import plot_registry
-from deepecohab.plotting import plot_factory
-from deepecohab.utils import auxfun_plots
-from deepecohab.utils.auxfun_plots import PlotConfig
+from deepecohab.plotting import plot_factory, prepare
+from deepecohab.plotting.animals import (
+	available_attributes,
+	order_by_attribute,
+	resolve_colors,
+)
+from deepecohab.plotting.context import (
+	SCOPE_NOUN,
+	FacetScope,
+	Granularity,
+	PlotContext,
+	Scope,
+)
+from deepecohab.plotting.durations import Unit
+from deepecohab.plotting.registry import PlotRegistry
+from deepecohab.plotting.theme import sample_palette
 
-__all__ = ["PlotConfig", "plot_registry"]
-
-
-@plot_registry.register("cage-preference")
-def cage_preference(
-	store: dict,
-	phase_type: list[str],
-	days_range: list[int],
-	granularity: str,
-	cages: list[str],
-	position_colors: list[str],
-) -> go.Figure:
-	"""Generates a cage preference box plot."""
-	df = auxfun_plots.prep_cage_preference(store, phase_type, days_range, granularity)
-
-	return plot_factory.plot_cage_preference(df, cages, position_colors, granularity)
-
-
-@plot_registry.register("cage-preference-evolution")
-def cage_preference_evolution(
-	store: dict,
-	animals: list[str],
-	days_range: list[int],
-	granularity: str,
-	agg_switch: Literal["sum", "mean"],
-	cages: list[str],
-) -> go.Figure:
-	"""Generates a cage preference box plot."""
-	img = auxfun_plots.prep_cage_preference_evolution(
-		store, animals, days_range, agg_switch, cages, granularity
-	)
-
-	return plot_factory.time_spent_per_cage(img, type="daily", granularity=granularity)
+PHASES = ["light_phase", "dark_phase"]
+BY_COHORT = {"color_by": available_attributes}
+ORDERED_BY_COHORT = {"order_by": available_attributes}
 
 
-@plot_registry.register("metrics-polar-line")
-def polar_metrics(
-	store: dict,
-	days_range: list[int],
-	granularity: str,
-	phase_type: list[str],
-	animal_colors: list[str],
-) -> go.Figure:
-	"""Generates a polar (radar) plot comparing various social dominance metrics.
-
-	Visualizes z-scored values for chasing behavior, activity levels, and social
-	proximity (time alone vs. together) for each animal on a unified circular scale.
-	"""
-	df = auxfun_plots.prep_polar_df(store, days_range, phase_type, granularity)
-
-	return plot_factory.plot_metrics_polar(df, animal_colors)
+def _window(
+	context: PlotContext,
+	days_range: tuple[int, int] | None,
+	granularity: Granularity,
+) -> tuple[int, int]:
+	"""Fall back to the whole recording when no window is selected."""
+	return context.axis_range(granularity) if days_range is None else days_range
 
 
-@plot_registry.register("ranking-line")
-def ranking_over_time(
-	store: dict,
-	days_range: list[int],
-	granularity: str,
-	animals: list[str],
-	animal_colors: list[str],
-	ranking_switch: Literal["intime", "stability"],
-) -> go.Figure:
-	"""Generates ranking plots either over time or as day-to-day stability."""
-	match ranking_switch:
-		case "intime":
-			df = auxfun_plots.prep_ranking_over_time(store, days_range, granularity)
-			return plot_factory.plot_ranking_line(df, animals, animal_colors)
-
-		case "stability":
-			df = auxfun_plots.prep_ranking_day_stability(store, days_range, granularity)
-			return plot_factory.plot_ranking_stability(df, animals, animal_colors, granularity)
-
-
-@plot_registry.register("ranking-distribution-line")
-def ranking_distribution(
-	store: dict,
-	days_range: list[int],
-	granularity: str,
-	animals: list[str],
-	animal_colors: list[str],
-) -> go.Figure:
-	"""Generates a line plot of the ranking probability distributions.
-
-	Fits and displays the probability density functions (PDF) for each animal's
-	ranking based on Mu and Sigma values for the final day in the selected range.
-	"""
-	df = auxfun_plots.prep_ranking_distribution(store, days_range, granularity)
-
-	return plot_factory.plot_ranking_distribution(df, animals, animal_colors)
-
-
-@plot_registry.register("network-dominance")
-def network_dominance(
-	store: dict,
-	animals: list[str],
-	days_range: list[int],
-	granularity: str,
-	animal_colors: list[str],
-) -> go.Figure:
-	"""Generates a social dominance network graph of animal interactions.
-
-	Visualizes hierarchy and aggression where node size represents ranking
-	and edges represent the sum of chasing events in a directional fashion.
-	"""
-	connections, nodes = auxfun_plots.prep_network_dominance(
-		store, animals, days_range, granularity
-	)
-
-	return plot_factory.plot_network_graph(connections, nodes, animals, animal_colors, "chasings")
-
-
-@plot_registry.register("tube-test-heatmap")
-def tube_test_heatmap(
-	store: dict,
-	animals: list[str],
-	days_range: list[int],
-	granularity: str,
-	phase_type: list[str],
-	agg_switch: Literal["sum", "mean"],
-) -> go.Figure:
-	"""Generates a chaser-vs-chased interaction heatmap.
-
-	Displays a matrix of agonistic interactions, where rows and columns represent
-	individual animals and cells show the sum or mean of chasing events. Columns
-	represent Chasers and rows represent Chased.
-	"""
-	img = auxfun_plots.prep_tube_test_heatmap(
-		store, animals, days_range, phase_type, agg_switch, granularity
-	)
-
-	return plot_factory.plot_heatmap(img, animals, input_type="tube_test")
-
-
-@plot_registry.register("chasings-heatmap")
-def chasings_heatmap(
-	store: dict,
-	animals: list[str],
-	days_range: list[int],
-	granularity: str,
-	phase_type: list[str],
-	agg_switch: Literal["sum", "mean"],
-) -> go.Figure:
-	"""Generates a chaser-vs-chased interaction heatmap.
-
-	Displays a matrix of agonistic interactions, where rows and columns represent
-	individual animals and cells show the sum or mean of chasing events. Columns
-	represent Chasers and rows represent Chased.
-	"""
-	img = auxfun_plots.prep_chasings_heatmap(
-		store, animals, days_range, phase_type, agg_switch, granularity
-	)
-
-	return plot_factory.plot_heatmap(img, animals, input_type="chasings")
-
-
-@plot_registry.register("chasings-line")
-def chasings_line(
-	store: dict,
-	animals: list[str],
-	days_range: list[int],
-	granularity: str,
-	animal_colors: list[str],
-	agg_switch: Literal["sum", "mean"],
-	light_dark_onset: dict[str, float],
-) -> go.Figure:
-	"""Generates a line plot of chasing frequency per hour.
-
-	Shows the diurnal rhythm of aggression. For mean includes a shaded area representing
-	the Standard Error of the Mean (SEM) across the selected days.
-	"""
-	df = auxfun_plots.prep_chasings_line(store, animals, days_range, granularity)
-
-	match agg_switch:
-		case "sum":
-			return plot_factory.plot_sum_line_per_hour(
-				df, animals, animal_colors, "chasings", light_dark_onset
-			)
-		case "mean":
-			return plot_factory.plot_mean_line_per_hour(
-				df, animals, animal_colors, "chasings", light_dark_onset
-			)
-
-
-@plot_registry.register("activity-bar")
+@PlotRegistry.register(
+	"activity-bar",
+	title="Activity per position",
+	requires=("activity_df", "animals"),
+	dynamic_choices=BY_COHORT,
+)
 def activity(
-	store: dict,
-	days_range: list[int],
-	granularity: str,
-	phase_type: list[str],
-	positions: list[str],
-	position_switch: Literal["visits", "time"],
-	agg_switch: Literal["sum", "mean"],
-	animal_colors: list[str],
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: list[str] = PHASES,
+	metric: Literal["visits", "time"] = "time",
+	agg: Literal["sum", "mean"] = "sum",
+	color_by: str = "animal_id",
+	unit: Unit | Literal["auto"] = "auto",
 ) -> go.Figure:
-	"""Generates a bar or box plot of animal activity levels by position.
+	"""Visits to each position, or time spent there.
 
-	Quantifies behavior either by the number of visits to specific locations
-	or the total time spent in those locations.
+	Quantifies behaviour either by the number of visits to specific locations or
+	the total time spent in those locations.
 	"""
-	df = auxfun_plots.prep_activity(store, days_range, phase_type, granularity)
+	window = _window(context, days_range, granularity)
+	frame, rendered = prepare.prep_activity(context, window, phase_type, granularity, agg, unit)
+	mapping = resolve_colors(context, color_by)
 
 	return plot_factory.plot_activity(
-		df, positions, animal_colors, position_switch, agg_switch, granularity
+		frame, context.positions, mapping, metric, agg, granularity, rendered.label
 	)
 
 
-@plot_registry.register("activity-line")
-def activity_line(
-	store: dict,
-	animals: list[str],
-	days_range: list[int],
-	granularity: str,
-	animal_colors: list[str],
-	agg_switch: Literal["sum", "mean"],
-	light_dark_onset: dict[str, float],
-) -> go.Figure:
-	"""Generates a line plot of diurnal activity based on antenna crossings.
-
-	Plots the number of antenna detections per hour, allowing for
-	comparison of circadian rhythms between animals. For mean includes a shaded area
-	representing the Standard Error of the Mean (SEM) across the selected days.
-	"""
-	df = auxfun_plots.prep_activity_line(store, animals, days_range, granularity)
-
-	match agg_switch:
-		case "sum":
-			return plot_factory.plot_sum_line_per_hour(
-				df, animals, animal_colors, "activity", light_dark_onset
-			)
-		case "mean":
-			return plot_factory.plot_mean_line_per_hour(
-				df, animals, animal_colors, "activity", light_dark_onset
-			)
-
-
-@plot_registry.register("time-per-cage-heatmap")
-def time_per_cage(
-	store: dict,
-	animals: list[str],
-	days_range: list[int],
-	granularity: str,
-	cages: list[str],
-	agg_switch: Literal["sum", "mean"],
-) -> go.Figure:
-	"""Generates a grid of heatmaps showing cage occupancy over 24 hours.
-
-	Creates a subplot for each cage, visualizing when and for how long specific animals
-	occupy that space throughout the day.
-	"""
-	img = auxfun_plots.prep_time_per_cage(
-		store, animals, days_range, agg_switch, cages, granularity
-	)
-
-	return plot_factory.time_spent_per_cage(img, type="hourly")
-
-
-@plot_registry.register("sociability-heatmap")
-def pairwise_sociability(
-	store: dict,
-	animals: list[str],
-	phase_type: list[str],
-	days_range: list[int],
-	granularity: str,
-	cages: list[str],
-	agg_switch: Literal["sum", "mean"],
-	pairwise_switch: Literal["time_together", "pairwise_encounters"],
-) -> go.Figure:
-	"""Generates heatmaps of pairwise sociability per cage.
-
-	Visualizes how often pairs of animals meet or spend time together,
-	broken down by physical location (cages).
-	"""
-	img = auxfun_plots.prep_pairwise_sociability(
-		store, phase_type, animals, days_range, agg_switch, pairwise_switch, cages, granularity
-	)
-
-	return plot_factory.plot_sociability_heatmap(img, pairwise_switch, animals)
-
-
-@plot_registry.register("cohort-heatmap")
-def within_cohort_sociability(
-	store: dict,
-	animals: list[str],
-	phase_type: list[str],
-	days_range: list[int],
-	granularity: str,
-	sociability_switch: Literal["proportion_together", "sociability"],
-) -> go.Figure:
-	"""Generates a normalized heatmap of sociability within the entire cohort.
-
-	Provides a high-level view of social bonds by calculating the mean
-	sociability index between all animal pairs across the specified range.
-	"""
-	img = auxfun_plots.prep_within_cohort_sociability(
-		store, phase_type, animals, days_range, sociability_switch, granularity
-	)
-
-	return plot_factory.plot_within_cohort_heatmap(img, animals, sociability_switch)
-
-
-@plot_registry.register("time-alone-bar")
+@PlotRegistry.register(
+	"time-alone-bar",
+	title="Time spent alone",
+	requires=("activity_df", "animals"),
+	dynamic_choices=BY_COHORT,
+)
 def time_alone(
-	store: dict,
-	phase_type: list[str],
-	days_range: list[int],
-	granularity: str,
-	agg_switch: Literal["sum", "mean"],
-	animal_colors: list[str],
-	cages: list[str],
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: list[str] = PHASES,
+	agg: Literal["sum", "mean"] = "sum",
+	scope: Scope = "cages",
+	color_by: str = "animal_id",
+	unit: Unit | Literal["auto"] = "auto",
 ) -> go.Figure:
-	"""Generates a stacked bar plot of time spent alone.
+	"""Time each animal spent without any other animal present.
 
-	Shows the duration each animal spent without any other animals present,
-	segmented by the specific cages where this behavior occurred.
+	Shows the duration each animal spent alone, segmented by the position where that
+	happened - cages, tunnels, or both.
 	"""
-	df = auxfun_plots.prep_time_alone(store, phase_type, days_range, granularity)
+	window = _window(context, days_range, granularity)
+	positions = context.scope_positions(scope)
+	frame, rendered = prepare.prep_time_alone(
+		context, window, phase_type, granularity, agg, positions, unit
+	)
+	mapping = resolve_colors(context, color_by)
 
-	return plot_factory.plot_time_alone(df, cages, animal_colors, agg_switch, granularity)
+	return plot_factory.plot_time_alone(
+		frame, positions, mapping, agg, granularity, rendered.label, SCOPE_NOUN[scope]
+	)
 
 
-@plot_registry.register("network-sociability")
-def network_sociability(
-	store: dict,
-	animals: list[str],
-	animal_colors: list[str],
-	days_range: list[int],
-	granularity: str,
+@PlotRegistry.register(
+	"cage-preference",
+	title="Cage preference",
+	requires=("activity_df",),
+)
+def cage_preference(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: list[str] = PHASES,
+	scope: Scope = "cages",
+	unit: Unit | Literal["auto"] = "auto",
 ) -> go.Figure:
-	"""Generates a social dominance network graph of animal interactions.
+	"""Distribution of time the cohort spends in each position."""
+	window = _window(context, days_range, granularity)
+	positions = context.scope_positions(scope)
+	frame, rendered = prepare.prep_cage_preference(
+		context, window, phase_type, granularity, positions, unit
+	)
 
-	Visualizes hierarchy and aggression where node size represents ranking
-	and edges represent the sum of chasing events in a directional fashion.
+	return plot_factory.plot_cage_preference(
+		frame,
+		positions,
+		sample_palette(len(positions)),
+		granularity,
+		rendered.label,
+		SCOPE_NOUN[scope],
+	)
+
+
+@PlotRegistry.register(
+	"cage-preference-evolution",
+	title="Cage preference over time",
+	requires=("activity_df", "animals"),
+	dynamic_choices=ORDERED_BY_COHORT,
+)
+def cage_preference_evolution(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	agg: Literal["sum", "mean"] = "sum",
+	scope: FacetScope = "cages",
+	order_by: str = "animal_id",
+	unit: Unit | Literal["auto"] = "auto",
+) -> go.Figure:
+	"""Time spent in each cage, or each tunnel, across days or phases."""
+	window = _window(context, days_range, granularity)
+	heatmap = prepare.prep_time_per_position(
+		context,
+		window,
+		agg,
+		granularity,
+		granularity,
+		context.scope_positions(scope),
+		order_by_attribute(context, order_by),
+		unit,
+	)
+
+	spans = prepare.prep_event_spans(context, window, granularity, granularity)
+
+	return plot_factory.plot_time_spent_per_cage(heatmap, "daily", spans, SCOPE_NOUN[scope])
+
+
+@PlotRegistry.register(
+	"time-per-cage-heatmap",
+	title="Time per cage by hour",
+	requires=("activity_df", "animals"),
+	dynamic_choices=ORDERED_BY_COHORT,
+)
+def time_per_cage(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	agg: Literal["sum", "mean"] = "sum",
+	scope: FacetScope = "cages",
+	order_by: str = "animal_id",
+	unit: Unit | Literal["auto"] = "auto",
+) -> go.Figure:
+	"""Position occupancy across the 24 hours of the experiment day.
+
+	One panel per cage, or per tunnel, showing when and for how long each animal
+	occupies it.
 	"""
-	connections = auxfun_plots.prep_network_sociability(store, animals, days_range, granularity)
+	window = _window(context, days_range, granularity)
+	heatmap = prepare.prep_time_per_position(
+		context,
+		window,
+		agg,
+		granularity,
+		"hour",
+		context.scope_positions(scope),
+		order_by_attribute(context, order_by),
+		unit,
+	)
+
+	spans = prepare.prep_event_spans(context, window, granularity, "hour")
+
+	return plot_factory.plot_time_spent_per_cage(heatmap, "hourly", spans, SCOPE_NOUN[scope])
+
+
+@PlotRegistry.register(
+	"activity-line",
+	title="Activity per hour",
+	requires=("main_df", "animals"),
+	dynamic_choices=BY_COHORT,
+)
+def activity_line(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	agg: Literal["sum", "mean"] = "sum",
+	color_by: str = "animal_id",
+) -> go.Figure:
+	"""Antenna detections per hour, showing the circadian rhythm.
+
+	For the mean, a shaded band shows the standard error across the selected
+	window units.
+	"""
+	window = _window(context, days_range, granularity)
+	frame = prepare.prep_hourly_line(context, window, granularity, "main_df", "animal_id", pl.len())
+	spans = prepare.prep_event_spans(context, window, granularity, "hour")
+	mapping = resolve_colors(context, color_by)
+
+	builder = (
+		plot_factory.plot_sum_line_per_hour
+		if agg == "sum"
+		else plot_factory.plot_mean_line_per_hour
+	)
+
+	return builder(frame, mapping, "activity", context.phases, spans)
+
+
+@PlotRegistry.register(
+	"chasings-line",
+	title="Chasings per hour",
+	requires=("chasings_df", "animals"),
+	dynamic_choices=BY_COHORT,
+)
+def chasings_line(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	agg: Literal["sum", "mean"] = "sum",
+	color_by: str = "animal_id",
+) -> go.Figure:
+	"""Chasing frequency per hour, showing the diurnal rhythm of aggression.
+
+	For the mean, a shaded band shows the standard error across the selected
+	window units.
+	"""
+	window = _window(context, days_range, granularity)
+	frame = prepare.prep_hourly_line(
+		context, window, granularity, "chasings_df", "chaser", pl.sum("chasings")
+	)
+	spans = prepare.prep_event_spans(context, window, granularity, "hour")
+	mapping = resolve_colors(context, color_by, animal_column="chaser")
+
+	builder = (
+		plot_factory.plot_sum_line_per_hour
+		if agg == "sum"
+		else plot_factory.plot_mean_line_per_hour
+	)
+
+	return builder(frame, mapping, "chasings", context.phases, spans)
+
+
+@PlotRegistry.register(
+	"ranking-line",
+	title="Dominance ranking",
+	requires=("ranking", "animals"),
+	dynamic_choices=BY_COHORT,
+)
+def ranking_over_time(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	mode: Literal["intime", "stability"] = "intime",
+	color_by: str = "animal_id",
+) -> go.Figure:
+	"""Ranking over time, or its day-to-day stability."""
+	window = _window(context, days_range, granularity)
+	mapping = resolve_colors(context, color_by)
+
+	match mode:
+		case "intime":
+			frame = prepare.prep_ranking_over_time(context, window, granularity)
+			spans = prepare.prep_event_spans(context, window, granularity, "datetime")
+
+			return plot_factory.plot_ranking_line(frame, mapping, spans)
+		case "stability":
+			frame = prepare.prep_ranking_day_stability(context, window, granularity)
+			spans = prepare.prep_event_spans(context, window, granularity, granularity)
+
+			return plot_factory.plot_ranking_stability(frame, mapping, granularity, spans)
+
+
+@PlotRegistry.register(
+	"ranking-distribution-line",
+	title="Ranking distribution",
+	requires=("ranking", "animals"),
+	dynamic_choices=BY_COHORT,
+)
+def ranking_distribution(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	color_by: str = "animal_id",
+) -> go.Figure:
+	"""Probability density of each animal's ranking on the latest day in range."""
+	window = _window(context, days_range, granularity)
+	frame = prepare.prep_ranking_distribution(context, window, granularity)
+	mapping = resolve_colors(context, color_by)
+
+	return plot_factory.plot_ranking_distribution(frame, mapping)
+
+
+@PlotRegistry.register(
+	"metrics-polar-line",
+	title="Feature overview",
+	requires=("feature_df", "animals"),
+	dynamic_choices=BY_COHORT,
+)
+def polar_metrics(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: list[str] = PHASES,
+	color_by: str = "animal_id",
+) -> go.Figure:
+	"""Z-scored dominance, activity and proximity metrics on one polar scale.
+
+	A polar overlay of metrics in different units is unreadable raw, so each is
+	z-scored for display only.
+	"""
+	window = _window(context, days_range, granularity)
+	frame = prepare.prep_polar_df(context, window, phase_type, granularity)
+	mapping = resolve_colors(context, color_by)
+
+	return plot_factory.plot_metrics_polar(frame, mapping)
+
+
+@PlotRegistry.register(
+	"chasings-heatmap",
+	title="Chasings matrix",
+	requires=("chasings_df", "animals"),
+	dynamic_choices=ORDERED_BY_COHORT,
+)
+def chasings_heatmap(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: list[str] = PHASES,
+	agg: Literal["sum", "mean"] = "sum",
+	order_by: str = "animal_id",
+) -> go.Figure:
+	"""Chaser-versus-chased matrix of agonistic interactions.
+
+	Columns are chasers and rows are chased.
+	"""
+	window = _window(context, days_range, granularity)
+	animals = order_by_attribute(context, order_by)
+	img = prepare.prep_directed_heatmap(
+		context,
+		window,
+		phase_type,
+		agg,
+		granularity,
+		animals,
+		table="chasings_df",
+		value="chasings",
+		column="chaser",
+		row="chased",
+	)
+
+	return plot_factory.plot_heatmap(
+		img, animals, "<b>Chasings</b>", ("Chaser", "Chased", "Number")
+	)
+
+
+@PlotRegistry.register(
+	"tube-test-heatmap",
+	title="Tube-test matrix",
+	requires=("tube_test_df",),
+	dynamic_choices=ORDERED_BY_COHORT,
+)
+def tube_test_heatmap(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: list[str] = PHASES,
+	agg: Literal["sum", "mean"] = "sum",
+	order_by: str = "animal_id",
+) -> go.Figure:
+	"""Winner-versus-loser matrix of spontaneous tube-test outcomes."""
+	window = _window(context, days_range, granularity)
+	animals = order_by_attribute(context, order_by)
+	img = prepare.prep_directed_heatmap(
+		context,
+		window,
+		phase_type,
+		agg,
+		granularity,
+		animals,
+		table="tube_test_df",
+		value="tube_test",
+		column="winner",
+		row="loser",
+	)
+
+	return plot_factory.plot_heatmap(
+		img, animals, "<b>Spontaneous tube-test</b>", ("Winner", "Loser", "Number")
+	)
+
+
+@PlotRegistry.register(
+	"sociability-heatmap",
+	title="Pairwise sociability",
+	requires=("pairwise_meetings", "animals"),
+	dynamic_choices=ORDERED_BY_COHORT,
+)
+def pairwise_sociability(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: list[str] = PHASES,
+	agg: Literal["sum", "mean"] = "sum",
+	metric: Literal["time_together", "pairwise_encounters"] = "time_together",
+	scope: FacetScope = "cages",
+	order_by: str = "animal_id",
+	unit: Unit | Literal["auto"] = "auto",
+) -> go.Figure:
+	"""How often pairs meet, or how long they spend together, per cage or per tunnel."""
+	window = _window(context, days_range, granularity)
+	heatmap = prepare.prep_pairwise_sociability(
+		context,
+		window,
+		phase_type,
+		agg,
+		metric,
+		granularity,
+		context.scope_positions(scope),
+		order_by_attribute(context, order_by),
+		unit,
+	)
+
+	return plot_factory.plot_sociability_heatmap(heatmap, metric)
+
+
+@PlotRegistry.register(
+	"cohort-heatmap",
+	title="Within-cohort sociability",
+	requires=("incohort_sociability", "pairwise_meetings", "phase_durations", "animals"),
+	dynamic_choices=ORDERED_BY_COHORT,
+)
+def within_cohort_sociability(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: list[str] = PHASES,
+	metric: Literal["proportion_together", "sociability"] = "sociability",
+	scope: Scope = "cages",
+	order_by: str = "animal_id",
+) -> go.Figure:
+	"""Mean sociability index between every pair in the cohort.
+
+	``scope`` applies to ``proportion_together`` only: ``sociability`` is measured against
+	a cage-only chance expectation, so it ignores the selection.
+	"""
+	window = _window(context, days_range, granularity)
+	animals = order_by_attribute(context, order_by)
+	img = prepare.prep_within_cohort_sociability(
+		context, window, phase_type, metric, granularity, animals, scope
+	)
+
+	title = (
+		"<b>Proportional time spent together</b>"
+		if metric == "proportion_together"
+		else "<b>Within-cohort sociability</b>"
+	)
+
+	return plot_factory.plot_heatmap(img, animals, title, ("X", "Y", "Sociability"))
+
+
+@PlotRegistry.register(
+	"social-stability",
+	title="Relationship stability",
+	requires=("pairwise_meetings", "phase_durations", "animals"),
+	dynamic_choices=BY_COHORT,
+)
+def social_stability(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: list[str] = PHASES,
+	scope: Scope = "cages",
+	color_by: str = "animal_id",
+) -> go.Figure:
+	"""Stability of every pair's relationship against how much time they share."""
+	window = _window(context, days_range, granularity)
+	frame = prepare.prep_social_stability(context, window, phase_type, granularity, scope)
+	mapping = resolve_colors(context, color_by)
+
+	return plot_factory.plot_social_stability(frame, mapping)
+
+
+@PlotRegistry.register(
+	"network-dominance",
+	title="Dominance network",
+	requires=("chasings_df", "ranking", "animals"),
+	dynamic_choices=BY_COHORT,
+)
+def network_dominance(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	layout: Literal["spring", "circular"] = "spring",
+	color_by: str = "animal_id",
+) -> go.Figure:
+	"""Directed network of chasing, with node size showing ranking."""
+	window = _window(context, days_range, granularity)
+	connections, nodes = prepare.prep_network_dominance(context, window, granularity)
+	mapping = resolve_colors(context, color_by)
+	colors = [mapping.by_animal[animal] for animal in context.animal_ids]
 
 	return plot_factory.plot_network_graph(
-		connections, None, animals, animal_colors, "proportion_together"
+		connections, nodes, context.animal_ids, colors, "chasings", layout
 	)
 
 
-@plot_registry.register("social-stability")
-def social_stability(
-	store: dict,
-	animals: list[str],
-	animal_colors: list[str],
-	phase_type: list[str],
-	days_range: list[int],
-	granularity: str,
+@PlotRegistry.register(
+	"network-sociability",
+	title="Sociability network",
+	requires=("pairwise_meetings", "phase_durations", "animals"),
+	dynamic_choices=BY_COHORT,
+)
+def network_sociability(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	layout: Literal["spring", "circular"] = "spring",
+	scope: Scope = "cages",
+	color_by: str = "animal_id",
 ) -> go.Figure:
-	"""Generates a social stability scatter plot.
+	"""Undirected network weighted by the time each pair spends together."""
+	window = _window(context, days_range, granularity)
+	connections = prepare.prep_network_sociability(context, window, granularity, scope)
+	mapping = resolve_colors(context, color_by)
+	colors = [mapping.by_animal[animal] for animal in context.animal_ids]
 
-	Visualizes stability of a relationship of every pair across chosen days
-	based on proportional time spent together and coefficient of variation like metric
-	calculated through median absolute deviation.
-	"""
-	df = auxfun_plots.prep_social_stability(store, phase_type, days_range, granularity)
-
-	return plot_factory.plot_social_stability(df, animals, animal_colors)
+	return plot_factory.plot_network_graph(
+		connections, None, context.animal_ids, colors, "proportion_together", layout
+	)

@@ -30,8 +30,6 @@ classifiers = [
 ]
 
 dependencies = [
-    "dash[diskcache]",
-    "dash-bootstrap-components",
     "ipykernel",
     "kaleido",
     "nbformat",
@@ -40,21 +38,27 @@ dependencies = [
     "openskill",
     "plotly",
     "polars",
+    "pydantic",
     "scipy",
-    "toml",
     "tqdm",
     "tzlocal",
     "pyshortcuts",
 ]
 
     [project.optional-dependencies]
+    app = [
+        "dash[diskcache]",
+        "dash-bootstrap-components",
+        "toml",
+    ]
+
     test = [
         "pytest",
         "hypothesis",
     ]
 
     dev = [
-        "deepecohab[test]",
+        "deepecohab[app,test]",
         "ruff>=0.15.17",
         "ty>=0.0.50",
         "pre-commit",
@@ -63,10 +67,6 @@ dependencies = [
     [project.urls]
     Homepage = "https://github.com/KonradDanielewski/DeepEcoHab"
     Issues   = "https://github.com/KonradDanielewski/DeepEcoHab/issues"
-
-    [project.scripts]
-    deepecohab = "deepecohab.app.__main__:main"
-    deepecohab-shortcut = "deepecohab.app.shortcut:main"
 
 [tool.setuptools]
 include-package-data = true
@@ -77,7 +77,6 @@ include-package-data = true
     namespaces = true
 
     [tool.setuptools.package-data]
-    "deepecohab.app.assets" = ["*"]
     "deepecohab.config" = ["*"]
 
 [tool.ruff]
@@ -116,6 +115,9 @@ target-version = "py312"
 
     [tool.ruff.lint.pydocstyle]
     convention = "google"
+
+    [tool.ruff.lint.isort]
+    combine-as-imports = true
 
 [tool.ty.src]
 # Type-check shipping source only; tests intentionally exercise odd types.

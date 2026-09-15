@@ -2,9 +2,8 @@
 
 A chasing event is a loser exiting a tunnel and a winner who entered that same
 tunnel from a cage 0.1-1.2 s earlier, exiting after the loser. calculate_matches
-reads main_df via auxfun._get_data, so we monkeypatch that to feed a hand-built
-main_df and call the pure compute body via ``__wrapped__`` (bypassing the
-lifecycle cache/parquet sink), as test_ranking does.
+reads main_df via Recording.load_results, so we monkeypatch that to feed a hand-built
+main_df and call the step directly, as test_ranking does.
 
 main_df rows mark the position an animal *left* and when it left, so a tunnel row
 is a tunnel *exit* and its (shifted) predecessor supplies the tunnel entry time
@@ -14,19 +13,19 @@ and the cage it came from.
 import datetime as dt
 
 import polars as pl
-import pytest
 import strategies as strat
 
-from deepecohab.analysis import antenna_analysis
+from deepecohab.core import antenna_analysis
+from deepecohab.core.data_model import AnalysisParams, Recording
 
-CFG = strat.analysis_cfg(animal_ids=["A", "B", "C"])
+RECORDING = strat.analysis_recording(animal_ids=["A", "B", "C"])
 at = strat.at
 
 
 def run_matches(monkeypatch, main_lf, **kwargs) -> pl.DataFrame:
 	"""Call calculate_matches' compute body with main_df injected via _get_data."""
-	monkeypatch.setattr(antenna_analysis.auxfun, "_get_data", lambda c, key: main_lf)
-	return antenna_analysis.calculate_matches.__wrapped__(CFG, **kwargs).collect()
+	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: main_lf)
+	return antenna_analysis.calculate_matches(RECORDING, AnalysisParams(**kwargs)).collect()
 
 
 def chase(
@@ -49,7 +48,7 @@ def chase(
 def test_output_schema(monkeypatch):
 	"""Result carries the grid columns plus winner/loser/datetime/chasing_length."""
 	rows = chase("A", "B", entry=at(2023, 5, 24, 12, 0, 0), exit_gap=0.5)
-	result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+	result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 	assert set(result.columns) == {
 		"phase",
 		"day",
@@ -66,20 +65,20 @@ def test_output_schema(monkeypatch):
 def test_genuine_chase_detected(monkeypatch):
 	"""A follow-through within the window yields exactly one winner/loser row."""
 	rows = chase("A", "B", entry=at(2023, 5, 24, 12, 0, 0), exit_gap=0.5)
-	result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+	result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 
 	assert result.height == 1
 	row = result.row(0, named=True)
 	assert row["winner"] == "A"
 	assert row["loser"] == "B"
 	assert row["position"] == "c1_c2"
-	assert row["chasing_length"] == 0.5
+	assert row["chasing_length"] == dt.timedelta(seconds=0.5)
 
 
 def test_no_double_count_for_symmetric_pair(monkeypatch):
 	"""Both animals are in the tunnel, but the direction guard keeps only one event."""
 	rows = chase("A", "B", entry=at(2023, 5, 24, 12, 0, 0), exit_gap=0.5)
-	result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+	result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 	assert result.height == 1
 
 
@@ -87,7 +86,7 @@ def test_window_endpoints_are_exclusive(monkeypatch):
 	"""closed="none": gaps exactly at 0.1 s and 1.2 s do not count."""
 	for gap in (0.1, 1.2):
 		rows = chase("A", "B", entry=at(2023, 5, 24, 12, 0, 0), exit_gap=gap)
-		result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+		result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 		assert result.height == 0, f"gap {gap} should be excluded"
 
 
@@ -95,7 +94,7 @@ def test_inside_window_counts(monkeypatch):
 	"""Gaps just inside either end of the window do count."""
 	for gap in (0.11, 1.19):
 		rows = chase("A", "B", entry=at(2023, 5, 24, 12, 0, 0), exit_gap=gap)
-		result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+		result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 		assert result.height == 1, f"gap {gap} should be included"
 
 
@@ -103,7 +102,7 @@ def test_too_fast_and_too_slow_excluded(monkeypatch):
 	"""Followers arriving too soon (<0.1 s) or too late (>1.2 s) are not chases."""
 	for gap in (0.05, 2.0):
 		rows = chase("A", "B", entry=at(2023, 5, 24, 12, 0, 0), exit_gap=gap)
-		result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+		result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 		assert result.height == 0, f"gap {gap} should be excluded"
 
 
@@ -130,7 +129,7 @@ def test_winner_must_enter_from_a_cage(monkeypatch):
 			"time_spent": 1.0,
 		},
 	]
-	result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+	result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 	assert result.height == 0
 
 
@@ -156,7 +155,7 @@ def test_different_tunnels_not_a_chase(monkeypatch):
 			"time_spent": 1.0,
 		},
 	]
-	result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+	result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 	assert result.height == 0
 
 
@@ -190,13 +189,13 @@ def test_chase_straddling_hour_boundary_assigned_to_chaser_hour(monkeypatch):
 			"time_spent": 1.0,
 		},
 	]
-	result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+	result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 	assert result.height == 1
 	row = result.row(0, named=True)
 	assert row["winner"] == "A"
 	assert row["loser"] == "B"
 	assert row["hour"] == 13  # chaser's (winner's) exit hour, not the loser's hour 12
-	assert row["chasing_length"] == pytest.approx(0.4)
+	assert row["chasing_length"] == dt.timedelta(seconds=0.4)
 
 
 def test_recording_gap_fabricates_no_chase(monkeypatch):
@@ -223,7 +222,7 @@ def test_recording_gap_fabricates_no_chase(monkeypatch):
 			"time_spent": 1.0,
 		},
 	]
-	result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+	result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 	assert result.height == 0
 
 
@@ -243,6 +242,6 @@ def test_no_qualifying_events_returns_empty(monkeypatch):
 			"time_spent": 5.0,
 		},
 	]
-	result = run_matches(monkeypatch, strat.main_df_frame(rows, CFG))
+	result = run_matches(monkeypatch, strat.main_df_frame(rows, RECORDING))
 	assert result.height == 0
 	assert "winner" in result.columns and "loser" in result.columns
