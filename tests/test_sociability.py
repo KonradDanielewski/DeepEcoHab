@@ -5,9 +5,9 @@ compared to the chance expectation from each animal's independent occupancy
 (product of occupancy proportions); sociability is the observed-minus-chance
 difference summed over cages (DOI:10.7554/eLife.19532).
 
-The step reads three upstream tables via auxfun._get_data — ``activity_df``,
+The step reads three upstream tables via Recording.load_results — ``activity_df``,
 ``pairwise_meetings`` and ``phase_durations`` — so we monkeypatch it with a
-key-dispatching stub and call the body via ``__wrapped__``. All fixtures live in a
+key-dispatching stub and call the step directly. All fixtures live in a
 single light_phase occurrence (day 1, phase_count 1) so the arithmetic is by hand.
 """
 
@@ -15,11 +15,12 @@ import polars as pl
 import pytest
 import strategies as strat
 
-from deepecohab.analysis import antenna_analysis
+from deepecohab.core import antenna_analysis
+from deepecohab.core.data_model import AnalysisParams, Recording
 
-CFG = strat.analysis_cfg(animal_ids=["A", "B", "C"])
+RECORDING = strat.analysis_recording(animal_ids=["A", "B", "C"])
 PHASE_ENUM = pl.Enum(["light_phase", "dark_phase"])
-ANIMAL_ENUM = pl.Enum(CFG["animal_ids"])
+ANIMAL_ENUM = pl.Enum(RECORDING.cohort.animal_tags)
 
 
 def activity_frame(entries: list[tuple[str, str, float]]) -> pl.LazyFrame:
@@ -33,7 +34,7 @@ def activity_frame(entries: list[tuple[str, str, float]]) -> pl.LazyFrame:
 			"hour": pl.Series([12] * n, dtype=pl.UInt8),
 			"position": pl.Series([e[1] for e in entries], dtype=pl.Categorical),
 			"animal_id": pl.Series([e[0] for e in entries], dtype=ANIMAL_ENUM),
-			"time_in_position": pl.Series([float(e[2]) for e in entries], dtype=pl.Float64),
+			"time_in_position": strat.seconds([float(e[2]) for e in entries]),
 		}
 	)
 
@@ -50,7 +51,7 @@ def pairwise_frame(entries: list[tuple[str, str, str, float]]) -> pl.LazyFrame:
 			"position": pl.Series([e[2] for e in entries], dtype=pl.Categorical),
 			"animal_id": pl.Series([e[0] for e in entries], dtype=ANIMAL_ENUM),
 			"animal_id_2": pl.Series([e[1] for e in entries], dtype=ANIMAL_ENUM),
-			"time_together": pl.Series([float(e[3]) for e in entries], dtype=pl.Float64),
+			"time_together": strat.seconds([float(e[3]) for e in entries]),
 			"pairwise_encounters": pl.Series([1] * n, dtype=pl.UInt32),
 		}
 	)
@@ -61,7 +62,7 @@ def durations_frame(duration_seconds: float) -> pl.LazyFrame:
 		{
 			"phase": pl.Series(["light_phase"], dtype=PHASE_ENUM),
 			"phase_count": pl.Series([1], dtype=pl.UInt16),
-			"duration_seconds": pl.Series([float(duration_seconds)], dtype=pl.Float64),
+			"duration": strat.seconds([float(duration_seconds)]),
 		}
 	)
 
@@ -72,14 +73,34 @@ def run_sociability(monkeypatch, *, activity, pairwise, durations) -> pl.DataFra
 		"pairwise_meetings": pairwise,
 		"phase_durations": durations,
 	}
-	monkeypatch.setattr(antenna_analysis.auxfun, "_get_data", lambda c, key: tables[key])
-	return antenna_analysis.calculate_incohort_sociability.__wrapped__(CFG).collect()
+	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: tables[key])
+	return antenna_analysis.calculate_incohort_sociability(RECORDING, AnalysisParams()).collect()
 
 
 def pair_row(result: pl.DataFrame, a: str, b: str) -> dict:
 	return result.filter((pl.col("animal_id") == a) & (pl.col("animal_id_2") == b)).row(
 		0, named=True
 	)
+
+
+def test_tunnel_time_together_is_excluded(monkeypatch):
+	"""Tunnel co-presence never reaches sociability, so the metric is unchanged by it.
+
+	pairwise_meetings covers tunnels, but the chance term is built from cage occupancy
+	only; an unfiltered tunnel row would survive the left join with a null chance and
+	inflate proportion_together while leaving sociability alone.
+	"""
+	# Same cage numbers as the single-cage case below, plus 50 s together in a tunnel.
+	activity = activity_frame([("A", "cage_1", 40), ("B", "cage_1", 30)])
+	pairwise = pairwise_frame([("A", "B", "cage_1", 20), ("A", "B", "tunnel_1", 50)])
+
+	result = run_sociability(
+		monkeypatch, activity=activity, pairwise=pairwise, durations=durations_frame(100)
+	)
+	row = pair_row(result, "A", "B")
+
+	assert row["proportion_together"] == pytest.approx(0.2)  # 20 / 100, tunnel ignored
+	assert row["sociability"] == pytest.approx(0.2 - (40 * 30) / 100**2)
 
 
 def test_sociability_value_single_cage(monkeypatch):

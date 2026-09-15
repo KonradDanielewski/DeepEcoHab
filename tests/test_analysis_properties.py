@@ -11,9 +11,9 @@ numbering (the phase_count footgun documented in strategies.py). Per animal the
 generated cage stays never overlap in time, which is what the real data
 guarantees and what the bitmask co-occupancy sweep relies on.
 
-The steps read their input via ``auxfun._get_data``; instead of the ``monkeypatch``
+The steps read their input via ``Recording.load_results``; instead of the ``monkeypatch``
 fixture (which trips Hypothesis's function-scoped-fixture health check) we swap the
-attribute directly and restore it, and drive the pure body via ``__wrapped__``.
+attribute directly and restore it, and call the step directly.
 """
 
 import datetime as dt
@@ -21,14 +21,13 @@ import math
 
 import polars as pl
 import strategies as strat
-from hypothesis import assume, given, settings
-from hypothesis import strategies as st
+from hypothesis import assume, given, settings, strategies as st
 
-from deepecohab.analysis import antenna_analysis
-from deepecohab.utils import auxfun
+from deepecohab.core import antenna_analysis, transforms
+from deepecohab.core.data_model import AnalysisParams, Recording
 
 ANIMALS = ["A", "B", "C"]
-CFG = strat.analysis_cfg(animal_ids=ANIMALS)
+RECORDING = strat.analysis_recording(animal_ids=ANIMALS)
 CAGES = strat.ANALYSIS_CAGES
 DIRECTIONAL = strat.ANALYSIS_DIRECTIONAL
 BASE = strat.at(2023, 5, 24, 12, 0, 0)  # day-1 light_phase, hour 12
@@ -36,16 +35,16 @@ BASE = strat.at(2023, 5, 24, 12, 0, 0)  # day-1 light_phase, hour 12
 
 # --- input injection ---------------------------------------------------------
 def run(fn, table_for_key, **kwargs) -> pl.DataFrame:
-	"""Run ``fn``'s pure body with ``auxfun._get_data`` swapped for ``table_for_key``.
+	"""Run ``fn``'s pure body with ``Recording.load_results`` swapped for ``table_for_key``.
 
-	``table_for_key`` is a ``(cfg, key) -> LazyFrame`` callable, restored afterwards.
+	``table_for_key`` is a ``(recording, key) -> LazyFrame`` callable, restored afterwards.
 	"""
-	orig = antenna_analysis.auxfun._get_data
-	antenna_analysis.auxfun._get_data = table_for_key
+	original = Recording.load_results
+	Recording.load_results = lambda self, key, eager=False: table_for_key(self, key)
 	try:
-		return fn.__wrapped__(CFG, **kwargs).collect()
+		return fn(RECORDING, AnalysisParams(**kwargs)).collect()
 	finally:
-		antenna_analysis.auxfun._get_data = orig
+		Recording.load_results = original
 
 
 # --- generators --------------------------------------------------------------
@@ -76,7 +75,7 @@ def padded_from_plan(plan: dict[str, list[tuple]]) -> pl.LazyFrame:
 				{"animal_id": animal, "position": cage, "datetime": end, "time_spent": float(dwell)}
 			)
 			t += dwell
-	return strat.padded_df_frame(rows, CFG)
+	return strat.padded_df_frame(rows, RECORDING)
 
 
 # winner/loser chasing events for match_df: distinct animals, a directional
@@ -102,14 +101,14 @@ def test_pairwise_time_together_never_exceeds_either_occupancy(plan):
 
 	Cross-table invariant between two steps reading the same padded_df: the time
 	A and B are *together* in a cage is bounded by the time each of them spends
-	there at all. minimum_time=None keeps every meeting so the bound is tight.
+	there at all. minimum_time=0 keeps every meeting so the bound is tight.
 	"""
 	assume(any(plan.values()))  # the fully-empty padded_df is a separate extreme
 	padded = padded_from_plan(plan)
 
-	activity = run(antenna_analysis.calculate_activity, lambda c, key: padded)
+	activity = run(antenna_analysis.calculate_activity, lambda recording, key: padded)
 	pairwise = run(
-		antenna_analysis.calculate_pairwise_meetings, lambda c, key: padded, minimum_time=None
+		antenna_analysis.calculate_pairwise_meetings, lambda recording, key: padded, minimum_time=0
 	)
 
 	# No nulls, non-negative, and pairs are stored unordered (a < b).
@@ -117,7 +116,7 @@ def test_pairwise_time_together_never_exceeds_either_occupancy(plan):
 		pairwise.select("time_together", "pairwise_encounters").null_count().sum_horizontal().item()
 		== 0
 	)
-	assert (pairwise["time_together"] >= 0).all()
+	assert (pairwise["time_together"] >= dt.timedelta(0)).all()
 	assert (pairwise["pairwise_encounters"] >= 0).all()
 	assert (pairwise["animal_id"].cast(pl.String) < pairwise["animal_id_2"].cast(pl.String)).all()
 
@@ -127,10 +126,12 @@ def test_pairwise_time_together_never_exceeds_either_occupancy(plan):
 		.agg(pl.sum("time_in_position"))
 		.iter_rows()
 	}
-	for r in pairwise.filter(pl.col("time_together") > 0).iter_rows(named=True):
+	for r in pairwise.filter(pl.col("time_together") > dt.timedelta(0)).iter_rows(named=True):
 		a, b, cage, tt = r["animal_id"], r["animal_id_2"], r["position"], r["time_together"]
-		bound = min(occ.get((a, cage), 0.0), occ.get((b, cage), 0.0))
-		assert tt <= bound + 1e-6, f"{a},{b}@{cage}: together {tt} > min-occupancy {bound}"
+		bound = min(occ.get((a, cage), dt.timedelta(0)), occ.get((b, cage), dt.timedelta(0)))
+		assert tt <= bound + dt.timedelta(microseconds=1), (
+			f"{a},{b}@{cage}: together {tt} > min-occupancy {bound}"
+		)
 
 
 # One cage stay that may span several minutes: (cage, gap-before, dwell). Dwells
@@ -167,11 +168,11 @@ def split_padded_from_plan(plan: dict[str, list[tuple]]) -> tuple[pl.LazyFrame, 
 			"animal_id": pl.Series([r["animal_id"] for r in rows], dtype=pl.Enum(ANIMALS)),
 			"position": pl.Series([r["position"] for r in rows], dtype=pl.Categorical),
 			"datetime": pl.Series("datetime", [r["datetime"] for r in rows]),
-			"time_spent": pl.Series([r["time_spent"] for r in rows], dtype=pl.Float64),
+			"time_spent": strat.seconds([r["time_spent"] for r in rows]),
 			"time_under": pl.Series([dt.timedelta(0) for _ in rows], dtype=pl.Duration("us")),
 		}
 	)
-	return auxfun._get_minute_padding(frame.lazy(), CFG), visits
+	return transforms.split_on_minute_boundaries(frame.lazy(), RECORDING), visits
 
 
 @settings(max_examples=60, deadline=None)
@@ -182,12 +183,12 @@ def test_pairwise_encounters_never_exceed_visit_sum(plan):
 	The user's invariant. Stays span minute marks so padded_df splits them into many
 	pieces; the sweep must re-stitch those pieces per visit rather than count each
 	piece as a fresh encounter (the bug that pushed encounters above the visit sum).
-	minimum_time=None keeps every meeting, making the bound tightest.
+	minimum_time=0 keeps every meeting, making the bound tightest.
 	"""
 	assume(any(plan.values()))
 	padded, visits = split_padded_from_plan(plan)
 	pairwise = run(
-		antenna_analysis.calculate_pairwise_meetings, lambda c, key: padded, minimum_time=None
+		antenna_analysis.calculate_pairwise_meetings, lambda recording, key: padded, minimum_time=0
 	)
 
 	for r in pairwise.filter(pl.col("pairwise_encounters") > 0).iter_rows(named=True):
@@ -206,8 +207,8 @@ def test_chasings_grid_total_equals_event_count(events):
 	event may be lost or invented, every cell is non-negative and null-free, and
 	no animal chases itself.
 	"""
-	match_df = strat.match_df_frame(events, CFG)
-	chasings = run(antenna_analysis.calculate_chasings, lambda c, key: match_df)
+	match_df = strat.match_df_frame(events, RECORDING)
+	chasings = run(antenna_analysis.calculate_chasings, lambda recording, key: match_df)
 
 	assert chasings["chasings"].null_count() == 0
 	assert (chasings["chasings"] >= 0).all()
@@ -241,8 +242,8 @@ def test_absent_animal_ranking_stays_frozen(events, absent):
 	events = [e for e in events if absent not in (e["winner"], e["loser"])]
 	assume(events)  # need at least one match to drive the ranking
 
-	match_df = strat.match_df_frame(events, CFG)
-	ranking = run(antenna_analysis.calculate_ranking, lambda c, key: match_df)
+	match_df = strat.match_df_frame(events, RECORDING)
+	ranking = run(antenna_analysis.calculate_ranking, lambda recording, key: match_df)
 
 	rows = ranking.filter(pl.col("animal_id") == absent)
 	assert rows.height == len(events)  # present in the trajectory after every match
@@ -263,24 +264,26 @@ def test_absent_animal_zero_filled_in_activity(plan, absent):
 	assume(any(plan.values()))
 	padded = padded_from_plan(plan)
 
-	activity = run(antenna_analysis.calculate_activity, lambda c, key: padded)
+	activity = run(antenna_analysis.calculate_activity, lambda recording, key: padded)
 
 	rows = activity.filter(pl.col("animal_id") == absent)
 	assert rows.height > 0
-	assert rows["time_in_position"].sum() == 0
+	assert rows["time_in_position"].sum() == dt.timedelta(0)
 	assert rows["visits_to_position"].sum() == 0
-	assert rows["time_alone"].sum() == 0
+	assert rows["time_alone"].sum() == dt.timedelta(0)
 	# Every position still represented for the absent animal.
-	assert set(rows["position"].cast(pl.String).unique()) == set(CFG["positions"])
+	assert set(rows["position"].cast(pl.String).unique()) == set(
+		RECORDING.layout.positions_non_directional
+	)
 
 
 # --- features stay finite for an animal with no interactions -----------------
-def test_absent_animal_appears_in_features_with_finite_zscores(monkeypatch):
+def test_absent_animal_appears_in_features_with_finite_values(monkeypatch):
 	"""A behaviourally-silent animal surfaces in features via the dense activity grid.
 
-	C never chases, is never chased, wins/loses no tube tests and shares no cage
-	time, but activity_df is dense (C present with zeros), so features must still
-	list C for every metric with finite, non-null z-scores.
+	C never chases, is never chased and shares no cage time, but activity_df is dense
+	(C present with zeros), so features must still list C for every metric with
+	finite, non-null value and exposure.
 	"""
 	PHASE = pl.Enum(["light_phase", "dark_phase"])
 	AN = pl.Enum(ANIMALS)
@@ -290,6 +293,7 @@ def test_absent_animal_appears_in_features_with_finite_zscores(monkeypatch):
 			"phase": pl.Series(["light_phase"] * n, dtype=PHASE),
 			"day": pl.Series([1] * n, dtype=pl.UInt16),
 			"phase_count": pl.Series([1] * n, dtype=pl.UInt16),
+			"hour": pl.Series([12] * n, dtype=pl.UInt8),
 		}
 
 	chasings = pl.LazyFrame(
@@ -300,52 +304,56 @@ def test_absent_animal_appears_in_features_with_finite_zscores(monkeypatch):
 			"chasings": pl.Series([1], dtype=pl.UInt32),
 		}
 	)
-	tube = pl.LazyFrame(
-		{
-			**base(1),
-			"winner": pl.Series(["A"], dtype=AN),
-			"loser": pl.Series(["B"], dtype=AN),
-			"tube_test": pl.Series([1], dtype=pl.UInt32),
-		}
-	)
 	# activity is dense: all three animals present, C with zeros.
 	activity = pl.LazyFrame(
 		{
 			**base(3),
 			"animal_id": pl.Series(["A", "B", "C"], dtype=AN),
 			"visits_to_position": pl.Series([10, 20, 0], dtype=pl.UInt32),
-			"time_alone": pl.Series([1.0, 2.0, 0.0], dtype=pl.Float64),
+			"time_alone": strat.seconds([1.0, 2.0, 0.0]),
+			"time_in_position": strat.seconds([3600.0, 3600.0, 0.0]),
 		}
 	)
 	pairwise = pl.LazyFrame(
 		{
 			**base(1),
+			# A cage: pairwise_meetings covers tunnels, but features counts cage time only.
+			"position": pl.Series(["cage_1"], dtype=pl.Categorical),
 			"animal_id": pl.Series(["A"], dtype=AN),
 			"animal_id_2": pl.Series(["B"], dtype=AN),
-			"time_together": pl.Series([5.0], dtype=pl.Float64),
+			"time_together": strat.seconds([5.0]),
 			"pairwise_encounters": pl.Series([1], dtype=pl.UInt32),
 		}
 	)
+	# One row per antenna registration: A seen 5 times, B 3, C never.
+	main = pl.LazyFrame({**base(8), "animal_id": pl.Series(["A"] * 5 + ["B"] * 3, dtype=AN)})
 	tables = {
 		"chasings_df": chasings,
-		"tube_test_df": tube,
 		"pairwise_meetings": pairwise,
 		"activity_df": activity,
+		"main_df": main,
 	}
-	monkeypatch.setattr(antenna_analysis.auxfun, "_get_data", lambda c, key: tables[key])
+	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: tables[key])
 
-	result = antenna_analysis.calculate_features.__wrapped__(CFG).collect()
+	result = antenna_analysis.calculate_features(RECORDING, AnalysisParams()).collect()
 
 	c_rows = result.filter(pl.col("animal_id") == "C")
 	assert set(c_rows["metric"].unique()) == {
 		"time_alone",
 		"n_chasing",
 		"n_chased",
-		"n_wins",
-		"n_loses",
 		"activity",
 		"time_together",
 		"pairwise_encounters",
+		"n_chasing_per_detection",
 	}
-	assert c_rows["z-score"].null_count() == 0
-	assert all(math.isfinite(z) for z in c_rows["z-score"].to_list())
+	for column in ("value", "exposure"):
+		assert c_rows[column].null_count() == 0
+		assert all(math.isfinite(v) for v in c_rows[column].to_list())
+
+	# A chased once over 5 detections; the rate is sum(value) / sum(exposure).
+	per_detection = result.filter(
+		pl.col("animal_id") == "A", pl.col("metric") == "n_chasing_per_detection"
+	)
+	assert per_detection["value"].sum() == 1.0
+	assert per_detection["exposure"].sum() == 5.0
