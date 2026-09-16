@@ -6,6 +6,7 @@ from typing import Literal
 import numpy as np
 import polars as pl
 
+from deepecohab.core.data_model import Layout
 from deepecohab.plotting import durations
 from deepecohab.plotting.context import Granularity, PlotContext, Scope
 
@@ -33,6 +34,31 @@ class Heatmap:
 	facets: list[str]
 
 
+def window_filter(
+	days_range: tuple[int, int],
+	granularity: Granularity,
+	hours_range: tuple[int, int] | None = None,
+) -> pl.Expr:
+	"""The window predicate every prep function narrows its source table with.
+
+	Args:
+		days_range: first and last window unit (day or phase occurrence) to keep.
+		granularity: which axis ``days_range`` measures.
+		hours_range: first and last hour since the ``start_from`` onset to keep, or
+			``None`` to keep every hour. Only tables carrying their own ``hour`` -
+			not ``phase_durations``, or anything normalised against it - can take one.
+
+	Returns:
+		A boolean expression combining both bounds.
+	"""
+	expr = pl.col(granularity).is_between(days_range[0], days_range[1])
+
+	if hours_range is not None:
+		expr = expr & pl.col("hour").is_between(hours_range[0], hours_range[1])
+
+	return expr
+
+
 def _bins(days_range: tuple[int, int]) -> int:
 	"""Number of window units the selection spans, for the SEM denominator."""
 	return days_range[1] - days_range[0] + 1
@@ -54,6 +80,7 @@ def prep_event_spans(
 	days_range: tuple[int, int],
 	granularity: Granularity,
 	x: Literal["datetime", "hour", "day", "phase_count"],
+	hours_range: tuple[int, int] | None = None,
 ) -> pl.DataFrame:
 	"""Where each event falls on a plot's x axis, within the selected window.
 
@@ -65,6 +92,7 @@ def prep_event_spans(
 		days_range: first and last window unit to keep.
 		granularity: the unit of the window.
 		x: the ``event_bouts`` column the plot's x axis shows.
+		hours_range: first and last hour to keep, matching the plot it is drawn on.
 
 	Returns:
 		One row per span, with ``event``, ``position``, ``x0`` and ``x1``; empty for a
@@ -73,9 +101,7 @@ def prep_event_spans(
 	if "event_bouts" not in context:
 		return pl.DataFrame(schema=["event", "position", "x0", "x1"])
 
-	bouts = context.table("event_bouts").filter(
-		pl.col(granularity).is_between(days_range[0], days_range[1])
-	)
+	bouts = context.table("event_bouts").filter(window_filter(days_range, granularity, hours_range))
 
 	# Plotly draws a trace's datetimes as naive wall-clock times, so the spans must be too.
 	if x == "datetime":
@@ -104,6 +130,50 @@ def prep_event_spans(
 	)
 
 
+def prep_timeline(
+	context: PlotContext,
+	days_range: tuple[int, int],
+	granularity: Granularity,
+	hours_range: tuple[int, int] | None = None,
+) -> pl.DataFrame:
+	"""Every animal's position intervals within the selected window, as timeline bars.
+
+	Reads ``main_df`` directly rather than a downstream table, so each row is one real
+	visit - a registration's ``time_spent`` is the gap since the animal's previous one,
+	so it ran from ``datetime - time_spent`` to ``datetime``. Consecutive registrations
+	at the same position - repeat triggers of one antenna pair mid-visit - are merged
+	into a single bar, or the strip would carry orders of magnitude more bars than there
+	were actual visits.
+	"""
+	return (
+		context.table("main_df")
+		.lazy()
+		.filter(window_filter(days_range, granularity, hours_range))
+		.with_columns(
+			pl.col("position").cast(pl.String).replace(context.tunnels_map),
+			(pl.col("datetime") - pl.col("time_spent")).alias("start"),
+		)
+		.filter(
+			pl.col("position") != Layout.UNDEFINED,
+			pl.col("time_spent") > pl.duration(microseconds=0),
+		)
+		.sort("animal_id", "start")
+		.with_columns(
+			(pl.col("position") != pl.col("position").shift(1))
+			.over("animal_id")
+			.fill_null(True)
+			.cum_sum()
+			.over("animal_id")
+			.alias("run")
+		)
+		.group_by("animal_id", "position", "run")
+		.agg(pl.col("start").min(), pl.col("datetime").max().alias("end"))
+		.select("animal_id", "position", "start", "end")
+		.sort("animal_id", "start")
+		.collect(engine="in-memory")
+	)
+
+
 def prep_ranking_over_time(
 	context: PlotContext,
 	days_range: tuple[int, int],
@@ -113,7 +183,7 @@ def prep_ranking_over_time(
 	return (
 		context.table("ranking")
 		.lazy()
-		.filter(pl.col(granularity).is_between(days_range[0], days_range[1]))
+		.filter(window_filter(days_range, granularity))
 		.sort("datetime")
 		.group_by(granularity, "hour", "animal_id", "datetime", maintain_order=True)
 		.agg(
@@ -134,7 +204,7 @@ def prep_ranking_day_stability(
 	return (
 		context.table("ranking")
 		.lazy()
-		.filter(pl.col(granularity).is_between(days_range[0], days_range[1]))
+		.filter(window_filter(days_range, granularity))
 		.group_by(granularity, "animal_id")
 		.agg(pl.col("ordinal").last())
 		.with_columns(
@@ -179,13 +249,22 @@ def prep_polar_df(
 	days_range: tuple[int, int],
 	phase_type: list[str],
 	granularity: Granularity,
+	hours_range: tuple[int, int] | None = None,
 ) -> pl.DataFrame:
 	"""Z-score every feature metric onto one comparable polar scale."""
 	n_bins = _bins(days_range)
+	# The hour filter has to apply before the day-level aggregation below, which sums
+	# away the hour column entirely - window_filter can't reach it afterwards.
+	hour_filter = (
+		pl.col("hour").is_between(hours_range[0], hours_range[1])
+		if hours_range is not None
+		else pl.lit(True)
+	)
 
 	return (
 		context.table("feature_df")
 		.lazy()
+		.filter(hour_filter)
 		.group_by("animal_id", "metric", "phase", "day", "phase_count")
 		.agg(pl.sum("value"), pl.sum("exposure"))
 		.with_columns(
@@ -203,7 +282,7 @@ def prep_polar_df(
 		)
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col(granularity).is_between(days_range[0], days_range[1]),
+			window_filter(days_range, granularity),
 		)
 		.group_by("animal_id", "metric", granularity)
 		.agg(pl.mean("z-score"))
@@ -240,7 +319,7 @@ def prep_network_dominance(
 	connections = (
 		context.table("chasings_df")
 		.lazy()
-		.filter(pl.col(granularity).is_between(days_range[0], days_range[1]))
+		.filter(window_filter(days_range, granularity))
 		.group_by("chased", "chaser")
 		.agg(pl.sum("chasings"))
 		.join(join_df, left_on=["chaser", "chased"], right_on=["source", "target"], how="right")
@@ -308,7 +387,7 @@ def prep_network_sociability(
 
 	return (
 		_proportion_together(context, scope)
-		.filter(pl.col(granularity).is_between(days_range[0], days_range[1]))
+		.filter(window_filter(days_range, granularity))
 		.group_by("animal_id", "animal_id_2")
 		.agg(pl.sum("proportion_together"))
 		.join(
@@ -334,6 +413,7 @@ def prep_directed_heatmap(
 	value: str,
 	column: str,
 	row: str,
+	hours_range: tuple[int, int] | None = None,
 ) -> np.ndarray:
 	"""Pivot a directed pair count into a ``column``-versus-``row`` matrix.
 
@@ -360,7 +440,7 @@ def prep_directed_heatmap(
 		.sort(row, column)
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col(granularity).is_between(days_range[0], days_range[1]),
+			window_filter(days_range, granularity, hours_range),
 		)
 		.group_by(granularity, column, row)
 		.agg(pl.sum(value))
@@ -380,6 +460,7 @@ def prep_hourly_line(
 	table: str,
 	animal_column: str,
 	count: pl.Expr,
+	hours_range: tuple[int, int] | None = None,
 ) -> pl.DataFrame:
 	"""Hourly totals per animal, with the mean and SEM across window units.
 
@@ -388,11 +469,14 @@ def prep_hourly_line(
 		animal_column: the animal column to total by, such as ``chaser``.
 		count: what the rows of one animal, hour and window unit add up to, such as
 			``pl.len()`` for antenna detections.
+		hours_range: first and last hour to keep; the zero-fill scaffold is narrowed
+			to match, so a dropped hour is absent rather than a zero bar.
 	"""
 	n_bins = _bins(days_range)
+	hours = range(24) if hours_range is None else range(hours_range[0], hours_range[1] + 1)
 
 	join_df = pl.LazyFrame(
-		product(context.animal_ids, range(days_range[0], days_range[1] + 1), range(24)),
+		product(context.animal_ids, range(days_range[0], days_range[1] + 1), hours),
 		schema=[
 			(animal_column, pl.Enum(context.animal_ids)),
 			(granularity, pl.Int16()),
@@ -403,7 +487,7 @@ def prep_hourly_line(
 	return (
 		context.table(table)
 		.lazy()
-		.filter(pl.col(granularity).is_between(days_range[0], days_range[1]))
+		.filter(window_filter(days_range, granularity, hours_range))
 		.group_by(granularity, "hour", animal_column)
 		.agg(count.alias("count"))
 		.join(join_df, on=[animal_column, "hour", granularity], how="right")
@@ -430,6 +514,7 @@ def prep_activity(
 	granularity: Granularity,
 	agg: Aggregation,
 	unit: durations.Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> tuple[pl.DataFrame, durations.DurationDisplay]:
 	"""Visits and time spent per position and animal.
 
@@ -443,7 +528,7 @@ def prep_activity(
 		.with_columns(pl.col("position").cast(pl.String))
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col(granularity).is_between(days_range[0], days_range[1]),
+			window_filter(days_range, granularity, hours_range),
 		)
 		.group_by(granularity, "animal_id", "position")
 		.agg(
@@ -468,6 +553,7 @@ def prep_time_alone(
 	agg: Aggregation,
 	positions: list[str],
 	unit: durations.Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> tuple[pl.DataFrame, durations.DurationDisplay]:
 	"""Time each animal spent alone, per position."""
 	per_unit = (
@@ -475,7 +561,7 @@ def prep_time_alone(
 		.lazy()
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col(granularity).is_between(days_range[0], days_range[1]),
+			window_filter(days_range, granularity, hours_range),
 			pl.col("position").is_in(positions),
 		)
 		.group_by(granularity, "animal_id", "position")
@@ -523,14 +609,22 @@ def prep_time_per_position(
 	positions: list[str],
 	animals: list[str],
 	unit: durations.Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> Heatmap:
 	"""Time spent per position, as one animal-by-``x`` matrix per position.
 
 	Args:
-		x: the matrix columns - ``"hour"`` for the 24 hours of the day, or the
-			granularity for its window units.
+		x: the matrix columns - ``"hour"`` for the hours of the day, or the
+			granularity for its window units. When it is ``"hour"``, ``hours_range``
+			narrows the columns themselves rather than just which rows contribute.
 	"""
-	x_values = list(range(24)) if x == "hour" else list(range(days_range[0], days_range[1] + 1))
+	if x == "hour":
+		x_values = list(
+			range(24) if hours_range is None else range(hours_range[0], hours_range[1] + 1)
+		)
+	else:
+		x_values = list(range(days_range[0], days_range[1] + 1))
+
 	join_df = pl.LazyFrame(
 		product(x_values, positions, animals),
 		schema=[
@@ -551,7 +645,7 @@ def prep_time_per_position(
 		.lazy()
 		.with_columns(pl.col("position").cast(pl.String))
 		.filter(
-			pl.col(granularity).is_between(days_range[0], days_range[1]),
+			window_filter(days_range, granularity, hours_range),
 			pl.col("position").is_in(positions),
 		)
 		.group_by([x, "animal_id", "position"])
@@ -580,6 +674,7 @@ def prep_cage_preference(
 	granularity: Granularity,
 	positions: list[str],
 	unit: durations.Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> tuple[pl.DataFrame, durations.DurationDisplay]:
 	"""Time spent per position, per animal and window unit."""
 	frame = (
@@ -587,7 +682,7 @@ def prep_cage_preference(
 		.lazy()
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col(granularity).is_between(days_range[0], days_range[1]),
+			window_filter(days_range, granularity, hours_range),
 		)
 		.with_columns(pl.col("position").cast(pl.String))
 		.group_by(granularity, "animal_id", "position")
@@ -610,6 +705,7 @@ def prep_pairwise_sociability(
 	positions: list[str],
 	animals: list[str],
 	unit: durations.Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> Heatmap:
 	"""Pivot pairwise meetings into one animal-by-animal matrix per position."""
 	join_df = pl.LazyFrame(
@@ -626,7 +722,7 @@ def prep_pairwise_sociability(
 		.lazy()
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col(granularity).is_between(days_range[0], days_range[1]),
+			window_filter(days_range, granularity, hours_range),
 		)
 		.group_by(["animal_id", "animal_id_2", "position"], maintain_order=True)
 		.agg(
@@ -693,7 +789,7 @@ def prep_within_cohort_sociability(
 		source.with_columns(pl.col(metric).round(3))
 		.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col(granularity).is_between(days_range[0], days_range[1]),
+			window_filter(days_range, granularity),
 		)
 		.group_by(["animal_id", "animal_id_2"], maintain_order=True)
 		.agg(pl.mean(metric).round(2).alias("mean"))
@@ -722,7 +818,7 @@ def prep_social_stability(
 	return (
 		frame.filter(
 			pl.col("phase").is_in(phase_type),
-			pl.col(granularity).is_between(days_range[0], days_range[1]),
+			window_filter(days_range, granularity),
 		)
 		.group_by(granularity, "animal_id", "animal_id_2")
 		.agg(pl.mean("proportion_together"))
@@ -737,5 +833,56 @@ def prep_social_stability(
 			pl.median("proportion_together").round(2),
 		)
 		.sort("animal_id")
+		.collect(engine="in-memory")
+	)
+
+
+def prep_quality_heatmap(context: PlotContext, animals: list[str]) -> tuple[np.ndarray, list[str]]:
+	"""Miss rate per animal and antenna, as an animal-by-antenna matrix.
+
+	``recording_quality`` already has one row per animal and antenna - it is built
+	from a cross join - so no zero-filling scaffold is needed here, unlike the pair
+	matrices.
+
+	Returns:
+		The matrix, its rows in ``animals`` order, and the antenna column labels in
+		antenna order.
+	"""
+	frame = context.table("recording_quality")
+	antennas = [str(antenna) for antenna in sorted(frame["antenna"].unique().to_list())]
+
+	wide = (
+		frame.pivot(on="antenna", index="animal_id", values="miss_rate")
+		.with_columns(pl.col("animal_id").cast(pl.String))
+		.sort(
+			pl.col("animal_id").replace_strict(animals, range(len(animals)), return_dtype=pl.Int32)
+		)
+		.select(antennas)
+	)
+
+	return wide.to_numpy(), antennas
+
+
+def prep_quality_by_antenna(context: PlotContext) -> pl.DataFrame:
+	"""Miss rate per antenna, pooled across the cohort.
+
+	A pooled rate is ``missed.sum() / (missed + detected).sum()``, never the mean of
+	the per-animal cell rates, so a lightly-sampled animal cannot skew an antenna's
+	rate as much as a heavily-sampled one.
+	"""
+	detected, missed = pl.col("detected"), pl.col("missed")
+
+	return (
+		context.table("recording_quality")
+		.lazy()
+		.group_by("antenna")
+		.agg(detected.sum(), missed.sum())
+		.with_columns(
+			pl.when(detected + missed > 0)
+			.then(100 * missed / (detected + missed))
+			.otherwise(0.0)
+			.alias("miss_rate")
+		)
+		.sort("antenna")
 		.collect(engine="in-memory")
 	)

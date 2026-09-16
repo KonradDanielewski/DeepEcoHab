@@ -339,15 +339,15 @@ diskcache = [
 ]
 
 [[package]]
-name = "dash-bootstrap-components"
-version = "2.0.4"
+name = "dash-mantine-components"
+version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/d4/5b7da808ff5acb3a6ca702f504d8ef05bc7d4c475b18dadefd783b1120c3/dash_bootstrap_components-2.0.4.tar.gz", hash = "sha256:c3206c0923774bbc6a6ddaa7822b8d9aa5326b0d3c1e7cd795cc975025fe2484", size = 115599, upload-time = "2025-08-20T19:42:09.449Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9a/56/111c6295327ded76481bc9d0a1d3a936029b4e6cc4b0d70b5ea25f4c6a12/dash_mantine_components-2.8.0.tar.gz", hash = "sha256:8891dd8042c93697f673f30df9ea34e5a4e9a0486d6f42499e16825a2a07784a", size = 924142, upload-time = "2026-06-09T15:23:13.276Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d6/38/1efeec8b4d741c09ccd169baf8a00c07a0176b58e418d4cd0c30dffedd22/dash_bootstrap_components-2.0.4-py3-none-any.whl", hash = "sha256:767cf0084586c1b2b614ccf50f79fe4525fdbbf8e3a161ed60016e584a14f5d1", size = 204044, upload-time = "2025-08-20T19:42:07.928Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/2e/2f104c233fb9d6081007e091936f79094f509ae3942350a220c94c332c49/dash_mantine_components-2.8.0-py3-none-any.whl", hash = "sha256:ad18542b0f376c041232b2b9fd2882065abbd68506f98dc9c75726104c16b54b", size = 1377181, upload-time = "2026-06-09T15:23:11.273Z" },
 ]
 
 [[package]]
@@ -394,6 +394,7 @@ dependencies = [
     { name = "plotly" },
     { name = "polars" },
     { name = "pydantic" },
+    { name = "pyshortcuts" },
     { name = "scipy" },
     { name = "tqdm" },
     { name = "tzlocal" },
@@ -402,17 +403,15 @@ dependencies = [
 [package.optional-dependencies]
 app = [
     { name = "dash", extra = ["diskcache"] },
-    { name = "dash-bootstrap-components" },
-    { name = "toml" },
+    { name = "dash-mantine-components" },
 ]
 dev = [
     { name = "dash", extra = ["diskcache"] },
-    { name = "dash-bootstrap-components" },
+    { name = "dash-mantine-components" },
     { name = "hypothesis" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "ruff" },
-    { name = "toml" },
     { name = "ty" },
 ]
 test = [
@@ -422,8 +421,8 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dash", extras = ["diskcache"], marker = "extra == 'app'" },
-    { name = "dash-bootstrap-components", marker = "extra == 'app'" },
+    { name = "dash", extras = ["diskcache"], marker = "extra == 'app'", specifier = ">=4" },
+    { name = "dash-mantine-components", marker = "extra == 'app'", specifier = ">=2.8.0" },
     { name = "deepecohab", extras = ["app", "test"], marker = "extra == 'dev'" },
     { name = "hypothesis", marker = "extra == 'test'" },
     { name = "ipykernel" },
@@ -436,10 +435,10 @@ requires-dist = [
     { name = "polars" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "pydantic" },
+    { name = "pyshortcuts" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.17" },
     { name = "scipy" },
-    { name = "toml", marker = "extra == 'app'" },
     { name = "tqdm" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.50" },
     { name = "tzlocal" },
@@ -1210,7 +1209,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -2038,15 +2037,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/46/58/8c37dea7bbf769b20d58e7ace7e5edfe65b849442b00ffcdd56be88697c6/tabulate-0.10.0.tar.gz", hash = "sha256:e2cfde8f79420f6deeffdeda9aaec3b6bc5abce947655d17ac662b126e48a60d", size = 91754, upload-time = "2026-03-04T18:55:34.402Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/99/55/db07de81b5c630da5cbf5c7df646580ca26dfaefa593667fc6f2fe016d2e/tabulate-0.10.0-py3-none-any.whl", hash = "sha256:f0b0622e567335c8fabaaa659f1b33bcb6ddfe2e496071b743aa113f8774f2d3", size = 39814, upload-time = "2026-03-04T18:55:31.284Z" },
-]
-
-[[package]]
-name = "toml"
-version = "0.10.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/be/ba/1f744cdc819428fc6b5084ec34d9b30660f6f9daaf70eead706e3203ec3c/toml-0.10.2.tar.gz", hash = "sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f", size = 22253, upload-time = "2020-11-01T01:40:22.204Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/6f/7120676b6d73228c96e17f1f794d8ab046fc910d781c8d151120c3f1569e/toml-0.10.2-py2.py3-none-any.whl", hash = "sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b", size = 16588, upload-time = "2020-11-01T01:40:20.672Z" },
 ]
 
 [[package]]

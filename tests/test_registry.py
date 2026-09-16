@@ -10,7 +10,7 @@ import polars as pl
 import pytest
 import strategies as strat
 
-from deepecohab.core.data_model import DataFrameRegistry
+from deepecohab.core.data_model import DataFrameRegistry, recording_status
 
 
 @pytest.fixture
@@ -114,3 +114,19 @@ def test_load_results_reads_a_table_no_step_produces(tmp_path):
 	# A name with neither a step nor a parquet is still a typo, and still reported as one.
 	with pytest.raises(KeyError, match="not a registered data key"):
 		recording.load_results("tube_test_de")
+
+
+def test_recording_status_reads_results_without_a_recording(tmp_path):
+	"""A project whose config.json fails to validate must still report status."""
+	(tmp_path / "results").mkdir()
+	(tmp_path / "results" / "main_df.parquet").touch()
+
+	status = recording_status(tmp_path)
+
+	assert status["main_df"] is True
+	assert status["padded_df"] is False
+	assert set(status) == set(DataFrameRegistry.step_order())
+
+
+def test_recording_status_of_an_unanalysed_recording_is_all_false(tmp_path):
+	assert not any(recording_status(tmp_path).values())

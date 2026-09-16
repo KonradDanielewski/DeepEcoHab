@@ -16,7 +16,7 @@ import polars as pl
 import pytest
 import strategies as strat
 
-from deepecohab.core.data_model import Project, Recording
+from deepecohab.core.data_model import Bout, Event, Project, Recording
 
 TZ = "UTC"
 # Animals shuttle between neighbouring cages, which is enough to populate every table.
@@ -183,6 +183,61 @@ def test_generate_with_no_recordings_raises(tmp_path):
 		empty.generate_project_table()
 
 
+def test_event_columns_are_added_and_null_for_recordings_that_declare_nothing(tmp_path_factory):
+	"""One column per project event, plus Any event; null throughout for a recording
+	that never declares the event, "Other hours" for one that declares it but this
+	cell is neither during a bout nor at the same hour of another day.
+	"""
+	root = tmp_path_factory.mktemp("project_table_events")
+
+	with_event = make_recording("with_event", ["A", "B"], "WT", "2023-05-27 00:00:00")
+	with_event.events = [
+		Event(
+			name="Tone",
+			description="a tone",
+			bouts=[
+				Bout(
+					start=dt.datetime(2023, 5, 24, 5, 0, tzinfo=dt.UTC),
+					end=dt.datetime(2023, 5, 24, 5, 10, tzinfo=dt.UTC),
+				)
+			],
+		)
+	]
+	without_event = make_recording("without_event", ["X", "Y"], "KO", "2023-05-26 00:00:00")
+
+	sources = [
+		write_recording(root / "sources" / "with_event", with_event, 60),
+		write_recording(root / "sources" / "without_event", without_event, 48),
+	]
+
+	project = Project.create(
+		project_name="events", experimenter="tester", location=root / "project"
+	)
+	project.add_recordings(sources)
+	project.run_analysis()
+
+	table = project.generate_project_table().collect()
+
+	assert "Tone" in table.columns
+	assert "Any event" in table.columns
+
+	declaring = table.filter(pl.col("recording") == "with_event")
+	assert declaring.filter((pl.col("day") == 1) & (pl.col("hour") == 5))[
+		"Tone"
+	].unique().to_list() == ["During"]
+	assert declaring.filter((pl.col("day") == 2) & (pl.col("hour") == 5))[
+		"Tone"
+	].unique().to_list() == ["Same hours, other days"]
+	assert declaring.filter((pl.col("day") == 1) & (pl.col("hour") == 6))[
+		"Tone"
+	].unique().to_list() == ["Other hours"]
+	assert declaring["Any event"].null_count() == 0
+
+	silent = table.filter(pl.col("recording") == "without_event")
+	assert silent["Tone"].null_count() == silent.height
+	assert silent["Any event"].null_count() == silent.height
+
+
 def test_names_selects_a_subset(project):
 	table = project.generate_project_table(names=["wt_cohort"]).collect()
 	assert set(table["recording"].unique()) == {"wt_cohort"}
@@ -285,3 +340,20 @@ def test_adding_an_untrimmed_recording_is_quiet(tmp_path):
 	with warnings.catch_warnings():
 		warnings.simplefilter("error")
 		project.add_recording(metadata_path, data_path)
+
+
+def test_update_notes_persists_to_config_json(tmp_path):
+	recording = strat.analysis_recording(
+		tz=TZ, start="2023-05-24 00:00:00", finish="2023-05-25 00:00:00"
+	)
+	recording.name = "noted"
+	metadata_path, data_path = write_recording(tmp_path / "src", recording, 6)
+
+	project = Project.create(
+		project_name="notes", experimenter="tester", location=tmp_path / "project"
+	)
+	project.add_recording(metadata_path, data_path)
+	project["noted"].update_notes("checked the water bottles twice a day")
+
+	reloaded = Project.load(tmp_path / "project")
+	assert reloaded["noted"].notes == "checked the water bottles twice a day"

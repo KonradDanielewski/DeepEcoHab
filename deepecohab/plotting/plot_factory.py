@@ -1,13 +1,17 @@
+import math
 from typing import Literal
 
 import networkx as nx
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 import polars as pl
+from plotly.subplots import make_subplots
 
 from deepecohab.plotting.animals import ColorMapping, collapse_legend
 from deepecohab.plotting.prepare import Heatmap
+from deepecohab.plotting.theme import AURORA, SEVERITY, sample_palette
 
 
 def _tick_labels(names: list[str]) -> list[str]:
@@ -16,24 +20,22 @@ def _tick_labels(names: list[str]) -> list[str]:
 
 
 def _phase_markers(figure: go.Figure, phases: dict[str, float]) -> None:
-	"""Mark the phase switch on an hour axis that begins at the first phase's onset."""
+	"""Mark the phase switch on an hour axis that begins at the first phase's onset.
+
+	A single thin line, in the active template's axis colour so it reads on either
+	ground without competing with the Phase-coloured traces.
+	"""
 	switch = max(phases.values())
-	color = "#C85C39" if phases["light_phase"] == switch else "#637DE5"
-	figure.add_vline(x=switch, line_color=color, line_dash="dash", line_width=4)
+	template = pio.templates[pio.templates.default]
+	color = template.layout.xaxis.linecolor or "#888888"
 
-	for name, symbol in (("light_phase", "☀️"), ("dark_phase", "🌙")):
-		onset = phases[name]
-		figure.add_annotation(
-			x=(onset + (switch if onset < switch else 24)) / 2,
-			y=1.15,
-			xref="x",
-			yref="paper",
-			text=symbol,
-			showarrow=False,
-			font={"size": 25},
-		)
+	figure.add_vline(x=switch, line_color=color, line_width=1.5)
+	figure.update_layout(xaxis={"dtick": 1})
 
-	figure.update_layout(xaxis={"dtick": 1}, margin={"t": 80})
+
+#: Where a span's label sits, as an (x-anchor, y, y-anchor) triple - the annotation
+#: equivalent of the shape-label textposition it replaces.
+_CORNERS: tuple[tuple[float, str], ...] = ((1.0, "top"), (0.0, "bottom"), (0.5, "middle"))
 
 
 def _event_spans(figure: go.Figure, spans: pl.DataFrame, facets: list[str] | None = None) -> None:
@@ -44,13 +46,17 @@ def _event_spans(figure: go.Figure, spans: pl.DataFrame, facets: list[str] | Non
 	is drawn only on that cage's panel; without panels it is labelled with its cages
 	instead. The faceted figures are heatmaps, where a fill would tint the colour scale,
 	so there the spans are outlined.
+
+	The span itself is a shape, behind the data; its label is a separate annotation
+	named ``event-label``, which plotly always draws in front of traces, at the same
+	corner a shape label would have used.
 	"""
 	if spans.is_empty():
 		return
 
 	palette = px.colors.qualitative.Pastel
 	# Overlapping events would stack their labels, so each event takes its own corner.
-	corners = ("top left", "bottom left", "middle left")
+	corners = _CORNERS
 
 	if facets is None:
 		# With no panel per cage, bouts of one event in different cages share a span.
@@ -68,11 +74,12 @@ def _event_spans(figure: go.Figure, spans: pl.DataFrame, facets: list[str] | Non
 	for span in spans.with_columns(index=pl.col("event").to_physical()).iter_rows(named=True):
 		index = span["index"]
 		color = palette[index % len(palette)]
+		y, yanchor = corners[index % len(corners)]
 
 		if facets is None:
 			text = f"{span['event']} ({span['position']})" if span["position"] else span["event"]
 			font = {"size": 10}
-			style = {
+			shape_style = {
 				"fillcolor": color.replace("rgb", "rgba").replace(")", ", 0.25)"),
 				"line_width": 0,
 				"layer": "below",
@@ -80,7 +87,7 @@ def _event_spans(figure: go.Figure, spans: pl.DataFrame, facets: list[str] | Non
 		else:
 			text = span["event"]
 			font = {"size": 10, "color": color}
-			style = {"line_color": color, "line_width": 2, "layer": "above"}
+			shape_style = {"line_color": color, "line_width": 2, "layer": "above"}
 
 		for xaxis, yaxis, facet in panels:
 			if facet is not None and span["position"] not in (None, facet):
@@ -94,8 +101,19 @@ def _event_spans(figure: go.Figure, spans: pl.DataFrame, facets: list[str] | Non
 				x1=span["x1"],
 				y0=0,
 				y1=1,
-				label={"text": text, "textposition": corners[index % len(corners)], "font": font},
-				**style,
+				**shape_style,
+			)
+			figure.add_annotation(
+				name="event-label",
+				x=span["x0"],
+				y=y,
+				xref=xaxis,
+				yref=f"{yaxis} domain",
+				xanchor="left",
+				yanchor=yanchor,
+				text=text,
+				showarrow=False,
+				font=font,
 			)
 
 
@@ -105,37 +123,72 @@ def _faceted_heatmap(
 	x_title: str,
 	y_title: str,
 	hover: tuple[str, str],
+	*,
+	square: bool = False,
+	grid: bool = False,
 ) -> go.Figure:
-	"""Draw one imshow panel per facet, with pre-formatted hover text."""
-	fig = px.imshow(
-		heatmap.values,
-		x=[str(label) for label in heatmap.x],
-		y=heatmap.y,
-		zmin=0,
-		facet_col=0,
-		facet_col_wrap=2,
-		color_continuous_scale="Viridis",
-		title=title,
-	)
+	"""Draw one heatmap panel per facet, in reading order.
 
-	for annotation, name in zip(fig.layout.annotations, heatmap.facets, strict=False):
-		annotation["text"] = f"<b>{name.capitalize().replace('_', ' ')}</b>"
+	Stacked one per row by default, sharing the x axis - the panels are then a day or
+	an hour against animals, so lining their columns up matters. ``grid`` instead packs
+	the panels into a roughly square grid, for panels - like a pairwise matrix - with no
+	axis to share across facets.
+
+	A single shared colour axis keeps the panels comparable, which is also why these
+	figures offer one scope - cages or tunnels - at a time (§ Cage / tunnel scope).
+	"""
+	n = len(heatmap.facets)
+	cols = math.ceil(math.sqrt(n)) if grid else 1
+	rows = math.ceil(n / cols)
+	fig = make_subplots(
+		rows=rows,
+		cols=cols,
+		shared_xaxes=not grid,
+		vertical_spacing=min(0.12, 1 / max(rows - 1, 1)),
+		horizontal_spacing=0.1,
+		subplot_titles=[f"<b>{name.capitalize().replace('_', ' ')}</b>" for name in heatmap.facets],
+	)
 
 	value = "%{z}" if heatmap.text is None else "%{customdata}"
-	fig.update_traces(
-		hovertemplate="<br>".join([f"{hover[0]}: %{{x}}", f"{hover[1]}: %{{y}}", f"Value: {value}"])
-	)
+	hovertemplate = f"{hover[0]}: %{{x}}<br>{hover[1]}: %{{y}}<br>Value: {value}<extra></extra>"
 
-	# update_traces broadcasts one array to every facet, so each gets its own slice.
-	if heatmap.text is not None:
-		for index, trace in enumerate(fig.data):
-			trace.customdata = heatmap.text[index]
+	for index, values in enumerate(heatmap.values):
+		row, col = divmod(index, cols)
+		fig.add_trace(
+			go.Heatmap(
+				z=values,
+				x=[str(label) for label in heatmap.x],
+				y=heatmap.y,
+				customdata=heatmap.text[index] if heatmap.text is not None else None,
+				coloraxis="coloraxis",
+				hovertemplate=hovertemplate,
+			),
+			row=row + 1,
+			col=col + 1,
+		)
 
+	fig.update_xaxes(title_text=x_title, row=rows, col=1)
+	fig.update_yaxes(title_text=y_title, automargin=True)
 	fig.update_layout(
-		xaxis={"title": x_title},
-		yaxis={"automargin": True, "title": y_title},
-		coloraxis_colorbar={"title": {"text": heatmap.label}},
+		title=title,
+		coloraxis={
+			"cmin": 0,
+			"colorscale": AURORA,
+			"colorbar": {"title": {"text": heatmap.label}},
+		},
 	)
+
+	if square:
+		# Each panel is animal-by-animal; a shared scale keeps its cells square instead
+		# of stretched across the panel's width. make_subplots numbers axes in the same
+		# row-major order this loop places traces in, so the panel at `index` owns axis
+		# `index + 1`.
+		for index in range(n):
+			row, col = divmod(index, cols)
+			axis = index + 1
+			fig.update_yaxes(
+				scaleanchor="x" if axis == 1 else f"x{axis}", scaleratio=1, row=row + 1, col=col + 1
+			)
 
 	return fig
 
@@ -291,6 +344,9 @@ def plot_sum_line_per_hour(
 	fig.update_yaxes(title=y_axes_label)
 	# Half a bin either side, so an event span over the first or last hour is not cut off.
 	fig.update_xaxes(title="<b>Hour since phase onset</b>", range=[-0.5, 23.5])
+	# Narrowing the hours filter can leave a trace with a single point; px would otherwise
+	# switch that lone trace to markers, so every trace is pinned to a plain line.
+	fig.update_traces(mode="lines")
 	_phase_markers(fig, phases)
 	_event_spans(fig, spans)
 
@@ -309,9 +365,11 @@ def plot_mean_line_per_hour(
 		case "activity":
 			title = "<b>Activity over time</b>"
 			y_axes_label = "<b>Antenna detections</b>"
+			hover_label = "Detections"
 		case "chasings":
 			title = "<b>Chasing over time</b>"
 			y_axes_label = "<b># of chasing events</b>"
+			hover_label = "Events"
 
 	fig = go.Figure()
 
@@ -331,13 +389,28 @@ def plot_mean_line_per_hour(
 				fill="toself",
 				fillcolor=shade_color,
 				line_color="rgba(255,255,255,0)",
+				mode="lines",
 				showlegend=False,
 				name=animal,
 				line={"shape": "spline"},
+				hoverinfo="skip",
 			)
 		)
 
-		fig.add_trace(go.Scatter(x=x, y=y, line_color=color, name=animal, line={"shape": "spline"}))
+		fig.add_trace(
+			go.Scatter(
+				x=x,
+				y=y,
+				mode="lines",
+				line_color=color,
+				name=animal,
+				line={"shape": "spline"},
+				hovertemplate=(
+					f"{mapping.legend_title}: {animal}<br>Hour: %{{x}}<br>"
+					f"{hover_label}: %{{y:.1f}}<extra></extra>"
+				),
+			)
+		)
 
 	collapse_legend(fig, mapping)
 	fig.update_layout(title=title, legend={"title": mapping.legend_title, "tracegroupgap": 0})
@@ -448,6 +521,7 @@ def plot_time_spent_per_cage(
 	kind: Literal["hourly", "daily"],
 	spans: pl.DataFrame,
 	place: str = "cage",
+	granularity: str = "day",
 ) -> go.Figure:
 	"""Plots one heatmap per position of time spent, by hour or by window unit."""
 	match kind:
@@ -456,9 +530,10 @@ def plot_time_spent_per_cage(
 			x_title = "<b>Hour since phase onset</b>"
 			hover = ("Hour", "Animal ID")
 		case "daily":
+			label = "Phase" if granularity == "phase_count" else "Day"
 			title = f"<b>{place.capitalize()} preference over time</b>"
-			x_title = "<b>Window unit</b>"
-			hover = ("Unit", "Animal ID")
+			x_title = f"<b>{label}</b>"
+			hover = (label, "Animal ID")
 
 	fig = _faceted_heatmap(heatmap, title, x_title, "<b>Animal ID</b>", hover)
 	# The x axis is categorical, so a bin sits at its index among the columns, not its value.
@@ -481,9 +556,7 @@ def plot_heatmap(
 		title: figure title.
 		hover: hover labels for the column, the row and the value.
 	"""
-	fig = px.imshow(
-		img, x=animals, y=animals, zmin=0, color_continuous_scale="Viridis", title=title
-	)
+	fig = px.imshow(img, x=animals, y=animals, zmin=0, color_continuous_scale=AURORA, title=title)
 
 	column, row, value = hover
 	fig.update_traces(hovertemplate=f"{column}: %{{x}}<br>{row}: %{{y}}<br>{value}: %{{z}}")
@@ -503,7 +576,7 @@ def plot_sociability_heatmap(
 		else "<b>Time spent together</b>"
 	)
 
-	return _faceted_heatmap(heatmap, title, "", "", ("X", "Y"))
+	return _faceted_heatmap(heatmap, title, "", "", ("X", "Y"), square=True, grid=True)
 
 
 def plot_metrics_polar(df: pl.DataFrame, mapping: ColorMapping) -> go.Figure:
@@ -550,7 +623,7 @@ def plot_metrics_polar(df: pl.DataFrame, mapping: ColorMapping) -> go.Figure:
 			go.Scatterpolar(
 				r=group_closed["mean"],
 				theta=theta,
-				mode="lines+markers",
+				mode="lines",
 				line={"color": color},
 				line_shape="spline",
 				name=animal,
@@ -741,11 +814,15 @@ def plot_network_graph(
 	)
 
 	fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, automargin=True)
-	fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, automargin=True)
-
-	# A ring is only a ring while the axes share a scale.
-	if layout == "circular":
-		fig.update_yaxes(scaleanchor="x", scaleratio=1)
+	# A shared scale keeps the network square instead of stretched to the card's width.
+	fig.update_yaxes(
+		showticklabels=False,
+		showgrid=False,
+		zeroline=False,
+		automargin=True,
+		scaleanchor="x",
+		scaleratio=1,
+	)
 
 	return fig
 
@@ -772,6 +849,45 @@ def plot_social_stability(df: pl.DataFrame, mapping: ColorMapping) -> go.Figure:
 		legend_title_text=mapping.legend_title,
 	)
 	fig.update_traces(marker_size=12)
+
+	return fig
+
+
+def plot_quality_heatmap(img: np.ndarray, animals: list[str], antennas: list[str]) -> go.Figure:
+	"""Plots the share of each animal's passes over each antenna that went unrecorded."""
+	fig = px.imshow(
+		img,
+		x=antennas,
+		y=animals,
+		zmin=0,
+		color_continuous_scale=SEVERITY,
+		title="<b>Missed passes by animal and antenna</b>",
+	)
+	fig.update_traces(
+		hovertemplate="Antenna: %{x}<br>Animal: %{y}<br>Missed: %{z:.2f}%<extra></extra>"
+	)
+	fig.update_layout(
+		xaxis={"title": "<b>Antenna</b>", "type": "category"},
+		yaxis={"automargin": True, "title": "<b>Animal ID</b>"},
+		coloraxis_colorbar={"title": {"text": "<b>Missed [%]</b>"}},
+	)
+
+	return fig
+
+
+def plot_quality_by_antenna(df: pl.DataFrame) -> go.Figure:
+	"""Plots the pooled miss rate per antenna."""
+	fig = px.bar(
+		df,
+		x="antenna",
+		y="miss_rate",
+		hover_data={"antenna": True, "miss_rate": ":.2f", "detected": True, "missed": True},
+		title="<b>Missed passes per antenna</b>",
+	)
+	fig.update_traces(marker_line_width=0, marker_color=AURORA[0][1])
+	fig.update_layout(barcornerradius=10)
+	fig.update_xaxes(title_text="<b>Antenna</b>", type="category")
+	fig.update_yaxes(title_text="<b>Missed [%]</b>")
 
 	return fig
 
@@ -809,5 +925,48 @@ def plot_cage_preference(
 		tickvals=list(range(len(positions))),
 		ticktext=_tick_labels(positions),
 	)
+
+	return fig
+
+
+def plot_timeline(
+	df: pl.DataFrame, animals: list[str], positions: list[str], spans: pl.DataFrame
+) -> go.Figure:
+	"""Plots each animal's position over time as a compact Gantt-style strip.
+
+	A multi-day recording carries tens of thousands of visits, well past what an SVG
+	bar chart (``px.timeline``) renders smoothly - so each position gets one WebGL line
+	trace instead of one bar per visit, its own visits drawn as ``None``-separated
+	segments at that position's colour.
+	"""
+	colors = dict(zip(positions, sample_palette(len(positions)), strict=True))
+	fig = go.Figure()
+
+	for position in positions:
+		rows = df.filter(pl.col("position") == position)
+		if rows.is_empty():
+			continue
+
+		x: list = []
+		y: list = []
+		for start, end, animal in zip(rows["start"], rows["end"], rows["animal_id"], strict=True):
+			x += [start, end, None]
+			y += [animal, animal, None]
+
+		fig.add_trace(
+			go.Scattergl(
+				x=x,
+				y=y,
+				mode="lines",
+				line={"width": 10, "color": colors[position]},
+				name=position,
+				hovertemplate=f"{position}<br>Animal: %{{y}}<br>%{{x}}<extra></extra>",
+			)
+		)
+
+	fig.update_yaxes(title=None, categoryorder="array", categoryarray=animals, autorange="reversed")
+	fig.update_xaxes(title="<b>Timeline</b>")
+	fig.update_layout(title="<b>Position timeline</b>", legend={"title": "Position"})
+	_event_spans(fig, spans)
 
 	return fig
