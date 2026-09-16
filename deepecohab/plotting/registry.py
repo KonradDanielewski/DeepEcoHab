@@ -1,7 +1,17 @@
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, get_args, get_origin, get_type_hints
+from types import UnionType
+from typing import (
+	TYPE_CHECKING,
+	Any,
+	ClassVar,
+	Literal,
+	Union,
+	get_args,
+	get_origin,
+	get_type_hints,
+)
 
 import plotly.graph_objects as go
 
@@ -71,7 +81,12 @@ class PlotSpec:
 				resolved.append(option)
 				continue
 
-			default = option.default if option.default in choices else choices[0]
+			if isinstance(option.default, list):
+				# A multi-select option, e.g. phase_type: narrow to what still applies
+				# rather than collapsing to one choice.
+				default = [value for value in option.default if value in choices] or list(choices)
+			else:
+				default = option.default if option.default in choices else choices[0]
 			resolved.append(Option(option.name, option.label, choices, default))
 
 		return tuple(resolved)
@@ -104,6 +119,30 @@ class PlotSpec:
 		}
 
 
+def _literal_choices(annotation: Any) -> tuple[Any, ...]:
+	"""Every value a ``Literal`` allows, so a type alias built from one still applies.
+
+	Also flattens a union of ``Literal``s, e.g. ``Unit | Literal["auto"]``. A union
+	with a non-``Literal`` member (``str | None``, say) has no fixed choice set, so
+	it returns empty rather than a partial one.
+	"""
+	origin = get_origin(annotation)
+
+	if origin is Literal:
+		return get_args(annotation)
+
+	if origin is UnionType or origin is Union:
+		choices: list[Any] = []
+		for member in get_args(annotation):
+			member_choices = _literal_choices(member)
+			if not member_choices:
+				return ()
+			choices.extend(value for value in member_choices if value not in choices)
+		return tuple(choices)
+
+	return ()
+
+
 def _options_from_signature(
 	name: str,
 	func: Callable[..., go.Figure],
@@ -124,7 +163,7 @@ def _options_from_signature(
 			)
 
 		annotation = hints.get(parameter.name)
-		choices = tuple(get_args(annotation)) if get_origin(annotation) is Literal else ()
+		choices = _literal_choices(annotation)
 
 		if choices and parameter.name in dynamic:
 			raise TypeError(
@@ -274,10 +313,19 @@ class PlotRegistry:
 		values.update(options)
 
 		for option in resolved:
-			if option.choices and values[option.name] not in option.choices:
+			if not option.choices:
+				continue
+
+			value = values[option.name]
+			valid = (
+				set(value) <= set(option.choices)
+				if isinstance(value, list)
+				else value in option.choices
+			)
+			if not valid:
 				raise ValueError(
 					f"plot {name!r} option {option.name!r} must be one of "
-					f"{list(option.choices)}, got {values[option.name]!r}"
+					f"{list(option.choices)}, got {value!r}"
 				)
 
 		return plot_spec.builder(context, **values)

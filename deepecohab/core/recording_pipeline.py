@@ -1,4 +1,5 @@
 import datetime as dt
+from collections.abc import Sequence
 
 import polars as pl
 
@@ -187,6 +188,62 @@ def build_event_bouts(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 		.select("event", "position", "start", "end", *CALENDAR_COLUMNS)
 		.sort("start", "event", "day", "hour", "phase_count")
 	)
+
+
+def event_status(recording: Recording, event_names: Sequence[str]) -> pl.LazyFrame:
+	"""Per ``(day, hour)`` status of ``event_names``, for one recording's calendar.
+
+	Not a registered step: ``Project.generate_project_table`` calls this directly, once
+	it knows the union of event names declared anywhere in the project, so every
+	recording's frame carries the same event columns before the vertical concat.
+
+	A bout marks every calendar hour it touches, matching ``event_bouts``. A cell a
+	bout itself covers reads ``"During"``; one sharing the bout's hour-of-day on a
+	different day reads ``"Same hours, other days"``; anything else this recording
+	declares the event on reads ``"Other hours"``. A name this recording does not
+	declare - including ``"Any event"`` when it declares nothing at all - is null
+	throughout: the recording is left out of the event, not counted as outside it.
+
+	Args:
+		recording: the recording whose calendar and ``event_bouts`` this reads.
+		event_names: columns to produce; ``"Any event"`` matches every declared event.
+
+	Returns:
+		``day``, ``hour`` and one ``String`` column per name in ``event_names``.
+	"""
+	grid = grids.build_time_grid(recording).select("day", "hour").unique()
+	declared = {event.name for event in recording.events}
+	bouts = recording.load_results("event_bouts") if declared else None
+
+	def status_column(name: str, name_bouts: pl.LazyFrame) -> pl.LazyFrame:
+		during = name_bouts.select("day", "hour").unique().with_columns(_during=pl.lit(True))
+		same_hour = name_bouts.select("hour").unique().with_columns(_same_hour=pl.lit(True))
+
+		return (
+			grid.join(during, on=["day", "hour"], how="left")
+			.join(same_hour, on="hour", how="left")
+			.select(
+				"day",
+				"hour",
+				pl.when(pl.col("_during").is_not_null())
+				.then(pl.lit("During"))
+				.when(pl.col("_same_hour").is_not_null())
+				.then(pl.lit("Same hours, other days"))
+				.otherwise(pl.lit("Other hours"))
+				.alias(name),
+			)
+		)
+
+	result = grid
+	for name in event_names:
+		if bouts is None or (name != "Any event" and name not in declared):
+			result = result.with_columns(pl.lit(None, dtype=pl.String).alias(name))
+			continue
+
+		name_bouts = bouts if name == "Any event" else bouts.filter(pl.col("event") == name)
+		result = result.join(status_column(name, name_bouts), on=["day", "hour"], how="left")
+
+	return result
 
 
 def _routes_frame(routes: dict[tuple[str, str], list[str]]) -> pl.LazyFrame:

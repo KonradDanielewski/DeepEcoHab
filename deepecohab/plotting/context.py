@@ -76,6 +76,9 @@ class PlotContext:
 			begins.
 		days_range: first and last experiment day.
 		phase_range: first and last phase occurrence.
+		tunnels_map: directional tunnel position name to its undirected name, for plots
+			reading a raw table that has not been through
+			:func:`~deepecohab.core.transforms.remove_tunnel_directionality`.
 	"""
 
 	tables: TableProvider
@@ -85,6 +88,7 @@ class PlotContext:
 	phases: dict[str, float]
 	days_range: tuple[int, int]
 	phase_range: tuple[int, int]
+	tunnels_map: dict[str, str]
 
 	@classmethod
 	def from_recording(cls, recording: "Recording") -> "PlotContext":
@@ -112,6 +116,7 @@ class PlotContext:
 			},
 			days_range=timeline.days_range,
 			phase_range=timeline.phase_range,
+			tunnels_map=recording.layout.tunnels_map,
 		)
 
 	@cached_property

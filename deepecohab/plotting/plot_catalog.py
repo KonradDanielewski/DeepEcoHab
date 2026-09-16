@@ -23,6 +23,11 @@ from deepecohab.plotting.theme import sample_palette
 PHASES = ["light_phase", "dark_phase"]
 BY_COHORT = {"color_by": available_attributes}
 ORDERED_BY_COHORT = {"order_by": available_attributes}
+#: ``Timeline.phases`` need not carry both keys, so a plot's phase_type choices are
+#: resolved from the cohort's own phases rather than assumed to always be the pair.
+PHASE_TYPE = {"phase_type": lambda context: list(context.phases)}
+BY_COHORT_AND_PHASE = {**BY_COHORT, **PHASE_TYPE}
+ORDERED_BY_COHORT_AND_PHASE = {**ORDERED_BY_COHORT, **PHASE_TYPE}
 
 
 def _window(
@@ -35,10 +40,32 @@ def _window(
 
 
 @PlotRegistry.register(
+	"recording-timeline",
+	title="Position timeline",
+	requires=("main_df", "animals"),
+)
+def recording_timeline(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	hours_range: tuple[int, int] | None = None,
+) -> go.Figure:
+	"""Every animal's position over time, as a compact Gantt-style strip."""
+	window = _window(context, days_range, granularity)
+	frame = prepare.prep_timeline(context, window, granularity, hours_range)
+	spans = prepare.prep_event_spans(context, window, granularity, "datetime", hours_range)
+
+	return plot_factory.plot_timeline(
+		frame, sorted(context.animal_ids), context.scope_positions("all"), spans
+	)
+
+
+@PlotRegistry.register(
 	"activity-bar",
 	title="Activity per position",
 	requires=("activity_df", "animals"),
-	dynamic_choices=BY_COHORT,
+	dynamic_choices=BY_COHORT_AND_PHASE,
 )
 def activity(
 	context: PlotContext,
@@ -50,6 +77,7 @@ def activity(
 	agg: Literal["sum", "mean"] = "sum",
 	color_by: str = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Visits to each position, or time spent there.
 
@@ -57,7 +85,9 @@ def activity(
 	the total time spent in those locations.
 	"""
 	window = _window(context, days_range, granularity)
-	frame, rendered = prepare.prep_activity(context, window, phase_type, granularity, agg, unit)
+	frame, rendered = prepare.prep_activity(
+		context, window, phase_type, granularity, agg, unit, hours_range
+	)
 	mapping = resolve_colors(context, color_by)
 
 	return plot_factory.plot_activity(
@@ -69,7 +99,7 @@ def activity(
 	"time-alone-bar",
 	title="Time spent alone",
 	requires=("activity_df", "animals"),
-	dynamic_choices=BY_COHORT,
+	dynamic_choices=BY_COHORT_AND_PHASE,
 )
 def time_alone(
 	context: PlotContext,
@@ -81,6 +111,7 @@ def time_alone(
 	scope: Scope = "cages",
 	color_by: str = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Time each animal spent without any other animal present.
 
@@ -90,7 +121,7 @@ def time_alone(
 	window = _window(context, days_range, granularity)
 	positions = context.scope_positions(scope)
 	frame, rendered = prepare.prep_time_alone(
-		context, window, phase_type, granularity, agg, positions, unit
+		context, window, phase_type, granularity, agg, positions, unit, hours_range
 	)
 	mapping = resolve_colors(context, color_by)
 
@@ -101,8 +132,9 @@ def time_alone(
 
 @PlotRegistry.register(
 	"cage-preference",
-	title="Cage preference",
+	title="Position preference",
 	requires=("activity_df",),
+	dynamic_choices=PHASE_TYPE,
 )
 def cage_preference(
 	context: PlotContext,
@@ -112,12 +144,13 @@ def cage_preference(
 	phase_type: list[str] = PHASES,
 	scope: Scope = "cages",
 	unit: Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Distribution of time the cohort spends in each position."""
 	window = _window(context, days_range, granularity)
 	positions = context.scope_positions(scope)
 	frame, rendered = prepare.prep_cage_preference(
-		context, window, phase_type, granularity, positions, unit
+		context, window, phase_type, granularity, positions, unit, hours_range
 	)
 
 	return plot_factory.plot_cage_preference(
@@ -132,7 +165,7 @@ def cage_preference(
 
 @PlotRegistry.register(
 	"cage-preference-evolution",
-	title="Cage preference over time",
+	title="Position preference over time",
 	requires=("activity_df", "animals"),
 	dynamic_choices=ORDERED_BY_COHORT,
 )
@@ -145,6 +178,7 @@ def cage_preference_evolution(
 	scope: FacetScope = "cages",
 	order_by: str = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Time spent in each cage, or each tunnel, across days or phases."""
 	window = _window(context, days_range, granularity)
@@ -157,16 +191,19 @@ def cage_preference_evolution(
 		context.scope_positions(scope),
 		order_by_attribute(context, order_by),
 		unit,
+		hours_range,
 	)
 
-	spans = prepare.prep_event_spans(context, window, granularity, granularity)
+	spans = prepare.prep_event_spans(context, window, granularity, granularity, hours_range)
 
-	return plot_factory.plot_time_spent_per_cage(heatmap, "daily", spans, SCOPE_NOUN[scope])
+	return plot_factory.plot_time_spent_per_cage(
+		heatmap, "daily", spans, SCOPE_NOUN[scope], granularity
+	)
 
 
 @PlotRegistry.register(
 	"time-per-cage-heatmap",
-	title="Time per cage by hour",
+	title="Time per position by hour",
 	requires=("activity_df", "animals"),
 	dynamic_choices=ORDERED_BY_COHORT,
 )
@@ -179,6 +216,7 @@ def time_per_cage(
 	scope: FacetScope = "cages",
 	order_by: str = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Position occupancy across the 24 hours of the experiment day.
 
@@ -195,9 +233,10 @@ def time_per_cage(
 		context.scope_positions(scope),
 		order_by_attribute(context, order_by),
 		unit,
+		hours_range,
 	)
 
-	spans = prepare.prep_event_spans(context, window, granularity, "hour")
+	spans = prepare.prep_event_spans(context, window, granularity, "hour", hours_range)
 
 	return plot_factory.plot_time_spent_per_cage(heatmap, "hourly", spans, SCOPE_NOUN[scope])
 
@@ -215,6 +254,7 @@ def activity_line(
 	granularity: Granularity = "day",
 	agg: Literal["sum", "mean"] = "sum",
 	color_by: str = "animal_id",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Antenna detections per hour, showing the circadian rhythm.
 
@@ -222,8 +262,10 @@ def activity_line(
 	window units.
 	"""
 	window = _window(context, days_range, granularity)
-	frame = prepare.prep_hourly_line(context, window, granularity, "main_df", "animal_id", pl.len())
-	spans = prepare.prep_event_spans(context, window, granularity, "hour")
+	frame = prepare.prep_hourly_line(
+		context, window, granularity, "main_df", "animal_id", pl.len(), hours_range
+	)
+	spans = prepare.prep_event_spans(context, window, granularity, "hour", hours_range)
 	mapping = resolve_colors(context, color_by)
 
 	builder = (
@@ -248,6 +290,7 @@ def chasings_line(
 	granularity: Granularity = "day",
 	agg: Literal["sum", "mean"] = "sum",
 	color_by: str = "animal_id",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Chasing frequency per hour, showing the diurnal rhythm of aggression.
 
@@ -256,9 +299,9 @@ def chasings_line(
 	"""
 	window = _window(context, days_range, granularity)
 	frame = prepare.prep_hourly_line(
-		context, window, granularity, "chasings_df", "chaser", pl.sum("chasings")
+		context, window, granularity, "chasings_df", "chaser", pl.sum("chasings"), hours_range
 	)
-	spans = prepare.prep_event_spans(context, window, granularity, "hour")
+	spans = prepare.prep_event_spans(context, window, granularity, "hour", hours_range)
 	mapping = resolve_colors(context, color_by, animal_column="chaser")
 
 	builder = (
@@ -326,7 +369,7 @@ def ranking_distribution(
 	"metrics-polar-line",
 	title="Feature overview",
 	requires=("feature_df", "animals"),
-	dynamic_choices=BY_COHORT,
+	dynamic_choices=BY_COHORT_AND_PHASE,
 )
 def polar_metrics(
 	context: PlotContext,
@@ -335,6 +378,7 @@ def polar_metrics(
 	granularity: Granularity = "day",
 	phase_type: list[str] = PHASES,
 	color_by: str = "animal_id",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Z-scored dominance, activity and proximity metrics on one polar scale.
 
@@ -342,7 +386,7 @@ def polar_metrics(
 	z-scored for display only.
 	"""
 	window = _window(context, days_range, granularity)
-	frame = prepare.prep_polar_df(context, window, phase_type, granularity)
+	frame = prepare.prep_polar_df(context, window, phase_type, granularity, hours_range)
 	mapping = resolve_colors(context, color_by)
 
 	return plot_factory.plot_metrics_polar(frame, mapping)
@@ -352,7 +396,7 @@ def polar_metrics(
 	"chasings-heatmap",
 	title="Chasings matrix",
 	requires=("chasings_df", "animals"),
-	dynamic_choices=ORDERED_BY_COHORT,
+	dynamic_choices=ORDERED_BY_COHORT_AND_PHASE,
 )
 def chasings_heatmap(
 	context: PlotContext,
@@ -362,6 +406,7 @@ def chasings_heatmap(
 	phase_type: list[str] = PHASES,
 	agg: Literal["sum", "mean"] = "sum",
 	order_by: str = "animal_id",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Chaser-versus-chased matrix of agonistic interactions.
 
@@ -380,6 +425,7 @@ def chasings_heatmap(
 		value="chasings",
 		column="chaser",
 		row="chased",
+		hours_range=hours_range,
 	)
 
 	return plot_factory.plot_heatmap(
@@ -391,7 +437,7 @@ def chasings_heatmap(
 	"tube-test-heatmap",
 	title="Tube-test matrix",
 	requires=("tube_test_df",),
-	dynamic_choices=ORDERED_BY_COHORT,
+	dynamic_choices=ORDERED_BY_COHORT_AND_PHASE,
 )
 def tube_test_heatmap(
 	context: PlotContext,
@@ -401,6 +447,7 @@ def tube_test_heatmap(
 	phase_type: list[str] = PHASES,
 	agg: Literal["sum", "mean"] = "sum",
 	order_by: str = "animal_id",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Winner-versus-loser matrix of spontaneous tube-test outcomes."""
 	window = _window(context, days_range, granularity)
@@ -416,6 +463,7 @@ def tube_test_heatmap(
 		value="tube_test",
 		column="winner",
 		row="loser",
+		hours_range=hours_range,
 	)
 
 	return plot_factory.plot_heatmap(
@@ -427,7 +475,7 @@ def tube_test_heatmap(
 	"sociability-heatmap",
 	title="Pairwise sociability",
 	requires=("pairwise_meetings", "animals"),
-	dynamic_choices=ORDERED_BY_COHORT,
+	dynamic_choices=ORDERED_BY_COHORT_AND_PHASE,
 )
 def pairwise_sociability(
 	context: PlotContext,
@@ -440,6 +488,7 @@ def pairwise_sociability(
 	scope: FacetScope = "cages",
 	order_by: str = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
+	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""How often pairs meet, or how long they spend together, per cage or per tunnel."""
 	window = _window(context, days_range, granularity)
@@ -453,6 +502,7 @@ def pairwise_sociability(
 		context.scope_positions(scope),
 		order_by_attribute(context, order_by),
 		unit,
+		hours_range,
 	)
 
 	return plot_factory.plot_sociability_heatmap(heatmap, metric)
@@ -462,7 +512,7 @@ def pairwise_sociability(
 	"cohort-heatmap",
 	title="Within-cohort sociability",
 	requires=("incohort_sociability", "pairwise_meetings", "phase_durations", "animals"),
-	dynamic_choices=ORDERED_BY_COHORT,
+	dynamic_choices=ORDERED_BY_COHORT_AND_PHASE,
 )
 def within_cohort_sociability(
 	context: PlotContext,
@@ -498,7 +548,7 @@ def within_cohort_sociability(
 	"social-stability",
 	title="Relationship stability",
 	requires=("pairwise_meetings", "phase_durations", "animals"),
-	dynamic_choices=BY_COHORT,
+	dynamic_choices=BY_COHORT_AND_PHASE,
 )
 def social_stability(
 	context: PlotContext,
@@ -515,6 +565,30 @@ def social_stability(
 	mapping = resolve_colors(context, color_by)
 
 	return plot_factory.plot_social_stability(frame, mapping)
+
+
+@PlotRegistry.register(
+	"quality-heatmap",
+	title="Missed passes by animal and antenna",
+	requires=("recording_quality",),
+	dynamic_choices=ORDERED_BY_COHORT,
+)
+def quality_heatmap(context: PlotContext, *, order_by: str = "animal_id") -> go.Figure:
+	"""Share of each animal's passes over each antenna that went unrecorded."""
+	animals = order_by_attribute(context, order_by)
+	img, antennas = prepare.prep_quality_heatmap(context, animals)
+
+	return plot_factory.plot_quality_heatmap(img, animals, antennas)
+
+
+@PlotRegistry.register(
+	"quality-antenna",
+	title="Missed passes per antenna",
+	requires=("recording_quality",),
+)
+def quality_by_antenna(context: PlotContext) -> go.Figure:
+	"""Pooled over the cohort, so a marginal antenna stands out first."""
+	return plot_factory.plot_quality_by_antenna(prepare.prep_quality_by_antenna(context))
 
 
 @PlotRegistry.register(

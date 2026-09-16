@@ -16,6 +16,10 @@ from deepecohab.plotting.context import (
 	TableProvider as TableProvider,
 )
 from deepecohab.plotting.durations import DurationDisplay as DurationDisplay
+from deepecohab.plotting.export import (
+	export_figure as export_figure,
+	fit_for_export as fit_for_export,
+)
 from deepecohab.plotting.registry import (
 	Option as Option,
 	PlotRegistry as PlotRegistry,

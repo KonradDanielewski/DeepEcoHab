@@ -11,6 +11,7 @@ from deepecohab.core.data_model import (
 	AnalysisParams as AnalysisParams,
 	Project as Project,
 	Recording as Recording,
+	recording_status as recording_status,
 )
 
 if TYPE_CHECKING:
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
 		PlotContext as PlotContext,
 		PlotRegistry as PlotRegistry,
 		available_attributes as available_attributes,
+		export_figure as export_figure,
+		fit_for_export as fit_for_export,
 		plot as plot,
 		plot_specs as plot_specs,
 		set_default_theme as set_default_theme,
@@ -29,6 +32,8 @@ _LAZY_EXPORTS = {
 	"PlotContext": "deepecohab.plotting",
 	"PlotRegistry": "deepecohab.plotting",
 	"available_attributes": "deepecohab.plotting",
+	"export_figure": "deepecohab.plotting",
+	"fit_for_export": "deepecohab.plotting",
 	"plot": "deepecohab.plotting",
 	"plot_specs": "deepecohab.plotting",
 	"set_default_theme": "deepecohab.plotting",
