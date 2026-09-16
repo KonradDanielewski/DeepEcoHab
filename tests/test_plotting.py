@@ -66,6 +66,7 @@ def context() -> PlotContext:
 		phases={"light_phase": 0.0, "dark_phase": 12.0},
 		days_range=(1, 3),
 		phase_range=(1, 6),
+		tunnels_map={"tunnel_1_a": "tunnel_1", "tunnel_1_b": "tunnel_1"},
 	)
 
 
@@ -307,6 +308,7 @@ def test_colours_survive_dropping_an_animal(context):
 		phases=context.phases,
 		days_range=context.days_range,
 		phase_range=context.phase_range,
+		tunnels_map=context.tunnels_map,
 	)
 	subset = animals_module.resolve_colors(smaller, "animal_id").colors
 
@@ -470,6 +472,61 @@ def test_spec_describes_itself_in_json(clean_registry, context):
 	assert {option["name"] for option in described["options"]} == {"agg", "color_by"}
 
 
+def test_unit_option_flattens_its_literal_union():
+	"""``unit: Unit | Literal["auto"]`` is a union of two Literals, not one."""
+	option = next(o for o in PlotRegistry.spec("time-alone-bar").options if o.name == "unit")
+
+	assert set(option.choices) == {"seconds", "minutes", "hours", "days", "auto"}
+	assert option.default == "auto"
+
+
+def test_phase_type_resolves_from_the_cohorts_own_phases(context):
+	"""A multi-select option keeps its list default, narrowed to what still applies."""
+	described = PlotRegistry.spec("time-alone-bar").options_for(context)
+	option = next(o for o in described if o.name == "phase_type")
+
+	assert option.choices == ("light_phase", "dark_phase")
+	assert option.default == ["light_phase", "dark_phase"]
+
+
+def test_hours_range_is_absent_from_whole_day_plots():
+	"""Rankings, incohort_sociability and the phase_durations normaliser have no hour column."""
+	for name in ("ranking-line", "cohort-heatmap", "social-stability", "network-sociability"):
+		options = {option.name for option in PlotRegistry.spec(name).options}
+		assert "hours_range" not in options, name
+
+	for name in ("activity-bar", "activity-line", "metrics-polar-line"):
+		options = {option.name for option in PlotRegistry.spec(name).options}
+		assert "hours_range" in options, name
+
+
+def test_hours_range_narrows_the_hourly_scaffold(context):
+	"""A narrowed hours window drops those hours instead of zero-filling them."""
+	frame = pl.DataFrame(
+		{
+			"animal_id": pl.Series(["0035A"], dtype=pl.Enum(ANIMALS)),
+			"day": pl.Series([1], dtype=pl.Int16),
+			"hour": pl.Series([5], dtype=pl.Int8),
+		}
+	)
+
+	class OneTable:
+		def table(self, key):
+			return frame
+
+		def has(self, key):
+			return True
+
+	with_table = replace(context, tables=OneTable())
+	full = prepare.prep_hourly_line(with_table, (1, 1), "day", "t", "animal_id", pl.len())
+	narrowed = prepare.prep_hourly_line(
+		with_table, (1, 1), "day", "t", "animal_id", pl.len(), hours_range=(3, 6)
+	)
+
+	assert full["hour"].unique().sort().to_list() == list(range(24))
+	assert narrowed["hour"].unique().sort().to_list() == [3, 4, 5, 6]
+
+
 # --- events ------------------------------------------------------------------
 
 
@@ -529,7 +586,8 @@ def test_only_the_phase_switch_gets_a_line():
 	plot_factory._phase_markers(figure, {"light_phase": 13.0, "dark_phase": 0.0})
 
 	assert [shape.x0 for shape in figure.layout.shapes] == [13.0]
-	assert {note.text: note.x for note in figure.layout.annotations} == {"☀️": 18.5, "🌙": 6.5}
+	assert [shape.line.width for shape in figure.layout.shapes] == [1.5]
+	assert figure.layout.annotations == ()
 
 
 def test_consecutive_bins_merge_into_one_span(context):
@@ -577,6 +635,27 @@ def test_datetime_axis_spans_the_bout_on_the_wall_clock(context):
 	]
 
 
+def test_faceted_heatmap_stacks_one_panel_per_row_in_order():
+	"""A 2x2 wrap swapped titles between rows; one column keeps facet and row aligned."""
+	heatmap = Heatmap(
+		values=np.arange(3 * 2 * 4).reshape(3, 2, 4),
+		text=None,
+		label="Time spent",
+		x=list(range(4)),
+		y=["a", "b"],
+		facets=["cage_1", "cage_2", "cage_3"],
+	)
+
+	figure = plot_factory._faceted_heatmap(heatmap, "T", "X", "Y", ("Hour", "Animal ID"))
+
+	titles = [note.text for note in figure.layout.annotations]
+	assert titles == ["<b>Cage 1</b>", "<b>Cage 2</b>", "<b>Cage 3</b>"]
+	assert [trace.yaxis for trace in figure.data] == ["y", "y2", "y3"]
+	assert [trace.z.tolist() for trace in figure.data] == [
+		values.tolist() for values in heatmap.values
+	]
+
+
 def test_positioned_event_is_drawn_only_on_its_cages_panel():
 	heatmap = Heatmap(
 		values=np.zeros((2, 1, 24)),
@@ -598,7 +677,11 @@ def test_positioned_event_is_drawn_only_on_its_cages_panel():
 
 	figure = plot_factory.plot_time_spent_per_cage(heatmap, "hourly", bouts)
 	panels = {trace.xaxis: facet for facet, trace in zip(heatmap.facets, figure.data, strict=True)}
-	drawn = sorted((shape.label.text, panels[shape.xref]) for shape in figure.layout.shapes)
+	drawn = sorted(
+		(note.text, panels[note.xref])
+		for note in figure.layout.annotations
+		if note.name == "event-label"
+	)
 
 	assert drawn == [("injection", "cage_1"), ("injection", "cage_2"), ("social", "cage_1")]
 
@@ -619,7 +702,8 @@ def test_one_events_cages_share_a_span_on_a_plot_without_panels(context):
 
 	figure = plot_factory.plot_ranking_stability(ranks, mapping, "day", bouts)
 
-	assert [shape.label.text for shape in figure.layout.shapes] == ["social (cage_1, cage_3)"]
+	labels = [note.text for note in figure.layout.annotations if note.name == "event-label"]
+	assert labels == ["social (cage_1, cage_3)"]
 
 
 def test_datetime_spans_are_written_like_the_trace_they_mark(context):
@@ -648,6 +732,71 @@ def test_datetime_spans_are_written_like_the_trace_they_mark(context):
 	payload = json.loads(figure.to_json())
 
 	assert payload["layout"]["shapes"][0]["x0"] == payload["data"][0]["x"][0]
+
+
+# --- quality -------------------------------------------------------------------
+
+
+class QualityTables:
+	"""Table provider serving one recording_quality table."""
+
+	def __init__(self, quality: pl.DataFrame) -> None:
+		self._quality = quality
+
+	def table(self, key: str) -> pl.DataFrame:
+		return self._quality
+
+	def has(self, key: str) -> bool:
+		return key == "recording_quality"
+
+
+def test_quality_heatmap_pivots_miss_rate_by_animal_and_antenna(context):
+	quality = pl.DataFrame(
+		{
+			"animal_id": [ANIMALS[0], ANIMALS[0], ANIMALS[1], ANIMALS[1]],
+			"antenna": [1, 2, 1, 2],
+			"detected": [10, 10, 10, 10],
+			"missed": [0, 5, 2, 0],
+			"miss_rate": [0.0, 33.3, 16.7, 0.0],
+		}
+	)
+	with_quality = replace(context, tables=QualityTables(quality))
+
+	img, antennas = prepare.prep_quality_heatmap(with_quality, [ANIMALS[0], ANIMALS[1]])
+
+	assert antennas == ["1", "2"]
+	assert img.tolist() == [[0.0, 33.3], [16.7, 0.0]]
+
+
+def test_quality_by_antenna_pools_counts_rather_than_averaging_rates():
+	"""A pooled rate weighs by how much was actually seen, not by cell count."""
+	quality = pl.DataFrame(
+		{
+			"animal_id": ["a", "a", "b", "b"],
+			"antenna": [1, 2, 1, 2],
+			# Antenna 1: 1 missed of 1001. Antenna 2: 1 missed of 2 - a high per-cell
+			# rate that must not outweigh antenna 1's much larger sample.
+			"detected": [1000, 1, 0, 1],
+			"missed": [1, 0, 0, 1],
+			"miss_rate": [0.1, 0.0, 0.0, 50.0],
+		}
+	)
+	context = PlotContext(
+		tables=QualityTables(quality),
+		animal_ids=["a", "b"],
+		cages=[],
+		positions=[],
+		phases={},
+		days_range=(1, 1),
+		phase_range=(1, 1),
+		tunnels_map={},
+	)
+
+	frame = prepare.prep_quality_by_antenna(context)
+
+	assert frame.sort("antenna")["miss_rate"].to_list() == pytest.approx(
+		[1 / 1001 * 100, 1 / 3 * 100]
+	)
 
 
 # --- module boundaries -------------------------------------------------------

@@ -6,6 +6,8 @@ what that must not cost: the same tables as a serial run, every step still produ
 reported exactly once, and a failure that neither hides nor strands the other recordings.
 """
 
+import threading
+
 import pytest
 from polars.testing import assert_frame_equal
 from test_project_table import make_recording, write_recording
@@ -115,5 +117,35 @@ def test_failure_surfaces_without_stranding_the_others(tmp_path, sources, monkey
 	for name, *_ in RECORDINGS[1:]:
 		produced = {path.stem for path in project[name].results_path.glob("*.parquet")}
 		assert produced == set(DataFrameRegistry.list_available())
+
+	project.close()
+
+
+def test_cancel_lets_the_step_in_flight_land_and_starts_nothing_new(tmp_path, sources, monkeypatch):
+	"""Cancelling mid-step finishes that step; no later step or recording starts."""
+	cancel = threading.Event()
+	first = DataFrameRegistry.step_order()[0]
+	original = DataFrameRegistry._builders[first]
+
+	def cancelled_while_building(recording, params):
+		cancel.set()
+		return original(recording, params)
+
+	monkeypatch.setitem(DataFrameRegistry._builders, first, cancelled_while_building)
+
+	project = Project.create(
+		project_name="concurrency", experimenter="tester", location=tmp_path / "cancel"
+	)
+	project.add_recordings(sources)
+
+	events = list(project._analyze_project(workers=1, cancel=cancel))
+
+	assert [(event.recording, event.step) for event in events] == [(RECORDINGS[0][0], first)]
+	produced = {
+		(name, path.stem)
+		for name, *_ in RECORDINGS
+		for path in project[name].results_path.glob("*.parquet")
+	}
+	assert produced == {(RECORDINGS[0][0], first)}
 
 	project.close()

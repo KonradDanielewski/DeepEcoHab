@@ -4,6 +4,7 @@ import json
 import logging
 import queue
 import shutil
+import threading
 import warnings
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -480,6 +481,25 @@ class DataFrameRegistry:
 		)
 
 
+def recording_status(root: Path) -> dict[str, bool]:
+	"""Which pipeline steps a recording has already computed, read straight off disk.
+
+	Reads ``results/`` directly rather than going through a ``Recording``, so a
+	project whose ``config.json`` fails validation can still report status for that
+	recording from the manifest and results folder alone.
+
+	Args:
+		root: the recording's own directory, e.g. ``<project_location>/<name>``.
+
+	Returns:
+		Every registered step name mapped to whether its parquet exists.
+	"""
+	results = root / "results"
+	return {
+		step: (results / f"{step}.parquet").is_file() for step in DataFrameRegistry.step_order()
+	}
+
+
 class Recording(BaseModel):
 	"""Recording class."""
 
@@ -583,6 +603,17 @@ class Recording(BaseModel):
 	def to_config(self) -> dict[str, Any]:
 		"""JSON-ready snapshot of the metadata; the frame itself is not included."""
 		return self.model_dump(mode="json")
+
+	def update_notes(self, notes: str) -> None:
+		"""Set this recording's notes and persist them to its config.json.
+
+		Raises:
+			ValueError: the recording is not attached to a project (see `root`).
+		"""
+		self.notes = notes
+		(self.root / "config.json").write_text(
+			json.dumps(self.to_config(), indent=2), encoding="utf-8"
+		)
 
 	@classmethod
 	def from_config(cls, config: dict[str, Any], data_path: Path) -> "Recording":
@@ -871,6 +902,11 @@ class Project(BaseModel):
 		Recordings of different lengths contribute the days they have; nothing is padded
 		or truncated to match.
 
+		The table also gains one column per event name declared anywhere in the
+		project, plus ``"Any event"``: "During" / "Same hours, other days" / "Other
+		hours" for a recording that declares that event, null for one that does not.
+		See :func:`recording_pipeline.event_status`.
+
 		Args:
 			names: aggregate only these recordings; ``None`` covers the whole project.
 
@@ -881,23 +917,37 @@ class Project(BaseModel):
 		Returns:
 			The table, which is also written to ``project_table.parquet``.
 		"""
-		frames = [
-			recording.load_results("feature_df")
-			.join(recording.load_results("animals"), on="animal_id", how="left")
-			.with_columns(
-				pl.lit(recording.name).alias("recording"),
-				pl.lit(recording.cohort.n_mice).cast(pl.UInt16).alias("n_mice"),
-				# Both enums are built per recording, so a cohort or a light cycle that
-				# differs gives them different categories; strings concatenate cleanly.
-				pl.col("animal_id").cast(pl.String),
-				pl.col("phase").cast(pl.String),
-			)
-			.select("recording", "n_mice", pl.exclude("recording", "n_mice"))
-			for recording in self._select(names)
-		]
+		# Deferred: recording_pipeline imports grids, which imports this module.
+		from deepecohab.core.recording_pipeline import event_status
 
-		if not frames:
+		recordings = self._select(names)
+		if not recordings:
 			raise ValueError(f"Project {self.project_name!r} has no recordings to aggregate.")
+
+		all_events = sorted({event.name for recording in recordings for event in recording.events})
+		event_columns = [*all_events, "Any event"] if all_events else []
+
+		frames = []
+		for recording in recordings:
+			frame = recording.load_results("feature_df").join(
+				recording.load_results("animals"), on="animal_id", how="left"
+			)
+
+			if event_columns:
+				frame = frame.join(
+					event_status(recording, event_columns), on=["day", "hour"], how="left"
+				)
+
+			frames.append(
+				frame.with_columns(
+					pl.lit(recording.name).alias("recording"),
+					pl.lit(recording.cohort.n_mice).cast(pl.UInt16).alias("n_mice"),
+					# Both enums are built per recording, so a cohort or a light cycle that
+					# differs gives them different categories; strings concatenate cleanly.
+					pl.col("animal_id").cast(pl.String),
+					pl.col("phase").cast(pl.String),
+				).select("recording", "n_mice", pl.exclude("recording", "n_mice"))
+			)
 
 		path = self.project_location / self.PROJECT_TABLE
 		pl.concat(frames, how="vertical").sink_parquet(path, compression="lz4", engine="streaming")
@@ -937,6 +987,7 @@ class Project(BaseModel):
 		*,
 		overwrite: bool = False,
 		workers: int | None = None,
+		cancel: threading.Event | None = None,
 	) -> Iterator[Progress]:
 		"""Run the pipeline across recordings as one flat event stream.
 
@@ -952,25 +1003,30 @@ class Project(BaseModel):
 		Args:
 			workers: how many recordings to analyse at once; ``None`` takes a quarter
 				of polars' thread pool, capped at the number of recordings.
+			cancel: once set, every recording stops before its next step, so the steps in
+				flight still land and recordings not yet started never begin.
 		"""
 		recordings = self._select(names)
 		if not recordings:
 			return
 
 		workers = workers or min(len(recordings), max(1, pl.thread_pool_size() // 4))
+		cancel = cancel or threading.Event()
 
 		# An executor reports whole recordings, so workers hand back steps as they land.
 		events: queue.Queue[Progress | None] = queue.Queue()
 
 		def analyse(index: int, recording: Recording) -> None:
+			# Lazy: each next() builds one step, so the check runs before every build.
+			steps = recording._analyze_recording(params, targets, overwrite=overwrite)
 			try:
-				for step in recording._analyze_recording(params, targets, overwrite=overwrite):
+				while not cancel.is_set() and (step := next(steps, None)) is not None:
 					events.put(Progress(recording.name, index, len(recordings), *step))
 			finally:
 				events.put(None)  # this recording is done, however it ended
 
-		# Abandoning the generator blocks until the recordings already in flight
-		# finish; needs shutdown(cancel_futures=True) if a UI ever has to cancel.
+		# Abandoning the generator without setting cancel blocks until every recording
+		# finishes.
 		with ThreadPoolExecutor(workers) as pool:
 			futures = [
 				pool.submit(analyse, index, recording)
