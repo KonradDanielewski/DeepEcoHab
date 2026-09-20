@@ -759,9 +759,7 @@ def plot_cage_preference(
 	return fig
 
 
-def plot_animal_speed(
-	df: pl.DataFrame, animals: list[str], colors: list[str]
-) -> go.Figure:
+def plot_animal_speed(df: pl.DataFrame, animals: list[str], colors: list[str]) -> go.Figure:
 	"""Plot the distribution of valid tunnel-crossing speeds per animal."""
 	fig = px.violin(
 		df,
@@ -783,7 +781,9 @@ def plot_animal_speed(
 
 
 def plot_animal_speed_daily(
-	df: pl.DataFrame, animals: list[str], colors: list[str],
+	df: pl.DataFrame,
+	animals: list[str],
+	colors: list[str],
 	time_bin: Literal["day", "hour"] = "day",
 ) -> go.Figure:
 	"""Plot mean crossing speed using the dashboard's selected time bin."""
@@ -813,9 +813,7 @@ def plot_animal_speed_daily(
 	return fig
 
 
-def plot_slow_crossings(
-	df: pl.DataFrame, animals: list[str], colors: list[str]
-) -> go.Figure:
+def plot_slow_crossings(df: pl.DataFrame, animals: list[str], colors: list[str]) -> go.Figure:
 	"""Plot the percentage of tunnel crossings taking over 10 seconds."""
 	fig = px.bar(
 		df,

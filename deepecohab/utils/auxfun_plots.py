@@ -867,6 +867,7 @@ def prep_cage_preference_evolution(
 
 	return df
 
+
 def prep_animal_speed(
 	store: dict[str, pl.DataFrame],
 	days_range: list[int],
@@ -940,18 +941,14 @@ def prep_slow_crossings(
 		.agg(
 			pl.len().alias("crossings"),
 			(pl.col("time_spent") > max_dwell).sum().alias("slow_crossings"),
-			((pl.col("time_spent") > max_dwell).mean() * 100)
-			.round(2)
-			.alias("slow_percentage"),
+			((pl.col("time_spent") > max_dwell).mean() * 100).round(2).alias("slow_percentage"),
 		)
 		.sort("animal_id")
 		.collect(engine="in-memory")
 	)
 
 
-def plot_animal_speed(
-	df: pl.DataFrame, animals: list[str], colors: list[str]
-) -> go.Figure:
+def plot_animal_speed(df: pl.DataFrame, animals: list[str], colors: list[str]) -> go.Figure:
 	"""Plot the distribution of valid tunnel-crossing speeds per animal."""
 	fig = px.violin(
 		df,

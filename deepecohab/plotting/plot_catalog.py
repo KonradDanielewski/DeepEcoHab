@@ -376,9 +376,7 @@ def animal_speed(
 	phase_type: list[str],
 	tunnel_positions: list[str],
 ) -> go.Figure:
-	df = auxfun_plots.prep_animal_speed(
-		store, days_range, phase_type, tunnel_positions
-	)
+	df = auxfun_plots.prep_animal_speed(store, days_range, phase_type, tunnel_positions)
 	return plot_factory.plot_animal_speed(df, animals, animal_colors)
 
 
@@ -395,6 +393,4 @@ def animal_speed_daily(
 	df = auxfun_plots.prep_animal_speed_daily(
 		store, days_range, phase_type, tunnel_positions, time_bin=speed_time_bin
 	)
-	return plot_factory.plot_animal_speed_daily(
-		df, animals, animal_colors, time_bin=speed_time_bin
-	)
+	return plot_factory.plot_animal_speed_daily(df, animals, animal_colors, time_bin=speed_time_bin)

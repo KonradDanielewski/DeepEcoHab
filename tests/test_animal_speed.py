@@ -1,7 +1,6 @@
 """Tests cover filtering, labels, daily/hourly per-animal means (including unequal crossing counts across days),
-and slow percentages. Inspect plots live after visual modifications; these assertions do not validate layout. 
+and slow percentages. Inspect plots live after visual modifications; these assertions do not validate layout.
 The dashboard mean-speed chart now includes Day / Hour buttons."""
-
 
 import polars as pl
 import pytest
@@ -18,14 +17,18 @@ from deepecohab.utils import auxfun_plots
 	],
 )
 def test_speed_means_per_animal_and_time_bin(time_bin, expected):
-	store = {"main_df": pl.DataFrame({
-		"animal_id": ["A", "A", "A", "A", "B", "A", "A", "A", "A"],
-		"day": [1, 1, 2, 2, 1, 1, 1, 3, 1],
-		"hour": [8, 8, 8, 9, 8, 8, 8, 8, 8],
-		"phase": ["light_phase"] * 8 + ["dark_phase"],
-		"position": ["c1_c2"] * 6 + ["cage_1", "c1_c2", "c1_c2"],
-		"time_spent": [2.0, 4.0, 1.0, 2.0, 5.0, 12.0, 1.0, 1.0, 1.0],
-	})}
+	store = {
+		"main_df": pl.DataFrame(
+			{
+				"animal_id": ["A", "A", "A", "A", "B", "A", "A", "A", "A"],
+				"day": [1, 1, 2, 2, 1, 1, 1, 3, 1],
+				"hour": [8, 8, 8, 9, 8, 8, 8, 8, 8],
+				"phase": ["light_phase"] * 8 + ["dark_phase"],
+				"position": ["c1_c2"] * 6 + ["cage_1", "c1_c2", "c1_c2"],
+				"time_spent": [2.0, 4.0, 1.0, 2.0, 5.0, 12.0, 1.0, 1.0, 1.0],
+			}
+		)
+	}
 	result = auxfun_plots.prep_animal_speed_daily(
 		store, [1, 2], ["light_phase"], ["c1_c2"], time_bin=time_bin
 	)
@@ -72,9 +75,7 @@ def test_speed_plot_respects_dashboard_filters():
 		)
 	}
 
-	df = auxfun_plots.prep_animal_speed(
-		store, [1, 1], ["light_phase"], ["c1_c2", "c2_c1"]
-	)
+	df = auxfun_plots.prep_animal_speed(store, [1, 1], ["light_phase"], ["c1_c2", "c2_c1"])
 	fig = plot_factory.plot_animal_speed(df, ["A", "B"], ["#111111", "#222222"])
 
 	assert df["speed_cm_s"].to_list() == [10.0]
@@ -115,9 +116,7 @@ def test_speed_summaries_show_daily_means_and_slow_crossing_percentage():
 	store = {"main_df": main_df}
 	tunnels = ["c1_c2", "c2_c1"]
 
-	daily = auxfun_plots.prep_animal_speed_daily(
-		store, [1, 1], ["light_phase"], tunnels
-	)
+	daily = auxfun_plots.prep_animal_speed_daily(store, [1, 1], ["light_phase"], tunnels)
 	slow = auxfun_plots.prep_slow_crossings(store, [1, 1], ["light_phase"], tunnels)
 
 	assert daily.to_dicts() == [

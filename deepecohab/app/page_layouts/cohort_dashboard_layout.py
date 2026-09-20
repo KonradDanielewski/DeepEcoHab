@@ -182,7 +182,6 @@ def generate_graphs_layout(days_range: list[int], phase_range: list[int]) -> htm
 						],
 						className="row-size",
 					),
-					
 					dbc.Row(
 						[
 							dbc.Col(
@@ -224,7 +223,6 @@ def generate_graphs_layout(days_range: list[int], phase_range: list[int]) -> htm
 						],
 						className="row-size",
 					),
-
 					dbc.Row(
 						[
 							dbc.Col(
