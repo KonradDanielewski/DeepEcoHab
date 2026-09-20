@@ -55,6 +55,7 @@ SWITCHES_PRIMARY = {
 	"pairwise_switch": "time_together",
 	"sociability_switch": "sociability",
 	"granularity": "day",
+	"speed_time_bin": "day",
 }
 SWITCHES_ALTERNATE = {
 	"agg_switch": "mean",
@@ -63,6 +64,7 @@ SWITCHES_ALTERNATE = {
 	"pairwise_switch": "pairwise_encounters",
 	"sociability_switch": "proportion_together",
 	"granularity": "phase_count",
+	"speed_time_bin": "hour",
 }
 
 # Resolved once at import; both registries are populated on `import deepecohab`.
@@ -147,6 +149,7 @@ def _plot_config(store, cfg, **switches) -> auxfun_plots.PlotConfig:
 		animal_colors=auxfun_plots.color_sampling(animals),
 		cages=cfg["cages"],
 		positions=cfg["positions"],
+		tunnel_positions=list(cfg["tunnels"]),
 		position_colors=auxfun_plots.color_sampling(cfg["positions"]),
 		light_dark_onset={
 			"light_phase": int(phase["light_phase"].split(":")[0]),
