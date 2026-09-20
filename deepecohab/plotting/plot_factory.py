@@ -797,7 +797,7 @@ def plot_animal_speed_daily(
 		x=time_bin,
 		y="mean_speed_cm_s",
 		color="animal_id",
-		markers=True,
+		line_shape="spline",
 		color_discrete_map=dict(zip(animals, colors, strict=False)),
 		category_orders={"animal_id": animals},
 		title=title,
