@@ -98,6 +98,7 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 		Input("slider_switch", "value"),
 		Input("granularity", "value"),
 		Input("speed_time_bin", "value"),
+		Input("activity_bin", "value"),
 	],
 	State("project-config-store", "data"),
 )
@@ -113,6 +114,7 @@ def update_plots(
 	slider_mode: Literal["days_single", "days_range"],
 	granularity: Literal["day", "phase_count"],
 	speed_time_bin: Literal["day", "hour"],
+	activity_bin: Literal["day", "hour"],
 	cfg: dict[str, Any],
 ) -> go.Figure:
 	"""Perform a selective plot update on the main layout.
@@ -129,6 +131,7 @@ def update_plots(
 		slider_mode: toogle for which slider type is visible
 		granularity: slider axis unit ("day" or "phase_count")
 		speed_time_bin: mean-speed x-axis unit ("day" or "hour")
+		activity_bin: activity x-axis unit ("day" or "hour")
 		cfg: config of the loaded project
 
 	Returns:
@@ -174,6 +177,7 @@ def update_plots(
 		granularity=granularity,
 		phase_type=phase_list,
 		speed_time_bin=speed_time_bin,
+		activity_bin=activity_bin,
 		tunnel_positions=list(cfg["tunnels"]),
 		agg_switch=agg_switch,
 		position_switch=pos_switch,
@@ -201,13 +205,14 @@ def update_plots(
 		Output({"container": "sociability_switch", "side": MATCH}, "hidden"),
 		Output({"container": "ranking_switch", "side": MATCH}, "hidden"),
 		Output({"container": "speed_time_bin", "side": MATCH}, "hidden"),
+		Output({"container": "activity_bin", "side": MATCH}, "hidden"),
 	],
 	Input({"type": ALL, "side": MATCH}, "value"),
 	State("project-config-store", "data"),
 )
 def update_comparison_plot(
 	switches: list[Any], cfg: dict[str, Any]
-) -> tuple[go.Figure, bool, bool, bool, bool, bool]:
+) -> tuple[go.Figure, bool, bool, bool, bool, bool, bool]:
 	"""Render plots in the comparisons tab."""
 	input_dict: dict[str, Any] = {
 		item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches, strict=False)
@@ -238,6 +243,7 @@ def update_comparison_plot(
 		granularity=input_dict["granularity"],
 		phase_type=phase_type,
 		speed_time_bin=input_dict["speed_time_bin"],
+		activity_bin=input_dict["activity_bin"],
 		agg_switch=input_dict["agg_switch"],
 		position_switch=input_dict["position_switch"],
 		pairwise_switch=input_dict["pairwise_switch"],
@@ -266,6 +272,7 @@ def update_comparison_plot(
 		sociability_hidden,
 		ranking_hidden,
 		"speed_time_bin" not in plot_attributes,
+		"activity_bin" not in plot_attributes,
 	)
 
 

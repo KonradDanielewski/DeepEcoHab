@@ -222,23 +222,35 @@ def activity_line(
 	animal_colors: list[str],
 	agg_switch: Literal["sum", "mean"],
 	light_dark_onset: dict[str, float],
+	activity_bin: Literal["day", "hour"],
 ) -> go.Figure:
-	"""Generates a line plot of diurnal activity based on antenna crossings.
-
-	Plots the number of antenna detections per hour, allowing for
-	comparison of circadian rhythms between animals. For mean includes a shaded area
-	representing the Standard Error of the Mean (SEM) across the selected days.
-	"""
-	df = auxfun_plots.prep_activity_line(store, animals, days_range, granularity)
+	"""Generate activity lines grouped by hour or day."""
+	df = auxfun_plots.prep_activity_line(
+		store,
+		animals,
+		days_range,
+		granularity,
+		time_bin=activity_bin,
+	)
 
 	match agg_switch:
 		case "sum":
 			return plot_factory.plot_sum_line_per_hour(
-				df, animals, animal_colors, "activity", light_dark_onset
+				df,
+				animals,
+				animal_colors,
+				"activity",
+				light_dark_onset,
+				time_bin=activity_bin,
 			)
 		case "mean":
 			return plot_factory.plot_mean_line_per_hour(
-				df, animals, animal_colors, "activity", light_dark_onset
+				df,
+				animals,
+				animal_colors,
+				"activity",
+				light_dark_onset,
+				time_bin=activity_bin,
 			)
 
 

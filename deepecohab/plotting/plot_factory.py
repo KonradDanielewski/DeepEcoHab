@@ -127,6 +127,7 @@ def plot_sum_line_per_hour(
 	colors: list[str],
 	input_type: Literal["activity", "chasings"],
 	light_dark: dict[str, float],
+	time_bin: Literal["day", "hour"] = "hour",
 ) -> go.Figure:
 	"""Plots line graph for activity or chasings."""
 	match input_type:
@@ -143,7 +144,7 @@ def plot_sum_line_per_hour(
 
 	fig = px.line(
 		df,
-		x="hour",
+		x=time_bin,
 		y="total",
 		color=color_col,
 		color_discrete_map=dict(zip(animals, colors, strict=False)),
@@ -154,33 +155,37 @@ def plot_sum_line_per_hour(
 
 	fig.update_layout(legend={"title": legend_title})
 	fig.update_yaxes(title=y_axes_label)
-	fig.update_xaxes(title="<b>Hour of day</b>", range=[0, 23])
+	axis_title = "Hour of day" if time_bin == "hour" else "Day"
+	fig.update_xaxes(title=f"<b>{axis_title}</b>")
 
-	light_onset = light_dark["light_phase"]
-	dark_onset = light_dark["dark_phase"]
+	if time_bin == "hour":
+		fig.update_xaxes(range=[0, 23])
 
-	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash="dash", line_width=4)
-	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash="dash", line_width=4)
+		light_onset = light_dark["light_phase"]
+		dark_onset = light_dark["dark_phase"]
 
-	fig.add_annotation(
-		x=(light_onset + 6) % 24,
-		y=1.15,
-		xref="x",
-		yref="paper",
-		text="☀️",
-		showarrow=False,
-		font={"size": 25},
-	)
+		fig.add_vline(x=light_onset, line_color="#C85C39", line_dash="dash", line_width=4)
+		fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash="dash", line_width=4)
 
-	fig.add_annotation(
-		x=(dark_onset + 6) % 24,
-		y=1.15,
-		xref="x",
-		yref="paper",
-		text="🌙",
-		showarrow=False,
-		font={"size": 25},
-	)
+		fig.add_annotation(
+			x=(light_onset + 6) % 24,
+			y=1.15,
+			xref="x",
+			yref="paper",
+			text="☀️",
+			showarrow=False,
+			font={"size": 25},
+		)
+
+		fig.add_annotation(
+			x=(dark_onset + 6) % 24,
+			y=1.15,
+			xref="x",
+			yref="paper",
+			text="🌙",
+			showarrow=False,
+			font={"size": 25},
+		)
 
 	fig.update_layout(
 		xaxis={"dtick": 1},
@@ -196,12 +201,13 @@ def plot_mean_line_per_hour(
 	colors: list[str],
 	input_type: Literal["activity", "chasings"],
 	light_dark: dict[str, float],
+	time_bin: Literal["day", "hour"] = "hour",
 ) -> go.Figure:
 	"""Plots line graph for activity or chasings with SEM shading."""
 	match input_type:
 		case "activity":
 			title = "<b>Activity over time</b>"
-			y_axes_label = "<b>Antenna detections</b>"
+			y_axes_label = "<b>Mean hourly antenna detections</b>"
 			animal_col = "animal_id"
 		case "chasings":
 			title = "<b>Chasing over time</b>"
@@ -213,7 +219,7 @@ def plot_mean_line_per_hour(
 	for animal, color in zip(animals, colors, strict=False):
 		animal_df = df.filter(pl.col(animal_col) == animal)
 
-		x = animal_df["hour"].to_list()
+		x = animal_df[time_bin].to_list()
 		x_rev = x[::-1]
 		y = animal_df["mean"].to_list()
 		y_upper = animal_df["upper"].to_list()
@@ -254,33 +260,37 @@ def plot_mean_line_per_hour(
 		},
 	)
 	fig.update_yaxes(title=y_axes_label)
-	fig.update_xaxes(title="<b>Hour of day</b>")
+	axis_title = "Hour of day" if time_bin == "hour" else "Day"
+	fig.update_xaxes(title=f"<b>{axis_title}</b>")
 
-	light_onset = light_dark["light_phase"]
-	dark_onset = light_dark["dark_phase"]
+	if time_bin == "hour":
+		fig.update_xaxes(range=[0, 23])
 
-	fig.add_vline(x=light_onset, line_color="#C85C39", line_dash="dash", line_width=4)
-	fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash="dash", line_width=4)
+		light_onset = light_dark["light_phase"]
+		dark_onset = light_dark["dark_phase"]
 
-	fig.add_annotation(
-		x=(light_onset + 6) % 24,
-		y=1.15,
-		xref="x",
-		yref="paper",
-		text="☀️",
-		showarrow=False,
-		font={"size": 25},
-	)
+		fig.add_vline(x=light_onset, line_color="#C85C39", line_dash="dash", line_width=4)
+		fig.add_vline(x=dark_onset, line_color="#637DE5", line_dash="dash", line_width=4)
 
-	fig.add_annotation(
-		x=(dark_onset + 6) % 24,
-		y=1.15,
-		xref="x",
-		yref="paper",
-		text="🌙",
-		showarrow=False,
-		font={"size": 25},
-	)
+		fig.add_annotation(
+			x=(light_onset + 6) % 24,
+			y=1.15,
+			xref="x",
+			yref="paper",
+			text="☀️",
+			showarrow=False,
+			font={"size": 25},
+		)
+
+		fig.add_annotation(
+			x=(dark_onset + 6) % 24,
+			y=1.15,
+			xref="x",
+			yref="paper",
+			text="🌙",
+			showarrow=False,
+			font={"size": 25},
+		)
 
 	fig.update_layout(
 		xaxis={"dtick": 1},

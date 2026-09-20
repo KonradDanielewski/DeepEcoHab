@@ -37,6 +37,7 @@ class PlotConfig:
 	light_dark_onset: dict[str, float] | None = None
 	tunnel_positions: list[str] | None = None
 	speed_time_bin: Literal["day", "hour"] = "day"
+	activity_bin: Literal["day", "hour"] = "hour"
 
 
 def set_default_theme() -> None:
@@ -450,38 +451,51 @@ def prep_activity_line(
 	animals: list[str],
 	days_range: list[int],
 	granularity: str = "day",
+	time_bin: Literal["day", "hour"] = "hour",
 ) -> pl.DataFrame:
 	"""Calculate hourly detection rates and SEM to track activity levels over time."""
-	n_bins = 1 if days_range[0] == days_range[1] else len(range(*days_range)) + 1
+	x_col = time_bin
+	filtered = store["main_df"].filter(
+		pl.col(granularity).is_between(days_range[0], days_range[1])
+	)
+	group_col = granularity if time_bin == "hour" else "day"
+	bins = (
+		list(range(days_range[0], days_range[1] + 1))
+		if group_col == granularity
+		else sorted(filtered["day"].unique().to_list())
+	)
+
+	if time_bin == "hour":
+		n_bins = days_range[1] - days_range[0] + 1
+	else:
+		n_bins = 24
 
 	join_df = pl.LazyFrame(
 		(
 			product(
 				animals,
-				list(range(days_range[0], days_range[1] + 1)),
+				bins,
 				list(range(24)),
 			)
 		),
 		schema=[
 			("animal_id", pl.Enum(animals)),
-			(granularity, pl.Int16()),
+			(group_col, pl.Int16()),
 			("hour", pl.Int8()),
 		],
 	)
 
 	df = (
-		store["main_df"]
-		.lazy()
-		.filter(pl.col(granularity).is_between(days_range[0], days_range[1]))
-		.group_by(granularity, "hour", "animal_id")
+		filtered.lazy()
+		.group_by(group_col, "hour", "animal_id")
 		.agg(pl.len().alias("n_detections"))
 		.join(
 			join_df,
-			on=["animal_id", "hour", granularity],
+			on=["animal_id", "hour", group_col],
 			how="right",
 		)
 		.fill_null(0)
-		.group_by("hour", "animal_id")
+		.group_by(x_col, "animal_id")
 		.agg(
 			pl.sum("n_detections").alias("total"),
 			pl.mean("n_detections").alias("mean").round(2),
@@ -491,7 +505,7 @@ def prep_activity_line(
 			(pl.col("mean") - pl.col("sem")).alias("lower"),
 			(pl.col("mean") + pl.col("sem")).alias("upper"),
 		)
-		.sort("animal_id", "hour")
+		.sort("animal_id", x_col)
 	).collect(engine="in-memory")
 
 	return df

@@ -282,6 +282,13 @@ def generate_comparison_block(side: str, days_range: list[int], phase_range: lis
 					{"label": "Hour", "value": "hour"},
 				],
 			),
+			generate_hidden_radio_switch(
+				{"type": "activity_bin", "side": side},
+				[
+					{"label": "Hour", "value": "hour"},
+					{"label": "Day", "value": "day"},
+				],
+			),
 			generate_settings_block(
 				phase_type_id={"type": "phase_type", "side": side},
 				aggregate_stats_id={"type": "agg_switch", "side": side},

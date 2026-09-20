@@ -248,7 +248,7 @@ p,
   background: rgba(79, 195, 247, 0.1);
   box-shadow: 0 0 5px rgba(79, 195, 247, 0.3);
 }
-
+#activity_bin.dash-radio,
 #speed_time_bin.dash-radio,
 #position_switch.dash-radio,
 #pairwise_switch.dash-radio,
