@@ -455,9 +455,7 @@ def prep_activity_line(
 ) -> pl.DataFrame:
 	"""Calculate hourly detection rates and SEM to track activity levels over time."""
 	x_col = time_bin
-	filtered = store["main_df"].filter(
-		pl.col(granularity).is_between(days_range[0], days_range[1])
-	)
+	filtered = store["main_df"].filter(pl.col(granularity).is_between(days_range[0], days_range[1]))
 	group_col = granularity if time_bin == "hour" else "day"
 	bins = (
 		list(range(days_range[0], days_range[1] + 1))
@@ -465,10 +463,7 @@ def prep_activity_line(
 		else sorted(filtered["day"].unique().to_list())
 	)
 
-	if time_bin == "hour":
-		n_bins = days_range[1] - days_range[0] + 1
-	else:
-		n_bins = 24
+	n_bins = days_range[1] - days_range[0] + 1 if time_bin == "hour" else 24
 
 	join_df = pl.LazyFrame(
 		(
