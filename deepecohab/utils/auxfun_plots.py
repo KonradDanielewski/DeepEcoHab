@@ -35,6 +35,8 @@ class PlotConfig:
 	positions: list[str] | None = None
 	position_colors: list[str] | None = None
 	light_dark_onset: dict[str, float] | None = None
+	tunnel_positions: list[str] | None = None
+	speed_time_bin: Literal["day", "hour"] = "day"
 
 
 def set_default_theme() -> None:
@@ -864,3 +866,107 @@ def prep_cage_preference_evolution(
 	).collect(engine="in-memory")
 
 	return df
+
+def prep_animal_speed(
+	store: dict[str, pl.DataFrame],
+	days_range: list[int],
+	phase_type: list[str],
+	tunnel_positions: list[str],
+	tunnel_length_cm: float = 20,
+	max_dwell: float = 10,
+) -> pl.DataFrame:
+	"""Calculate tunnel-crossing speeds from the selected main data."""
+	return (
+		store["main_df"]
+		.lazy()
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(days_range[0], days_range[1]),
+			pl.col("position").is_in(tunnel_positions),
+			pl.col("time_spent").is_between(0, max_dwell, closed="right"),
+		)
+		.with_columns(
+			(tunnel_length_cm / pl.col("time_spent")).alias("speed_cm_s"),
+			pl.len().over("animal_id").alias("crossings"),
+		)
+		.sort("animal_id", "speed_cm_s")
+		.collect(engine="in-memory")
+	)
+
+
+def prep_animal_speed_daily(
+	store: dict[str, pl.DataFrame],
+	days_range: list[int],
+	phase_type: list[str],
+	tunnel_positions: list[str],
+	tunnel_length_cm: float = 20,
+	max_dwell: float = 10,
+	time_bin: Literal["day", "hour"] = "day",
+) -> pl.DataFrame:
+	"""Mean crossing speed per animal and day or hour of day across selected days."""
+	return (
+		prep_animal_speed(
+			store,
+			days_range,
+			phase_type,
+			tunnel_positions,
+			tunnel_length_cm,
+			max_dwell,
+		)
+		.group_by(time_bin, "animal_id")
+		.agg(pl.mean("speed_cm_s").round(2).alias("mean_speed_cm_s"))
+		.sort(time_bin, "animal_id")
+	)
+
+
+def prep_slow_crossings(
+	store: dict[str, pl.DataFrame],
+	days_range: list[int],
+	phase_type: list[str],
+	tunnel_positions: list[str],
+	max_dwell: float = 10,
+) -> pl.DataFrame:
+	"""Summarize crossings longer than the movement-speed cutoff."""
+	return (
+		store["main_df"]
+		.lazy()
+		.filter(
+			pl.col("phase").is_in(phase_type),
+			pl.col("day").is_between(days_range[0], days_range[1]),
+			pl.col("position").is_in(tunnel_positions),
+			pl.col("time_spent") > 0,
+		)
+		.group_by("animal_id")
+		.agg(
+			pl.len().alias("crossings"),
+			(pl.col("time_spent") > max_dwell).sum().alias("slow_crossings"),
+			((pl.col("time_spent") > max_dwell).mean() * 100)
+			.round(2)
+			.alias("slow_percentage"),
+		)
+		.sort("animal_id")
+		.collect(engine="in-memory")
+	)
+
+
+def plot_animal_speed(
+	df: pl.DataFrame, animals: list[str], colors: list[str]
+) -> go.Figure:
+	"""Plot the distribution of valid tunnel-crossing speeds per animal."""
+	fig = px.violin(
+		df,
+		x="animal_id",
+		y="speed_cm_s",
+		color="animal_id",
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		hover_data=["day", "phase", "position", "time_spent", "crossings"],
+		title="<b>Tunnel-crossing speed</b>",
+		points="outliers",
+		box=True,
+	)
+	fig.update_layout(showlegend=False)
+	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_yaxes(title_text="<b>Speed [cm/s]</b>")
+
+	return fig

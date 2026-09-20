@@ -365,3 +365,36 @@ def social_stability(
 	df = auxfun_plots.prep_social_stability(store, phase_type, days_range, granularity)
 
 	return plot_factory.plot_social_stability(df, animals, animal_colors)
+
+
+@plot_registry.register("animal-speed")
+def animal_speed(
+	store: dict,
+	animals: list[str],
+	animal_colors: list[str],
+	days_range: list[int],
+	phase_type: list[str],
+	tunnel_positions: list[str],
+) -> go.Figure:
+	df = auxfun_plots.prep_animal_speed(
+		store, days_range, phase_type, tunnel_positions
+	)
+	return plot_factory.plot_animal_speed(df, animals, animal_colors)
+
+
+@plot_registry.register("animal-speed-daily")
+def animal_speed_daily(
+	store: dict,
+	animals: list[str],
+	animal_colors: list[str],
+	days_range: list[int],
+	phase_type: list[str],
+	tunnel_positions: list[str],
+	speed_time_bin: Literal["day", "hour"],
+) -> go.Figure:
+	df = auxfun_plots.prep_animal_speed_daily(
+		store, days_range, phase_type, tunnel_positions, time_bin=speed_time_bin
+	)
+	return plot_factory.plot_animal_speed_daily(
+		df, animals, animal_colors, time_bin=speed_time_bin
+	)

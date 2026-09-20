@@ -757,3 +757,80 @@ def plot_cage_preference(
 	fig.update_layout(legend={"title": ""})
 
 	return fig
+
+
+def plot_animal_speed(
+	df: pl.DataFrame, animals: list[str], colors: list[str]
+) -> go.Figure:
+	"""Plot the distribution of valid tunnel-crossing speeds per animal."""
+	fig = px.violin(
+		df,
+		x="animal_id",
+		y="speed_cm_s",
+		color="animal_id",
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		hover_data=["day", "phase", "position", "time_spent", "crossings"],
+		title="<b>Tunnel-crossing speed</b>",
+		points="outliers",
+		box=True,
+	)
+	fig.update_layout(showlegend=False)
+	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_yaxes(title_text="<b>Speed [cm/s]</b>")
+
+	return fig
+
+
+def plot_animal_speed_daily(
+	df: pl.DataFrame, animals: list[str], colors: list[str],
+	time_bin: Literal["day", "hour"] = "day",
+) -> go.Figure:
+	"""Plot mean crossing speed using the dashboard's selected time bin."""
+	title = (
+		"<b>Mean tunnel-crossing speed over days</b>"
+		if time_bin == "day"
+		else "<b>Mean tunnel-crossing speed by hour of day</b>"
+	)
+	fig = px.line(
+		df,
+		x=time_bin,
+		y="mean_speed_cm_s",
+		color="animal_id",
+		markers=True,
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		title=title,
+	)
+	fig.update_layout(legend_title_text="<b>Animal ID</b>")
+	fig.update_xaxes(
+		title_text="<b>Day</b>" if time_bin == "day" else "<b>Hour of day</b>",
+		dtick=1,
+	)
+	if time_bin == "hour":
+		fig.update_xaxes(range=[-0.5, 23.5])
+	fig.update_yaxes(title_text="<b>Mean speed [cm/s]</b>")
+	return fig
+
+
+def plot_slow_crossings(
+	df: pl.DataFrame, animals: list[str], colors: list[str]
+) -> go.Figure:
+	"""Plot the percentage of tunnel crossings taking over 10 seconds."""
+	fig = px.bar(
+		df,
+		x="animal_id",
+		y="slow_percentage",
+		color="animal_id",
+		color_discrete_map=dict(zip(animals, colors, strict=False)),
+		category_orders={"animal_id": animals},
+		hover_data=["crossings", "slow_crossings"],
+		text_auto=".1f",
+		title="<b>Slow tunnel crossings (&gt;10 s)</b>",
+	)
+	fig.update_layout(showlegend=False)
+	fig.update_traces(texttemplate="%{y:.1f}%", textposition="outside")
+	fig.update_xaxes(title_text="<b>Animal ID</b>")
+	fig.update_yaxes(title_text="<b>Crossings over 10 s [%]</b>", range=[0, 100])
+
+	return fig

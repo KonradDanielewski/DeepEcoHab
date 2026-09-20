@@ -182,6 +182,49 @@ def generate_graphs_layout(days_range: list[int], phase_range: list[int]) -> htm
 						],
 						className="row-size",
 					),
+					
+					dbc.Row(
+						[
+							dbc.Col(
+								dcc.RadioItems(
+									id="speed_time_bin",
+									options=[
+										{"label": "Day", "value": "day"},
+										{"label": "Hour", "value": "hour"},
+									],
+									value="day",
+									className="dash-radio",
+								),
+								width=6,
+								className="offset-6",
+							),
+						],
+						className="row-size",
+					),
+					dbc.Row(
+						[
+							dbc.Col(
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"animal-speed", css_class="plot-400"
+									),
+									color="primary",
+								),
+								width=6,
+							),
+							dbc.Col(
+								dbc.Spinner(
+									auxfun_dashboard.generate_standard_graph(
+										"animal-speed-daily", css_class="plot-400"
+									),
+									color="primary",
+								),
+								width=6,
+							),
+						],
+						className="row-size",
+					),
+
 					dbc.Row(
 						[
 							dbc.Col(

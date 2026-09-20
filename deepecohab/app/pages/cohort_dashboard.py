@@ -97,6 +97,7 @@ def render_graphs_layout(cfg: dict[str, Any]) -> tuple[html.Div, html.Div]:
 		Input("ranking_switch", "value"),
 		Input("slider_switch", "value"),
 		Input("granularity", "value"),
+		Input("speed_time_bin", "value"),
 	],
 	State("project-config-store", "data"),
 )
@@ -111,6 +112,7 @@ def update_plots(
 	ranking_switch: Literal["intime", "stability"],
 	slider_mode: Literal["days_single", "days_range"],
 	granularity: Literal["day", "phase_count"],
+	speed_time_bin: Literal["day", "hour"],
 	cfg: dict[str, Any],
 ) -> go.Figure:
 	"""Perform a selective plot update on the main layout.
@@ -126,6 +128,7 @@ def update_plots(
 		ranking_switch: ranking switch (per hour update or per day rank)
 		slider_mode: toogle for which slider type is visible
 		granularity: slider axis unit ("day" or "phase_count")
+		speed_time_bin: mean-speed x-axis unit ("day" or "hour")
 		cfg: config of the loaded project
 
 	Returns:
@@ -170,6 +173,8 @@ def update_plots(
 		days_range=days_range,
 		granularity=granularity,
 		phase_type=phase_list,
+		speed_time_bin=speed_time_bin,
+		tunnel_positions=list(cfg["tunnels"]),
 		agg_switch=agg_switch,
 		position_switch=pos_switch,
 		pairwise_switch=pair_switch,
@@ -195,13 +200,14 @@ def update_plots(
 		Output({"container": "pairwise_switch", "side": MATCH}, "hidden"),
 		Output({"container": "sociability_switch", "side": MATCH}, "hidden"),
 		Output({"container": "ranking_switch", "side": MATCH}, "hidden"),
+		Output({"container": "speed_time_bin", "side": MATCH}, "hidden"),
 	],
 	Input({"type": ALL, "side": MATCH}, "value"),
 	State("project-config-store", "data"),
 )
 def update_comparison_plot(
 	switches: list[Any], cfg: dict[str, Any]
-) -> tuple[go.Figure, bool, bool, bool, bool]:
+) -> tuple[go.Figure, bool, bool, bool, bool, bool]:
 	"""Render plots in the comparisons tab."""
 	input_dict: dict[str, Any] = {
 		item["id"]["type"]: val for item, val in zip(ctx.inputs_list[0], switches, strict=False)
@@ -231,6 +237,7 @@ def update_comparison_plot(
 		days_range=input_dict["days_range"],
 		granularity=input_dict["granularity"],
 		phase_type=phase_type,
+		speed_time_bin=input_dict["speed_time_bin"],
 		agg_switch=input_dict["agg_switch"],
 		position_switch=input_dict["position_switch"],
 		pairwise_switch=input_dict["pairwise_switch"],
@@ -242,6 +249,7 @@ def update_comparison_plot(
 		positions=positions,
 		position_colors=positions_colors,
 		light_dark_onset=light_dark_onset,
+		tunnel_positions=list(cfg["tunnels"]),
 	)
 
 	fig = plot_catalog.plot_registry.get_plot(input_dict["plot-dropdown"], plot_cfg)
@@ -257,6 +265,7 @@ def update_comparison_plot(
 		pairwise_hidden,
 		sociability_hidden,
 		ranking_hidden,
+		"speed_time_bin" not in plot_attributes,
 	)
 
 
