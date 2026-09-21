@@ -8,7 +8,7 @@ the real registered pipeline.
 
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 
 from deepecohab.core.data_model import DataFrameRegistry, recording_status
 
@@ -102,7 +102,7 @@ def test_auxiliary_analysis_registers_nothing():
 
 def test_load_results_reads_a_table_no_step_produces(tmp_path):
 	"""An auxiliary table sunk into results/ loads back, though nothing registers it."""
-	recording = strat.analysis_recording(animal_ids=["A", "B"])
+	recording = strategies.analysis_recording(animal_ids=["A", "B"])
 	recording._root = tmp_path
 	(tmp_path / "results").mkdir()
 	pl.DataFrame({"winner": ["A"], "loser": ["B"]}).write_parquet(

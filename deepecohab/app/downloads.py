@@ -1,12 +1,3 @@
-"""Flask routes for downloading project and recording data, and rendering plot exports.
-
-Registered on ``app.server`` rather than expressed as Dash callbacks: a browser
-streams these straight from disk instead of Dash base64-encoding a whole archive
-into a callback response. Every route resolves its id server-side - a project id
-through :func:`services.resolve_project_path`, a table or step name against the
-registries - so a link never carries a filesystem path.
-"""
-
 import io
 import json
 import tempfile

@@ -41,8 +41,7 @@ def _resolve_repeat_reads(registrations: pl.LazyFrame, recording: Recording) -> 
 	run of reads on one antenna, so every second row is a return and is relabelled to
 	the tunnel that antenna leads into. This is the only evidence a retreat leaves.
 
-	Only :func:`calculate_tube_test` uses this; see
-	``docs/technical_documentation_writeup.md``.
+	Only :func:`calculate_tube_test` uses this
 	"""
 	entry_tunnels = _tunnel_entry_by_antenna(recording)
 	if not entry_tunnels:
@@ -135,16 +134,17 @@ def calculate_tube_test(
 
 	Args:
 		recording: the recording to score, with ``main_df`` already built.
+		max_dwell: how long a tunnel pass may last, in seconds, keeping out the inflated
+			intervals left by an animal lingering at a tunnel mouth.
 		winner_behavior: which outcomes count - ``"CHASE"`` where the winner follows the
 			loser into the cage it retreated to, ``"GUARD"`` where the winner returns to
 			its own origin cage to hold the resource, or ``"BOTH"``.
-		max_dwell: how long a tunnel pass may last, in seconds, keeping out the inflated
-			intervals left by an animal lingering at a tunnel mouth.
 
 	Returns:
 		A ``tube_test`` count per winner, loser, tunnel and hour, on the dense grid.
 	"""
-	# Sorted at load so the order-dependent ops below (run-length encoding, shift().over) are chronological.
+	# Sorted at load so the order-dependent ops below (run-length encoding,
+	# shift().over) are chronological.
 	registrations = recording.load_results("main_df").sort("datetime")
 
 	tunnels = recording.layout.tunnel_names

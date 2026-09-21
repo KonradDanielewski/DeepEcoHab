@@ -7,5 +7,3 @@ chapters:
 - file: get_started
 - file: tutorial_antenna
 - file: plotting
-- file: dashboard
-- file: cohort_dashboard_plots

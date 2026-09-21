@@ -8,6 +8,7 @@ from deepecohab.core.data_model import (
 	CALENDAR_COLUMNS,
 	AnalysisParams,
 	DataFrameRegistry,
+	Layout,
 	Recording,
 )
 
@@ -54,11 +55,13 @@ def build_animals(recording: Recording, params: AnalysisParams) -> pl.LazyFrame:
 def build_main_df(recording: Recording, params: AnalysisParams) -> pl.LazyFrame:
 	"""Frame of every antenna registration, annotated with where and when it happened.
 
-	This is the table the whole analysis is built on. The recording's raw
-	registrations are trimmed to its timeline, each one is placed on the calendar
-	(``phase``, ``day``, ``hour``, ``phase_count``), and the position it reports is
-	resolved from the antenna it crossed and the one before it. Every later table
-	carries these calendar columns through rather than deriving them again.
+	This is the table the whole analysis is built on. Positions are resolved first,
+	from the antenna each registration crossed and the one before it, and only then is
+	the lead-in before the experiment start dropped: trimming first would leave every
+	animal's first in-window registration with no predecessor to pair with, so a
+	recording with a discarded lead lost that position. The row that survives the trim
+	keeps its true position and a ``time_spent`` clipped to the window, so no occupancy
+	is attributed to time the analysis does not cover.
 
 	Returns:
 		One row per registration, with ``position``, ``time_spent`` and the calendar
@@ -68,21 +71,28 @@ def build_main_df(recording: Recording, params: AnalysisParams) -> pl.LazyFrame:
 	start, end = recording.timeline.local_span
 
 	return (
-		recording.data.filter(pl.col("datetime").is_between(start, end))
-		# Sorted before anything that reads neighbouring rows; the raw parquet is in
-		# acquisition order, which is not chronological across boards.
-		.sort("datetime")
-		.pipe(transforms.extrapolate_last_position)
-		# Both of these compare a row with the animal's previous one, so they run while
-		# the frame is still in order - before assign_phase_count, which joins.
+		recording.data.sort("datetime")
+		# Trailing data out first, so the extrapolation anchors on the window and not on it.
+		.filter(pl.col("datetime") <= end)
+		.pipe(transforms.extrapolate_last_position, end, params.extrapolation_limit)
 		.pipe(transforms.calculate_time_spent)
 		.pipe(transforms.get_animal_position, recording.layout.antenna_combinations)
+		.with_columns(
+			pl.when(pl.col("__tail"))
+			.then(pl.lit(Layout.UNDEFINED))
+			.otherwise(pl.col("position"))
+			.cast(pl.Categorical)
+			.alias("position")
+		)
+		.filter(pl.col("datetime") >= start)
+		.with_columns(
+			pl.min_horizontal("time_spent", pl.col("datetime") - pl.lit(start)).alias("time_spent")
+		)
 		.with_columns(
 			grids.get_phase(recording), grids.get_day(recording), grids.get_hour(recording)
 		)
 		.pipe(grids.assign_phase_count, recording)
-		# That join leaves the rows in no particular order; main_df is stored
-		# chronologically, so restore it.
+		.drop("__tail")
 		.sort("datetime")
 	)
 
@@ -98,7 +108,9 @@ def build_padded_df(recording: Recording, params: AnalysisParams) -> pl.LazyFram
 	pieces = transforms.split_on_minute_boundaries(recording.load_results("main_df"), recording)
 
 	# A piece is dated by its own start, not by the end of the visit it came from, so
-	# the phase_count inherited from that visit no longer applies.
+	# the phase_count inherited from that visit no longer applies. Every piece starts
+	# inside the window - build_main_df clips the first visit's time_spent to it - so
+	# this left join always resolves and no piece leaves with a null phase_count.
 	return grids.assign_phase_count(pieces.drop("phase_count"), recording).sort("datetime")
 
 

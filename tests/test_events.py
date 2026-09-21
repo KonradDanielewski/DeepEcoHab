@@ -10,7 +10,7 @@ import datetime as dt
 
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 from hypothesis import given, settings, strategies as st
 from pydantic import ValidationError
 
@@ -28,7 +28,7 @@ WINDOWS = [
 
 def at(day: int, hour: int, minute: int = 0, second: int = 0) -> dt.datetime:
 	"""An instant on the default fixture's clock, where experiment day 1 is 2023-05-24 UTC."""
-	return dt.datetime(2023, 5, 23 + day, hour, minute, second, tzinfo=dt.UTC)
+	return strategies.at(2023, 5, 23 + day, hour, minute, second)
 
 
 def event(name: str, *bouts: Bout) -> Event:
@@ -42,7 +42,7 @@ def cells(recording: Recording) -> pl.DataFrame:
 # --- the model ---------------------------------------------------------------
 def test_different_events_may_overlap():
 	"""Two stimuli presented at once in opposite cages, as in the social odour test."""
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		events=[
 			event("C21 injection", Bout(start=at(1, 13, 0, 30), end=at(1, 13, 10, 30))),
 			event("social", Bout(start=at(1, 13, 30), end=at(1, 14), position="cage_1")),
@@ -119,12 +119,12 @@ def test_bouts_of_one_event_may_abut():
 )
 def test_recording_rejects_events_it_cannot_place(events, match):
 	with pytest.raises(ValidationError, match=match):
-		strat.analysis_recording(events=events)
+		strategies.analysis_recording(events=events)
 
 
 def test_config_without_events_still_loads():
 	"""Configs written before events existed have no such key."""
-	recording = strat.analysis_recording()
+	recording = strategies.analysis_recording()
 	config = recording.to_config()
 	del config["events"]
 
@@ -132,7 +132,7 @@ def test_config_without_events_still_loads():
 
 
 def test_events_survive_a_config_round_trip():
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		events=[event("social", Bout(start=at(1, 13), end=at(1, 14), position="cage_1"))]
 	)
 	restored = Recording.model_validate({**recording.to_config(), "data": recording.data})
@@ -142,7 +142,7 @@ def test_events_survive_a_config_round_trip():
 
 # --- the event_bouts table ---------------------------------------------------
 def test_short_bout_takes_one_cell_and_keeps_its_bounds():
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		events=[event("C21", Bout(start=at(1, 13, 0, 30), end=at(1, 13, 10, 30)))]
 	)
 	frame = cells(recording)
@@ -158,7 +158,7 @@ def test_short_bout_takes_one_cell_and_keeps_its_bounds():
 
 
 def test_bout_ending_on_the_hour_stays_out_of_the_next():
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		events=[event("x", Bout(start=at(1, 13, 30), end=at(1, 14)))]
 	)
 
@@ -166,7 +166,7 @@ def test_bout_ending_on_the_hour_stays_out_of_the_next():
 
 
 def test_bout_across_midnight_takes_a_cell_on_each_day():
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		events=[event("x", Bout(start=at(1, 23, 30), end=at(2, 0, 30)))]
 	)
 
@@ -178,7 +178,7 @@ def test_bout_across_midnight_takes_a_cell_on_each_day():
 
 def test_phase_boundary_inside_an_hour_splits_its_cell():
 	"""With dark at 12:30 the 12:00 bin holds two phases, and the bout touches both."""
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		phases={"light_phase": dt.time(0, 0), "dark_phase": dt.time(12, 30)},
 		events=[event("x", Bout(start=at(1, 12, 10), end=at(1, 12, 50)))],
 	)
@@ -194,7 +194,7 @@ def test_offset_datetimes_land_on_the_recording_clock():
 	injection = Bout.model_validate(
 		{"start": "2023-05-17T13:00:30+02:00", "end": "2023-05-17T13:10:30+02:00"}
 	)
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz="Europe/Warsaw",
 		start="2023-05-17 13:02:41",
 		finish="2023-05-22 10:02:17",
@@ -227,7 +227,7 @@ def test_bout_instants_do_not_depend_on_the_offset_they_are_written_in():
 				"end": end.astimezone(dt.timezone(dt.timedelta(hours=end_offset))).isoformat(),
 			}
 		)
-		recording = strat.analysis_recording(
+		recording = strategies.analysis_recording(
 			tz="Europe/Warsaw",
 			start="2023-03-24 00:00:00",
 			finish="2023-03-28 23:00:00",
@@ -240,7 +240,7 @@ def test_bout_instants_do_not_depend_on_the_offset_they_are_written_in():
 
 
 def test_no_events_give_an_empty_table_with_its_schema():
-	frame = cells(strat.analysis_recording())
+	frame = cells(strategies.analysis_recording())
 
 	assert frame.is_empty()
 	assert frame.columns == ["event", "position", "start", "end", *CALENDAR_COLUMNS]
@@ -248,8 +248,8 @@ def test_no_events_give_an_empty_table_with_its_schema():
 
 @settings(max_examples=60, deadline=None)
 @given(
-	tz=strat.timezones,
-	phases=strat.phase_configs,
+	tz=strategies.timezones,
+	phases=strategies.phase_configs,
 	window=st.sampled_from(WINDOWS),
 	spans=st.lists(
 		st.tuples(st.integers(0, 60 * 3600), st.integers(1, 30 * 3600)), min_size=1, max_size=4
@@ -258,7 +258,7 @@ def test_no_events_give_an_empty_table_with_its_schema():
 def test_every_bout_cell_is_a_grid_cell(tz, phases, window, spans):
 	"""A cell the grid lacks would never join onto an analysis table, nor match a plot's bin."""
 	first, last = window
-	bare = strat.analysis_recording(tz=tz, start=first, finish=last, phases=phases)
+	bare = strategies.analysis_recording(tz=tz, start=first, finish=last, phases=phases)
 	start, end = (moment.astimezone(dt.UTC) for moment in bare.timeline.local_span)
 	events = [
 		event(
@@ -270,7 +270,7 @@ def test_every_bout_cell_is_a_grid_cell(tz, phases, window, spans):
 		)
 		for index, (offset, length) in enumerate(spans)
 	]
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=tz, start=first, finish=last, phases=phases, events=events
 	)
 

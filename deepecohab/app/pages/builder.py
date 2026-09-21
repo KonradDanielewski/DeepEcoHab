@@ -1,20 +1,36 @@
-"""Plot builder screen: drag-and-drop ad-hoc plotting over the project table."""
-
 import copy
 import time
+from pathlib import Path
 from urllib.parse import parse_qs
 
 import dash
 import dash_mantine_components as dmc
 import polars as pl
-from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
+from dash import (
+	ALL,
+	ClientsideFunction,
+	Input,
+	Output,
+	State,
+	callback,
+	clientside_callback,
+	ctx,
+	dcc,
+	html,
+	no_update,
+	set_props,
+)
 from dash.exceptions import PreventUpdate
 
-from deepecohab.app import services
+from deepecohab import Project
+from deepecohab.app import components, services
 from deepecohab.app.builder import catalog, figure, presets as presets_mod
 from deepecohab.app.components import icon, notify
+from deepecohab.plotting.theme import PALETTES
 
-dash.register_page(__name__, path="/builder", name="Plot builder", order=2, icon="drag-drop")
+PATH = "/builder"
+
+dash.register_page(__name__, path=PATH, name="Plot builder", order=2, icon="drag-drop")
 
 #: Pseudo-shelves: the palette takes chips back, the filter rail turns them into controls.
 PALETTE, FILTERS = "__palette__", "__filters__"
@@ -48,6 +64,8 @@ PLOT_ICON = {
 #: Numeric time fields that offer a Range | Pick values toggle; others (age_days) are
 #: range-only, and every dimension field is pick-only.
 PICKABLE = frozenset({"day", "phase_count", "hour", "n_mice"})
+#: Format keys picked from a menu, empty as ``None`` rather than ``""``.
+_SELECTS = ("colorscale", "palette")
 
 _SCOPE = {
 	"built-in": ("template", "built in"),
@@ -55,28 +73,26 @@ _SCOPE = {
 	"project": ("folders", "saved in project"),
 }
 
-_DIALOG_CLASSES = {
-	"content": "deh-dialog",
-	"header": "deh-dialog-head",
-	"title": "deh-dialog-title",
-	"body": "deh-dialog-content",
-}
-
 layout = html.Div(
 	[
 		dcc.Store(id="dnd-event"),
+		# Real clicks only, via deh.clickEvent: the buttons behind them are re-rendered on
+		# every state change, which would otherwise fire their server callbacks each time.
+		dcc.Store(id="builder-action"),
+		dcc.Store(id="preset-delete-event"),
+		dcc.Store(id="builder-save-strip-event"),
+		dcc.Store(id="builder-kind"),
 		dcc.Store(id="builder-project"),
 		dcc.Store(id="builder-state"),
 		dcc.Store(id="builder-last-preset"),
 		dcc.Store(id="builder-presets-local", storage_type="local", data=[]),
 		dcc.Store(id="builder-presets-bump", data=0),
-		dcc.Store(id="export-source"),
 		html.Div(id="builder-body"),
 		dmc.Modal(
 			id="preset-save-modal",
 			title="Save preset",
 			size=460,
-			classNames=_DIALOG_CLASSES,
+			classNames=components.DIALOG_CLASSES,
 			children=[
 				html.Div(
 					[
@@ -139,14 +155,6 @@ layout = html.Div(
 )
 
 
-def _placeholder(message: str) -> html.Div:
-	return html.Div(
-		[icon("info-circle", size=20), html.P(message)],
-		className="deh-alert deh-alert-info",
-		style={"maxWidth": "560px", "margin": "48px auto"},
-	)
-
-
 def _shelf_label(shelf: str) -> str:
 	return "Filters" if shelf == FILTERS else figure.LABELS.get(shelf, shelf)
 
@@ -182,7 +190,7 @@ def _default_filter(item: catalog.Field, frame: pl.LazyFrame) -> dict:
 def _apply_move(
 	state: dict, by_name: dict, frame: pl.LazyFrame, field_name: str, source: str, target: str
 ) -> dict:
-	"""Move one field from ``source`` to ``target``: the model behind drag-drop and the chip menu."""
+	"""Move one field from ``source`` to ``target``: the model behind drag-drop and the chips."""
 	item = by_name.get(field_name)
 	if item is None or target == source:
 		return state
@@ -218,7 +226,45 @@ def _apply_move(
 	return state
 
 
-# ------------------------------------------------------------------------- components
+def _drop_unshelved_bins(state: dict) -> None:
+	"""Forget the Blocks spec of every field no longer on a shelf.
+
+	Run once before the trigger is applied rather than in each handler that can take a
+	field off a shelf - the x button, a move to the palette or the filter rail, Clear, a
+	plot type with fewer shelves - so a spec left behind by any of them cannot come back
+	to life under the field when it is dropped again.
+	"""
+	held = {name for names in state["channels"].values() for name in names}
+	bins = {name: spec for name, spec in state.get("bins", {}).items() if name in held}
+	# No empty dict left behind, or a preset would read as edited after a reset.
+	if bins:
+		state["bins"] = bins
+	else:
+		state.pop("bins", None)
+
+
+def _set_format(state: dict, key: str, value, auto: dict) -> dict:
+	"""``state`` with Format ``key`` set to ``value``; empty, or the automatic text, clears it."""
+	if key in ("cmin", "cmax"):
+		value = value if isinstance(value, int | float) else None
+	else:
+		value = (value or "").strip() or None
+	if value == auto.get(key):
+		value = None
+	fmt = state.get("format", {})
+	if figure.live_format(fmt, auto).get(key) == value:
+		raise PreventUpdate
+
+	if value is None:
+		fmt.pop(key, None)
+	else:
+		fmt[key] = {"on": auto[figure.FORMAT_BINDS[key]], "value": value}
+	# No empty dict left behind, or a preset would read as edited after a reset.
+	if fmt:
+		state["format"] = fmt
+	else:
+		state.pop("format", None)
+	return state
 
 
 def _send_to_items(field: catalog.Field, source: str, plot: figure.PlotType) -> list:
@@ -260,7 +306,34 @@ def _send_to_items(field: catalog.Field, source: str, plot: figure.PlotType) -> 
 	return items
 
 
-def _chip(field: catalog.Field, source: str, plot: figure.PlotType) -> html.Div:
+def _bin_items(field: catalog.Field, source: str, spec: str | None) -> list:
+	"""The Blocks box for a numeric ordered field on a shelf; empty for anything else.
+
+	Committed on Enter or on losing focus, never per keystroke: the shelves are rebuilt
+	whenever the state changes, and a rebuild mid-edit would take the caret with it.
+	"""
+	if source in (PALETTE, FILTERS) or field.name not in catalog.ORDERED_COLUMNS:
+		return []
+
+	return [
+		dmc.MenuDivider(),
+		dmc.MenuLabel(f"Group {field.label} into blocks"),
+		dmc.TextInput(
+			id={"type": "chip-bin", "field": field.name},
+			value=spec or "",
+			placeholder=figure.BIN_HINT,
+			description="both ends included; empty for one group per value",
+			debounce=True,
+			autoComplete="off",
+			className="deh-field deh-bin-field",
+			classNames={"input": "deh-input"},
+		),
+	]
+
+
+def _chip(
+	field: catalog.Field, source: str, plot: figure.PlotType, spec: str | None = None
+) -> html.Div:
 	remove = (
 		None
 		if source == PALETTE
@@ -277,7 +350,11 @@ def _chip(field: catalog.Field, source: str, plot: figure.PlotType) -> html.Div:
 			[
 				dmc.MenuTarget(html.Span(field.label, className="deh-fchip-label")),
 				dmc.MenuDropdown(
-					[dmc.MenuLabel(f"Send {field.label} to"), *_send_to_items(field, source, plot)]
+					[
+						dmc.MenuLabel(f"Send {field.label} to"),
+						*_send_to_items(field, source, plot),
+						*_bin_items(field, source, spec),
+					]
 				),
 			],
 			classNames={"dropdown": "deh-menu"},
@@ -297,8 +374,8 @@ def _chip(field: catalog.Field, source: str, plot: figure.PlotType) -> html.Div:
 	)
 
 
-def _palette_children(fields: list[catalog.Field], state: dict, search: str) -> list:
-	plot = figure.plot_type(state["kind"])
+def _palette_children(fields: list[catalog.Field], kind: str, search: str) -> list:
+	plot = figure.plot_type(kind)
 	legend = html.Div(
 		[
 			html.Span([html.I(style={"--k": "var(--k-measure)"}), "measure"]),
@@ -338,6 +415,7 @@ def _palette_children(fields: list[catalog.Field], state: dict, search: str) -> 
 
 def _shelves_children(fields: list[catalog.Field], state: dict) -> list:
 	by_name = {item.name: item for item in fields}
+	bins = state.get("bins", {})
 	plot = figure.plot_type(state["kind"])
 	blocks = []
 	for channel in plot.channels:
@@ -345,9 +423,9 @@ def _shelves_children(fields: list[catalog.Field], state: dict) -> list:
 		required = channel in plot.required
 		accepts = " ".join(sorted(figure.ACCEPTS.get(channel, {"dimension", "time", "measure"})))
 		hint = "groups, not drawn" if channel == figure.DETAIL else "drop here"
-		body = [_chip(by_name[name], channel, plot) for name in held if name in by_name] or [
-			html.Span(hint, className="deh-shelf-hint")
-		]
+		body = [
+			_chip(by_name[name], channel, plot, bins.get(name)) for name in held if name in by_name
+		] or [html.Span(hint, className="deh-shelf-hint")]
 		name_label: list = [figure.LABELS.get(channel, channel)]
 		if required:
 			name_label.append(html.I("*", title="Required"))
@@ -409,6 +487,8 @@ def _filter_block(
 				id={"type": "filter-range", "field": name},
 				min=int(lo),
 				max=int(hi),
+				step=1,
+				minRange=0,
 				value=[value.get("lo", lo), value.get("hi", hi)],
 			)
 		body = html.Div([mode_row, control])
@@ -418,6 +498,8 @@ def _filter_block(
 			id={"type": "filter-range", "field": name},
 			min=lo,
 			max=hi,
+			step=(hi - lo) / 100 or 1,
+			minRange=0,
 			value=[value.get("lo", lo), value.get("hi", hi)],
 		)
 
@@ -505,7 +587,7 @@ def _slot_preset_card(
 		**{"aria-pressed": "true" if active else "false"},  # ty: ignore[invalid-argument-type]
 	)
 	return dmc.Menu(
-		[dmc.MenuTarget(trigger), dmc.MenuDropdown([dmc.MenuLabel(preset.slot_label), *items])],
+		[dmc.MenuTarget(trigger), dmc.MenuDropdown([dmc.MenuLabel("Which event?"), *items])],
 		classNames={"dropdown": "deh-menu"},
 	)
 
@@ -523,7 +605,7 @@ def _presets_children(
 	cards: list = []
 	counts = None
 	for preset in presets_mod.BUILTINS:
-		if preset.slot_key:
+		if preset.needs_event:
 			choices = services.event_names(project)
 			if not choices:
 				continue
@@ -574,27 +656,67 @@ def _alerts_children(note_texts: list[str]) -> list:
 	]
 
 
-def _graph_children(
-	frame: pl.LazyFrame,
-	fields: list[catalog.Field],
-	state: dict,
-	last_preset: dict | None,
-	theme: str,
-):
-	fig, note_texts = figure.build_figure(frame, _plain_state(state), fields)
-	fig.update_layout(template=theme or "light", margin={"t": 30})
-
+def _graph_title(state: dict, last_preset: dict | None) -> tuple[list, bool]:
+	"""The graph card's title children, and whether Reset has nothing to reset to."""
 	modified = last_preset is None or state != last_preset.get("state")
 	title = last_preset["name"] if last_preset else "Untitled plot"
 	head_label = [html.B(title)]
 	if modified:
 		tail = " · not saved as a preset" if last_preset is None else " (edited)"
 		head_label.append(html.Span(tail, className="deh-sub"))
+	return head_label, last_preset is None
 
-	head = html.Div(
+
+def _format_props(state: dict, auto: dict) -> dict[str, dict]:
+	"""Props for each Format field: its live override, and what empty falls back to.
+
+	``auto`` is what ``builder-auto-titles`` holds: the automatic titles, plus how many
+	categories the figure colours, which a palette must have colours enough for.
+	"""
+	live = figure.live_format(state.get("format", {}), auto)
+	cmin, cmax = live.get("cmin"), live.get("cmax")
+	inverted = cmin is not None and cmax is not None and cmin >= cmax
+	needed = auto["categories"]
+	picked = PALETTES.get(live.get("palette"), [])
+	props = {}
+	for key, bind in figure.FORMAT_BINDS.items():
+		element = auto[bind]
+		if key in ("cmin", "cmax"):
+			placeholder = "Auto"
+		elif key in _SELECTS:
+			placeholder = "Default"
+		else:
+			placeholder = element or ("No title" if element == "" else "Not on this plot")
+		props[key] = {
+			"value": live.get(key, None if key in _SELECTS else ""),
+			"placeholder": placeholder,
+			"disabled": element is None,
+			"error": None,
+		}
+	if inverted:
+		props["cmax"]["error"] = "Must be above min"
+	if 0 < len(picked) < needed:
+		props["palette"]["error"] = f"{len(picked)} colours for {needed} categories"
+	props["palette"]["data"] = [
+		{"value": name, "label": f"{name} · {len(colors)}", "disabled": len(colors) < needed}
+		for name, colors in PALETTES.items()
+	]
+	return props
+
+
+def _graph_head(title_children: list, reset_disabled: bool) -> html.Div:
+	"""The graph card's head: built once by ``_dashboard`` and never remounted.
+
+	``_render`` updates ``builder-graph-title``/``builder-reset`` in place instead of
+	replacing this whole block - Dash treats a remounted component as new, so a button
+	here remounting on every state change fired its own callback with no real click
+	behind it (the export dialog used to pop open on any edit).
+	"""
+	return html.Div(
 		[
 			html.Div(
-				head_label,
+				title_children,
+				id="builder-graph-title",
 				style={
 					"display": "flex",
 					"flex": "1",
@@ -607,13 +729,19 @@ def _graph_children(
 				[icon("refresh", size=14), "Reset"],
 				id="builder-reset",
 				className="deh-btn deh-btn-ghost sm",
-				disabled=last_preset is None,
+				disabled=reset_disabled,
 				title="Back to the last preset you loaded",
 			),
 			html.Button(
 				[icon("bookmark-plus", size=15), "Save preset"],
 				id="builder-save-head",
 				className="deh-btn deh-btn-ghost sm",
+			),
+			html.Button(
+				icon("adjustments-horizontal", size=15),
+				id="builder-format",
+				className="deh-icon-btn sm",
+				title="Format this plot",
 			),
 			html.Button(
 				icon("download", size=15),
@@ -624,13 +752,27 @@ def _graph_children(
 		],
 		className="deh-graph-head",
 	)
-	graph = dcc.Graph(
-		id="builder-graph",
-		figure=fig,
-		config={"displayModeBar": False, "responsive": True},
-		style={"height": "420px"},
+
+
+def _graph_children(
+	frame: pl.LazyFrame,
+	fields: list[catalog.Field],
+	state: dict,
+	theme: str,
+):
+	fig, note_texts = figure.build_figure(frame, _plain_state(state), fields)
+	auto = {
+		**figure.apply_format(fig, state.get("format", {})),
+		"categories": len(fig.layout.colorway or ()),
+	}
+	# The top margin keeps room for a title set through Format.
+	fig.update_layout(
+		template=theme or "light",
+		margin={"t": 48},
+		title={"x": 0, "xref": "paper", "xanchor": "left"},
 	)
-	return [head, graph], note_texts
+
+	return fig, note_texts, auto
 
 
 def _status_text(project, frame: pl.LazyFrame) -> str:
@@ -645,7 +787,27 @@ def _status_text(project, frame: pl.LazyFrame) -> str:
 def _dashboard(
 	project, location, frame, fields, state, last_preset, saved_local, theme, search=""
 ) -> html.Div:
-	graph_children, note_texts = _graph_children(frame, fields, state, last_preset, theme)
+	fig, note_texts, auto = _graph_children(frame, fields, state, theme)
+	title_children, reset_disabled = _graph_title(state, last_preset)
+	graph_card = html.Div(
+		[
+			dcc.Store(id="builder-auto-titles", data=auto),
+			components.format_dialog(
+				"builder",
+				"Empty means automatic. Saved with the preset.",
+				_format_props(state, auto),
+			),
+			_graph_head(title_children, reset_disabled),
+			dcc.Graph(
+				id="builder-graph",
+				figure=fig,
+				config={"displayModeBar": False, "responsive": True},
+				style={"height": "420px"},
+			),
+		],
+		id="builder-graph-card",
+		className="deh-graph-card",
+	)
 	return html.Div(
 		[
 			html.Div(
@@ -683,7 +845,8 @@ def _dashboard(
 								style={"width": "100%", "height": "34px"},
 							),
 							html.Div(
-								_palette_children(fields, state, search), id="builder-palette"
+								_palette_children(fields, state["kind"], search),
+								id="builder-palette",
 							),
 						],
 						className="deh-rail deh-palette",
@@ -697,9 +860,7 @@ def _dashboard(
 								className="deh-shelves",
 							),
 							html.Div(_alerts_children(note_texts), id="builder-alerts"),
-							html.Div(
-								graph_children, id="builder-graph-card", className="deh-graph-card"
-							),
+							graph_card,
 						],
 						className="deh-canvas",
 					),
@@ -716,16 +877,14 @@ def _dashboard(
 	)
 
 
-# ------------------------------------------------------------------------- callbacks
-
-
 @callback(
 	Output("builder-body", "children"),
 	Output("builder-project", "data"),
 	Output("builder-state", "data", allow_duplicate=True),
 	Output("builder-last-preset", "data", allow_duplicate=True),
+	Input("url", "pathname"),
 	Input("url", "search"),
-	State("theme-store", "data"),
+	State("plot-theme", "data"),
 	State("project-paths", "data"),
 	State("builder-project", "data"),
 	State("builder-state", "data"),
@@ -733,19 +892,30 @@ def _dashboard(
 	State("builder-presets-local", "data"),
 	prevent_initial_call="initial_duplicate",
 )
-def _resolve(search, theme, paths, current, current_state, last_preset, saved_local):
+def _resolve(pathname, search, theme, paths, current, current_state, last_preset, saved_local):
+	if pathname != PATH:
+		raise PreventUpdate
+
 	params = parse_qs((search or "").lstrip("?"))
 	pid = (params.get("project") or [None])[0]
 
 	if not pid:
 		message = "Open a project from Projects, then use its row menu to open it here."
-		return _placeholder(message), None, no_update, no_update
+		return components.placeholder(message), None, no_update, no_update
 
 	location = services.resolve_project(paths, pid)
 	if location is None:
 		message = "This project is not in your browser's saved list. Open it from Projects."
-		return _placeholder(message), None, no_update, no_update
+		return components.placeholder(message), None, no_update, no_update
 
+	table = Path(location) / Project.PROJECT_TABLE
+	# A string: nanosecond mtimes lose precision as JSON numbers in the browser.
+	opened = {
+		"location": location,
+		"stamp": str(table.stat().st_mtime_ns if table.is_file() else None),
+	}
+	if current_state and current == opened:
+		raise PreventUpdate
 	same_project = current and current.get("location") == location
 
 	try:
@@ -753,9 +923,9 @@ def _resolve(search, theme, paths, current, current_state, last_preset, saved_lo
 		frame, fields = services.builder_frame(location)
 	except FileNotFoundError as exc:
 		message = f"{exc} Generate it from this project's row menu on the Projects screen."
-		return _placeholder(message), {"location": location}, no_update, no_update
+		return components.placeholder(message), opened, None, no_update
 	except Exception as exc:
-		return _placeholder(f"{type(exc).__name__}: {exc}"), None, no_update, no_update
+		return components.placeholder(f"{type(exc).__name__}: {exc}"), None, no_update, no_update
 
 	if same_project and current_state:
 		state = current_state
@@ -764,37 +934,48 @@ def _resolve(search, theme, paths, current, current_state, last_preset, saved_lo
 		last_preset = None
 
 	body = _dashboard(project, location, frame, fields, state, last_preset, saved_local, theme)
-	return body, {"location": location}, state, last_preset
+	return body, opened, state, last_preset
+
+
+clientside_callback(
+	ClientsideFunction("deh", "builderKind"),
+	Output("builder-kind", "data"),
+	Input("builder-state", "data"),
+	State("builder-kind", "data"),
+	prevent_initial_call=True,
+)
 
 
 @callback(
 	Output("builder-palette", "children"),
 	Input("builder-search", "value"),
-	Input("builder-state", "data"),
+	Input("builder-kind", "data"),
 	State("builder-project", "data"),
 	prevent_initial_call=True,
 )
-def _render_palette(search, state, project_data):
-	if not project_data or not state:
+def _render_palette(search, kind, project_data):
+	if not project_data or not kind:
 		raise PreventUpdate
 	try:
 		_frame, fields = services.builder_frame(project_data["location"])
 	except FileNotFoundError:
 		raise PreventUpdate from None
-	return _palette_children(fields, state, search)
+	return _palette_children(fields, kind, search)
 
 
 @callback(
 	Output("builder-shelves", "children"),
 	Output("builder-filters", "children"),
 	Output("builder-alerts", "children"),
-	Output("builder-graph-card", "children"),
+	Output("builder-graph-title", "children"),
+	Output("builder-reset", "disabled"),
+	Output("builder-graph", "figure"),
 	Output("builder-presets", "children"),
 	Output("builder-types", "children"),
 	Output("builder-mode-row", "children"),
-	Output("builder-status", "children"),
+	Output("builder-auto-titles", "data"),
 	Input("builder-state", "data"),
-	Input("theme-store", "data"),
+	Input("plot-theme", "data"),
 	Input("builder-presets-bump", "data"),
 	State("builder-project", "data"),
 	State("builder-presets-local", "data"),
@@ -811,23 +992,62 @@ def _render(state, theme, _bump, project_data, saved_local, last_preset):
 	except FileNotFoundError:
 		raise PreventUpdate from None
 
-	graph_children, note_texts = _graph_children(frame, fields, state, last_preset, theme)
+	fig, note_texts, auto = _graph_children(frame, fields, state, theme)
+	title_children, reset_disabled = _graph_title(state, last_preset)
 	return (
 		_shelves_children(fields, state),
 		_filters_children(frame, fields, state),
 		_alerts_children(note_texts),
-		graph_children,
+		title_children,
+		reset_disabled,
+		fig,
 		_presets_children(project, location, state, last_preset, saved_local),
 		_types_children(state),
 		_mode_children(state),
-		_status_text(project, frame),
+		auto,
 	)
 
 
 @callback(
-	Output("builder-state", "data"),
-	Output("builder-last-preset", "data"),
-	Input("dnd-event", "data"),
+	Output("builder-format-modal", "opened"),
+	Input("builder-format", "n_clicks"),
+	prevent_initial_call=True,
+)
+def _open_format(clicks):
+	if not clicks:
+		raise PreventUpdate
+	return True
+
+
+@callback(
+	Output({"type": "builder-fmt", "key": ALL}, "placeholder"),
+	Output({"type": "builder-fmt", "key": ALL}, "disabled"),
+	Output({"type": "builder-fmt", "key": ALL}, "error"),
+	Output({"type": "builder-fmt", "key": "palette"}, "data"),
+	Input("builder-auto-titles", "data"),
+	State("builder-state", "data"),
+	State({"type": "builder-fmt", "key": ALL}, "value"),
+	prevent_initial_call=True,
+)
+def _render_format(auto, state, _values):
+	"""Refill the Format form in place: remounting it would drop focus mid-edit."""
+	if not auto or not state:
+		raise PreventUpdate
+	props = _format_props(state, auto)
+	# Values are set, not declared as outputs: they are _reduce's inputs, so an output
+	# here would close a loop through builder-state that Dash refuses to register.
+	for field in ctx.states_list[1]:
+		value = props[field["id"]["key"]]["value"]
+		if field.get("value") != value:
+			set_props(field["id"], {"value": value})
+	keys = [output["id"]["key"] for output in ctx.outputs_list[0]]
+	columns = ([props[key][prop] for key in keys] for prop in ("placeholder", "disabled", "error"))
+	return *columns, props["palette"]["data"]
+
+
+clientside_callback(
+	ClientsideFunction("deh", "clickEvent"),
+	Output("builder-action", "data"),
 	Input({"type": "chip-x", "shelf": ALL, "field": ALL}, "n_clicks"),
 	Input({"type": "chip-send", "field": ALL, "from": ALL, "to": ALL}, "n_clicks"),
 	Input({"type": "builder-kind", "kind": ALL}, "n_clicks"),
@@ -836,34 +1056,58 @@ def _render(state, theme, _bump, project_data, saved_local, last_preset):
 	Input("builder-reset", "n_clicks"),
 	Input({"type": "preset-pick", "id": ALL}, "n_clicks"),
 	Input({"type": "preset-slot", "id": ALL, "choice": ALL}, "n_clicks"),
+	Input({"type": "filter-mode", "field": ALL, "mode": ALL}, "n_clicks"),
+	prevent_initial_call=True,
+)
+
+clientside_callback(
+	ClientsideFunction("deh", "clickEvent"),
+	Output("preset-delete-event", "data"),
+	Input({"type": "preset-delete", "id": ALL, "scope": ALL}, "n_clicks"),
+	prevent_initial_call=True,
+)
+
+clientside_callback(
+	ClientsideFunction("deh", "clickEvent"),
+	Output("builder-save-strip-event", "data"),
+	Input("builder-save-strip", "n_clicks"),
+	prevent_initial_call=True,
+)
+
+
+@callback(
+	Output("builder-state", "data"),
+	Output("builder-last-preset", "data"),
+	Input("dnd-event", "data"),
+	Input("builder-action", "data"),
+	Input({"type": "chip-bin", "field": ALL}, "value"),
 	Input({"type": "filter-pick", "field": ALL}, "value"),
 	Input({"type": "filter-range", "field": ALL}, "value"),
-	Input({"type": "filter-mode", "field": ALL, "mode": ALL}, "n_clicks"),
+	Input({"type": "builder-fmt", "key": ALL}, "value"),
+	Input("builder-fmt-reset", "n_clicks"),
 	State("builder-state", "data"),
 	State("builder-project", "data"),
 	State("builder-last-preset", "data"),
 	State("builder-presets-local", "data"),
+	State("builder-auto-titles", "data"),
 	prevent_initial_call=True,
 )
 def _reduce(
 	event,
-	_chip_x,
-	_chip_send,
-	_kind_clicks,
-	_mode_clicks,
-	_clear,
-	_reset,
-	_preset_clicks,
-	_slot_clicks,
+	action,
+	_bin_specs,
 	_pick_values,
 	_range_values,
-	_mode_toggle,
+	_format_values,
+	_format_reset,
 	state,
 	project_data,
 	last_preset,
 	saved_local,
+	auto,
 ):
-	trigger = ctx.triggered_id
+	# A button click arrives as builder-action's id - the one Dash would have triggered.
+	trigger = action["id"] if ctx.triggered_id == "builder-action" else ctx.triggered_id
 	if trigger is None or not project_data or not state:
 		raise PreventUpdate
 
@@ -874,124 +1118,125 @@ def _reduce(
 		raise PreventUpdate from None
 	by_name = {item.name: item for item in fields}
 	state = copy.deepcopy(state)
+	_drop_unshelved_bins(state)
 
-	if trigger == "builder-clear":
-		if not ctx.triggered[0]["value"]:
-			raise PreventUpdate
-		state["channels"] = {}
-		return state, no_update
+	match trigger:
+		case "builder-clear":
+			state["channels"] = {}
+			return state, no_update
 
-	if trigger == "builder-reset":
-		if not ctx.triggered[0]["value"] or not last_preset:
-			raise PreventUpdate
-		return copy.deepcopy(last_preset["state"]), no_update
+		case {"type": "builder-fmt", "key": key}:
+			return _set_format(state, key, ctx.triggered[0]["value"], auto), no_update
 
-	if isinstance(trigger, dict) and trigger.get("type") == "builder-kind":
-		if not ctx.triggered[0]["value"]:
-			raise PreventUpdate
-		state["kind"] = trigger["kind"]
-		state, _dropped = figure.prune(state, figure.plot_type(state["kind"]).channels)
-		state = figure.seed_detail(state, fields)
-		return state, no_update
-
-	if isinstance(trigger, dict) and trigger.get("type") == "builder-mode":
-		if not ctx.triggered[0]["value"]:
-			raise PreventUpdate
-		state["measure_as"] = trigger["mode"]
-		return state, no_update
-
-	if isinstance(trigger, dict) and trigger.get("type") == "chip-x":
-		if not ctx.triggered[0]["value"]:
-			raise PreventUpdate
-		shelf, field_name = trigger["shelf"], trigger["field"]
-		if shelf == FILTERS:
-			state["filters"].pop(field_name, None)
-		else:
-			held = state["channels"].get(shelf, [])
-			state["channels"][shelf] = [name for name in held if name != field_name]
-		return state, no_update
-
-	if isinstance(trigger, dict) and trigger.get("type") == "chip-send":
-		if not ctx.triggered[0]["value"]:
-			raise PreventUpdate
-		state = _apply_move(state, by_name, frame, trigger["field"], trigger["from"], trigger["to"])
-		return state, no_update
-
-	if trigger == "dnd-event":
-		if not event:
-			raise PreventUpdate
-		state = _apply_move(
-			state, by_name, frame, event["field"], event.get("from") or PALETTE, event["shelf"]
-		)
-		return state, no_update
-
-	if isinstance(trigger, dict) and trigger.get("type") == "preset-pick":
-		if not ctx.triggered[0]["value"]:
-			raise PreventUpdate
-		pid = trigger["id"]
-		preset = presets_mod.BY_ID.get(pid)
-		project = services.load_project(location)
-		if preset is not None:
-			resolved = presets_mod.resolve(preset, project)
-			entry = {"id": preset.id, "name": preset.name, "state": resolved}
-		else:
-			saved = next(
-				(
-					item
-					for item in [*(saved_local or []), *services.load_saved_presets(location)]
-					if item["id"] == pid
-				),
-				None,
-			)
-			if saved is None:
+		case "builder-fmt-reset":
+			if not ctx.triggered[0]["value"] or "format" not in state:
 				raise PreventUpdate
-			entry = {"id": saved["id"], "name": saved["name"], "state": saved["state"]}
-		return copy.deepcopy(entry["state"]), entry
+			del state["format"]
+			return state, no_update
 
-	if isinstance(trigger, dict) and trigger.get("type") == "preset-slot":
-		if not ctx.triggered[0]["value"]:
-			raise PreventUpdate
-		preset = presets_mod.BY_ID.get(trigger["id"])
-		if preset is None:
-			raise PreventUpdate
-		project = services.load_project(location)
-		choice = trigger["choice"]
-		resolved = presets_mod.resolve(preset, project, choice)
-		entry = {"id": preset.id, "name": f"{preset.name}: {choice}", "state": resolved}
-		return copy.deepcopy(resolved), entry
+		case "builder-reset":
+			if not last_preset:
+				raise PreventUpdate
+			return copy.deepcopy(last_preset["state"]), no_update
 
-	if isinstance(trigger, dict) and trigger.get("type") == "filter-mode":
-		if not ctx.triggered[0]["value"]:
-			raise PreventUpdate
-		name, mode = trigger["field"], trigger["mode"]
-		if state["filters"].get(name, {}).get("mode") == mode:
-			raise PreventUpdate
-		if mode == "pick":
-			state["filters"][name] = {"mode": "pick", "values": []}
-		else:
-			lo, hi = catalog.value_range(frame, name)
-			state["filters"][name] = {"mode": "range", "lo": lo, "hi": hi}
-		return state, no_update
+		case {"type": "builder-kind", "kind": kind}:
+			state["kind"] = kind
+			state, _dropped = figure.prune(state, figure.plot_type(kind).channels)
+			return figure.seed_detail(state, fields), no_update
 
-	if isinstance(trigger, dict) and trigger.get("type") == "filter-pick":
-		name = trigger["field"]
-		current = state["filters"].get(name, {}).get("values", [])
-		new_values = ctx.triggered[0]["value"] or []
-		if list(new_values) == list(current):
-			raise PreventUpdate
-		state["filters"][name] = {"mode": "pick", "values": list(new_values)}
-		return state, no_update
+		case {"type": "builder-mode", "mode": mode}:
+			state["measure_as"] = mode
+			return state, no_update
 
-	if isinstance(trigger, dict) and trigger.get("type") == "filter-range":
-		name = trigger["field"]
-		entry = state["filters"].get(name, {})
-		new_value = ctx.triggered[0]["value"]
-		if not new_value or [entry.get("lo"), entry.get("hi")] == list(new_value):
-			raise PreventUpdate
-		state["filters"][name] = {"mode": "range", "lo": new_value[0], "hi": new_value[1]}
-		return state, no_update
+		case {"type": "chip-x", "shelf": shelf, "field": name}:
+			if shelf == FILTERS:
+				state["filters"].pop(name, None)
+			else:
+				held = state["channels"].get(shelf, [])
+				state["channels"][shelf] = [held_name for held_name in held if held_name != name]
+			return state, no_update
 
-	raise PreventUpdate
+		case {"type": "chip-bin", "field": name}:
+			text = (ctx.triggered[0]["value"] or "").strip()
+			bins = state.setdefault("bins", {})
+			if bins.get(name, "") == text:
+				raise PreventUpdate
+			if text:
+				bins[name] = text
+			else:
+				bins.pop(name, None)
+			return state, no_update
+
+		case {"type": "chip-send", "field": name, "from": source, "to": target}:
+			return _apply_move(state, by_name, frame, name, source, target), no_update
+
+		case "dnd-event":
+			if not event:
+				raise PreventUpdate
+			moved = _apply_move(
+				state, by_name, frame, event["field"], event.get("from") or PALETTE, event["shelf"]
+			)
+			return moved, no_update
+
+		case {"type": "preset-pick", "id": pid}:
+			preset = presets_mod.BY_ID.get(pid)
+			project = services.load_project(location)
+			if preset is not None:
+				entry = {
+					"id": preset.id,
+					"name": preset.name,
+					"state": presets_mod.resolve(preset, project),
+				}
+			else:
+				saved = next(
+					(
+						item
+						for item in [*(saved_local or []), *services.load_saved_presets(location)]
+						if item["id"] == pid
+					),
+					None,
+				)
+				if saved is None:
+					raise PreventUpdate
+				entry = {"id": saved["id"], "name": saved["name"], "state": saved["state"]}
+			return copy.deepcopy(entry["state"]), entry
+
+		case {"type": "preset-slot", "id": pid, "choice": choice}:
+			preset = presets_mod.BY_ID.get(pid)
+			if preset is None:
+				raise PreventUpdate
+			resolved = presets_mod.resolve(preset, services.load_project(location), choice)
+			entry = {"id": preset.id, "name": f"{preset.name}: {choice}", "state": resolved}
+			return copy.deepcopy(resolved), entry
+
+		case {"type": "filter-mode", "field": name, "mode": mode}:
+			if state["filters"].get(name, {}).get("mode") == mode:
+				raise PreventUpdate
+			if mode == "pick":
+				state["filters"][name] = {"mode": "pick", "values": []}
+			else:
+				lo, hi = catalog.value_range(frame, name)
+				state["filters"][name] = {"mode": "range", "lo": lo, "hi": hi}
+			return state, no_update
+
+		case {"type": "filter-pick", "field": name}:
+			current = state["filters"].get(name, {}).get("values", [])
+			new_values = ctx.triggered[0]["value"] or []
+			if list(new_values) == list(current):
+				raise PreventUpdate
+			state["filters"][name] = {"mode": "pick", "values": list(new_values)}
+			return state, no_update
+
+		case {"type": "filter-range", "field": name}:
+			entry = state["filters"].get(name, {})
+			new_value = ctx.triggered[0]["value"]
+			if not new_value or [entry.get("lo"), entry.get("hi")] == list(new_value):
+				raise PreventUpdate
+			state["filters"][name] = {"mode": "range", "lo": new_value[0], "hi": new_value[1]}
+			return state, no_update
+
+		case _:
+			raise PreventUpdate
 
 
 @callback(
@@ -1002,7 +1247,7 @@ def _reduce(
 	Output("builder-presets-local", "data"),
 	Output("builder-presets-bump", "data"),
 	Input("builder-save-head", "n_clicks"),
-	Input("builder-save-strip", "n_clicks"),
+	Input("builder-save-strip-event", "data"),
 	Input("preset-save-cancel", "n_clicks"),
 	Input("preset-save-submit", "n_clicks"),
 	State("preset-save-name", "value"),
@@ -1031,7 +1276,7 @@ def _save_preset_modal(
 		raise PreventUpdate
 	trigger = ctx.triggered_id
 
-	if trigger in ("builder-save-head", "builder-save-strip"):
+	if trigger in ("builder-save-head", "builder-save-strip-event"):
 		return True, "", None, "", no_update, no_update
 	if trigger == "preset-save-cancel":
 		return False, no_update, None, no_update, no_update, no_update
@@ -1067,17 +1312,14 @@ def _save_preset_modal(
 @callback(
 	Output("builder-presets-local", "data", allow_duplicate=True),
 	Output("builder-presets-bump", "data", allow_duplicate=True),
-	Input({"type": "preset-delete", "id": ALL, "scope": ALL}, "n_clicks"),
+	Input("preset-delete-event", "data"),
 	State("builder-presets-local", "data"),
 	State("builder-project", "data"),
 	State("builder-presets-bump", "data"),
 	prevent_initial_call=True,
 )
-def _delete_preset(_clicks, saved_local, project_data, bump):
-	if not ctx.triggered[0]["value"]:
-		raise PreventUpdate
-	trigger = ctx.triggered_id
-	pid, scope = trigger["id"], trigger["scope"]
+def _delete_preset(event, saved_local, project_data, bump):
+	pid, scope = event["id"]["id"], event["id"]["scope"]
 
 	if scope == "project":
 		services.delete_saved_preset(project_data["location"], pid)
@@ -1099,9 +1341,11 @@ def _delete_preset(_clicks, saved_local, project_data, bump):
 	prevent_initial_call=True,
 )
 def _open_export(_clicks, fig, last_preset, project_data):
-	if not fig:
+	if not _clicks or not fig:
 		raise PreventUpdate
-	title = last_preset["name"] if last_preset else "Untitled plot"
+	title = (fig["layout"].get("title") or {}).get("text") or (
+		last_preset["name"] if last_preset else "Untitled plot"
+	)
 	project_name = services.load_project(project_data["location"]).project_name
 	filename = f"{project_name}__{title}".lower().replace(" ", "-")
 	return True, {"figure": fig, "title": title}, filename

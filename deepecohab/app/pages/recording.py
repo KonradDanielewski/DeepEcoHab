@@ -1,5 +1,3 @@
-"""Recording dashboard: per-recording plots, controls and downloads."""
-
 import datetime as dt
 from urllib.parse import parse_qs, quote, urlencode
 
@@ -8,10 +6,12 @@ import dash_mantine_components as dmc
 from dash import (
 	ALL,
 	MATCH,
+	ClientsideFunction,
 	Input,
 	Output,
 	State,
 	callback,
+	clientside_callback,
 	ctx,
 	dcc,
 	html,
@@ -19,19 +19,30 @@ from dash import (
 )
 from dash.exceptions import PreventUpdate
 
-from deepecohab.app import services
+from deepecohab.app import components, services
 from deepecohab.app.components import icon, notify
 from deepecohab.core.data_model import DataFrameRegistry
 from deepecohab.plotting import PlotContext, PlotRegistry, available_attributes
 from deepecohab.plotting.animals import resolve_colors
+from deepecohab.plotting.theme import COLORSCALES, PALETTES
+
+PATH = "/recording"
 
 dash.register_page(
-	__name__, path="/recording", name="Recording dashboard", order=1, icon="layout-dashboard"
+	__name__, path=PATH, name="Recording dashboard", order=1, icon="layout-dashboard"
 )
 
-PHASES = ["light_phase", "dark_phase"]
+PHASES = ("light_phase", "dark_phase")
 #: Driven by the control bar rather than a per-card control.
-_GLOBAL_OPTIONS = {"days_range", "granularity", "phase_type", "color_by", "order_by", "hours_range"}
+_GLOBAL_OPTIONS = {
+	"days_range",
+	"granularity",
+	"phase_type",
+	"color_by",
+	"order_by",
+	"hours_range",
+	"group_mean",
+}
 _OPTION_LABELS = {"agg": "Aggregate"}
 #: (id, label, cells); a cell is (plot, column span of 12, height px[, grid rows]).
 #: "cohort" and "quality-summary" are computed cards, not registered plots.
@@ -53,6 +64,7 @@ _SECTIONS = [
 			("quality-summary", 12, 0),
 			("quality-antenna", 7, 430),
 			("quality-heatmap", 5, 430),
+			("quality-missing", 12, 0),
 		],
 	),
 	(
@@ -62,8 +74,7 @@ _SECTIONS = [
 			("recording-timeline", 12, 340),
 			("activity-line", 8, 340),
 			("cage-preference", 4, 340),
-			("activity-bar", 6, 320),
-			("time-alone-bar", 6, 320),
+			("activity-bar", 12, 320),
 			("time-per-cage-heatmap", 7, 660),
 			("cage-preference-evolution", 5, 660),
 		],
@@ -72,10 +83,11 @@ _SECTIONS = [
 		"social",
 		"Social",
 		[
-			("sociability-heatmap", 6, 548),
-			("cohort-heatmap", 6, 548),
-			("network-sociability", 6, 548),
-			("social-stability", 6, 548),
+			("sociability-heatmap", 6, 880, 2),
+			("network-sociability", 6, 384),
+			("cohort-heatmap", 6, 384),
+			("time-alone-bar", 8, 384),
+			("social-stability", 4, 384),
 		],
 	),
 	(
@@ -83,8 +95,8 @@ _SECTIONS = [
 		"Dominance",
 		[
 			("ranking-line", 12, 360),
-			("ranking-distribution-line", 6, 548),
-			("chasings-line", 6, 548),
+			("ranking-distribution-line", 6, 360),
+			("chasings-line", 6, 360),
 			("network-dominance", 6, 548),
 			("chasings-heatmap", 6, 548),
 		],
@@ -92,31 +104,33 @@ _SECTIONS = [
 ]
 _TAB_IDS = {section_id for section_id, *_ in _SECTIONS}
 
-_DIALOG_CLASSES = {
-	"content": "deh-dialog",
-	"header": "deh-dialog-head",
-	"title": "deh-dialog-title",
-	"body": "deh-dialog-content",
-}
 
 layout = html.Div(
 	[
 		dcc.Store(id="rec-context"),
 		dcc.Store(id="rec-controls"),
-		dcc.Store(id="rec-notes"),
-		dcc.Store(id="export-source"),
+		# rec-tabs is built into rec-body, so a callback that also takes an input from this
+		# static layout would be dispatched before it exists ("a nonexistent object was used
+		# in an Input"). switchTab mirrors the tab here, where plotRequest can always see it.
+		dcc.Store(id="rec-tab"),
+		# What the cohort cards were drawn for: _dashboard bakes them for animal_id.
+		dcc.Store(id="rec-color-by", data="animal_id"),
+		dcc.Store(id="notes-target"),
+		dcc.Store(id="rec-format", storage_type="session"),
+		dcc.Store(id="rec-format-target"),
+		dcc.Store(id="rec-colors", data={"colorscale": COLORSCALES, "palette": PALETTES}),
+		components.format_dialog(
+			"rec", "Empty means automatic. Applies to this plot on every recording."
+		),
 		html.Div(id="rec-body"),
 		dmc.Modal(
 			id="fullscreen-modal",
 			title="",
 			fullScreen=True,
-			classNames={
-				"content": "deh-dialog",
-				"header": "deh-dialog-head",
-				"title": "deh-dialog-title",
-			},
+			classNames=components.DIALOG_CLASSES,
 			children=dcc.Graph(
 				id="fullscreen-plot",
+				figure=components.EMPTY_FIGURE,
 				config={"displayModeBar": False},
 				style={"height": "calc(100vh - 120px)"},
 			),
@@ -125,7 +139,7 @@ layout = html.Div(
 			id="notes-modal",
 			title="Notes",
 			size=520,
-			classNames=_DIALOG_CLASSES,
+			classNames=components.DIALOG_CLASSES,
 			children=[
 				html.Div(
 					dmc.Textarea(
@@ -146,27 +160,12 @@ layout = html.Div(
 				),
 			],
 		),
-		dmc.Modal(
-			id="animal-modal",
-			title="",
-			size=420,
-			classNames=_DIALOG_CLASSES,
-			children=html.Div(id="animal-modal-body", className="deh-dialog-body"),
-		),
 	]
 )
 
 
 def _human(value: str) -> str:
 	return str(value).replace("_", " ")
-
-
-def _placeholder(message: str) -> html.Div:
-	return html.Div(
-		[icon("info-circle", size=20), html.P(message)],
-		className="deh-alert deh-alert-info",
-		style={"maxWidth": "560px", "margin": "48px auto"},
-	)
 
 
 def _reads(tables: tuple[str, ...]) -> list:
@@ -176,10 +175,6 @@ def _reads(tables: tuple[str, ...]) -> list:
 			children.append(" ")
 		children.append(html.Code(table))
 	return children
-
-
-def _available_attributes(context: PlotContext) -> list[str]:
-	return available_attributes(context) if "animals" in context else ["animal_id"]
 
 
 def _quality_badge(miss: float) -> html.Span:
@@ -239,47 +234,6 @@ def _meta_strip(summary: dict) -> list:
 	return items
 
 
-def _download_menu(pid: str, name: str, tables: list[str]) -> dmc.Menu:
-	base = f"/download/recording/{pid}/{quote(name, safe='')}"
-	files = [
-		("file-zip", "All analysis tables · parquet", f"{base}/tables.zip"),
-		("file-zip", "All analysis tables · CSV", f"{base}/tables.zip?format=csv"),
-		("paw", "Cohort · CSV", f"{base}/cohort.csv"),
-		("file-description", "Recording config · JSON", f"{base}/config.json"),
-		("database", "Raw registrations · parquet", f"{base}/raw.parquet"),
-	]
-	return dmc.Menu(
-		[
-			dmc.MenuTarget(
-				html.Button([icon("download", size=16), "Download"], className="deh-btn sm")
-			),
-			dmc.MenuDropdown(
-				[
-					dmc.MenuLabel(name),
-					*(
-						dmc.MenuItem(
-							label, leftSection=icon(icon_name, size=16), href=href, target="_blank"
-						)
-						for icon_name, label, href in files
-					),
-					*([dmc.MenuDivider(), dmc.MenuLabel("One table · parquet")] if tables else []),
-					*(
-						dmc.MenuItem(
-							html.Code(table),
-							leftSection=icon("table", size=16),
-							href=f"{base}/table/{table}.parquet",
-							target="_blank",
-						)
-						for table in tables
-					),
-				]
-			),
-		],
-		position="bottom-end",
-		classNames={"dropdown": "deh-menu deh-menu-scroll"},
-	)
-
-
 def _window_marks(lo: int, hi: int) -> list[dmc.RangeSlider.Marks]:
 	step = 2 if hi - lo + 1 > 12 else 1
 	return [
@@ -297,19 +251,13 @@ def _hours_marks(summary: dict) -> list[dmc.RangeSlider.Marks]:
 	return [{"value": hour, "label": _clock(summary, hour)} for hour in (0, 6, 12, 18, 23)]
 
 
-def _cohort_rows(context: PlotContext, color_by: str):
-	mapping = resolve_colors(context, color_by)
-	animals = context.animals.sort("animal_id")
-	return mapping, animals
-
-
 def _cohort_widgets(context: PlotContext, color_by: str) -> tuple[list, html.Div]:
 	"""The cohort popover trigger's children and the popover body, for one colour attribute."""
 	if "animals" not in context:
 		empty = html.Div(html.P("Needs the animals table.", className="deh-sub"))
 		return [f"Cohort · {len(context.animal_ids)}"], empty
 
-	mapping, animals = _cohort_rows(context, color_by)
+	mapping, animals = resolve_colors(context, color_by), context.animals.sort("animal_id")
 	strip = html.Span(
 		[html.I(style={"background": mapping.by_animal[tag]}) for tag in context.animal_ids],
 		className="deh-mini-strip",
@@ -334,7 +282,7 @@ def _cohort_widgets(context: PlotContext, color_by: str) -> tuple[list, html.Div
 			id={"type": "animal-row", "scope": "popover", "tag": row["animal_id"]},
 			n_clicks=0,
 			style={"cursor": "pointer"},
-			title="View notes",
+			title="Edit notes",
 		)
 		for row in animals.iter_rows(named=True)
 	]
@@ -375,14 +323,26 @@ def _card_frame(
 	return html.Article(children, className="deh-card", **attrs)  # ty: ignore[invalid-argument-type]
 
 
-def _plot_card(name: str, context: PlotContext, height: int) -> list:
+def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 	spec = PlotRegistry.spec(name)
 	header = html.Div(
 		[
-			html.Div([html.H3(spec.title), html.P(spec.summary)], className="deh-card-titles"),
+			html.Div(
+				[
+					html.H3(spec.title, id={"type": "card-title", "plot": name}),
+					html.P(spec.summary),
+				],
+				className="deh-card-titles",
+			),
 			html.Span(id={"type": "badge", "plot": name}, className="deh-card-badge"),
 			html.Div(
 				[
+					html.Button(
+						icon("adjustments-horizontal", size=15),
+						id={"type": "card-format", "plot": name},
+						className="deh-icon-btn sm",
+						title=f"Format {spec.title}",
+					),
 					html.Button(
 						icon("download", size=16),
 						id={"type": "card-export", "plot": name},
@@ -424,10 +384,11 @@ def _plot_card(name: str, context: PlotContext, height: int) -> list:
 		html.Div([_option_control(name, option) for option in options], className="deh-card-opts")
 		if options
 		else None,
+		dcc.Store(id={"type": "plot-req", "plot": name}, data={"tab": tab}),
 		dcc.Loading(
 			dcc.Graph(
 				id={"type": "plot", "plot": name},
-				figure={},
+				figure=components.EMPTY_FIGURE,
 				config={"displayModeBar": False, "responsive": True},
 				className="deh-plot",
 				style={"height": f"{height}px"} if height else {},
@@ -464,30 +425,42 @@ def _quality_summary_children(context: PlotContext) -> list:
 		)
 		return [header, body]
 
-	q = services.quality_summary(context)
+	quality = services.quality_summary(context)
 	tiles = [
-		("Missed passes", f"{q['miss']:.2f}%", _quality_badge(q["miss"])),
+		("Missed passes", f"{quality['miss']:.2f}%", _quality_badge(quality["miss"])),
 		(
 			"Detections",
-			f"{q['detected']:,}",
-			html.Span(f"{q['missed']:,} missed", className="deh-sub"),
+			f"{quality['detected']:,}",
+			html.Span(f"{quality['missed']:,} missed", className="deh-sub"),
 		),
 		(
 			"Worst antenna",
-			f"Antenna {q['worst_antenna']['antenna']}",
-			html.Span(f"{q['worst_antenna']['miss']:.2f}% missed", className="deh-sub"),
+			f"Antenna {quality['worst_antenna']['antenna']}",
+			html.Span(f"{quality['worst_antenna']['miss']:.2f}% missed", className="deh-sub"),
 		),
 		(
 			"Worst animal",
-			q["worst_animal"]["animal_id"],
-			html.Span(f"{q['worst_animal']['miss']:.2f}% missed", className="deh-sub"),
+			quality["worst_animal"]["animal_id"],
+			html.Span(f"{quality['worst_animal']['miss']:.2f}% missed", className="deh-sub"),
 		),
 		(
 			"Animal x antenna pairs without a miss",
-			f"{q['clean_cells']} of {q['cells']}",
-			html.Span(f"{q['antennas']} antennas", className="deh-sub"),
+			f"{quality['clean_cells']} of {quality['cells']}",
+			html.Span(f"{quality['antennas']} antennas", className="deh-sub"),
 		),
 	]
+	if "activity_df" in context and "phase_durations" in context:
+		missing = services.missing_time(context)
+		worst = missing["rows"][0]
+		tiles.append(
+			(
+				"Position unknown",
+				f"{missing['mean_share']:.2f}%",
+				html.Span(
+					f"Worst: {worst['animal_id']} {worst['share']:.2f}%", className="deh-sub"
+				),
+			)
+		)
 	body = html.Div(
 		[
 			html.Div(
@@ -510,24 +483,98 @@ def _quality_summary_children(context: PlotContext) -> list:
 	return [header, body, note]
 
 
-def _card(cell: tuple, context: PlotContext, color_by: str) -> html.Article:
+def _quality_missing_children(context: PlotContext, color_by: str) -> list:
+	header = html.Div(
+		html.Div(
+			[
+				html.H3("Position unknown"),
+				html.P("Time each animal spent at a position antennas could not resolve."),
+			],
+			className="deh-card-titles",
+		),
+		className="deh-card-head",
+	)
+	needed = ("activity_df", "phase_durations")
+	missing = [table for table in needed if table not in context]
+	if missing:
+		body = html.Div(
+			[icon("database", size=22), html.Div(html.B(["Needs ", *_reads(tuple(missing))[1:]]))],
+			className="deh-missing-body",
+		)
+		return [header, body, html.Footer(_reads(needed), className="deh-card-foot")]
+
+	result = services.missing_time(context)
+	subjects = (
+		{row["animal_id"]: row["subject_name"] for row in context.animals.iter_rows(named=True)}
+		if "animals" in context
+		else {}
+	)
+	colors = resolve_colors(context, color_by).by_animal
+	rows = [
+		html.Tr(
+			[
+				html.Td(
+					html.Span(className="deh-dot", style={"background": colors[row["animal_id"]]})
+				),
+				html.Td(row["animal_id"], className="deh-mono"),
+				html.Td(subjects.get(row["animal_id"], "—")),
+				html.Td(row["time_in_position_text"]),
+				html.Td(f"{row['share']:.2f}%", className="num"),
+			]
+		)
+		for row in result["rows"]
+	]
+	rows.append(
+		html.Tr(
+			[
+				html.Td("Cohort mean", colSpan=4),
+				html.Td(f"{result['mean_share']:.2f}%", className="num"),
+			]
+		)
+	)
+	table = html.Table(
+		[
+			html.Thead(
+				html.Tr(
+					[
+						html.Th(""),
+						html.Th("Tag"),
+						html.Th("Subject"),
+						html.Th("Time unknown"),
+						html.Th("% of recording", className="num"),
+					]
+				)
+			),
+			html.Tbody(rows),
+		],
+		className="deh-tbl mini",
+	)
+	return [
+		header,
+		html.Div(table, className="deh-cohort-table"),
+		html.Footer(_reads(needed), className="deh-card-foot"),
+	]
+
+
+def _card(cell: tuple, context: PlotContext, color_by: str, tab: str) -> html.Article:
 	name, span, height, *rest = cell
 	rows = rest[0] if rest else 1
 	if name == "cohort":
-		# Baked in now rather than left for a reactive callback to fill on mount: a
-		# MATCH-only-Output callback (no pattern-matched Input of its own) does not
-		# reliably fire for a card that has never existed before, such as one behind an
-		# inactive Tabs(keepMounted=False) panel.
+		# Baked in now rather than left for a reactive callback to fill on mount, so the
+		# card is right from its first paint.
 		children = _cohort_card_children(context, color_by)
 		return _card_frame(children, span, rows, card_id="cohort-card")
 	if name == "quality-summary":
 		return _card_frame(_quality_summary_children(context), span, rows)
-	return _card_frame(_plot_card(name, context, height), span, rows)
+	if name == "quality-missing":
+		children = _quality_missing_children(context, color_by)
+		return _card_frame(children, span, rows, card_id="quality-missing-card")
+	return _card_frame(_plot_card(name, context, height, tab), span, rows)
 
 
 def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.Div:
 	bound = summary["days"] if controls["granularity"] == "day" else summary["phases"]
-	attrs = _available_attributes(context)
+	attrs = available_attributes(context) if "animals" in context else ["animal_id"]
 	color_by = controls["color_by"] if controls["color_by"] in attrs else "animal_id"
 	cohort_children, cohort_pop = _cohort_widgets(context, color_by)
 
@@ -607,6 +654,20 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 				],
 				className="deh-ctl",
 			),
+			dmc.Switch(
+				id="rec-group-mean",
+				label="Group mean",
+				checked=controls.get("group_mean", False),
+				disabled=color_by in ("animal_id", "subject_name"),
+				size="xs",
+			),
+			dmc.Switch(
+				id="rec-events",
+				label="Events",
+				checked=True,
+				disabled=not summary["events"],
+				size="xs",
+			),
 			dmc.Popover(
 				[
 					dmc.PopoverTarget(
@@ -665,9 +726,10 @@ def _dashboard(
 			),
 			html.Div(_meta_strip(summary), className="deh-rec-meta"),
 			html.Span(className="deh-grow"),
-			_download_menu(
+			components.download_menu(
 				pid,
 				name,
+				html.Button([icon("download", size=16), "Download"], className="deh-btn sm"),
 				[table for table in DataFrameRegistry.list_available() if table in context],
 			),
 		],
@@ -681,7 +743,7 @@ def _dashboard(
 			*(
 				dmc.TabsPanel(
 					html.Div(
-						[_card(cell, context, controls["color_by"]) for cell in cells],
+						[_card(cell, context, controls["color_by"], section_id) for cell in cells],
 						className="deh-cards",
 					),
 					value=section_id,
@@ -691,7 +753,9 @@ def _dashboard(
 		],
 		id="rec-tabs",
 		value=tab,
-		keepMounted=False,
+		# Dash 4 rebuilds a remounted panel from the layout its parent first rendered,
+		# which drops every figure a callback has filled in since.
+		keepMounted=True,
 		className="deh-tabs-gap",
 	)
 	return [header, _controls_bar(summary, controls, context), tabs]
@@ -701,13 +765,16 @@ def _dashboard(
 	Output("rec-body", "children"),
 	Output("rec-context", "data"),
 	Output("rec-controls", "data", allow_duplicate=True),
-	Output("rec-notes", "data"),
+	Input("url", "pathname"),
 	Input("url", "search"),
 	State("project-paths", "data"),
 	State("rec-context", "data"),
 	prevent_initial_call="initial_duplicate",
 )
-def _resolve(search, paths, current):
+def _resolve(pathname, search, paths, current):
+	if pathname != PATH:
+		raise PreventUpdate
+
 	params = parse_qs((search or "").lstrip("?"))
 	pid = (params.get("project") or [None])[0]
 	requested = (params.get("recording") or [None])[0]
@@ -716,41 +783,42 @@ def _resolve(search, paths, current):
 
 	if not pid:
 		return (
-			_placeholder("Open a recording from a project to see its dashboard here."),
+			components.placeholder("Open a recording from a project to see its dashboard here."),
 			None,
-			no_update,
 			no_update,
 		)
 
 	location = services.resolve_project(paths, pid)
 	if location is None:
 		message = "This project is not in your browser's saved list. Open it from Projects."
-		return _placeholder(message), None, no_update, no_update
+		return components.placeholder(message), None, no_update
 
 	try:
 		project = services.load_project(location)
 	except Exception as exc:
-		return _placeholder(f"{type(exc).__name__}: {exc}"), None, no_update, no_update
+		return components.placeholder(f"{type(exc).__name__}: {exc}"), None, no_update
 
 	names = [recording.name for recording in project.recordings]
 	if not names:
 		return (
-			_placeholder(f"{project.project_name} has no recordings yet."),
+			components.placeholder(f"{project.project_name} has no recordings yet."),
 			None,
-			no_update,
 			no_update,
 		)
 
 	name = requested if requested in names else names[0]
+	# A string: nanosecond mtimes lose precision as JSON numbers in the browser.
+	stamp = str(services.results_stamp(location, name))
 
-	if current and (current.get("location"), current.get("recording")) == (location, name):
+	identity = {"location": location, "recording": name, "stamp": stamp}
+	if current and all(current.get(key) == value for key, value in identity.items()):
 		raise PreventUpdate
 
 	try:
 		summary = services.recording_summary(location, name)
 		context = services.plot_context(location, name)
 	except Exception as exc:
-		return _placeholder(f"{type(exc).__name__}: {exc}"), None, no_update, no_update
+		return components.placeholder(f"{type(exc).__name__}: {exc}"), None, no_update
 
 	controls = {
 		"window": [1, summary["days"]],
@@ -758,9 +826,12 @@ def _resolve(search, paths, current):
 		"hours": [0, 23],
 		"phases": list(PHASES),
 		"color_by": "animal_id",
+		"group_mean": False,
 	}
 	body = _dashboard(pid, names, name, summary, context, controls, tab)
-	return body, {"location": location, "recording": name}, controls, summary["notes"]
+	# days/phases ride along so the window slider can re-axis itself clientside.
+	context_data = {**identity, "days": summary["days"], "phases": summary["phases"]}
+	return body, context_data, controls
 
 
 def _merge_search(search: str, **updates: str) -> str:
@@ -802,19 +873,18 @@ def _switch_recording(selected, _prev, _next, context_data, search):
 	return _merge_search(search, recording=name)
 
 
-@callback(
+clientside_callback(
+	ClientsideFunction("deh", "switchTab"),
 	Output("url", "search", allow_duplicate=True),
+	Output("rec-tab", "data"),
 	Input("rec-tabs", "value"),
 	State("url", "search"),
 	prevent_initial_call=True,
 )
-def _switch_tab(tab, search):
-	if (parse_qs((search or "").lstrip("?")).get("tab") or [None])[0] == tab:
-		raise PreventUpdate
-	return _merge_search(search, tab=tab)
 
 
-@callback(
+clientside_callback(
+	ClientsideFunction("deh", "windowControl"),
 	Output("rec-window", "min"),
 	Output("rec-window", "max"),
 	Output("rec-window", "marks"),
@@ -826,54 +896,57 @@ def _switch_tab(tab, search):
 	State("rec-controls", "data"),
 	prevent_initial_call=True,
 )
-def _window_control(granularity, window, context_data, controls):
-	if not context_data:
-		raise PreventUpdate
-
-	summary = services.recording_summary(context_data["location"], context_data["recording"])
-	bound = summary["days"] if granularity == "day" else summary["phases"]
-	value = [1, bound] if ctx.triggered_id == "rec-granularity" else window
-	merged = {**(controls or {}), "granularity": granularity, "window": value}
-	return 1, bound, _window_marks(1, bound), value, merged
 
 
-@callback(
+clientside_callback(
+	ClientsideFunction("deh", "filterControls"),
 	Output("rec-controls", "data", allow_duplicate=True),
+	Output("rec-group-mean", "disabled"),
 	Input("rec-hours", "value"),
 	Input("rec-phases", "value"),
 	Input("rec-animals-by", "value"),
+	Input("rec-group-mean", "checked"),
 	State("rec-controls", "data"),
 	prevent_initial_call=True,
 )
-def _filter_controls(hours, phases, color_by, controls):
-	return {**(controls or {}), "hours": hours, "phases": phases or [], "color_by": color_by}
+
+
+clientside_callback(
+	ClientsideFunction("deh", "toggleEvents"),
+	Input("rec-events", "checked"),
+	State({"type": "plot", "plot": ALL}, "figure"),
+	State({"type": "plot", "plot": ALL}, "id"),
+	prevent_initial_call=True,
+)
+
+
+clientside_callback(
+	ClientsideFunction("deh", "colorBy"),
+	Output("rec-color-by", "data"),
+	Input("rec-controls", "data"),
+	State("rec-color-by", "data"),
+	prevent_initial_call=True,
+)
 
 
 @callback(
 	Output("rec-cohort-btn", "children"),
 	Output("rec-cohort-pop", "children"),
-	Input("rec-context", "data"),
-	Input("rec-controls", "data"),
-	prevent_initial_call=True,
-)
-def _update_cohort_widgets(context_data, controls):
-	if not context_data or not controls:
-		raise PreventUpdate
-	context = services.plot_context(context_data["location"], context_data["recording"])
-	return _cohort_widgets(context, controls.get("color_by", "animal_id"))
-
-
-@callback(
 	Output("cohort-card", "children"),
-	Input("rec-context", "data"),
-	Input("rec-controls", "data"),
+	Output("quality-missing-card", "children"),
+	Input("rec-color-by", "data"),
+	State("rec-context", "data"),
 	prevent_initial_call=True,
 )
-def _update_cohort_card(context_data, controls):
-	if not context_data or not controls:
+def _update_cohort(color_by, context_data):
+	if not context_data:
 		raise PreventUpdate
 	context = services.plot_context(context_data["location"], context_data["recording"])
-	return _cohort_card_children(context, controls.get("color_by", "animal_id"))
+	return (
+		*_cohort_widgets(context, color_by),
+		_cohort_card_children(context, color_by),
+		_quality_missing_children(context, color_by),
+	)
 
 
 def _cohort_card_children(context: PlotContext, color_by: str) -> list:
@@ -900,7 +973,7 @@ def _cohort_card_children(context: PlotContext, color_by: str) -> list:
 		)
 		return [header, body]
 
-	mapping, animals = _cohort_rows(context, color_by)
+	mapping, animals = resolve_colors(context, color_by), context.animals.sort("animal_id")
 	table = html.Table(
 		[
 			html.Thead(
@@ -940,7 +1013,7 @@ def _cohort_card_children(context: PlotContext, color_by: str) -> list:
 						id={"type": "animal-row", "scope": "table", "tag": row["animal_id"]},
 						n_clicks=0,
 						style={"cursor": "pointer"},
-						title="View notes",
+						title="Edit notes",
 					)
 					for row in animals.iter_rows(named=True)
 				]
@@ -955,19 +1028,30 @@ def _cohort_card_children(context: PlotContext, color_by: str) -> list:
 	]
 
 
+clientside_callback(
+	ClientsideFunction("deh", "plotRequest"),
+	Input("rec-context", "data"),
+	Input("rec-controls", "data"),
+	Input("rec-tab", "data"),
+	Input("plot-theme", "data"),
+	Input({"type": "card-opt", "plot": ALL, "option": ALL}, "value"),
+	State({"type": "plot-req", "plot": ALL}, "data"),
+)
+
+
 @callback(
 	Output({"type": "plot", "plot": MATCH}, "figure"),
 	Output({"type": "badge", "plot": MATCH}, "children"),
-	Input("rec-context", "data"),
-	Input("rec-controls", "data"),
-	Input({"type": "card-opt", "plot": MATCH, "option": ALL}, "value"),
-	Input("theme-store", "data"),
-	State({"type": "card-opt", "plot": MATCH, "option": ALL}, "id"),
+	Input({"type": "plot-req", "plot": MATCH}, "data"),
+	State("rec-events", "checked"),
+	# The request mounts as {tab} alone; deh.plotRequest fills it once the tab shows.
+	prevent_initial_call=True,
 )
-def _update_plot(context_data, controls, opt_values, theme, opt_ids):
-	if not context_data or not controls:
+def _update_plot(request, events_on):
+	if not request or "context" not in request:
 		raise PreventUpdate
 
+	context_data, controls, theme = request["context"], request["controls"], request["theme"]
 	name = ctx.outputs_list[0]["id"]["plot"]
 	context = services.plot_context(context_data["location"], context_data["recording"])
 	spec = PlotRegistry.spec(name)
@@ -975,16 +1059,17 @@ def _update_plot(context_data, controls, opt_values, theme, opt_ids):
 		raise PreventUpdate
 
 	accepted = {option.name for option in spec.options}
-	values = {opt_id["option"]: value for opt_id, value in zip(opt_ids, opt_values, strict=True)}
+	values = dict(request["opts"])
 	values.update(
 		days_range=controls["window"],
 		granularity=controls["granularity"],
 		phase_type=controls["phases"],
 		color_by=controls["color_by"],
 		order_by=controls["color_by"],
+		group_mean=controls.get("group_mean", False),
 		# None for the untouched full day, matching every builder's own default: some
 		# prepare.* steps aggregate away the hour column before applying this filter and
-		# only skip that filter when it is exactly None (e.g. prep_polar_df).
+		# only skip that filter when it is exactly None (e.g. prep_polar).
 		hours_range=None if list(controls["hours"]) == [0, 23] else controls["hours"],
 	)
 	values = {key: value for key, value in values.items() if key in accepted}
@@ -993,105 +1078,152 @@ def _update_plot(context_data, controls, opt_values, theme, opt_ids):
 	# The card header already carries the title; the figure's own would double it up.
 	# Plotly still reserves top margin for it, so that's trimmed back too.
 	figure.update_layout(title=None, margin={"t": 30}, template=theme or "light")
+	if not events_on:
+		# A newly mounted or rebuilt card starts respecting the toggle without being an
+		# Input of its own; deh.toggleEvents keeps an already-loaded figure in sync.
+		figure.update_shapes(visible=False, selector={"name": "event-span"})
+		figure.update_annotations(visible=False, selector={"name": "event-label"})
 
-	whole_day = "hours_range" not in accepted and list(controls["hours"]) != [0, 23]
-	badge = (
-		html.Span(
-			[icon("clock", size=14), "Whole day"],
-			className="deh-badge deh-badge-neutral",
-			title="This card has no hourly breakdown; the hours window does not apply to it.",
+	badges = []
+	if "hours_range" not in accepted and list(controls["hours"]) != [0, 23]:
+		badges.append(
+			html.Span(
+				[icon("clock", size=14), "Whole day"],
+				className="deh-badge deh-badge-neutral",
+				title="This card has no hourly breakdown; the hours window does not apply to it.",
+			)
 		)
-		if whole_day
-		else None
-	)
-	return figure, badge
+	if controls.get("group_mean") and "color_by" in accepted and "group_mean" not in accepted:
+		badges.append(
+			html.Span(
+				[icon("users", size=14), "Per animal"],
+				className="deh-badge deh-badge-neutral",
+				title="Group mean does not apply here; this card shows one line per animal.",
+			)
+		)
+	return figure, badges or None
 
 
-@callback(
+# Clientside: every figure on the tab is already in the browser, so picking one is not
+# worth uploading them all to the server and sending one back.
+clientside_callback(
+	ClientsideFunction("deh", "fullscreen"),
 	Output("fullscreen-modal", "opened"),
 	Output("fullscreen-modal", "title"),
 	Output("fullscreen-plot", "figure"),
 	Input({"type": "card-fullscreen", "plot": ALL}, "n_clicks"),
 	State({"type": "plot", "plot": ALL}, "figure"),
 	State({"type": "plot", "plot": ALL}, "id"),
+	State({"type": "card-title", "plot": ALL}, "children"),
+	State({"type": "card-title", "plot": ALL}, "id"),
 	prevent_initial_call=True,
 )
-def _fullscreen(_clicks, figures, ids):
-	if not ctx.triggered[0]["value"]:
-		raise PreventUpdate
-	name = ctx.triggered_id["plot"]
-	figure = next((f for f, i in zip(figures, ids, strict=True) if i["plot"] == name), None)
-	if figure is None:
-		raise PreventUpdate
-	return True, PlotRegistry.spec(name).title, figure
 
 
-@callback(
+# Clientside for the same reason as the fullscreen callback above. The export-source store
+# still feeds the server preview, so one figure goes up - not all of them.
+clientside_callback(
+	ClientsideFunction("deh", "openExport"),
 	Output("export-dialog", "opened", allow_duplicate=True),
 	Output("export-source", "data", allow_duplicate=True),
 	Output("export-filename", "value", allow_duplicate=True),
 	Input({"type": "card-export", "plot": ALL}, "n_clicks"),
 	State({"type": "plot", "plot": ALL}, "figure"),
 	State({"type": "plot", "plot": ALL}, "id"),
+	State({"type": "card-title", "plot": ALL}, "children"),
+	State({"type": "card-title", "plot": ALL}, "id"),
 	State("rec-context", "data"),
 	prevent_initial_call=True,
 )
-def _open_export(_clicks, figures, ids, rec_context):
-	if not ctx.triggered[0]["value"]:
-		raise PreventUpdate
-	name = ctx.triggered_id["plot"]
-	figure = next((f for f, i in zip(figures, ids, strict=True) if i["plot"] == name), None)
-	if not figure:
-		raise PreventUpdate
-	recording = (rec_context or {}).get("recording", "recording")
-	filename = f"{recording}__{name}".lower().replace(" ", "-")
-	return True, {"figure": figure, "title": PlotRegistry.spec(name).title}, filename
+
+
+# Format only rewrites layout the browser already holds, so none of it reaches the server.
+clientside_callback(
+	ClientsideFunction("deh", "openFormat"),
+	Output("rec-format-modal", "opened"),
+	Output("rec-format-modal", "title"),
+	Output("rec-format-target", "data"),
+	Output({"type": "rec-fmt", "key": ALL}, "value"),
+	Output({"type": "rec-fmt", "key": ALL}, "placeholder"),
+	Output({"type": "rec-fmt", "key": ALL}, "disabled"),
+	Output({"type": "rec-fmt", "key": "palette"}, "data"),
+	Input({"type": "card-format", "plot": ALL}, "n_clicks"),
+	State({"type": "plot", "plot": ALL}, "figure"),
+	State({"type": "plot", "plot": ALL}, "id"),
+	State({"type": "card-title", "plot": ALL}, "children"),
+	State({"type": "card-title", "plot": ALL}, "id"),
+	State("rec-format", "data"),
+	State("rec-colors", "data"),
+	prevent_initial_call=True,
+)
+
+
+clientside_callback(
+	ClientsideFunction("deh", "editFormat"),
+	Output("rec-format", "data"),
+	Input({"type": "rec-fmt", "key": ALL}, "value"),
+	Input("rec-fmt-reset", "n_clicks"),
+	State("rec-format-target", "data"),
+	State("rec-format", "data"),
+	State({"type": "plot", "plot": ALL}, "figure"),
+	State({"type": "plot", "plot": ALL}, "id"),
+	State("rec-colors", "data"),
+	prevent_initial_call=True,
+)
+
+
+clientside_callback(
+	ClientsideFunction("deh", "applyFormat"),
+	Input("rec-format", "data"),
+	Input({"type": "plot", "plot": ALL}, "figure"),
+	State({"type": "plot", "plot": ALL}, "id"),
+	State("rec-colors", "data"),
+	prevent_initial_call=True,
+)
 
 
 @callback(
 	Output("notes-modal", "opened"),
+	Output("notes-modal", "title"),
 	Output("notes-textarea", "value"),
-	Output("rec-notes", "data", allow_duplicate=True),
+	Output("notes-target", "data"),
 	Input("rec-notes-btn", "n_clicks"),
+	Input({"type": "animal-row", "scope": ALL, "tag": ALL}, "n_clicks"),
 	Input("notes-cancel", "n_clicks"),
 	Input("notes-save", "n_clicks"),
 	State("notes-textarea", "value"),
 	State("rec-context", "data"),
-	State("rec-notes", "data"),
+	State("notes-target", "data"),
 	prevent_initial_call=True,
 )
-def _notes_modal(_open, _cancel, _save, text, context_data, notes):
-	# rec-notes-btn is rebuilt into rec-body on every recording switch, and notes-cancel /
-	# notes-save live in the page's static layout, which mounts fresh whenever this page is
-	# routed to - both cases fire this callback once with no real click behind them.
+def _notes_modal(_open, _rows, _cancel, _save, text, context_data, target):
+	# rec-notes-btn and the animal rows are rebuilt into rec-body on every recording
+	# switch, and notes-cancel / notes-save live in the page's static layout, which
+	# mounts fresh whenever this page is routed to - all fire this callback once with
+	# no real click behind them.
 	if not ctx.triggered[0]["value"]:
 		raise PreventUpdate
-	if ctx.triggered_id == "rec-notes-btn":
-		return True, notes or "", no_update
-	if ctx.triggered_id == "notes-cancel":
-		return False, no_update, no_update
+	trigger = ctx.triggered_id
+	if trigger == "notes-cancel":
+		return False, no_update, no_update, no_update
 
 	if not context_data:
 		raise PreventUpdate
-	text = (text or "").strip()
-	services.update_notes(context_data["location"], context_data["recording"], text)
-	notify("good", "Notes saved")
-	return False, no_update, text
+	location, name = context_data["location"], context_data["recording"]
 
+	if trigger == "notes-save":
+		if not target:
+			raise PreventUpdate
+		services.update_notes(location, name, (text or "").strip(), target.get("tag"))
+		notify("good", "Notes saved")
+		return False, no_update, no_update, no_update
 
-@callback(
-	Output("animal-modal", "opened"),
-	Output("animal-modal", "title"),
-	Output("animal-modal-body", "children"),
-	Input({"type": "animal-row", "scope": ALL, "tag": ALL}, "n_clicks"),
-	State("rec-context", "data"),
-	prevent_initial_call=True,
-)
-def _animal_modal(_clicks, context_data):
-	if not context_data or not ctx.triggered[0]["value"]:
-		raise PreventUpdate
-	tag = ctx.triggered_id["tag"]
-	context = services.plot_context(context_data["location"], context_data["recording"])
-	animal = next(row for row in context.animals.iter_rows(named=True) if row["animal_id"] == tag)
-	body = html.P(animal["notes"] or "No notes", className="deh-notes")
-	return True, f"{animal['subject_name']} · {tag}", body
+	# Read fresh from disk rather than context.animals, the analysed parquet, which
+	# would go stale the moment notes are saved without a re-analysis.
+	recording = services.load_project(location)[name]
+	if trigger == "rec-notes-btn":
+		return True, "Notes", recording.notes, {"tag": None}
+
+	tag = trigger["tag"]
+	animal = next(a for a in recording.cohort.animals if a.tag == tag)
+	return True, f"{animal.subject_name} · {tag}", animal.notes, {"tag": tag}

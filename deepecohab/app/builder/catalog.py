@@ -1,12 +1,5 @@
-"""The field catalog the plot builder drags around.
-
-Moved from ``scripts/plot_builder/catalog.py``. The app never sees the project table
-itself - the frame stays server side, scanned lazily and cached by
-:func:`project_frame`, and only the derived catalog of fields travels to the browser.
-"""
-
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Literal
 
 import polars as pl
@@ -84,7 +77,6 @@ def project_frame(project: Project, *, refresh: bool = False) -> pl.LazyFrame:
 	serving a stale plan, so the mtime is part of the key rather than the path alone.
 
 	Args:
-		project: the opened project.
 		refresh: rescan even when the cached stamp still matches.
 
 	Raises:
@@ -104,14 +96,7 @@ def project_frame(project: Project, *, refresh: bool = False) -> pl.LazyFrame:
 
 
 def metric_names(frame: pl.LazyFrame) -> list[str]:
-	"""The metrics the long table holds, in the order they should be offered.
-
-	Args:
-		frame: the project table.
-
-	Returns:
-		The distinct values of the ``metric`` column, sorted; empty when there is none.
-	"""
+	"""The metrics the long table holds, sorted; empty when there is no ``metric`` column."""
 	if METRIC not in frame.collect_schema():
 		return []
 
@@ -135,13 +120,9 @@ def prepare(
 	whichever ``GROUPS`` names, defaulting to "Recording".
 
 	Args:
-		frame: the project table.
 		event_names: every event name declared anywhere in the project, plus
 			``"Any event"`` - the columns :func:`deepecohab.core.recording_pipeline.
 			event_status` added to the table.
-
-	Returns:
-		The prepared table and its fields.
 	"""
 	schema = frame.collect_schema()
 
@@ -186,40 +167,14 @@ def prepare(
 
 
 def distinct_values(frame: pl.LazyFrame, column: str) -> list[str]:
-	"""The values a categorical filter can offer for ``column``.
-
-	Args:
-		frame: the project table.
-		column: the column to enumerate.
-
-	Returns:
-		Its distinct values, sorted, as strings.
-	"""
+	"""The values a categorical filter can offer for ``column``, sorted, as strings."""
 	values = frame.select(pl.col(column).cast(pl.String).unique()).collect().to_series()
 	return sorted(value for value in values.to_list() if value is not None)
 
 
 def value_range(frame: pl.LazyFrame, column: str) -> tuple[float, float]:
-	"""The bounds a numeric filter's slider spans.
-
-	Args:
-		frame: the project table.
-		column: the column to measure.
-
-	Returns:
-		Its minimum and maximum.
-	"""
+	"""The bounds a numeric filter's slider spans: ``column``'s minimum and maximum."""
 	bounds = frame.select(
 		pl.col(column).min().alias("lo"), pl.col(column).max().alias("hi")
 	).collect()
 	return float(bounds["lo"][0]), float(bounds["hi"][0])
-
-
-def catalog_to_store(fields: list[Field]) -> list[dict]:
-	"""Serialise the catalog for ``dcc.Store``."""
-	return [asdict(field) for field in fields]
-
-
-def catalog_from_store(data: list[dict] | None) -> list[Field]:
-	"""Rebuild the catalog from ``dcc.Store``."""
-	return [Field(**item) for item in data or []]

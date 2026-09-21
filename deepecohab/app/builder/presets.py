@@ -1,14 +1,5 @@
-"""Built-in plot builder presets.
-
-Presets are full builder states as JSON, the same shape ``pages/builder.py`` keeps in
-``dcc.Store``. Six ship with the package, naming only fields every project has. A
-project-specific part - which event, or the days every recording shares - is resolved
-against the open project rather than stored, so the same preset works everywhere.
-"""
-
 import copy
 import json
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -27,31 +18,19 @@ class Preset:
 		id: stable key, also used as the saved-preset id prefix.
 		name: display name.
 		description: what the preset shows and why.
-		state: the builder state, with ``slot_key`` standing in for a project-specific
-			field name where one is needed.
-		slot_key: the placeholder :func:`resolve` substitutes, or ``None``.
-		slot_label: what the slot picker asks.
-		compute_filters: extra filters worked out from the project when the preset
-			opens, merged over ``state["filters"]``.
+		state: the builder state, with ``EVENT_SLOT`` standing in for the event name
+			where the preset asks for one.
+		needs_event: the preset asks which event when it opens, and :func:`resolve`
+			substitutes the choice for ``EVENT_SLOT``.
+		shared_days: restrict the ``day`` filter to the days every recording has.
 	"""
 
 	id: str
 	name: str
 	description: str
 	state: dict[str, Any]
-	slot_key: str | None = None
-	slot_label: str = ""
-	compute_filters: "Callable[[Project], dict[str, Any]] | None" = None
-
-
-def shared_days(project: "Project") -> dict[str, Any]:
-	"""A ``day`` filter picking only the days every recording in the project has.
-
-	Pick-mode values are always strings: ``figure.apply_filters`` matches them against
-	the column cast to ``String``, the same convention the filter widgets themselves use.
-	"""
-	shared = min(recording.timeline.days_range[1] for recording in project.recordings)
-	return {"day": {"mode": "pick", "values": [str(day) for day in range(1, shared + 1)]}}
+	needs_event: bool = False
+	shared_days: bool = False
 
 
 BUILTINS: tuple[Preset, ...] = (
@@ -97,7 +76,7 @@ BUILTINS: tuple[Preset, ...] = (
 			},
 			"filters": {"metric": {"mode": "pick", "values": ["time_together"]}},
 		},
-		compute_filters=shared_days,
+		shared_days=True,
 	),
 	Preset(
 		"light-dark-metrics",
@@ -124,7 +103,8 @@ BUILTINS: tuple[Preset, ...] = (
 	Preset(
 		"event-activity",
 		"Activity around an event",
-		"Asks which event when it opens: hours a bout touches against the same clock hours on other days.",
+		"Asks which event when it opens: hours a bout touches against "
+		"the same clock hours on other days.",
 		{
 			"measure_as": "rate",
 			"kind": "box",
@@ -136,8 +116,7 @@ BUILTINS: tuple[Preset, ...] = (
 			},
 			"filters": {"metric": {"mode": "pick", "values": ["activity"]}},
 		},
-		slot_key=EVENT_SLOT,
-		slot_label="Which event?",
+		needs_event=True,
 	),
 	Preset(
 		"chasing-cohort-size",
@@ -165,20 +144,24 @@ def resolve(preset: Preset, project: "Project", choice: str | None = None) -> di
 	"""The preset's state ready to load into the builder.
 
 	Args:
-		preset: the preset to resolve.
 		project: the open project, for its computed filters.
-		choice: the value to substitute for ``preset.slot_key``, when it has one.
+		choice: the event name to substitute for ``EVENT_SLOT``, when the preset asks
+			for one.
 
 	Returns:
 		A fresh builder state; the preset itself is never mutated.
 	"""
 	state = copy.deepcopy(preset.state)
 
-	if preset.slot_key and choice:
-		text = json.dumps(state).replace(json.dumps(preset.slot_key), json.dumps(choice))
+	if preset.needs_event and choice:
+		text = json.dumps(state).replace(json.dumps(EVENT_SLOT), json.dumps(choice))
 		state = json.loads(text)
 
-	if preset.compute_filters is not None:
-		state["filters"] = {**state["filters"], **preset.compute_filters(project)}
+	if preset.shared_days:
+		# Pick-mode values are always strings: ``figure.apply_filters`` matches them
+		# against the column cast to ``String``, as the filter widgets do.
+		shared = min(recording.timeline.days_range[1] for recording in project.recordings)
+		days = [str(day) for day in range(1, shared + 1)]
+		state["filters"] = {**state["filters"], "day": {"mode": "pick", "values": days}}
 
 	return state

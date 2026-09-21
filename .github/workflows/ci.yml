@@ -48,7 +48,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - name: Run test suite (no e2e)
-        run: uv run --locked --extra test pytest -m "not e2e"
+        run: uv run --locked --extra test --extra app pytest -m "not e2e"
 
   e2e:
     needs: [pre-commit, test]
@@ -68,4 +68,4 @@ jobs:
           enable-cache: true
           python-version: "3.12"
       - name: Run e2e suite
-        run: uv run --locked --extra test pytest -m e2e
+        run: uv run --locked --extra test --extra app pytest -m e2e

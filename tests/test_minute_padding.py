@@ -1,26 +1,25 @@
 import datetime as dt
-from zoneinfo import ZoneInfo
+from functools import partial
 
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 from hypothesis import given, settings, strategies as st
 
 from deepecohab.core import transforms
 from deepecohab.core.data_model import Recording
 
 TZ_NAME = "Europe/Warsaw"
-TZ = ZoneInfo(TZ_NAME)
-# Same zone as the frames make_lf builds: day and hour are now measured from the
+# Same zone as the frames make_frame builds: day and hour are now measured from the
 # recording's own origin, so a frame has to belong to the recording it is split for.
-RECORDING = strat.analysis_recording(
+RECORDING = strategies.analysis_recording(
 	tz=TZ_NAME, start="2023-01-01 00:00:00", finish="2023-12-31 23:00:00"
 )
 
 
 def _recording(tz: str, phases: dict) -> Recording:
 	"""A recording spanning the whole generated year, in the drawn zone and phases."""
-	return strat.analysis_recording(
+	return strategies.analysis_recording(
 		tz=tz, start="2023-01-01 00:00:00", finish="2023-12-31 23:00:00", phases=phases
 	)
 
@@ -28,11 +27,10 @@ def _recording(tz: str, phases: dict) -> Recording:
 MINUTE = dt.timedelta(minutes=1)
 
 
-def at(*args: int) -> dt.datetime:
-	return dt.datetime(*args, tzinfo=TZ)
+at = partial(strategies.at, tz=TZ_NAME)
 
 
-def make_lf(rows: list[dict]) -> pl.LazyFrame:
+def make_frame(rows: list[dict]) -> pl.LazyFrame:
 	"""rows: {"end": datetime, "time_spent": seconds, "time_under": timedelta,
 	optional "animal_id"/"position"}. Cases state time_spent in seconds; the frame
 	carries it as a duration, as main_df does.
@@ -48,7 +46,7 @@ def make_lf(rows: list[dict]) -> pl.LazyFrame:
 			"datetime": pl.Series(
 				"datetime", [r["end"] for r in rows], dtype=pl.Datetime("us", TZ_NAME)
 			),
-			"time_spent": strat.seconds([float(r["time_spent"]) for r in rows]),
+			"time_spent": strategies.seconds([float(r["time_spent"]) for r in rows]),
 			"time_under": pl.Series([r["time_under"] for r in rows], dtype=pl.Duration("us")),
 		}
 	)
@@ -75,7 +73,7 @@ def piece_starts(out: pl.DataFrame) -> pl.Series:
 
 def test_within_minute_not_split():
 	"""Interval inside one clock minute -> single passthrough row."""
-	lf = make_lf(
+	lf = make_frame(
 		[{"end": at(2023, 6, 15, 12, 0, 40), "time_spent": 20, "time_under": MINUTE / 4}]
 	)  # 12:00:20 -> 12:00:40
 	out = split(lf)
@@ -87,7 +85,7 @@ def test_within_minute_not_split():
 
 def test_interval_exactly_one_aligned_minute_not_split():
 	"""[12:00:00, 12:01:00) is one aligned minute -> single piece."""
-	lf = make_lf([{"end": at(2023, 6, 15, 12, 1, 0), "time_spent": 60, "time_under": MINUTE}])
+	lf = make_frame([{"end": at(2023, 6, 15, 12, 1, 0), "time_spent": 60, "time_under": MINUTE}])
 	out = split(lf)
 	assert out.height == 1
 	assert out["interpolated"].to_list() == [False]
@@ -95,7 +93,7 @@ def test_interval_exactly_one_aligned_minute_not_split():
 
 def test_single_minute_crossing_splits_into_two():
 	"""12:00:40 -> 12:01:20 crosses 12:01:00 -> two 20s pieces; first kept, second interpolated."""
-	lf = make_lf([{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": 40, "time_under": MINUTE}])
+	lf = make_frame([{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": 40, "time_under": MINUTE}])
 	out = split(lf).sort("datetime")
 	assert out.height == 2
 	assert out["interpolated"].to_list() == [False, True]
@@ -107,7 +105,7 @@ def test_single_minute_crossing_splits_into_two():
 
 def test_multi_minute_crossing_piece_count():
 	"""A 2m40s interval crossing three minute marks yields four pieces."""
-	lf = make_lf(
+	lf = make_frame(
 		[{"end": at(2023, 6, 15, 12, 3, 20), "time_spent": 40 + 120, "time_under": MINUTE}]
 	)  # 12:00:40 -> 12:03:20 spans minutes 0,1,2,3 -> 4 pieces
 	out = split(lf).sort("datetime")
@@ -118,7 +116,7 @@ def test_multi_minute_crossing_piece_count():
 
 def test_time_spent_conserved():
 	original = 40
-	lf = make_lf(
+	lf = make_frame(
 		[{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": original, "time_under": MINUTE}]
 	)
 	out = split(lf)
@@ -127,13 +125,13 @@ def test_time_spent_conserved():
 
 def test_time_under_conserved():
 	tu = dt.timedelta(seconds=37)
-	lf = make_lf([{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": 40, "time_under": tu}])
+	lf = make_frame([{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": 40, "time_under": tu}])
 	out = split(lf)
 	assert out["time_under"].sum() == pytest.approx(tu, abs=dt.timedelta(microseconds=4))
 
 
 def test_no_piece_exceeds_one_minute():
-	lf = make_lf(
+	lf = make_frame(
 		[{"end": at(2023, 6, 15, 12, 3, 20), "time_spent": 40 + 120, "time_under": MINUTE}]
 	)
 	out = split(lf)
@@ -142,7 +140,7 @@ def test_no_piece_exceeds_one_minute():
 
 def test_each_piece_within_single_clock_minute():
 	"""No piece straddles a minute mark: start and (end - 1us) share a minute."""
-	lf = make_lf(
+	lf = make_frame(
 		[{"end": at(2023, 6, 15, 12, 3, 20), "time_spent": 40 + 120, "time_under": MINUTE}]
 	)
 	out = split(lf)
@@ -156,10 +154,10 @@ def test_each_piece_within_single_clock_minute():
 def test_hour_label_from_piece_start():
 	"""Hour column reflects the piece START, not the original interval end."""
 	# 11:59:40 -> 12:00:20 crosses both the minute AND the hour mark at 12:00.
-	lf = make_lf([{"end": at(2023, 6, 15, 12, 0, 20), "time_spent": 40, "time_under": MINUTE}])
+	lf = make_frame([{"end": at(2023, 6, 15, 12, 0, 20), "time_spent": 40, "time_under": MINUTE}])
 	# An origin in the same DST regime as the data, so egocentric hours and the wall
 	# clock agree and this is about the piece start alone. The DST case is its own test.
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=TZ_NAME, start="2023-06-15 00:00:00", finish="2023-06-16 00:00:00"
 	)
 	out = split(lf, recording).sort("datetime")
@@ -169,7 +167,7 @@ def test_hour_label_from_piece_start():
 
 
 def test_zero_duration_row_survives_without_nan():
-	lf = make_lf(
+	lf = make_frame(
 		[{"end": at(2023, 6, 15, 12, 0, 0), "time_spent": 0, "time_under": dt.timedelta(0)}]
 	)
 	out = split(lf)
@@ -179,7 +177,7 @@ def test_zero_duration_row_survives_without_nan():
 
 
 def test_row_id_present_in_output():
-	lf = make_lf([{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": 40, "time_under": MINUTE}])
+	lf = make_frame([{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": 40, "time_under": MINUTE}])
 	out = split(lf)
 	assert "row_id" in out.columns
 
@@ -191,7 +189,7 @@ def test_row_id_dedup_recovers_original_count():
 		{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": 40, "time_under": MINUTE},  # 2 pieces
 		{"end": at(2023, 6, 15, 12, 3, 20), "time_spent": 160, "time_under": MINUTE},  # 4 pieces
 	]
-	lf = make_lf(rows)
+	lf = make_frame(rows)
 	out = split(lf)
 
 	# more pieces than originals, but exactly len(rows) distinct row_ids
@@ -207,7 +205,7 @@ def test_row_ids_are_contiguous_from_zero():
 		{"end": at(2023, 6, 15, 12, 0, 40), "time_spent": 20, "time_under": MINUTE}
 		for _ in range(5)
 	]
-	lf = make_lf(rows)
+	lf = make_frame(rows)
 	out = split(lf)
 	assert sorted(out["row_id"].unique().to_list()) == list(range(5))
 
@@ -219,7 +217,7 @@ def test_dedup_first_piece_holds_piece_values_not_original():
 	NOT the original visit length. This is correct for counting but must not be
 	read as the original duration.
 	"""
-	lf = make_lf(
+	lf = make_frame(
 		[{"end": at(2023, 6, 15, 12, 1, 20), "time_spent": 40, "time_under": MINUTE}]
 	)  # splits into 20s + 20s at 12:01:00
 	out = split(lf)
@@ -254,7 +252,7 @@ def test_non_interpolated_filter_recovers_original_count_per_animal():
 			"time_under": MINUTE,
 		},  # 4 pieces
 	]
-	out = split(make_lf(rows))
+	out = split(make_frame(rows))
 	kept = out.filter(~pl.col("interpolated"))
 
 	assert kept.height == len(rows)  # more pieces overall, but one kept row per visit
@@ -269,21 +267,21 @@ def test_non_interpolated_filter_recovers_original_count_per_animal():
 
 
 @settings(max_examples=200)
-@given(v=strat.visit, tz=strat.timezones, pcfg=strat.phase_configs)
+@given(v=strategies.visit, tz=strategies.timezones, pcfg=strategies.phase_configs)
 def test_property_conserves_time_spent(v, tz, pcfg):
 	"""However a single visit is split across minute marks, total time_spent is
 	preserved and no piece exceeds one minute, in any timezone / phase config.
 	"""
-	out = split(strat.padding_frame([v], tz), _recording(tz, pcfg))
+	out = split(strategies.padding_frame([v], tz), _recording(tz, pcfg))
 	assert out["time_spent"].sum() == pytest.approx(v["time_spent"], abs=1e-6)
 	assert (out["time_spent"] <= 60 + 1e-6).all()
 
 
 @settings(max_examples=200)
 @given(
-	rows=st.lists(strat.visit, min_size=1, max_size=20),
-	tz=strat.timezones,
-	pcfg=strat.phase_configs,
+	rows=st.lists(strategies.visit, min_size=1, max_size=20),
+	tz=strategies.timezones,
+	pcfg=strategies.phase_configs,
 )
 def test_property_preserves_identity_and_dedup(rows, tz, pcfg):
 	"""Padding may explode rows into per-minute pieces, but unique(row_id,
@@ -292,7 +290,7 @@ def test_property_preserves_identity_and_dedup(rows, tz, pcfg):
 	animal_id/position of the visit it came from (row_id i == row i).
 	"""
 	out = transforms.split_on_minute_boundaries(
-		strat.padding_frame(rows, tz), _recording(tz, pcfg)
+		strategies.padding_frame(rows, tz), _recording(tz, pcfg)
 	).collect()
 
 	assert out["row_id"].n_unique() == len(rows)

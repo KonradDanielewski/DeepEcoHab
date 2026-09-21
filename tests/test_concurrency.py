@@ -79,7 +79,7 @@ def test_event_stream_covers_every_step(tmp_path, sources):
 	)
 	project.add_recordings(sources)
 
-	events = list(project._analyze_project(workers=3))
+	events = list(project.iter_analysis(workers=3))
 	steps = DataFrameRegistry.step_order()
 
 	assert len(events) == len(RECORDINGS) * len(steps)
@@ -118,6 +118,11 @@ def test_failure_surfaces_without_stranding_the_others(tmp_path, sources, monkey
 		produced = {path.stem for path in project[name].results_path.glob("*.parquet")}
 		assert produced == set(DataFrameRegistry.list_available())
 
+	# The caller shows one line of the error; the traceback has to survive in the log.
+	log = (project.project_location / Project.LOGFILE).read_text(encoding="utf-8")
+	assert "analysis failed" in log
+	assert "RuntimeError: boom" in log
+
 	project.close()
 
 
@@ -138,7 +143,7 @@ def test_cancel_lets_the_step_in_flight_land_and_starts_nothing_new(tmp_path, so
 	)
 	project.add_recordings(sources)
 
-	events = list(project._analyze_project(workers=1, cancel=cancel))
+	events = list(project.iter_analysis(workers=1, cancel=cancel))
 
 	assert [(event.recording, event.step) for event in events] == [(RECORDINGS[0][0], first)]
 	produced = {

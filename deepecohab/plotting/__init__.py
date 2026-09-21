@@ -11,10 +11,7 @@ from deepecohab.plotting.animals import (
 	ColorMapping as ColorMapping,
 	available_attributes as available_attributes,
 )
-from deepecohab.plotting.context import (
-	PlotContext as PlotContext,
-	TableProvider as TableProvider,
-)
+from deepecohab.plotting.context import PlotContext as PlotContext
 from deepecohab.plotting.durations import DurationDisplay as DurationDisplay
 from deepecohab.plotting.export import (
 	export_figure as export_figure,
@@ -25,7 +22,6 @@ from deepecohab.plotting.registry import (
 	PlotRegistry as PlotRegistry,
 	PlotSpec as PlotSpec,
 )
-from deepecohab.plotting.theme import set_default_theme as set_default_theme
 
 if TYPE_CHECKING:
 	from deepecohab.core.data_model import Recording
@@ -44,24 +40,6 @@ def plot(name: str, target: "Recording | PlotContext", **options: Any) -> go.Fig
 
 	Args:
 		name: registry key, as listed by :meth:`PlotRegistry.list_available`.
-		target: the recording to plot, or a context built from one.
 		**options: overrides for the plot's keyword arguments.
-
-	Returns:
-		The figure.
 	"""
 	return PlotRegistry.build(name, _as_context(target), **options)
-
-
-def plot_specs(target: "Recording | PlotContext | None" = None) -> list[dict[str, Any]]:
-	"""Describe every registered plot, for a GUI to build controls from.
-
-	Args:
-		target: resolve cohort-dependent choices against this recording or context.
-
-	Returns:
-		One serializable description per plot.
-	"""
-	context = None if target is None else _as_context(target)
-
-	return [spec.describe(context) for spec in PlotRegistry.specs()]

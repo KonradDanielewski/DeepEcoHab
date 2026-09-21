@@ -18,13 +18,13 @@ strategies.ring_cfg, whose antennas sit at the tunnel mouths as in a real setup.
 import datetime as dt
 
 import polars as pl
-import strategies as strat
+import strategies
 
 from deepecohab.auxiliary_analysis import tube_test
 from deepecohab.core.data_model import Recording
 
-RECORDING = strat.analysis_recording(animal_ids=["A", "B", "C"])
-at = strat.at
+RECORDING = strategies.analysis_recording(animal_ids=["A", "B", "C"])
+at = strategies.at
 
 
 def run_tube(
@@ -102,20 +102,20 @@ def total(result: pl.DataFrame, winner: str, loser: str) -> int:
 
 def test_chase_event_detected(monkeypatch):
 	"""A head-on CHASE encounter is counted once, with the retreater as the loser."""
-	result = run_tube(monkeypatch, strat.main_df_frame(encounter(behavior="chase"), RECORDING))
+	result = run_tube(monkeypatch, strategies.main_df_frame(encounter(behavior="chase"), RECORDING))
 	assert total(result, "A", "B") == 1
 	assert total(result, "B", "A") == 0  # direction guard, no double count
 
 
 def test_guard_event_detected(monkeypatch):
 	"""A head-on GUARD encounter (winner holds its origin cage) is counted once."""
-	result = run_tube(monkeypatch, strat.main_df_frame(encounter(behavior="guard"), RECORDING))
+	result = run_tube(monkeypatch, strategies.main_df_frame(encounter(behavior="guard"), RECORDING))
 	assert total(result, "A", "B") == 1
 
 
 def test_winner_behavior_isolates_chase(monkeypatch):
 	"""A CHASE encounter counts under CHASE/BOTH but not under GUARD."""
-	rows = strat.main_df_frame(encounter(behavior="chase"), RECORDING)
+	rows = strategies.main_df_frame(encounter(behavior="chase"), RECORDING)
 	assert run_tube(monkeypatch, rows, winner_behavior="CHASE")["tube_test"].sum() == 1
 	assert run_tube(monkeypatch, rows, winner_behavior="BOTH")["tube_test"].sum() == 1
 	assert run_tube(monkeypatch, rows, winner_behavior="GUARD")["tube_test"].sum() == 0
@@ -123,7 +123,7 @@ def test_winner_behavior_isolates_chase(monkeypatch):
 
 def test_winner_behavior_isolates_guard(monkeypatch):
 	"""A GUARD encounter counts under GUARD/BOTH but not under CHASE."""
-	rows = strat.main_df_frame(encounter(behavior="guard"), RECORDING)
+	rows = strategies.main_df_frame(encounter(behavior="guard"), RECORDING)
 	assert run_tube(monkeypatch, rows, winner_behavior="GUARD")["tube_test"].sum() == 1
 	assert run_tube(monkeypatch, rows, winner_behavior="BOTH")["tube_test"].sum() == 1
 	assert run_tube(monkeypatch, rows, winner_behavior="CHASE")["tube_test"].sum() == 0
@@ -131,7 +131,7 @@ def test_winner_behavior_isolates_guard(monkeypatch):
 
 def test_max_dwell_excludes_inflated_segment(monkeypatch):
 	"""An inflated loser tunnel dwell is dropped at the default cap but kept if raised."""
-	rows = strat.main_df_frame(encounter(behavior="chase", loser_dwell=20.0), RECORDING)
+	rows = strategies.main_df_frame(encounter(behavior="chase", loser_dwell=20.0), RECORDING)
 	# Default max_dwell=10 drops the 20 s loser segment...
 	assert run_tube(monkeypatch, rows)["tube_test"].sum() == 0
 	# ...raising the cap past it restores the (still overlapping) encounter.
@@ -141,7 +141,7 @@ def test_max_dwell_excludes_inflated_segment(monkeypatch):
 def test_non_overlapping_intervals_not_an_event(monkeypatch):
 	"""If the two tunnel intervals do not overlap in time, it is not a tube test."""
 	# Winner enters the tunnel only after the loser has already exited it.
-	rows = strat.main_df_frame(
+	rows = strategies.main_df_frame(
 		encounter(behavior="chase", winner_dwell=2.0, winner_tunnel_exit=(12, 0, 7)), RECORDING
 	)
 	# loser tunnel interval [12:00:01, 12:00:03]; winner [12:00:05, 12:00:07] -> no overlap.
@@ -188,12 +188,12 @@ def test_same_origin_is_not_head_on(monkeypatch):
 			"time_spent": 2.0,
 		},
 	]
-	assert run_tube(monkeypatch, strat.main_df_frame(rows, RECORDING))["tube_test"].sum() == 0
+	assert run_tube(monkeypatch, strategies.main_df_frame(rows, RECORDING))["tube_test"].sum() == 0
 
 
 def test_event_carries_tunnel_position(monkeypatch):
 	"""The counted event is attributed to the tunnel it occurred in (tunnel_1)."""
-	result = run_tube(monkeypatch, strat.main_df_frame(encounter(behavior="chase"), RECORDING))
+	result = run_tube(monkeypatch, strategies.main_df_frame(encounter(behavior="chase"), RECORDING))
 
 	# Grid is reindexed over the undirected tunnels, so every tunnel is present...
 	assert set(result["position"].cast(pl.String).unique()) == set(RECORDING.layout.tunnel_names)
@@ -225,7 +225,7 @@ def test_no_events_yields_all_zero_grid(monkeypatch):
 			"time_spent": 2.0,
 		},
 	]
-	result = run_tube(monkeypatch, strat.main_df_frame(rows, RECORDING))
+	result = run_tube(monkeypatch, strategies.main_df_frame(rows, RECORDING))
 	assert result.height > 0
 	assert result["tube_test"].sum() == 0
 	assert result["tube_test"].null_count() == 0
@@ -236,7 +236,7 @@ def test_no_events_yields_all_zero_grid(monkeypatch):
 # only layout where a repeat read carries the in-and-out meaning the tube test
 # depends on. The linear RECORDING above cannot express a retreat at all.
 
-RING = strat.ring_recording(animal_ids=["A", "B", "C"])
+RING = strategies.ring_recording(animal_ids=["A", "B", "C"])
 
 
 def T(second: int, microsecond: int = 0):
@@ -268,8 +268,8 @@ def encounter_at(loser_exit, winner_exit) -> list[dict]:
 
 def test_tunnel_entry_map_derived_from_shipped_layouts():
 	"""The antenna -> tunnel map comes from the config, covering every shipped layout."""
-	default = tube_test._tunnel_entry_by_antenna(strat.ring_recording(section="default"))
-	field = tube_test._tunnel_entry_by_antenna(strat.ring_recording(section="field"))
+	default = tube_test._tunnel_entry_by_antenna(strategies.ring_recording(section="default"))
+	field = tube_test._tunnel_entry_by_antenna(strategies.ring_recording(section="field"))
 
 	assert len(default) == 8
 	assert default["1"] == "c1_c2"  # antenna 1 is the cage_1 mouth of tunnel_1
@@ -290,7 +290,7 @@ def test_repeat_read_relabels_only_the_return_crossing():
 	# B crosses into cage_1 at antenna 8, walks to antenna 1, pokes into tunnel_1 and backs
 	# out over antenna 1 again, then leaves cage_1 over antenna 8.
 	reads = [(7, T(0)), (8, T(1)), (1, T(2)), (1, T(5)), (8, T(9))]
-	lf = strat.main_df_frame(strat.antenna_reads("B", reads, RING), RING)
+	lf = strategies.main_df_frame(strategies.antenna_reads("B", reads, RING), RING)
 
 	positions = (
 		tube_test._resolve_repeat_reads(lf.sort("datetime"), RING)
@@ -310,9 +310,9 @@ def test_field_layout_never_leaks_a_raw_antenna_into_position():
 	default-layout tunnel absent from the field config. Both then failed the tunnel filter,
 	losing every field retreat, and corrupted their neighbours' prev/next positions.
 	"""
-	field = strat.ring_recording(animal_ids=["A", "B", "C"], section="field")
+	field = strategies.ring_recording(animal_ids=["A", "B", "C"], section="field")
 	reads = [(7, T(0)), (8, T(1)), (9, T(2)), (9, T(5)), (8, T(9))]
-	lf = strat.main_df_frame(strat.antenna_reads("A", reads, field), field)
+	lf = strategies.main_df_frame(strategies.antenna_reads("A", reads, field), field)
 
 	produced = set(
 		tube_test._resolve_repeat_reads(lf.sort("datetime"), field)
@@ -330,11 +330,13 @@ def test_retreat_seen_only_as_a_repeat_read_is_counted(monkeypatch):
 	# B pokes into tunnel_1 from cage_1 and backs out; A does the same from cage_2 but holds
 	# the tunnel longer, so B loses. Neither retreat reaches the far antenna, so both are
 	# repeat reads and nothing but _resolve_repeat_reads can see them.
-	rows = strat.antenna_reads("B", [(7, T(0)), (8, T(1)), (1, T(2)), (1, T(5)), (8, T(9))], RING)
-	rows += strat.antenna_reads(
+	rows = strategies.antenna_reads(
+		"B", [(7, T(0)), (8, T(1)), (1, T(2)), (1, T(5)), (8, T(9))], RING
+	)
+	rows += strategies.antenna_reads(
 		"A", [(4, T(0, 500000)), (3, T(1, 500000)), (2, T(3)), (2, T(8)), (3, T(11))], RING
 	)
-	lf = strat.main_df_frame(rows, RING)
+	lf = strategies.main_df_frame(rows, RING)
 
 	assert total(run_tube(monkeypatch, lf, recording=RING), "A", "B") == 1
 
@@ -356,14 +358,18 @@ def test_encounter_across_phase_boundary_is_counted(monkeypatch):
 	inside = encounter_at(T(3), T(4))
 	straddle = encounter_at(at(2023, 5, 24, 19, 59, 59, 500000), at(2023, 5, 24, 20, 0, 0, 500000))
 
-	assert run_tube(monkeypatch, strat.main_df_frame(inside, RECORDING))["tube_test"].sum() == 1
-	assert run_tube(monkeypatch, strat.main_df_frame(straddle, RECORDING))["tube_test"].sum() == 1
+	assert (
+		run_tube(monkeypatch, strategies.main_df_frame(inside, RECORDING))["tube_test"].sum() == 1
+	)
+	assert (
+		run_tube(monkeypatch, strategies.main_df_frame(straddle, RECORDING))["tube_test"].sum() == 1
+	)
 
 
 def test_encounter_across_midnight_is_counted(monkeypatch):
 	"""The same holds across a day change inside one dark phase."""
 	rows = encounter_at(at(2023, 5, 24, 23, 59, 59, 500000), at(2023, 5, 25, 0, 0, 0, 500000))
-	result = run_tube(monkeypatch, strat.main_df_frame(rows, RECORDING))
+	result = run_tube(monkeypatch, strategies.main_df_frame(rows, RECORDING))
 
 	assert total(result, "A", "B") == 1
 	# Binned on the winner's exit, so the whole event lands on day 2 rather than splitting.
@@ -380,7 +386,7 @@ def test_continuous_contact_counts_once(monkeypatch):
 		visit("B", "cage_1", T(6), 2.0),
 		visit("A", "cage_2", T(12), 2.0),
 	]
-	assert total(run_tube(monkeypatch, strat.main_df_frame(rows, RECORDING)), "A", "B") == 1
+	assert total(run_tube(monkeypatch, strategies.main_df_frame(rows, RECORDING)), "A", "B") == 1
 
 
 def test_separated_challenges_count_twice(monkeypatch):
@@ -395,7 +401,7 @@ def test_separated_challenges_count_twice(monkeypatch):
 		visit("B", "cage_1", T(6), 2.0),
 		visit("A", "cage_2", T(12), 2.0),
 	]
-	assert total(run_tube(monkeypatch, strat.main_df_frame(rows, RECORDING)), "A", "B") == 2
+	assert total(run_tube(monkeypatch, strategies.main_df_frame(rows, RECORDING)), "A", "B") == 2
 
 
 def test_mutual_retreat_scores_the_later_retreater_as_winner(monkeypatch):
@@ -408,7 +414,7 @@ def test_mutual_retreat_scores_the_later_retreater_as_winner(monkeypatch):
 		visit("B", "cage_1", T(5), 2.0),
 		visit("A", "cage_2", T(6), 2.0),
 	]
-	result = run_tube(monkeypatch, strat.main_df_frame(rows, RECORDING))
+	result = run_tube(monkeypatch, strategies.main_df_frame(rows, RECORDING))
 
 	assert total(result, "A", "B") == 1  # B left first, so A holds the tunnel
 	assert total(result, "B", "A") == 0  # and the pair is never scored both ways

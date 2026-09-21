@@ -20,29 +20,31 @@ import datetime as dt
 import math
 
 import polars as pl
-import strategies as strat
+import strategies
 from hypothesis import assume, given, settings, strategies as st
 
-from deepecohab.core import antenna_analysis, transforms
+from deepecohab.core import antenna_analysis, recording_pipeline, transforms
 from deepecohab.core.data_model import AnalysisParams, Recording
 
 ANIMALS = ["A", "B", "C"]
-RECORDING = strat.analysis_recording(animal_ids=ANIMALS)
-CAGES = strat.ANALYSIS_CAGES
-DIRECTIONAL = strat.ANALYSIS_DIRECTIONAL
-BASE = strat.at(2023, 5, 24, 12, 0, 0)  # day-1 light_phase, hour 12
+RECORDING = strategies.analysis_recording(animal_ids=ANIMALS)
+CAGES = strategies.ANALYSIS_CAGES
+DIRECTIONAL = strategies.ANALYSIS_DIRECTIONAL
+BASE = strategies.at(2023, 5, 24, 12, 0, 0)  # day-1 light_phase, hour 12
 
 
 # --- input injection ---------------------------------------------------------
-def run(fn, table_for_key, **kwargs) -> pl.DataFrame:
+def run(fn, table_for_key, recording: Recording = RECORDING, **kwargs) -> pl.DataFrame:
 	"""Run ``fn``'s pure body with ``Recording.load_results`` swapped for ``table_for_key``.
 
 	``table_for_key`` is a ``(recording, key) -> LazyFrame`` callable, restored afterwards.
+	``recording`` defaults to the linear fixture; the ring one is passed where the geometry
+	matters.
 	"""
 	original = Recording.load_results
 	Recording.load_results = lambda self, key, eager=False: table_for_key(self, key)
 	try:
-		return fn(RECORDING, AnalysisParams(**kwargs)).collect()
+		return fn(recording, AnalysisParams(**kwargs)).collect()
 	finally:
 		Recording.load_results = original
 
@@ -75,7 +77,7 @@ def padded_from_plan(plan: dict[str, list[tuple]]) -> pl.LazyFrame:
 				{"animal_id": animal, "position": cage, "datetime": end, "time_spent": float(dwell)}
 			)
 			t += dwell
-	return strat.padded_df_frame(rows, RECORDING)
+	return strategies.padded_df_frame(rows, RECORDING)
 
 
 # winner/loser chasing events for match_df: distinct animals, a directional
@@ -168,7 +170,7 @@ def split_padded_from_plan(plan: dict[str, list[tuple]]) -> tuple[pl.LazyFrame, 
 			"animal_id": pl.Series([r["animal_id"] for r in rows], dtype=pl.Enum(ANIMALS)),
 			"position": pl.Series([r["position"] for r in rows], dtype=pl.Categorical),
 			"datetime": pl.Series("datetime", [r["datetime"] for r in rows]),
-			"time_spent": strat.seconds([r["time_spent"] for r in rows]),
+			"time_spent": strategies.seconds([r["time_spent"] for r in rows]),
 			"time_under": pl.Series([dt.timedelta(0) for _ in rows], dtype=pl.Duration("us")),
 		}
 	)
@@ -207,7 +209,7 @@ def test_chasings_grid_total_equals_event_count(events):
 	event may be lost or invented, every cell is non-negative and null-free, and
 	no animal chases itself.
 	"""
-	match_df = strat.match_df_frame(events, RECORDING)
+	match_df = strategies.match_df_frame(events, RECORDING)
 	chasings = run(antenna_analysis.calculate_chasings, lambda recording, key: match_df)
 
 	assert chasings["chasings"].null_count() == 0
@@ -242,7 +244,7 @@ def test_absent_animal_ranking_stays_frozen(events, absent):
 	events = [e for e in events if absent not in (e["winner"], e["loser"])]
 	assume(events)  # need at least one match to drive the ranking
 
-	match_df = strat.match_df_frame(events, RECORDING)
+	match_df = strategies.match_df_frame(events, RECORDING)
 	ranking = run(antenna_analysis.calculate_ranking, lambda recording, key: match_df)
 
 	rows = ranking.filter(pl.col("animal_id") == absent)
@@ -310,18 +312,18 @@ def test_absent_animal_appears_in_features_with_finite_values(monkeypatch):
 			**base(3),
 			"animal_id": pl.Series(["A", "B", "C"], dtype=AN),
 			"visits_to_position": pl.Series([10, 20, 0], dtype=pl.UInt32),
-			"time_alone": strat.seconds([1.0, 2.0, 0.0]),
-			"time_in_position": strat.seconds([3600.0, 3600.0, 0.0]),
+			"time_alone": strategies.seconds([1.0, 2.0, 0.0]),
+			"time_in_position": strategies.seconds([3600.0, 3600.0, 0.0]),
 		}
 	)
 	pairwise = pl.LazyFrame(
 		{
 			**base(1),
-			# A cage: pairwise_meetings covers tunnels, but features counts cage time only.
+			# A cage only because the row needs a position; features sums over all of them.
 			"position": pl.Series(["cage_1"], dtype=pl.Categorical),
 			"animal_id": pl.Series(["A"], dtype=AN),
 			"animal_id_2": pl.Series(["B"], dtype=AN),
-			"time_together": strat.seconds([5.0]),
+			"time_together": strategies.seconds([5.0]),
 			"pairwise_encounters": pl.Series([1], dtype=pl.UInt32),
 		}
 	)
@@ -357,3 +359,144 @@ def test_absent_animal_appears_in_features_with_finite_values(monkeypatch):
 	)
 	assert per_detection["value"].sum() == 1.0
 	assert per_detection["exposure"].sum() == 5.0
+
+
+# --- the tiling invariant ----------------------------------------------------
+# A whole-pipeline case: raw reads -> main_df -> padded_df -> activity_df. Everything
+# above starts from a hand-built padded_df, so only this one can say whether the real
+# padding actually tiles an animal's timeline.
+TILED = strategies.analysis_recording(
+	animal_ids=ANIMALS, start="2023-05-24 00:00:00", finish="2023-05-25 00:00:00"
+)
+# One raw registration: which animal, how many seconds into the window, which antenna.
+_read = st.tuples(
+	st.sampled_from(ANIMALS),
+	st.integers(min_value=0, max_value=24 * 3600),
+	st.sampled_from([1, 2, 3, 4]),
+)
+
+
+def activity_from_reads(reads: list[tuple]) -> pl.DataFrame:
+	"""Run the real main_df -> padded_df -> activity_df chain over raw registrations."""
+	start, _ = TILED.timeline.local_span
+	TILED.data = pl.DataFrame(
+		[
+			{
+				"datetime": start + dt.timedelta(seconds=offset),
+				"antenna": antenna,
+				"time_under": dt.timedelta(milliseconds=100),
+				"animal_id": animal,
+			}
+			for animal, offset, antenna in reads
+		],
+		schema=TILED.data_schema,
+	).lazy()
+
+	params = AnalysisParams()
+	original = Recording.load_results
+	try:
+		main = recording_pipeline.build_main_df(TILED, params).collect().lazy()
+		Recording.load_results = lambda self, key, eager=False: main
+		padded = recording_pipeline.build_padded_df(TILED, params).collect().lazy()
+		Recording.load_results = lambda self, key, eager=False: padded
+		return antenna_analysis.calculate_activity(TILED, params).collect()
+	finally:
+		Recording.load_results = original
+
+
+@settings(max_examples=30, deadline=None)
+@given(reads=st.lists(_read, min_size=1, max_size=10))
+def test_every_hour_inside_an_animal_s_observed_span_is_fully_tiled(reads):
+	"""An animal is somewhere at every instant, so its hour sums to exactly 3600 s.
+
+	This is what makes a rate in feature_df mean anything: ``observed_hours`` is read as
+	the time the animal was watched for, and every metric is divided by it. Gaps would
+	inflate every rate, and double-counted pieces would deflate them. Positions include
+	``undefined``, which is the point - unplaceable time still has to be time.
+
+	Exact, to the microsecond: the pieces are cut from the same integer-microsecond
+	bounds they are summed back over, so there is no rounding to tolerate.
+	"""
+	start, end = TILED.timeline.local_span
+	first_read = {}
+	for animal, offset, _ in reads:
+		moment = start + dt.timedelta(seconds=offset)
+		first_read[animal] = min(first_read.get(animal, moment), moment)
+
+	totals = (
+		activity_from_reads(reads)
+		.group_by("animal_id", "day", "hour")
+		.agg(pl.sum("time_in_position"))
+	)
+
+	for row in totals.iter_rows(named=True):
+		bin_start = start + dt.timedelta(days=row["day"] - 1, hours=row["hour"])
+		bin_end = bin_start + dt.timedelta(hours=1)
+		if row["animal_id"] not in first_read:
+			continue  # an animal never registered is zero-filled, not tiled
+		if bin_start < first_read[row["animal_id"]] or bin_end > end:
+			continue  # only hours the animal was observed for the whole of
+		assert row["time_in_position"] == dt.timedelta(hours=1), row
+
+
+# --- match_df against an independent oracle ----------------------------------
+# The ring layout, where each cage sits between two antennas, so an animal walking the
+# ring resolves alternately to a cage and to a tunnel. The linear fixture above has one
+# antenna per cage, where only a repeat read places an animal in a cage - so a chase,
+# which needs the winner seen leaving a cage, almost never arises there.
+RING = strategies.ring_recording(animal_ids=ANIMALS)
+RING_TUNNELS = RING.layout.tunnel_names_directional
+
+# One step: who moves, which way around the antenna ring, how long after the previous read
+# anywhere in the habitat, and how far behind each follower comes. A step may move several
+# animals through the same antenna in quick succession, which is what a chase looks like in
+# the raw reads; the gaps straddle the chasing window, so accepted and rejected
+# follow-throughs are both generated.
+_antenna_step = st.tuples(
+	st.lists(st.sampled_from(ANIMALS), min_size=1, max_size=len(ANIMALS), unique=True),
+	st.sampled_from([-1, 0, 1, 1]),
+	st.sampled_from([0.05, 0.2, 0.5, 0.9, 1.5]),
+	st.sampled_from([0.2, 0.5, 0.9, 1.5]),
+)
+
+
+def main_df_rows_from_steps(steps: list[tuple]) -> list[dict]:
+	"""Walk the animals around the ring and resolve the main_df rows that produces."""
+	ring = len(RING.layout.cages) * 2
+	clock, antenna = 0.0, dict.fromkeys(ANIMALS, 1)
+	walks: dict[str, list[tuple]] = {animal: [] for animal in ANIMALS}
+
+	for movers, move, delta, follow_gap in steps:
+		clock += delta  # every read gets its own instant, so no tie can reorder a walk
+		for index, animal in enumerate(movers):
+			clock += follow_gap if index else 0.0
+			antenna[animal] = (antenna[animal] - 1 + move) % ring + 1
+			walks[animal].append((antenna[animal], BASE + dt.timedelta(seconds=clock)))
+
+	return [
+		row
+		for animal, walk in walks.items()
+		for row in strategies.antenna_reads(animal, walk, RING)
+	]
+
+
+@settings(max_examples=60, deadline=None)
+@given(steps=st.lists(_antenna_step, min_size=2, max_size=25))
+def test_matches_agree_with_the_brute_force_oracle(steps):
+	"""The sweep, the bitmask decode and the as-of join find exactly what a loop does.
+
+	Three animals shuffling between neighbouring cages produce repeat passes, head-on
+	crossings, several animals inside one tunnel and exits just outside the window - the
+	cases the hand-written tests each isolate, here all at once and compared against a
+	reference that shares none of the machinery.
+	"""
+	rows = main_df_rows_from_steps(steps)
+	main = strategies.main_df_frame(rows, RING)
+
+	result = run(antenna_analysis.calculate_matches, lambda recording, key: main, recording=RING)
+
+	produced = sorted(
+		(row["position"], row["winner"], row["loser"], row["datetime"], row["chasing_length"])
+		for row in result.iter_rows(named=True)
+	)
+	assert produced == strategies.expected_matches(rows, RING, AnalysisParams().chasing_time_window)
