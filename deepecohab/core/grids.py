@@ -62,9 +62,8 @@ def assign_phase_count(frame: pl.LazyFrame, recording: Recording) -> pl.LazyFram
 	through. ``frame`` must already carry ``day``, ``phase`` and ``hour``.
 	"""
 	grid_counts = build_time_grid(recording).select(CALENDAR_COLUMNS).unique()
-	join_columns = ["day", "phase", "hour"]
 
-	return frame.join(grid_counts, on=join_columns, how="left")
+	return frame.join(grid_counts, on=["day", "phase", "hour"], how="left")
 
 
 def build_time_grid(recording: Recording) -> pl.LazyFrame:
@@ -96,7 +95,6 @@ def build_time_grid(recording: Recording) -> pl.LazyFrame:
 		)
 		# Walking by minute rather than by hour is what separates the two phases of a
 		# straddled bin; collapsing to the distinct labels gives back the hourly grid.
-		# See docs/technical_documentation_writeup.md.
 		.group_by("day", "phase", "hour")
 		.agg(pl.min("minute").alias("bin_start"))
 		.sort("bin_start")
@@ -176,9 +174,6 @@ def reindex_onto_grid(
 			:func:`build_animal_grid`.
 		positions: when given, the grid is crossed with these positions and
 			``position`` becomes a join key.
-
-	Returns:
-		``data`` on the dense grid, with absent cells filled with ``0``.
 	"""
 	full_grid = build_time_grid(recording).join(
 		build_animal_grid(recording, columns, ordered=ordered, positions=positions),
@@ -191,8 +186,6 @@ def reindex_onto_grid(
 		join_columns.append("position")
 	join_columns += animal_columns
 
-	# Cells that saw no activity read zero. Durations are filled separately, since polars
-	# will not fill a duration from an integer.
 	return (
 		full_grid.join(data, on=join_columns, how="left")
 		.with_columns(cs.duration().fill_null(pl.duration(microseconds=0)))

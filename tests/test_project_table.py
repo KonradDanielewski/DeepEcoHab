@@ -14,8 +14,9 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 
+from deepecohab.app import services
 from deepecohab.core.data_model import Bout, Event, Project, Recording
 
 TZ = "UTC"
@@ -63,7 +64,7 @@ def write_recording(directory: Path, recording: Recording, hours: int) -> tuple[
 
 
 def make_recording(name: str, animal_ids: list[str], genotype: str, finish: str) -> Recording:
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		animal_ids=animal_ids, tz=TZ, start="2023-05-24 00:00:00", finish=finish
 	)
 	recording.name = name
@@ -243,9 +244,47 @@ def test_names_selects_a_subset(project):
 	assert set(table["recording"].unique()) == {"wt_cohort"}
 
 
+def test_removing_a_recording_drops_it_from_the_project_table(tmp_path):
+	sources = []
+	for name, animals, genotype, finish, hours in (
+		("keep", ["A", "B"], "WT", "2023-05-26 00:00:00", 36),
+		("drop", ["X", "Y"], "KO", "2023-05-26 00:00:00", 36),
+	):
+		recording = make_recording(name, animals, genotype, finish)
+		sources.append(write_recording(tmp_path / "sources" / name, recording, hours))
+
+	project = Project.create(
+		project_name="remove_test", experimenter="tester", location=tmp_path / "project"
+	)
+	project.add_recordings(sources)
+	project.run_analysis()
+	project.generate_project_table()
+
+	project.remove_recording("drop")
+
+	table = project.load_project_table(eager=True)
+	assert set(table["recording"].unique()) == {"keep"}
+
+
+def test_removing_the_last_recording_deletes_the_project_table(tmp_path):
+	recording = make_recording("only", ["A", "B"], "WT", "2023-05-26 00:00:00")
+	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+
+	project = Project.create(
+		project_name="remove_all", experimenter="tester", location=tmp_path / "project"
+	)
+	project.add_recording(metadata_path, data_path)
+	project.run_analysis()
+	project.generate_project_table()
+
+	project.remove_recording("only")
+
+	assert not (project.project_location / Project.PROJECT_TABLE).is_file()
+
+
 def test_adding_a_trimmed_recording_warns_with_the_duration(tmp_path):
 	"""Data dropped ahead of the experiment start is reported once, on add."""
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=TZ,
 		start="2023-05-24 09:30:00",
 		finish="2023-05-27 00:00:00",
@@ -268,7 +307,7 @@ def test_adding_a_late_started_recording_reports_the_short_first_phase(tmp_path)
 	The nearest onset is the one just behind, which keeps the day that skipping forward
 	would have cost, at the price of a slightly short first phase.
 	"""
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=TZ,
 		# The lead has to clear LEAD_WARNING_THRESHOLD for the warning to be raised at all.
 		start="2023-05-24 21:10:00",
@@ -300,7 +339,7 @@ def test_a_lead_under_the_threshold_is_quiet(tmp_path, start, name):
 	The offset is still logged; it just does not warn, which is what keeps the warning
 	worth reading on the recordings that are genuinely far off.
 	"""
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=TZ,
 		start=start,
 		finish="2023-05-27 00:00:00",
@@ -324,7 +363,7 @@ def test_a_lead_under_the_threshold_is_quiet(tmp_path, start, name):
 
 
 def test_adding_an_untrimmed_recording_is_quiet(tmp_path):
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=TZ,
 		start="2023-05-24 20:00:00",
 		finish="2023-05-27 00:00:00",
@@ -343,7 +382,7 @@ def test_adding_an_untrimmed_recording_is_quiet(tmp_path):
 
 
 def test_update_notes_persists_to_config_json(tmp_path):
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=TZ, start="2023-05-24 00:00:00", finish="2023-05-25 00:00:00"
 	)
 	recording.name = "noted"
@@ -357,3 +396,42 @@ def test_update_notes_persists_to_config_json(tmp_path):
 
 	reloaded = Project.load(tmp_path / "project")
 	assert reloaded["noted"].notes == "checked the water bottles twice a day"
+
+
+def test_update_notes_through_the_app_leaves_a_line_in_the_project_log(tmp_path):
+	"""The GUI's only silent mutation: notes changed from the app land in project.log."""
+	recording = strategies.analysis_recording(
+		tz=TZ, start="2023-05-24 00:00:00", finish="2023-05-25 00:00:00"
+	)
+	recording.name = "noted"
+	metadata_path, data_path = write_recording(tmp_path / "src", recording, 6)
+
+	project = Project.create(
+		project_name="notes", experimenter="tester", location=tmp_path / "project"
+	)
+	project.add_recording(metadata_path, data_path)
+	services.update_notes(str(tmp_path / "project"), "noted", "water bottles checked", tag="A")
+
+	log = (project.project_location / Project.LOGFILE).read_text(encoding="utf-8")
+	assert "noted: notes updated for animal A" in log
+
+
+def test_update_notes_with_a_tag_persists_to_one_animal(tmp_path):
+	"""A tag targets that animal's notes and leaves the recording's own notes alone."""
+	recording = strategies.analysis_recording(
+		tz=TZ, start="2023-05-24 00:00:00", finish="2023-05-25 00:00:00"
+	)
+	recording.name = "noted"
+	metadata_path, data_path = write_recording(tmp_path / "src", recording, 6)
+
+	project = Project.create(
+		project_name="notes", experimenter="tester", location=tmp_path / "project"
+	)
+	project.add_recording(metadata_path, data_path)
+	project["noted"].update_notes("skittish since the cage change", tag="A")
+
+	reloaded = Project.load(tmp_path / "project")
+	by_tag = {animal.tag: animal for animal in reloaded["noted"].cohort.animals}
+	assert by_tag["A"].notes == "skittish since the cage change"
+	assert by_tag["B"].notes == ""
+	assert reloaded["noted"].notes == ""

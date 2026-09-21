@@ -5,8 +5,6 @@ import polars as pl
 
 Unit = Literal["seconds", "minutes", "hours", "days"]
 
-# seconds per unit, and the suffix it is labelled with. Ordered coarsest first so
-# `pick_unit` can walk it straight through.
 _UNITS: dict[Unit, tuple[float, str]] = {
 	"days": (86400.0, "d"),
 	"hours": (3600.0, "h"),
@@ -32,16 +30,8 @@ class DurationDisplay:
 	text: pl.Expr
 
 
-def pick_unit(frame: pl.DataFrame, column: str) -> Unit:
-	"""Choose the unit a duration column reads most naturally in.
-
-	Args:
-		frame: the collected frame holding ``column``.
-		column: name of a ``Duration`` column.
-
-	Returns:
-		The largest unit in which the column maximum is still at least 1.
-	"""
+def _pick_unit(frame: pl.DataFrame, column: str) -> Unit:
+	"""The largest unit in which ``column``'s maximum is still at least 1."""
 	largest = frame.select(pl.col(column).dt.total_seconds(fractional=True).max()).item()
 
 	if largest is None:
@@ -75,35 +65,6 @@ def _text(column: pl.Expr, unit: Unit) -> pl.Expr:
 	)
 
 
-def display(
-	frame: pl.DataFrame,
-	column: str,
-	unit: Unit | Literal["auto"] = "auto",
-	label: str = "Time",
-) -> DurationDisplay:
-	"""Derive the numeric column, hover text and axis label for a duration column.
-
-	Args:
-		frame: the collected frame holding ``column``, used to pick the unit.
-		column: name of a ``Duration`` column.
-		unit: force a unit, or ``"auto"`` to choose from the data.
-		label: axis title stem; the unit is appended.
-
-	Returns:
-		The expressions and label for rendering that column.
-	"""
-	chosen: Unit = pick_unit(frame, column) if unit == "auto" else unit
-	seconds, suffix = _UNITS[chosen]
-	duration = pl.col(column)
-
-	return DurationDisplay(
-		unit=chosen,
-		label=f"<b>{label} [{suffix}]</b>",
-		value=duration.dt.total_seconds(fractional=True) / seconds,
-		text=_text(duration, chosen),
-	)
-
-
 def to_display(
 	frame: pl.DataFrame,
 	column: str,
@@ -122,7 +83,15 @@ def to_display(
 		The frame with ``column`` numeric and a ``<column>_text`` sibling, and the
 		display describing them.
 	"""
-	rendered = display(frame, column, unit, label)
+	chosen: Unit = _pick_unit(frame, column) if unit == "auto" else unit
+	seconds, suffix = _UNITS[chosen]
+	duration = pl.col(column)
+	rendered = DurationDisplay(
+		unit=chosen,
+		label=f"<b>{label} [{suffix}]</b>",
+		value=duration.dt.total_seconds(fractional=True) / seconds,
+		text=_text(duration, chosen),
+	)
 	frame = frame.with_columns(
 		rendered.value.alias(column),
 		rendered.text.alias(f"{column}_text"),

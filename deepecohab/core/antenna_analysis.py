@@ -113,8 +113,8 @@ def calculate_matches(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 	computed once here.
 
 	Returns:
-		One row per chasing event, with winner, loser, tunnel, how long the chase
-		lasted, and the calendar columns of the winner's registration.
+		One row per chasing event, with winner, loser, tunnel, how far behind the
+		winner left the tunnel, and the calendar columns of the winner's registration.
 	"""
 	registrations = recording.load_results("main_df").sort("datetime")
 
@@ -150,7 +150,12 @@ def calculate_matches(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 	# calculate_pairwise_meetings). Each winner pass is an enter(+bit)/leave(-bit) event and each
 	# loser exit a zero-delta query, so the per-tunnel cumulative bit-sum is the presence bitmask
 	# of winners inside (one bit per animal, capped at ~63, far above any EcoHab study).
-	elapsed = pl.col("loser_exit") - pl.col("tunnel_entry")
+	# The window is about the follow-through: how long after the winner entered the tunnel
+	# the loser came out of it. chasing_length is the chase itself, the gap between the two
+	# animals' exits, so both are one animal's instant minus the other's - but not the same
+	# pair of instants.
+	follow_through = pl.col("loser_exit") - pl.col("tunnel_entry")
+	chasing_length = pl.col("winner_exit") - pl.col("loser_exit")
 	shortest, longest = (pl.duration(seconds=bound) for bound in params.chasing_time_window)
 
 	winners = chasing.with_columns(
@@ -162,8 +167,9 @@ def calculate_matches(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 	# Maps each winner's single-bit mask value back to its id, for decoding the bitmask.
 	winner_lookup = winners.select("winner", "bit").unique()
 
-	# `kind` orders ties at equal timestamps -- enter(0) < query(1) < leave(2) -- so a winner counts
-	# as inside iff tunnel_entry <= loser_exit < winner_exit; the strict window below re-asserts this.
+	# `kind` orders ties at equal timestamps -- enter(0) < query(1) < leave(2) -- so a winner
+	# counts as inside iff tunnel_entry <= loser_exit < winner_exit; the strict window below
+	# re-asserts this.
 	enters = winners.select(
 		pl.col("tunnel_entry").alias("time"),
 		"position",
@@ -193,8 +199,9 @@ def calculate_matches(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 		.select("position", "loser", pl.col("time").alias("loser_exit"), "mask")
 	)
 
-	# Decode the mask into candidate winners, then recover each winner's open pass with an as-of join
-	# (its latest entry at or before the loser exit); a plain equi-join would match all passes and be quadratic.
+	# Decode the mask into candidate winners, then recover each winner's open pass with an
+	# as-of join (its latest entry at or before the loser exit); a plain equi-join would
+	# match all passes and be quadratic.
 	candidates = mask_at_query.join(winner_lookup, how="cross").filter(
 		(pl.col("mask") & pl.col("bit")) != 0
 	)
@@ -209,12 +216,13 @@ def calculate_matches(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 			right_on="tunnel_entry",
 			by=["position", "winner"],
 			strategy="backward",
-			# Both sides are globally sorted on the as-of key above, which polars can't verify per `by` group.
+			# Both sides are globally sorted on the as-of key above, which polars
+			# can't verify per `by` group.
 			check_sortedness=False,
 		)
 		.filter(
-			elapsed > shortest,
-			elapsed < longest,
+			follow_through > shortest,
+			follow_through < longest,
 			pl.col("loser_exit") < pl.col("winner_exit"),
 			pl.col("winner") != pl.col("loser"),
 		)
@@ -223,7 +231,7 @@ def calculate_matches(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 			"winner",
 			"loser",
 			pl.col("winner_exit").alias("datetime"),
-			elapsed.alias("chasing_length"),
+			chasing_length.alias("chasing_length"),
 			*CALENDAR_COLUMNS,
 		)
 		.sort("datetime")
@@ -277,8 +285,7 @@ def calculate_ranking(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 
 	previous_ranking = params.prev_ranking
 	if previous_ranking is not None:
-		if isinstance(previous_ranking, pl.LazyFrame):
-			previous_ranking = previous_ranking.lazy().collect()
+		previous_ranking = get_prev_ranking(previous_ranking).collect()
 
 		foreign_animals = set(previous_ranking.get_column("animal_id").to_list()) - set(animal_tags)
 		if foreign_animals:
@@ -290,10 +297,14 @@ def calculate_ranking(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 		for name, mu, sigma in previous_ranking.select("animal_id", "mu", "sigma").iter_rows():
 			ranking[name] = model.rating(mu=mu, sigma=sigma)
 
+	# The replay is order-dependent, so equal timestamps need a tiebreak or the ratings
+	# shift between runs. `position` is deliberately left out: it is Categorical, so its
+	# sort order is physical and would put the non-determinism straight back. A winner has
+	# one exit per instant, so the triple is already unique.
 	matches = (
 		recording.load_results("match_df")
+		.sort("datetime", "loser", "winner")
 		.select("loser", "winner", "datetime", *CALENDAR_COLUMNS)
-		.sort("datetime")
 		.collect()
 	)
 
@@ -340,14 +351,16 @@ def get_prev_ranking(ranking: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
 	:func:`calculate_ranking` emits one row per animal after every match; this keeps
 	only the last ``mu``/``sigma`` per animal, which is what
 	``AnalysisParams.prev_ranking`` expects. Feed it back to continue ranking the same
-	animals from where a previous recording left off.
+	animals from where a previous recording left off. ``ranking`` may already be
+	collapsed to this shape - sorting only runs when a ``datetime`` column is there to
+	sort by, so :func:`calculate_ranking` can run every ``prev_ranking`` through this
+	unconditionally.
 	"""
-	return (
-		ranking.lazy()
-		.sort("datetime")
-		.group_by("animal_id", maintain_order=True)
-		.agg(pl.last("mu"), pl.last("sigma"))
-	)
+	ranking = ranking.lazy()
+	if "datetime" in ranking.collect_schema().names():
+		ranking = ranking.sort("datetime")
+
+	return ranking.group_by("animal_id", maintain_order=True).agg(pl.last("mu"), pl.last("sigma"))
 
 
 @DataFrameRegistry.register("pairwise_meetings", requires=["padded_df"])
@@ -409,6 +422,24 @@ def calculate_pairwise_meetings(recording: Recording, params: AnalysisParams) ->
 	)
 
 
+def _require_chance(chance: pl.Series) -> pl.Series:
+	"""``chance`` unchanged, or a raise if any of it is null.
+
+	A null means the left joins behind it found no occupancy or no phase duration for a
+	pair-cage-phase that co-presence was recorded in. Summed, that cage would simply
+	contribute its observed time with no chance term subtracted, which reads as
+	sociability the animals never showed. A lazy frame has no assert and the step is
+	sunk streaming, so the check rides along as a batch-wise map.
+	"""
+	if chance.null_count():
+		raise ValueError(
+			f"{chance.null_count()} of {len(chance)} chance terms are null: co-presence was "
+			"recorded for a pair, cage and phase that activity_df or phase_durations does "
+			"not cover, so those cages would be silently skipped."
+		)
+	return chance
+
+
 @DataFrameRegistry.register(
 	"incohort_sociability", requires=["pairwise_meetings", "activity_df", "phase_durations"]
 )
@@ -449,14 +480,21 @@ def calculate_incohort_sociability(recording: Recording, params: AnalysisParams)
 
 	return (
 		time_together.join(expected_together, on=[*core_columns, "position"], how="left")
-		.join(phase_durations, on=["phase_count", "phase"], how="left")
+		# An inner join, unlike the one above: the dense grid numbers a phase occurrence for
+		# the window's final instant whenever that instant opens one, and phase_durations
+		# measures no duration for it. Nothing can happen in an instant, so those cells are
+		# zero-filled grid rows only, and reporting a sociability over a null duration would
+		# be reporting on no time at all.
+		.join(phase_durations, on=["phase_count", "phase"])
 		.with_columns(
 			pl.col("time_together").dt.total_seconds(fractional=True) / phase_seconds,
 			(
 				pl.col("time_in_position").dt.total_seconds(fractional=True)
 				* pl.col("time_in_position_2").dt.total_seconds(fractional=True)
 				/ phase_seconds**2
-			).alias("chance"),
+			)
+			.map_batches(_require_chance, return_dtype=pl.Float64)
+			.alias("chance"),
 		)
 		.group_by(core_columns)
 		.agg(
@@ -544,6 +582,10 @@ def calculate_features(recording: Recording, params: AnalysisParams) -> pl.LazyF
 	)
 
 	partners = recording.cohort.n_mice - 1
+	# A lone animal has no partner, so a paired metric has neither a value nor an exposure
+	# to speak of; leaving it out of `on` drops the columns with it, as unpivot keeps only
+	# `index` and `on`. `solo` and `per_detection` remain, so `on` is never empty.
+	metrics = [*solo, *(paired if partners else []), *per_detection]
 
 	return (
 		pl.concat(
@@ -554,7 +596,7 @@ def calculate_features(recording: Recording, params: AnalysisParams) -> pl.LazyF
 		.with_columns(pl.col("n_chasing").alias("n_chasing_per_detection"))
 		.with_columns(pl.col([*solo, *paired, *per_detection]).cast(pl.Float64))
 		.unpivot(
-			on=[*solo, *paired, *per_detection],
+			on=metrics,
 			index=[*keys, "observed_hours", "n_detections"],
 			variable_name="metric",
 			value_name="value",

@@ -1,3 +1,5 @@
+import datetime as dt
+
 import polars as pl
 
 from deepecohab.core import grids
@@ -43,25 +45,52 @@ def get_animal_position(frame: pl.LazyFrame, antenna_combinations: dict[str, str
 	)
 
 
-def extrapolate_last_position(frame: pl.LazyFrame) -> pl.LazyFrame:
-	"""Frame with each animal's last position extended to the end of the recording.
+def extrapolate_last_position(frame: pl.LazyFrame, end: dt.datetime, limit: float) -> pl.LazyFrame:
+	"""Frame with each animal's last position carried on towards ``end``.
 
 	This gives a better estimate of time spent in positions and of cage occupancy in
-	recordings with low activity.
-	"""
-	last_rows = frame.group_by("animal_id").agg(pl.all().sort_by("datetime").last())
-	recording_end = frame.select(pl.col("datetime").max().alias("recording_end"))
+	recordings with low activity, but silence is only weak evidence of staying put: the
+	carry stops ``limit`` seconds after the last registration, and an animal silent
+	past that gets a second row at ``end`` marked ``__tail`` for the caller to turn into
+	:attr:`Layout.UNDEFINED`. Targeting the window end rather than the last read in the
+	data is what keeps a recording's final stretch attributed at all.
 
-	artificial_rows = (
-		last_rows.join(recording_end, how="cross")
-		.filter(pl.col("datetime") != pl.col("recording_end"))
-		.with_columns(pl.col("recording_end").alias("datetime"))
-		# Taken from the frame rather than named here, so the two sides of the concat
-		# hold the same columns in the same order whatever the source parquet looks like.
-		.select(frame.collect_schema().names())
+	Both added rows repeat the last antenna, so :func:`get_animal_position` resolves the
+	cap row as the self-pair - the cage at that antenna, where the animal *is* - rather
+	than the position the last row named, which is where it was coming from.
+
+	Args:
+		frame: registrations, with ``animal_id``, ``antenna`` and ``datetime``.
+		end: the analysed window's end, which the carry and the tail row target.
+		limit: how many seconds the last position may be carried for.
+
+	Returns:
+		``frame`` plus the added rows, with a ``__tail`` flag the caller consumes.
+	"""
+	columns = [*frame.collect_schema().names(), "__tail"]
+	window_end = pl.lit(end).alias("__end")
+
+	last_rows = frame.group_by("animal_id").agg(pl.all().sort_by("datetime").last())
+	capped = last_rows.with_columns(
+		pl.min_horizontal(pl.col("datetime") + pl.duration(seconds=limit), window_end).alias(
+			"__cap"
+		)
 	)
 
-	return pl.concat([frame, artificial_rows]).sort("datetime")
+	carried = capped.filter(pl.col("__cap") > pl.col("datetime")).with_columns(
+		pl.col("__cap").alias("datetime"), pl.lit(False).alias("__tail")
+	)
+	tail = capped.filter(window_end > pl.col("__cap")).with_columns(
+		window_end.alias("datetime"), pl.lit(True).alias("__tail")
+	)
+
+	return pl.concat(
+		[
+			frame.with_columns(pl.lit(False).alias("__tail")),
+			carried.select(columns),
+			tail.select(columns),
+		]
+	).sort("datetime")
 
 
 def remove_tunnel_directionality(frame: pl.LazyFrame, recording: Recording) -> pl.LazyFrame:
@@ -75,9 +104,6 @@ def add_occupancy_bounds(frame: pl.LazyFrame) -> pl.LazyFrame:
 	"""Frame with ``start`` and ``end`` bounding each occupancy interval.
 
 	``datetime`` is the interval end, so ``start`` is ``datetime - time_spent``.
-
-	Args:
-		frame: table with ``datetime`` (interval end) and ``time_spent``.
 	"""
 	return frame.with_columns(
 		pl.col("datetime").alias("end"),

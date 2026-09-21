@@ -10,6 +10,7 @@ local wall clock still sweeps those transitions.
 """
 
 import datetime as dt
+from itertools import pairwise
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -28,7 +29,6 @@ from deepecohab.core.data_model import (
 	Tunnel,
 )
 
-# --- domains -----------------------------------------------------------------
 # America/New_York covers EDT (and EST); the zones have DST transitions on
 # different dates, widening coverage. UTC is the no-DST baseline.
 TIMEZONES = ["UTC", "America/New_York", "Europe/Warsaw"]
@@ -290,8 +290,16 @@ def make_layout(antenna_combinations: dict[str, str], tunnels_map: dict[str, str
 	"""A Layout carrying the given geometry, with placeholder cage/tunnel metadata.
 
 	Cage and tunnel names are derived from the maps, so a test states its geometry
-	once as antenna pairs and gets a consistent layout back.
+	once as antenna pairs and gets a consistent layout back. A pair resolving to a
+	directional tunnel the given ``tunnels_map`` does not name is dropped rather than
+	carried: the Layout validator rejects such a position, and a test drawing a partial
+	tunnels_map is asking for the smaller habitat, not a broken one.
 	"""
+	antenna_combinations = {
+		pair: position
+		for pair, position in antenna_combinations.items()
+		if "cage" in position or position in tunnels_map
+	}
 	cage_names = sorted({pos for pos in antenna_combinations.values() if "cage" in pos})
 	tunnel_names = sorted(set(tunnels_map.values()))
 
@@ -313,7 +321,6 @@ def make_layout(antenna_combinations: dict[str, str], tunnels_map: dict[str, str
 			for index, name in enumerate(tunnel_names, start=1)
 		],
 		antenna_combinations=antenna_combinations,
-		antenna_combinations_interpolated=antenna_combinations,
 		tunnels_map=tunnels_map,
 	)
 
@@ -451,8 +458,8 @@ def ring_recording(
 	where a repeat read means nothing in particular. The shipped layouts are rings with
 	the antennas at the tunnel mouths, so a repeat read there is the animal poking into a
 	tunnel and backing out -- the only trace a tube-test retreat leaves, and what
-	``antenna_analysis._resolve_repeat_reads`` decodes. Tests that exercise that path need
-	this geometry rather than the linear one.
+	``auxiliary_analysis.tube_test._resolve_repeat_reads`` decodes. Tests that exercise
+	that path need this geometry rather than the linear one.
 
 	Args:
 		animal_ids: cohort, as for :func:`analysis_recording`.
@@ -597,9 +604,28 @@ def padded_df_frame(rows: list[dict], recording: Recording) -> pl.LazyFrame:
 
 	Each row needs ``animal_id``, ``position`` (undirected or cage), ``datetime``
 	(the interval END, tz-aware) and ``time_spent`` in seconds; ``interpolated``
-	defaults to False. The calendar columns are derived from the interval end,
-	matching the columns the activity and pairwise steps group on.
+	defaults to False. The calendar columns are derived from the piece's START, as
+	``split_on_minute_boundaries`` derives them via ``__piece_start`` - a piece belongs
+	to the bin it began in, so a fixture that crosses a boundary has to agree.
+
+	With no rows, an empty frame carrying the full typed schema is returned, as
+	:func:`match_df_frame` does.
 	"""
+	if not rows:
+		return pl.LazyFrame(
+			schema={
+				"animal_id": pl.Enum(recording.cohort.animal_tags),
+				"position": pl.Categorical,
+				"datetime": pl.Datetime("us", recording.timeline.recording_timezone.key),
+				"time_spent": pl.Duration("us"),
+				"interpolated": pl.Boolean,
+				"phase": pl.Enum(list(recording.timeline.phases)),
+				"day": pl.UInt16,
+				"hour": pl.UInt8,
+				"phase_count": pl.UInt16,
+			}
+		)
+
 	frame = pl.DataFrame(
 		{
 			"animal_id": pl.Series(
@@ -616,8 +642,65 @@ def padded_df_frame(rows: list[dict], recording: Recording) -> pl.LazyFrame:
 	return (
 		frame.lazy()
 		.sort("datetime")
+		.with_columns((pl.col("datetime") - pl.col("time_spent")).alias("__start"))
 		.with_columns(
-			grids.get_phase(recording), grids.get_day(recording), grids.get_hour(recording)
+			grids.get_phase(recording, "__start"),
+			grids.get_day(recording, "__start"),
+			grids.get_hour(recording, "__start"),
 		)
 		.pipe(grids.assign_phase_count, recording)
+		.drop("__start")
+	)
+
+
+def expected_matches(
+	rows: list[dict], recording: Recording, window: tuple[float, float]
+) -> list[tuple]:
+	"""Brute-force reference for ``antenna_analysis.calculate_matches``.
+
+	Quadratic and literal: every tunnel pass whose previous read was a cage is a winner
+	candidate, every tunnel read is a loser's exit, and the two make an event when the
+	winner was inside that tunnel at the exit, left after it, and the follow-through
+	falls inside the window. The step computes the same thing with a sweep, a presence
+	bitmask and an as-of join, none of which this shares.
+
+	A winner matches at most one of its own passes, since a pass ends before the next
+	one starts - which is what the step's as-of join relies on too.
+
+	Args:
+		rows: main_df rows, each with ``animal_id``, ``position`` and ``datetime``.
+		recording: the recording whose layout names the cages and directional tunnels.
+		window: ``AnalysisParams.chasing_time_window``, in seconds.
+
+	Returns:
+		One sorted ``(position, winner, loser, winner_exit, chasing_length)`` per event.
+	"""
+	cages = set(recording.layout.cage_names)
+	tunnels = set(recording.layout.tunnel_names_directional)
+	shortest, longest = (dt.timedelta(seconds=bound) for bound in window)
+
+	walks: dict[str, list[dict]] = {}
+	for row in sorted(rows, key=lambda row: row["datetime"]):
+		walks.setdefault(row["animal_id"], []).append(row)
+
+	passes = [
+		(current["position"], animal, previous["datetime"], current["datetime"])
+		for animal, walk in walks.items()
+		for previous, current in pairwise(walk)
+		if current["position"] in tunnels and previous["position"] in cages
+	]
+	exits = [
+		(row["position"], row["animal_id"], row["datetime"])
+		for row in rows
+		if row["position"] in tunnels
+	]
+
+	return sorted(
+		(position, winner, loser, winner_exit, winner_exit - loser_exit)
+		for position, winner, entry, winner_exit in passes
+		for tunnel, loser, loser_exit in exits
+		if tunnel == position
+		and loser != winner
+		and entry <= loser_exit < winner_exit
+		and shortest < loser_exit - entry < longest
 	)

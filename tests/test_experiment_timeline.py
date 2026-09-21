@@ -8,11 +8,12 @@ hourly bin holds two phases.
 """
 
 import datetime as dt
+from functools import partial
 from zoneinfo import ZoneInfo
 
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 from pydantic import ValidationError
 
 from deepecohab.core import grids
@@ -28,8 +29,7 @@ ALIGNED = {"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 0)}
 STAGGERED = {"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 30)}
 
 
-def at(*args: int) -> dt.datetime:
-	return dt.datetime(*args, tzinfo=TZ)
+at = partial(strategies.at, tz=TZ_NAME)
 
 
 def timeline(start: dt.datetime, end: dt.datetime, phases: dict, start_from: str) -> Timeline:
@@ -140,7 +140,7 @@ def test_start_from_must_name_a_defined_phase():
 
 def test_usual_protocol_starts_minutes_before_dark():
 	"""The production case: animals go in under lights-on, recording starts just before dark."""
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=TZ_NAME,
 		start="2023-05-24 19:55:00",
 		finish="2023-05-28 20:00:00",
@@ -170,7 +170,7 @@ def test_config_loaded_recording_keeps_only_registrations_inside_its_window():
 	Polars refuses to compare a datetime column with bounds in another zone, so the window
 	main_df is trimmed to has to come back from local_span in the recording's own zone.
 	"""
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=TZ_NAME,
 		start="2023-05-24 19:55:00",
 		finish="2023-05-26 20:00:00",
@@ -202,7 +202,7 @@ def test_config_loaded_recording_keeps_only_registrations_inside_its_window():
 # --- the grid ----------------------------------------------------------------
 def staggered_recording():
 	"""Origin on the 20:30 dark onset, so bins sit on the half hour and 07:00 splits one."""
-	return strat.analysis_recording(
+	return strategies.analysis_recording(
 		tz=TZ_NAME,
 		start="2023-05-24 18:00:00",
 		finish="2023-05-27 20:30:00",
@@ -212,7 +212,7 @@ def staggered_recording():
 
 
 def aligned_recording():
-	return strat.analysis_recording(
+	return strategies.analysis_recording(
 		tz=TZ_NAME,
 		start="2023-05-24 18:00:00",
 		finish="2023-05-27 20:00:00",
@@ -264,7 +264,7 @@ def test_every_label_the_data_can_produce_has_a_grid_row(phases):
 	A missing row means a null phase_count, which silently drops that registration from
 	every reindexed table - the failure mode staggered onsets used to cause.
 	"""
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		tz=TZ_NAME,
 		start="2023-05-24 18:00:00",
 		finish="2023-05-27 03:17:00",  # ends mid-hour as a real recording does

@@ -14,7 +14,7 @@ import zipfile
 import plotly.graph_objects as go
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 from flask import Flask
 
 from deepecohab.app import downloads, services
@@ -42,7 +42,7 @@ def _raw_reads(recording: Recording, hours: int) -> pl.DataFrame:
 @pytest.fixture(scope="module")
 def project(tmp_path_factory) -> Project:
 	root = tmp_path_factory.mktemp("downloads")
-	recording = strat.analysis_recording()
+	recording = strategies.analysis_recording()
 	recording.name = "rec1"
 
 	metadata_path = root / "metadata.json"

@@ -1,20 +1,15 @@
-"""DeepEcoHab GUI: a Dash + dash-mantine-components app.
-
-``create_app()`` builds the app; nothing runs at import time so the module stays safe to
-import from a WSGI server (``server = create_app().server``).
-"""
-
 import logging
 from importlib.metadata import version
 
 import dash
 import dash_mantine_components as dmc
 import diskcache
-from dash import ALL, Dash, Input, Output, State, dcc, html
+from dash import ALL, ClientsideFunction, Dash, Input, Output, State, dcc, html
 from dash.exceptions import PreventUpdate
 
 from deepecohab.app import downloads, services
 from deepecohab.app.components import export_dialog, export_preview, icon
+from deepecohab.plotting.export import ensure_chrome_available
 
 #: Shade 6 is the light-theme accent, shade 4 the dark one; the rest interpolate the tokens.
 _ACCENT = [
@@ -45,7 +40,7 @@ def create_app() -> Dash:
 	app.server.register_blueprint(downloads.bp)
 	_register_callbacks(app)
 
-	if not services.kaleido_ok():
+	if not ensure_chrome_available():
 		# ponytail: logs only, rather than threading a disabled-state into every export
 		# button - kaleido.get_chrome_sync() fetches its own Chrome automatically, so a
 		# real user hitting this needs a working network first anyway. Wire it into the
@@ -76,12 +71,17 @@ def _layout() -> dmc.MantineProvider:
 		children=[
 			dcc.Location(id="url", refresh=False),
 			dcc.Store(id="theme-store", storage_type="local"),
+			# The user's explicit choice, resolved against the OS preference when they
+			# have not made one - what a plot's own template should follow, since the
+			# shell (defaultColorScheme="auto") can be dark while theme-store is still None.
+			dcc.Store(id="plot-theme"),
 			dcc.Store(id="nav-collapsed", storage_type="local", data=False),
 			dcc.Store(id="project-paths", storage_type="local", data=[]),
 			# Above Dash's debug bar (z-index 10000), which sits where toasts appear.
 			dmc.NotificationContainer(id="notifications", zIndex=10001),
-			# Shared by every page rather than duplicated per page: only one page is ever
-			# mounted at a time, and each page's own "open" callback drives it by id.
+			# Shared by every page rather than duplicated per page: every page stays mounted,
+			# so one id per component, and each page's own "open" callback drives it by id.
+			dcc.Store(id="export-source"),
 			export_dialog(),
 			dmc.AppShell(
 				id="app-shell",
@@ -92,7 +92,22 @@ def _layout() -> dmc.MantineProvider:
 				children=[
 					dmc.AppShellNavbar(_navbar(), className="deh-nav", bg="var(--surface)"),
 					dmc.AppShellHeader(_topbar(), bg="var(--surface)"),
-					dmc.AppShellMain(dash.page_container),
+					# Every page is mounted once and only hidden while away, instead of Dash's
+					# page_container rebuilding a page on each visit, so a page keeps its state.
+					dmc.AppShellMain(
+						[
+							*(
+								html.Div(
+									page["layout"],
+									id={"type": "page", "index": page["path"]},
+									hidden=True,
+								)
+								for page in dash.page_registry.values()
+							),
+							# No page matches an unknown path, so the main area would be blank.
+							html.Div(id="page-missing", className="deh-empty"),
+						]
+					),
 				],
 			),
 		],
@@ -165,23 +180,21 @@ def _topbar() -> html.Div:
 
 def _register_callbacks(app: Dash) -> None:
 	app.clientside_callback(
-		"""function () {
-			const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
-			return dark ? "light" : "dark";
-		}""",
+		ClientsideFunction("deh", "themeToggle"),
 		Output("theme-store", "data"),
 		Input("theme-toggle", "n_clicks"),
 		prevent_initial_call=True,
 	)
 
 	app.clientside_callback(
-		"function (theme) { return theme || window.dash_clientside.no_update; }",
+		ClientsideFunction("deh", "applyTheme"),
 		Output("mantine-provider", "forceColorScheme"),
+		Output("plot-theme", "data"),
 		Input("theme-store", "data"),
 	)
 
 	app.clientside_callback(
-		"function (nClicks, collapsed) { return !collapsed; }",
+		ClientsideFunction("deh", "toggleNav"),
 		Output("nav-collapsed", "data"),
 		Input("nav-collapse-btn", "n_clicks"),
 		State("nav-collapsed", "data"),
@@ -189,14 +202,7 @@ def _register_callbacks(app: Dash) -> None:
 	)
 
 	app.clientside_callback(
-		"""function (collapsed, mobileOpened) {
-			const tips = window.dash_clientside.callback_context.outputs_list[2];
-			return [
-				{width: collapsed ? 64 : 232, breakpoint: "sm", collapsed: {mobile: !mobileOpened}},
-				collapsed ? "nav-collapsed" : null,
-				tips.map(() => !collapsed),
-			];
-		}""",
+		ClientsideFunction("deh", "shellNavbar"),
 		Output("app-shell", "navbar"),
 		Output("app-shell", "mod"),
 		Output({"type": "nav-tip", "index": ALL}, "disabled"),
@@ -204,16 +210,27 @@ def _register_callbacks(app: Dash) -> None:
 		Input("burger", "opened"),
 	)
 
+	app.clientside_callback(
+		ClientsideFunction("deh", "pageScroll"),
+		Output({"type": "page", "index": ALL}, "hidden"),
+		Output({"type": "nav-link", "index": ALL}, "href"),
+		Input("url", "pathname"),
+		Input("url", "search"),
+		State({"type": "nav-link", "index": ALL}, "href"),
+	)
+
 	@app.callback(
 		Output({"type": "nav-link", "index": ALL}, "active"),
 		Output("crumbs", "children"),
 		Output("burger", "opened"),
+		Output("page-missing", "children"),
 		Input("url", "pathname"),
 	)
 	def _sync_page(pathname):
 		page = next((p for p in dash.page_registry.values() if p["path"] == pathname), None)
 		active = [output["id"]["index"] == pathname for output in dash.ctx.outputs_list[0]]
-		return active, html.B(page["name"] if page else "Not found"), False
+		missing = None if page else f"No page at {pathname}. Pick one from the sidebar."
+		return active, html.B(page["name"] if page else "Not found"), False, missing
 
 	# The export dialog is shared shell UI (see _layout above); its behaviour does not
 	# depend on which page opened it, so it registers once here rather than once per

@@ -22,32 +22,26 @@ if TYPE_CHECKING:
 		export_figure as export_figure,
 		fit_for_export as fit_for_export,
 		plot as plot,
-		plot_specs as plot_specs,
-		set_default_theme as set_default_theme,
 	)
 
 __version__ = version("deepecohab")
 
-_LAZY_EXPORTS = {
-	"PlotContext": "deepecohab.plotting",
-	"PlotRegistry": "deepecohab.plotting",
-	"available_attributes": "deepecohab.plotting",
-	"export_figure": "deepecohab.plotting",
-	"fit_for_export": "deepecohab.plotting",
-	"plot": "deepecohab.plotting",
-	"plot_specs": "deepecohab.plotting",
-	"set_default_theme": "deepecohab.plotting",
-}
+_LAZY_EXPORTS = (
+	"PlotContext",
+	"PlotRegistry",
+	"available_attributes",
+	"export_figure",
+	"fit_for_export",
+	"plot",
+)
 
 
 def __getattr__(name: str) -> Any:
 	"""Resolve the plotting exports on first access."""
-	module = _LAZY_EXPORTS.get(name)
-
-	if module is None:
+	if name not in _LAZY_EXPORTS:
 		raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-	return getattr(import_module(module), name)
+	return getattr(import_module("deepecohab.plotting"), name)
 
 
 def __dir__() -> list[str]:

@@ -1,6 +1,5 @@
-"""Projects: the folders remembered in this browser, their recordings and analysis runs."""
-
 import base64
+import io
 import tempfile
 import time
 from pathlib import Path
@@ -11,6 +10,8 @@ import dash_mantine_components as dmc
 import polars as pl
 from dash import (
 	ALL,
+	MATCH,
+	ClientsideFunction,
 	Input,
 	Output,
 	State,
@@ -22,10 +23,12 @@ from dash import (
 	no_update,
 	set_props,
 )
+from dash.exceptions import PreventUpdate
 
 from deepecohab import AnalysisParams, Project
-from deepecohab.app import services
+from deepecohab.app import components, services
 from deepecohab.app.components import icon, notify
+from deepecohab.core.antenna_analysis import get_prev_ranking
 
 dash.register_page(__name__, path="/", name="Projects", order=0, icon="folders")
 
@@ -58,24 +61,32 @@ def _seconds(control_id: str, value: float) -> html.Span:
 	)
 
 
-_DIALOG_CLASSES = {
-	"content": "deh-dialog",
-	"header": "deh-dialog-head",
-	"title": "deh-dialog-title",
-	"body": "deh-dialog-content",
-}
-
 layout = html.Div(
 	[
 		dcc.Store(id="expanded", data=[]),
 		dcc.Store(id="selection", data=[]),
 		dcc.Store(id="analysis-params"),
+		dcc.Store(
+			id="params-defaults",
+			data={
+				"minimum_time": _DEFAULTS.minimum_time,
+				"minimum_time_alone": _DEFAULTS.minimum_time_alone,
+				"chasing_time_window": list(_DEFAULTS.chasing_time_window),
+			},
+		),
+		dcc.Store(id="params-ranking"),
 		dcc.Store(id="run-progress"),
 		dcc.Store(id="run-active", data=False),
 		dcc.Store(id="run-failed", data={}),
 		dcc.Store(id="data-changed"),
 		dcc.Store(id="upload-target"),
 		dcc.Store(id="remove-target"),
+		# Real clicks on the table's row buttons, via deh.clickEvent: the table is rebuilt on
+		# every search or data change, which would otherwise fire their callbacks each time.
+		dcc.Store(id="remove-project-event"),
+		dcc.Store(id="generate-table-event"),
+		dcc.Store(id="add-recordings-event"),
+		dcc.Store(id="remove-recording-event"),
 		html.Div(
 			[
 				html.Div([html.H2("Projects"), html.P(id="project-count")], className="deh-titles"),
@@ -138,7 +149,7 @@ layout = html.Div(
 			title="Analysis parameters",
 			position="right",
 			size="380px",
-			classNames=_DIALOG_CLASSES,
+			classNames=components.DIALOG_CLASSES,
 			children=[
 				html.Div(
 					[
@@ -174,18 +185,53 @@ layout = html.Div(
 							),
 							"Shortest and longest chasing event, in seconds.",
 						),
-						html.Div(
-							[
-								icon("info-circle"),
-								html.Span(
-									[
-										html.Code("prev_ranking"),
-										" takes a table from an earlier recording, so it stays in "
-										"notebooks for now.",
-									]
-								),
-							],
-							className="deh-alert deh-alert-info",
+						_field(
+							"Previous ranking",
+							"prev_ranking",
+							html.Div(
+								[
+									dcc.Upload(
+										id="params-ranking-upload",
+										accept=".parquet,.csv",
+										className="deh-drop",
+										className_active="deh-drop is-over",
+										children=[
+											icon("upload", size=20),
+											html.B("Drop a ranking table, or click to pick one"),
+											html.Span(
+												[
+													html.Code("animal_id"),
+													", ",
+													html.Code("mu"),
+													" and ",
+													html.Code("sigma"),
+													" columns; a ",
+													html.Code("datetime"),
+													" column, if present, narrows it to "
+													"each animal's last rating.",
+												]
+											),
+										],
+									),
+									html.Div(
+										[
+											html.Span(
+												id="params-ranking-status", className="deh-sub"
+											),
+											html.Button(
+												icon("x", size=13),
+												id="params-ranking-clear",
+												className="deh-icon-btn sm",
+												title="Clear",
+											),
+										],
+										className="deh-unit-input",
+									),
+								]
+							),
+							"Seeds the dominance ranking from an earlier recording of the same "
+							"animals, instead of starting fresh. Applies to every recording in the "
+							"next run.",
 						),
 					],
 					className="deh-dialog-body",
@@ -209,7 +255,7 @@ layout = html.Div(
 			id="add-modal",
 			title="Add project",
 			size=520,
-			classNames=_DIALOG_CLASSES,
+			classNames=components.DIALOG_CLASSES,
 			children=[
 				html.Div(
 					dmc.TextInput(
@@ -243,7 +289,7 @@ layout = html.Div(
 			id="create-modal",
 			title="New project",
 			size=520,
-			classNames=_DIALOG_CLASSES,
+			classNames=components.DIALOG_CLASSES,
 			children=[
 				html.Div(
 					[
@@ -264,7 +310,7 @@ layout = html.Div(
 						dmc.TextInput(
 							id="create-path",
 							label="Folder",
-							description="Created if it doesn't exist. Leave empty to use the folder shown.",
+							description="Created if missing. Leave empty to use the folder shown.",
 							placeholder=str(_PROJECTS_HOME / "<project name>"),
 							autoComplete="off",
 							inputWrapperOrder=["label", "input", "description", "error"],
@@ -301,7 +347,7 @@ layout = html.Div(
 			id="upload-modal",
 			title="Add recordings",
 			size=560,
-			classNames=_DIALOG_CLASSES,
+			classNames=components.DIALOG_CLASSES,
 			children=[
 				html.Div(
 					[
@@ -340,7 +386,7 @@ layout = html.Div(
 			id="remove-modal",
 			title="Remove recording",
 			size=520,
-			classNames=_DIALOG_CLASSES,
+			classNames=components.DIALOG_CLASSES,
 			children=[
 				html.Div(
 					html.P(
@@ -386,12 +432,16 @@ def _badge(kind: str, icon_name: str, *content, spin: bool = False, title: str =
 	)
 
 
+def _running_badge(running: list) -> html.Span:
+	steps, total, building = running
+	building = html.Span(building or "done", className="deh-mono")
+	return _badge("run", "loader-2", f"{steps}/{total} · ", building, spin=True)
+
+
 def _status(recording: dict, running: list | None, failure: str | None) -> html.Span:
 	done, total = recording["done"], recording["total"]
 	if running is not None:
-		steps, _, building = running
-		building = html.Span(building or "done", className="deh-mono")
-		return _badge("run", "loader-2", f"{steps}/{total} · ", building, spin=True)
+		return _running_badge(running)
 	if failure is not None:
 		return _badge("bad", "circle-x", "Failed", title=failure)
 	if done == total:
@@ -480,42 +530,6 @@ def _project_download_items(pid: str) -> list[tuple[str, str, str]]:
 	]
 
 
-def _download_menu(pid: str, name: str, loadable: bool) -> dmc.Menu:
-	base = f"/download/recording/{pid}/{quote(name, safe='')}"
-	files = [
-		("file-zip", "All analysis tables · parquet", f"{base}/tables.zip"),
-		("file-zip", "All analysis tables · CSV", f"{base}/tables.zip?format=csv"),
-		("paw", "Cohort · CSV", f"{base}/cohort.csv"),
-		("file-description", "Recording config · JSON", f"{base}/config.json"),
-		("database", "Raw registrations · parquet", f"{base}/raw.parquet"),
-	]
-	return dmc.Menu(
-		[
-			dmc.MenuTarget(
-				html.Button(
-					icon("download", size=15),
-					className="deh-icon-btn sm",
-					title=f"Download data of {name}",
-					disabled=not loadable,
-				)
-			),
-			dmc.MenuDropdown(
-				[
-					dmc.MenuLabel(name),
-					*(
-						dmc.MenuItem(
-							label, leftSection=icon(icon_name, size=16), href=href, target="_blank"
-						)
-						for icon_name, label, href in files
-					),
-				]
-			),
-		],
-		position="bottom-end",
-		classNames={"dropdown": "deh-menu"},
-	)
-
-
 def _recording_row(
 	project: dict, recording: dict, selected: set, progress: dict | None, failed: dict
 ) -> html.Tr:
@@ -560,12 +574,22 @@ def _recording_row(
 					recording,
 					(progress or {}).get(location, {}).get(name),
 					failed.get(location, {}).get(name),
-				)
+				),
+				id={"type": "rec-status", "project": location, "index": name},
 			),
 			html.Td(
 				html.Div(
 					[
-						_download_menu(project["id"], name, loadable),
+						components.download_menu(
+							project["id"],
+							name,
+							html.Button(
+								icon("download", size=15),
+								className="deh-icon-btn sm",
+								title=f"Download data of {name}",
+								disabled=not loadable,
+							),
+						),
 						dcc.Link(
 							opens,
 							href=dash.get_relative_path(
@@ -592,7 +616,6 @@ def _recording_row(
 				)
 			),
 		],
-		className="is-selected" if checked else "",
 	)
 
 
@@ -611,7 +634,6 @@ def _project_rows(
 		return []
 
 	opened = location in expanded or not name_hit
-	loadable = project["error"] is None
 	analysed = sum(recording["done"] == recording["total"] for recording in recordings)
 	partial = sum(0 < recording["done"] < recording["total"] for recording in recordings)
 	share = round(100 * analysed / len(recordings)) if recordings else 0
@@ -680,9 +702,34 @@ def _project_rows(
 			className="deh-project-row",
 		)
 	]
-	if not opened:
-		return rows
+	rows.append(
+		html.Tr(
+			html.Td(
+				html.Div(
+					_project_detail(project, visible, selected, progress, failed) if opened else [],
+					id={"type": "project-detail-body", "index": location},
+					className="deh-detail-in",
+				),
+				colSpan=8,
+			),
+			id={"type": "project-detail", "index": location},
+			className="deh-detail",
+			hidden=not opened,
+		)
+	)
+	return rows
 
+
+def _project_detail(
+	project: dict, visible: list[dict], selected: set, progress: dict | None, failed: dict
+) -> list:
+	"""A project's recordings table, built only while the project is open.
+
+	Every mounted component slows each renderer update across the app, and a collapsed
+	52-recording project hidden rather than left out cost seconds per click on every page.
+	"""
+	location, recordings = project["location"], project["recordings"]
+	loadable = project["error"] is None
 	keys = {(location, recording["name"]) for recording in visible}
 	recordings_table = html.Table(
 		[
@@ -755,19 +802,7 @@ def _project_rows(
 		],
 		className="deh-alert deh-alert-bad",
 	)
-	rows.append(
-		html.Tr(
-			html.Td(
-				html.Div(
-					[recordings_table] if loadable else [load_error, recordings_table],
-					className="deh-detail-in",
-				),
-				colSpan=8,
-			),
-			className="deh-detail",
-		)
-	)
-	return rows
+	return [recordings_table] if loadable else [load_error, recordings_table]
 
 
 @callback(
@@ -775,14 +810,17 @@ def _project_rows(
 	Output("project-count", "children"),
 	Input("project-paths", "data"),
 	Input("project-search", "value"),
-	Input("expanded", "data"),
-	Input("selection", "data"),
-	Input("run-progress", "data"),
 	Input("run-failed", "data"),
 	Input("data-changed", "data"),
 	Input("run-active", "data"),
+	# A tick repaints only the badges in flight (_render_progress); as an Input it rebuilt
+	# the whole table on every finished step. Selection only repaints checkboxes, which the
+	# clientside callbacks below do without a round trip.
+	State("run-progress", "data"),
+	State("selection", "data"),
+	State("expanded", "data"),
 )
-def _render_projects(paths, search, expanded, selection, progress, failed, _written, active):
+def _render_projects(paths, search, failed, _written, active, progress, selection, expanded):
 	# The last progress can land after the result, so it outlives the run unless gated.
 	progress = progress if active else None
 	paths = paths or []
@@ -851,49 +889,71 @@ def _render_actionbar(selection, progress, active):
 
 
 @callback(
-	Output("expanded", "data"),
-	Input({"type": "project-expand", "part": ALL, "index": ALL}, "n_clicks"),
-	State("expanded", "data"),
+	Output({"type": "rec-status", "project": ALL, "index": ALL}, "children"),
+	Input("run-progress", "data"),
+	State("run-active", "data"),
 	prevent_initial_call=True,
 )
-def _toggle_project(_clicks, expanded):
-	if not ctx.triggered[0]["value"]:
-		return no_update
-	location = ctx.triggered_id["index"]
-	if location in expanded:
-		return [path for path in expanded if path != location]
-	return [*expanded, location]
+def _render_progress(progress, active):
+	# Gated like _render_projects: the last tick can land after the run has ended.
+	if not active or not progress:
+		raise PreventUpdate
+	running = [
+		progress.get(output["id"]["project"], {}).get(output["id"]["index"])
+		for output in ctx.outputs_list
+	]
+	return [no_update if job is None else _running_badge(job) for job in running]
 
 
 @callback(
+	Output({"type": "project-detail", "index": MATCH}, "hidden"),
+	Output({"type": "project-detail-body", "index": MATCH}, "children"),
+	Output({"type": "project-expand", "part": "chevron", "index": MATCH}, "className"),
+	Input({"type": "project-expand", "part": ALL, "index": MATCH}, "n_clicks"),
+	State({"type": "project-detail", "index": MATCH}, "hidden"),
+	State("expanded", "data"),
+	State("project-search", "value"),
+	State("selection", "data"),
+	State("run-progress", "data"),
+	State("run-active", "data"),
+	State("run-failed", "data"),
+	prevent_initial_call=True,
+)
+def _toggle_project(_clicks, hidden, expanded, search, selection, progress, active, failed):
+	if not ctx.triggered[0]["value"]:
+		raise PreventUpdate
+	location = ctx.triggered_id["index"]
+	kept = [path for path in expanded if path != location]
+	set_props("expanded", {"data": [*kept, location] if hidden else kept})
+	chevron = f"deh-icon-btn deh-exp{' is-open' if hidden else ''}"
+	if not hidden:
+		return True, [], chevron
+
+	project = services.project_summary(location)
+	visible = _visible_recordings(project, (search or "").strip().lower())
+	selected = {tuple(key) for key in selection}
+	# Gated like _render_projects: the last progress can land after the run has ended.
+	detail = _project_detail(project, visible, selected, progress if active else None, failed)
+	return False, detail, chevron
+
+
+clientside_callback(
+	ClientsideFunction("deh", "selectRecordings"),
 	Output("selection", "data", allow_duplicate=True),
 	Input({"type": "recording-check", "project": ALL, "index": ALL}, "checked"),
 	Input({"type": "select-all", "index": ALL}, "checked"),
 	Input("selection-clear", "n_clicks"),
 	State("selection", "data"),
-	State("project-search", "value"),
 	prevent_initial_call=True,
 )
-def _select_recordings(_checks, _all, _clear, selection, search):
-	trigger = ctx.triggered_id
-	if trigger == "selection-clear":
-		return []
-	if trigger is None:
-		return no_update
 
-	selected = {tuple(key) for key in selection}
-	if trigger["type"] == "select-all":
-		project = services.project_summary(trigger["index"])
-		query = (search or "").strip().lower()
-		keys = {
-			(trigger["index"], recording["name"])
-			for recording in _visible_recordings(project, query)
-		}
-	else:
-		keys = {(trigger["project"], trigger["index"])}
-
-	changed = selected | keys if ctx.triggered[0]["value"] else selected - keys
-	return no_update if changed == selected else sorted(map(list, changed))
+clientside_callback(
+	ClientsideFunction("deh", "paintSelection"),
+	Input("selection", "data"),
+	State({"type": "recording-check", "project": ALL, "index": ALL}, "checked"),
+	State({"type": "select-all", "index": ALL}, "checked"),
+	prevent_initial_call=True,
+)
 
 
 @callback(
@@ -983,17 +1043,29 @@ def _create_project(_open, _cancel, _submit, name, experimenter, folder, descrip
 	return False, *unchanged, None, None, None
 
 
+for event_store, button in [
+	("remove-project-event", {"type": "remove-project", "index": ALL}),
+	("generate-table-event", {"type": "generate-table", "index": ALL}),
+	("add-recordings-event", {"type": "add-recordings", "place": ALL, "index": ALL}),
+	("remove-recording-event", {"type": "remove-recording", "project": ALL, "index": ALL}),
+]:
+	clientside_callback(
+		ClientsideFunction("deh", "clickEvent"),
+		Output(event_store, "data"),
+		Input(button, "n_clicks"),
+		prevent_initial_call=True,
+	)
+
+
 @callback(
 	Output("selection", "data", allow_duplicate=True),
-	Input({"type": "remove-project", "index": ALL}, "n_clicks"),
+	Input("remove-project-event", "data"),
 	State("project-paths", "data"),
 	State("selection", "data"),
 	prevent_initial_call=True,
 )
-def _remove_project(_clicks, paths, selection):
-	if not ctx.triggered[0]["value"]:
-		return no_update
-	location = ctx.triggered_id["index"]
+def _remove_project(event, paths, selection):
+	location = event["id"]["index"]
 	set_props("project-paths", {"data": [path for path in paths if path != location]})
 	notify(
 		"info",
@@ -1005,13 +1077,11 @@ def _remove_project(_clicks, paths, selection):
 
 @callback(
 	Output("data-changed", "data"),
-	Input({"type": "generate-table", "index": ALL}, "n_clicks"),
+	Input("generate-table-event", "data"),
 	prevent_initial_call=True,
 )
-def _generate_table(_clicks):
-	if not ctx.triggered[0]["value"]:
-		return no_update
-	project = services.load_project(ctx.triggered_id["index"])
+def _generate_table(event):
+	project = services.load_project(event["id"]["index"])
 	try:
 		rows = project.generate_project_table().select(pl.len()).collect().item()
 	except (FileNotFoundError, ValueError) as exc:
@@ -1050,21 +1120,19 @@ def _pair_uploads(files: list[Path]) -> tuple[list[tuple[Path, Path]], list[str]
 	Output("upload-report", "children"),
 	Output("upload-files", "contents"),
 	Output("data-changed", "data", allow_duplicate=True),
-	Input({"type": "add-recordings", "place": ALL, "index": ALL}, "n_clicks"),
+	Input("add-recordings-event", "data"),
 	Input("upload-files", "contents"),
 	Input("upload-close", "n_clicks"),
 	State("upload-files", "filename"),
 	State("upload-target", "data"),
 	prevent_initial_call=True,
 )
-def _add_recordings(_clicks, contents, _close, filenames, location):
+def _add_recordings(event, contents, _close, filenames, location):
 	unchanged = (no_update,) * 6
 	if ctx.triggered_id == "upload-close":
 		return False, no_update, no_update, None, None, no_update
-	if ctx.triggered_id != "upload-files":
-		if not ctx.triggered[0]["value"]:
-			return unchanged
-		location = ctx.triggered_id["index"]
+	if ctx.triggered_id == "add-recordings-event":
+		location = event["id"]["index"]
 		title = f"Add recordings to {services.project_summary(location)['name']}"
 		return True, title, location, None, None, no_update
 	if not contents:  # our own reset of the drop zone comes back through this Input
@@ -1107,7 +1175,7 @@ def _add_recordings(_clicks, contents, _close, filenames, location):
 	Output("remove-target", "data"),
 	Output("data-changed", "data", allow_duplicate=True),
 	Output("selection", "data", allow_duplicate=True),
-	Input({"type": "remove-recording", "project": ALL, "index": ALL}, "n_clicks"),
+	Input("remove-recording-event", "data"),
 	Input("remove-cancel", "n_clicks"),
 	Input("remove-delist", "n_clicks"),
 	Input("remove-delete", "n_clicks"),
@@ -1115,11 +1183,9 @@ def _add_recordings(_clicks, contents, _close, filenames, location):
 	State("selection", "data"),
 	prevent_initial_call=True,
 )
-def _remove_recording(_clicks, _cancel, _delist, _delete, target, selection):
-	if isinstance(ctx.triggered_id, dict):
-		if not ctx.triggered[0]["value"]:
-			return (no_update,) * 5
-		location, name = ctx.triggered_id["project"], ctx.triggered_id["index"]
+def _remove_recording(event, _cancel, _delist, _delete, target, selection):
+	if ctx.triggered_id == "remove-recording-event":
+		location, name = event["id"]["project"], event["id"]["index"]
 		return True, f"Remove {name}?", [location, name], no_update, no_update
 	if ctx.triggered_id == "remove-cancel":
 		return False, no_update, no_update, no_update, no_update
@@ -1136,6 +1202,43 @@ def _remove_recording(_clicks, _cancel, _delist, _delete, target, selection):
 
 
 @callback(
+	Output("params-ranking-status", "children"),
+	Output("params-ranking", "data"),
+	Output("params-ranking-upload", "contents"),
+	Input("params-ranking-upload", "contents"),
+	Input("params-ranking-clear", "n_clicks"),
+	Input("params-reset", "n_clicks"),
+	State("params-ranking-upload", "filename"),
+	prevent_initial_call=True,
+)
+def _upload_prev_ranking(contents, _clear, _reset, filename):
+	if ctx.triggered_id in ("params-ranking-clear", "params-reset"):
+		return None, None, no_update
+	if not contents:  # our own reset of the drop zone comes back through this Input
+		return no_update, no_update, no_update
+
+	raw = base64.b64decode(contents.split(",", 1)[1])
+	try:
+		frame = (
+			pl.read_csv(io.BytesIO(raw), schema_overrides={"animal_id": pl.String})
+			if filename.lower().endswith(".csv")
+			else pl.read_parquet(io.BytesIO(raw))
+		)
+	except Exception as exc:
+		notify("bad", f"Could not read {filename}: {exc}")
+		return None, None, None
+
+	missing = [column for column in ("animal_id", "mu", "sigma") if column not in frame.columns]
+	if missing:
+		notify("warn", f"{filename} is missing {', '.join(missing)}.")
+		return None, None, None
+
+	rows = get_prev_ranking(frame).collect().to_dicts()
+	status = html.Span([html.Code(filename), f" · {len(rows)} animals"])
+	return status, {"name": filename, "rows": rows}, None
+
+
+@callback(
 	Output("params-drawer", "opened"),
 	Output("analysis-params", "data"),
 	Output("params-minimum-time", "error"),
@@ -1145,9 +1248,10 @@ def _remove_recording(_clicks, _cancel, _delist, _delete, target, selection):
 	State("params-minimum-time", "value"),
 	State("params-minimum-alone", "value"),
 	State("params-chasing", "value"),
+	State("params-ranking", "data"),
 	prevent_initial_call=True,
 )
-def _apply_params(_open, _apply, minimum_time, minimum_time_alone, chasing_time_window):
+def _apply_params(_open, _apply, minimum_time, minimum_time_alone, chasing_time_window, ranking):
 	if ctx.triggered_id == "params-open":
 		return True, no_update, None, None
 
@@ -1163,23 +1267,21 @@ def _apply_params(_open, _apply, minimum_time, minimum_time_alone, chasing_time_
 		"minimum_time_alone": minimum_time_alone,
 		"chasing_time_window": chasing_time_window,
 	}
+	if ranking:
+		params["prev_ranking"] = ranking["rows"]
 	notify("info", "Parameters apply to the next run.")
 	return False, params, None, None
 
 
-@callback(
+clientside_callback(
+	ClientsideFunction("deh", "resetParams"),
 	Output("params-minimum-time", "value"),
 	Output("params-minimum-alone", "value"),
 	Output("params-chasing", "value"),
 	Input("params-reset", "n_clicks"),
+	State("params-defaults", "data"),
 	prevent_initial_call=True,
 )
-def _reset_params(_clicks):
-	return (
-		_DEFAULTS.minimum_time,
-		_DEFAULTS.minimum_time_alone,
-		list(_DEFAULTS.chasing_time_window),
-	)
 
 
 callback(
@@ -1200,7 +1302,7 @@ callback(
 )(services.run_analysis)
 
 clientside_callback(
-	"function () { return null; }",
+	ClientsideFunction("deh", "resetProgress"),
 	Output("run-progress", "data", allow_duplicate=True),
 	Input("run-start", "n_clicks"),
 	prevent_initial_call=True,
@@ -1215,21 +1317,7 @@ def _cancel_run(_clicks, selection):
 
 
 clientside_callback(
-	"""function () {
-		const dc = window.dash_clientside;
-		const trigger = dc.callback_context.triggered[0];
-		if (!trigger || !trigger.value) return dc.no_update;
-		const toast = (kind, message) => dc.set_props("notifications", {sendNotifications: [{
-			action: "show", message, className: `deh-toast deh-toast-${kind}`,
-			withCloseButton: false, autoClose: 5200,
-		}]});
-		const path = dc.callback_context.triggered_id.index;
-		(navigator.clipboard ? navigator.clipboard.writeText(path) : Promise.reject()).then(
-			() => toast("info", "Path copied"),
-			() => toast("warn", "The browser blocked clipboard access; select the path instead."),
-		);
-		return dc.no_update;
-	}""",
+	ClientsideFunction("deh", "copyPath"),
 	Output("notifications", "sendNotifications", allow_duplicate=True),
 	Input({"type": "copy-path", "place": ALL, "index": ALL}, "n_clicks"),
 	prevent_initial_call=True,

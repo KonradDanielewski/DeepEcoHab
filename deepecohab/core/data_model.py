@@ -81,16 +81,32 @@ class Layout(BaseModel):
 	antenna_combinations: dict[str, str]
 	tunnels_map: dict[str, str]
 
-	@computed_field
-	@property
-	def positions_directional(self) -> list[str]:
-		"""All cage and tunnel names in directional format, plus the sentinel for unresolved positions."""
-		return [*sorted(set(self.antenna_combinations.values())), self.UNDEFINED]
+	@model_validator(mode="after")
+	def _check_positions(self) -> "Layout":
+		"""Every position the maps can name has to be a place this layout holds.
+
+		``reindex_onto_grid`` joins on ``positions_non_directional``, so a position that
+		is in neither list is not lost loudly - the time spent there silently drops out
+		of every table at that join.
+		"""
+		cages = {cage.name for cage in self.cages}
+		tunnels = {tunnel.name for tunnel in self.tunnels}
+
+		if stray := sorted(set(self.antenna_combinations.values()) - cages - set(self.tunnels_map)):
+			raise ValueError(
+				f"antenna_combinations resolves to {stray}, which is neither a cage of this "
+				"layout nor a key of tunnels_map, so time spent there would be dropped."
+			)
+		if stray := sorted(set(self.tunnels_map.values()) - tunnels):
+			raise ValueError(
+				f"tunnels_map maps onto {stray}, which are not tunnels of this layout."
+			)
+		return self
 
 	@computed_field
 	@property
 	def positions_non_directional(self) -> list[str]:
-		"""All cage and tunnel names in non-directional format, plus the sentinel for unresolved positions."""
+		"""Cage and tunnel names, non-directional, plus the sentinel for unresolved positions."""
 		return [c.name for c in self.cages] + [t.name for t in self.tunnels] + [self.UNDEFINED]
 
 	@property
@@ -114,9 +130,10 @@ class Layout(BaseModel):
 
 
 class Animal(BaseModel):
-	"""EcoHab animal class.
+	"""One mouse: the transponder tag its registrations carry, and what results group by.
 
-	Stores information about animal from the cohort.
+	``tag`` is the identity the raw data knows; every other field is metadata the
+	``animals`` table joins onto any analysis table.
 	"""
 
 	tag: str
@@ -131,18 +148,14 @@ class Animal(BaseModel):
 
 
 class Cohort(BaseModel):
-	"""EcoHab cohort of mice.
+	"""The animals sharing one recording, and the tag pairings paired measures run over.
 
-	Stores information about all animals in the cohort.
+	``animal_tags`` is sorted, and that order is what every dense grid, colour
+	assignment and pair enumeration downstream is built from.
 	"""
 
 	n_mice: PositiveInt
 	animals: list[Animal]
-
-	@property
-	def animal_names(self) -> list[str]:
-		"""Contains animal names sorted alphanumerically."""
-		return sorted(animal.subject_name for animal in self.animals)
 
 	@property
 	def animal_tags(self) -> list[str]:
@@ -322,11 +335,14 @@ class Event(BaseModel):
 class AnalysisParams(BaseModel):
 	"""Tuning knobs for the analysis steps.
 
-	Args:
+	Attributes:
 		minimum_time: minimum continuous co-presence, in seconds, for a meeting to count.
 		minimum_time_alone: minimum continuous solitary time, in seconds, for a span to
 			count as time alone. Discards the brief gaps left by animals travelling as a
 			group and arriving moments apart.
+		extrapolation_limit: how long, in seconds, an animal's last known position is
+			carried on past its last registration. Silence beyond this is not evidence of
+			staying put, so the rest of the window becomes ``Layout.UNDEFINED``.
 		chasing_time_window: min and max length, in seconds, of a chasing event.
 		prev_ranking: starting ratings from an earlier recording of the same animals.
 	"""
@@ -335,6 +351,7 @@ class AnalysisParams(BaseModel):
 
 	minimum_time: float = 2
 	minimum_time_alone: float = 10.0
+	extrapolation_limit: float = 43200.0
 	chasing_time_window: tuple[float, float] = (0.1, 1.2)
 	prev_ranking: pl.DataFrame | pl.LazyFrame | None = None
 
@@ -348,14 +365,11 @@ class StepProgress(NamedTuple):
 
 
 class Progress(NamedTuple):
-	"""One finished pipeline step, located in both the recording and step loops."""
+	"""One finished pipeline step, tagged with the recording it came from."""
 
 	recording: str
-	recording_index: int
-	recording_total: int
 	step: str
 	step_index: int
-	step_total: int
 
 
 class DataFrameRegistry:
@@ -501,7 +515,13 @@ def recording_status(root: Path) -> dict[str, bool]:
 
 
 class Recording(BaseModel):
-	"""Recording class."""
+	"""One recording: raw registrations, plus the metadata that gives them meaning.
+
+	``timeline``, ``cohort`` and ``layout`` are what turn an antenna number and a
+	timestamp into a position, an animal and an experiment hour. Persisted as
+	``config.json`` beside ``raw/`` and ``results/``; ``data`` is excluded from that
+	snapshot and reattached from ``raw/data.parquet`` on load.
+	"""
 
 	model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
@@ -573,9 +593,6 @@ class Recording(BaseModel):
 		Raises:
 			KeyError: nothing produces ``key`` - no registered step, no parquet on disk.
 			FileNotFoundError: a registered step produces it but has not run yet.
-
-		Returns:
-			The table, lazy by default.
 		"""
 		path = self.results_path / f"{key}.parquet"
 
@@ -604,13 +621,21 @@ class Recording(BaseModel):
 		"""JSON-ready snapshot of the metadata; the frame itself is not included."""
 		return self.model_dump(mode="json")
 
-	def update_notes(self, notes: str) -> None:
-		"""Set this recording's notes and persist them to its config.json.
+	def update_notes(self, notes: str, tag: str | None = None) -> None:
+		"""Set this recording's notes, or one animal's, and persist them to its config.json.
+
+		Args:
+			notes: the new notes text.
+			tag: an animal's tag to set that animal's notes instead of the recording's.
 
 		Raises:
 			ValueError: the recording is not attached to a project (see `root`).
+			KeyError: ``tag`` is not one of this recording's animals.
 		"""
-		self.notes = notes
+		if tag is None:
+			self.notes = notes
+		else:
+			{animal.tag: animal for animal in self.cohort.animals}[tag].notes = notes
 		(self.root / "config.json").write_text(
 			json.dumps(self.to_config(), indent=2), encoding="utf-8"
 		)
@@ -680,10 +705,7 @@ class AddReport(NamedTuple):
 
 
 class Project(BaseModel):
-	"""Project class.
-
-	Contains all recordings related to a specific project and info about the:
-	project name, experimenter, list of recordings and their location in the catalog.
+	"""The recordings analysed together, and the manifest that keeps them findable.
 
 	The project is persisted as <project_location>/project.json, which maps each
 	recording name to its config.json relative to the manifest. Each recording
@@ -733,7 +755,7 @@ class Project(BaseModel):
 			created_at=dt.datetime.now(dt.UTC),
 			description=description,
 		)
-		project._log.info("created project %r by %s", project_name, experimenter)
+		project.log.info("created project %r by %s", project_name, experimenter)
 		project._save()
 		return project
 
@@ -749,7 +771,9 @@ class Project(BaseModel):
 		}
 
 		project = cls.model_validate({**raw, "project_location": location})
-		project._log.info("opened project (%d recordings)", len(project.data_catalog))
+		# Debug, not info: the app reloads the project after every change it writes, so this
+		# would bracket each one with a line for something the user did not do.
+		project.log.debug("opened project (%d recordings)", len(project.data_catalog))
 		return project
 
 	def close(self) -> None:
@@ -795,9 +819,6 @@ class Project(BaseModel):
 		Recordings are added independently: a failure on one is logged and
 		warned about, and the rest still go in. The manifest is written once,
 		after the batch.
-
-		Returns:
-			AddReport with the names added and the sources that failed.
 		"""
 		added: list[str] = []
 		failed: list[FailedRecording] = []
@@ -808,11 +829,11 @@ class Project(BaseModel):
 				added.append(self._add_one(metadata_path, data_path).name)
 			except Exception as exc:
 				failed.append(FailedRecording(metadata_path, data_path, exc))
-				self._log.exception("failed to add recording from %s", metadata_path)
+				self.log.exception("failed to add recording from %s", metadata_path)
 
 		if added:
 			self._save()
-		self._log.info("batch add: %d added, %d failed", len(added), len(failed))
+		self.log.info("batch add: %d added, %d failed", len(added), len(failed))
 
 		if failed:
 			details = "\n".join(
@@ -830,12 +851,7 @@ class Project(BaseModel):
 		"""Removes recording from project.
 
 		By default a soft delete - delists from the catalog, leaving config.json
-		and the data on disk.
-
-		Args:
-			name: name of the recording to be deleted
-			delete_files: whether to delete the files related to recording as well.
-				Defaults to False.
+		and the data on disk. ``delete_files`` removes them too.
 		"""
 		if name not in self.data_catalog:
 			raise KeyError(f"No recording named {name!r} in project {self.project_name!r}.")
@@ -844,7 +860,15 @@ class Project(BaseModel):
 		if delete_files:
 			shutil.rmtree(self.project_location / name, ignore_errors=True)
 
-		self._log.warning(
+		table_path = self.project_location / self.PROJECT_TABLE
+		if table_path.is_file():
+			remaining = pl.read_parquet(table_path).filter(pl.col("recording") != name)
+			if remaining.is_empty():
+				table_path.unlink()
+			else:
+				remaining.write_parquet(table_path, compression="lz4")
+
+		self.log.warning(
 			"removed recording %r (files %s)",
 			name,
 			"deleted" if delete_files else "kept",
@@ -881,14 +905,14 @@ class Project(BaseModel):
 		"""
 		# Exact, not an estimate: a step that is skipped still reports itself.
 		total = len(self._select(names)) * len(DataFrameRegistry.step_order(targets))
-		events = self._analyze_project(params, names, targets, overwrite=overwrite, workers=workers)
+		events = self.iter_analysis(params, names, targets, overwrite=overwrite, workers=workers)
 
 		# Logging stays on this side: the workers only emit events, so the lazily attached
 		# file handler is never raced for.
 		bar = tqdm(events, total=total, desc="analysis", unit="step")
 		for progress in bar:
 			bar.set_postfix_str(f"{progress.recording}: {progress.step}")
-			self._log.info("%s: built %s", progress.recording, progress.step)
+			self.log.info("%s: built %s", progress.recording, progress.step)
 
 	def generate_project_table(self, names: Iterable[str] | None = None) -> pl.LazyFrame:
 		"""Combine every recording's features into one table on a shared timeline.
@@ -951,7 +975,7 @@ class Project(BaseModel):
 
 		path = self.project_location / self.PROJECT_TABLE
 		pl.concat(frames, how="vertical").sink_parquet(path, compression="lz4", engine="streaming")
-		self._log.info("wrote project table from %d recordings", len(frames))
+		self.log.info("wrote project table from %d recordings", len(frames))
 		return pl.scan_parquet(path)
 
 	@overload
@@ -966,9 +990,6 @@ class Project(BaseModel):
 
 		Raises:
 			FileNotFoundError: the table has not been generated yet.
-
-		Returns:
-			The table, lazy by default.
 		"""
 		path = self.project_location / self.PROJECT_TABLE
 		if not path.is_file():
@@ -979,7 +1000,7 @@ class Project(BaseModel):
 
 		return pl.read_parquet(path) if eager else pl.scan_parquet(path)
 
-	def _analyze_project(
+	def iter_analysis(
 		self,
 		params: AnalysisParams | None = None,
 		names: Iterable[str] | None = None,
@@ -998,8 +1019,6 @@ class Project(BaseModel):
 		A recording that raises does not stop the others; the error surfaces here once the
 		rest have finished, as it does in :meth:`add_recordings`.
 
-		Internal: :meth:`run_analysis` is the public entry point.
-
 		Args:
 			workers: how many recordings to analyse at once; ``None`` takes a quarter
 				of polars' thread pool, capped at the number of recordings.
@@ -1016,22 +1035,19 @@ class Project(BaseModel):
 		# An executor reports whole recordings, so workers hand back steps as they land.
 		events: queue.Queue[Progress | None] = queue.Queue()
 
-		def analyse(index: int, recording: Recording) -> None:
+		def analyse(recording: Recording) -> None:
 			# Lazy: each next() builds one step, so the check runs before every build.
 			steps = recording._analyze_recording(params, targets, overwrite=overwrite)
 			try:
 				while not cancel.is_set() and (step := next(steps, None)) is not None:
-					events.put(Progress(recording.name, index, len(recordings), *step))
+					events.put(Progress(recording.name, step.step, step.step_index))
 			finally:
 				events.put(None)  # this recording is done, however it ended
 
 		# Abandoning the generator without setting cancel blocks until every recording
 		# finishes.
 		with ThreadPoolExecutor(workers) as pool:
-			futures = [
-				pool.submit(analyse, index, recording)
-				for index, recording in enumerate(recordings, start=1)
-			]
+			futures = [pool.submit(analyse, recording) for recording in recordings]
 			pending = len(futures)
 
 			while pending:
@@ -1041,7 +1057,12 @@ class Project(BaseModel):
 					yield event
 
 			for future in futures:
-				future.result()  # a worker that raised does so here
+				try:
+					future.result()  # a worker that raised does so here
+				except Exception:
+					# Callers show one line of this and drop the rest; the log keeps all of it.
+					self.log.exception("analysis failed")
+					raise
 
 	def _select(self, names: Iterable[str] | None) -> list[Recording]:
 		"""The recordings a run covers; the one place that decides which of them run."""
@@ -1054,7 +1075,7 @@ class Project(BaseModel):
 		root = self.project_location / recording.name
 
 		if recording.name in self.data_catalog or root.exists():
-			self._log.error("rejected duplicate recording %r", recording.name)
+			self.log.error("rejected duplicate recording %r", recording.name)
 			raise FileExistsError(
 				f"Recording {recording.name!r} is already in project {self.project_name!r}."
 			)
@@ -1074,7 +1095,7 @@ class Project(BaseModel):
 
 		recording._root = root
 		self.data_catalog[recording.name] = recording
-		self._log.info(
+		self.log.info(
 			"added recording %r from %s (%d animals)",
 			recording.name,
 			metadata_path,
@@ -1099,7 +1120,7 @@ class Project(BaseModel):
 				f"the experiment starts at {line.experiment_start}, the nearest "
 				f"{line.start_from} onset; {offset}"
 			)
-			self._log.warning("%r: %s", recording.name, note)
+			self.log.warning("%r: %s", recording.name, note)
 			if lead > LEAD_WARNING_THRESHOLD:
 				warnings.warn(f"Recording {recording.name!r}: {note}.", stacklevel=2)
 
@@ -1124,11 +1145,11 @@ class Project(BaseModel):
 		tmp = path.with_suffix(".json.tmp")
 		tmp.write_text(self.model_dump_json(indent=2), encoding="utf-8")
 		tmp.replace(path)
-		self._log.info("saved manifest (%d recordings)", len(self.data_catalog))
+		self.log.info("saved manifest (%d recordings)", len(self.data_catalog))
 		return path
 
 	@property
-	def _log(self) -> logging.Logger:
+	def log(self) -> logging.Logger:
 		"""Logger writing to <project_location>/project.log."""
 		if self._logger is None:
 			path = self.project_location / self.LOGFILE

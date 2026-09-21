@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, get_args
+from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 
 import plotly.graph_objects as go
 import polars as pl
@@ -28,47 +28,11 @@ SCOPE_NOUN: Final[dict[str, str]] = {"cages": "cage", "tunnels": "tunnel", "all"
 """The word a scope goes by in a title or an axis label."""
 
 
-class TableProvider(Protocol):
-	"""Source of the analysis tables a plot reads."""
-
-	def table(self, key: str) -> pl.DataFrame:
-		"""Return the analysis table registered under ``key``."""
-		...
-
-	def has(self, key: str) -> bool:
-		"""Whether ``key`` has been computed and can be read."""
-		...
-
-
-@dataclass(eq=False)
-class RecordingTables:
-	"""Table provider backed by one recording's results directory.
-
-	Args:
-		recording: the recording whose parquets are read.
-	"""
-
-	recording: "Recording"
-	_loaded: dict[str, pl.DataFrame] = field(default_factory=dict, repr=False)
-
-	def table(self, key: str) -> pl.DataFrame:
-		"""Load and cache the analysis table registered under ``key``."""
-		if key not in self._loaded:
-			self._loaded[key] = self.recording.load_results(key, eager=True)
-
-		return self._loaded[key]
-
-	def has(self, key: str) -> bool:
-		"""Whether the step producing ``key`` has run for this recording."""
-		return key in self._loaded or (self.recording.results_path / f"{key}.parquet").is_file()
-
-
 @dataclass(eq=False)
 class PlotContext:
 	"""Everything a plot needs that is not a user selection.
 
 	Attributes:
-		tables: source of the analysis tables.
 		animal_ids: every cohort tag, sorted; the order colours are assigned in.
 		cages: cage names.
 		positions: cages and tunnels.
@@ -79,9 +43,10 @@ class PlotContext:
 		tunnels_map: directional tunnel position name to its undirected name, for plots
 			reading a raw table that has not been through
 			:func:`~deepecohab.core.transforms.remove_tunnel_directionality`.
+		recording: the recording whose result parquets the tables are read from. A
+			context built by hand instead hands its tables over in ``_loaded``.
 	"""
 
-	tables: TableProvider
 	animal_ids: list[str]
 	cages: list[str]
 	positions: list[str]
@@ -89,17 +54,12 @@ class PlotContext:
 	days_range: tuple[int, int]
 	phase_range: tuple[int, int]
 	tunnels_map: dict[str, str]
+	recording: "Recording | None" = None
+	_loaded: dict[str, pl.DataFrame] = field(default_factory=dict, repr=False)
 
 	@classmethod
 	def from_recording(cls, recording: "Recording") -> "PlotContext":
-		"""Build a context from an analysed recording.
-
-		Args:
-			recording: a recording whose pipeline has been run.
-
-		Returns:
-			A context reading that recording's results.
-		"""
+		"""Build a context reading the results of a recording whose pipeline has run."""
 		timeline = recording.timeline
 		onsets = {
 			name: onset.hour + onset.minute / 60 + onset.second / 3600
@@ -107,7 +67,7 @@ class PlotContext:
 		}
 
 		return cls(
-			tables=RecordingTables(recording),
+			recording=recording,
 			animal_ids=recording.cohort.animal_tags,
 			cages=recording.layout.cage_names,
 			positions=recording.layout.positions_non_directional,
@@ -137,11 +97,8 @@ class PlotContext:
 	def scope_positions(self, scope: Scope) -> list[str]:
 		"""The positions a scope selection covers.
 
-		Args:
-			scope: ``"cages"``, ``"tunnels"`` or ``"all"``.
-
 		Raises:
-			ValueError: ``scope`` is not one of the three.
+			ValueError: ``scope`` is not ``"cages"``, ``"tunnels"`` or ``"all"``.
 
 		Returns:
 			Cage and/or tunnel names. The ``undefined`` sentinel is never among them: it
@@ -158,24 +115,24 @@ class PlotContext:
 				raise ValueError(f"scope must be one of {get_args(Scope)}, got {scope!r}")
 
 	def table(self, key: str) -> pl.DataFrame:
-		"""Return the analysis table registered under ``key``."""
-		return self.tables.table(key)
+		"""Load and cache the analysis table registered under ``key``."""
+		if key not in self._loaded and self.recording is not None:
+			self._loaded[key] = self.recording.load_results(key, eager=True)
+
+		return self._loaded[key]
 
 	def __contains__(self, key: str) -> bool:
-		"""Whether the analysis table ``key`` is available to read."""
-		return self.tables.has(key)
+		"""Whether the step producing ``key`` has run for this recording."""
+		return key in self._loaded or (
+			self.recording is not None
+			and (self.recording.results_path / f"{key}.parquet").is_file()
+		)
 
 	def axis_range(self, granularity: Granularity) -> tuple[int, int]:
 		"""Full range of the day or phase axis, for an unset selection.
 
-		Args:
-			granularity: which axis to measure.
-
 		Raises:
 			ValueError: ``granularity`` is not one of the two axis columns.
-
-		Returns:
-			The first and last value of that axis.
 		"""
 		if granularity not in get_args(Granularity):
 			raise ValueError(
@@ -184,34 +141,6 @@ class PlotContext:
 
 		return self.phase_range if granularity == "phase_count" else self.days_range
 
-	def available_plots(self, computed_only: bool = False) -> list[str]:
-		"""Names of the plots that can be built.
-
-		Args:
-			computed_only: keep only plots whose required tables have been computed.
-
-		Returns:
-			The registered plot names.
-		"""
-		names = PlotRegistry.list_available()
-
-		if not computed_only:
-			return names
-
-		return [
-			name
-			for name in names
-			if all(table in self for table in PlotRegistry.spec(name).requires)
-		]
-
 	def plot(self, name: str, **options: Any) -> go.Figure:
-		"""Build a plot against this context.
-
-		Args:
-			name: registry key.
-			**options: overrides for the plot's keyword arguments.
-
-		Returns:
-			The figure.
-		"""
+		"""Build the registered plot ``name`` against this context, overriding any option."""
 		return PlotRegistry.build(name, self, **options)

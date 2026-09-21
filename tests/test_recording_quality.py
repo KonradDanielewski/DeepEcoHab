@@ -10,14 +10,14 @@ reachable both ways and so has none.
 import datetime as dt
 
 import polars as pl
-import strategies as strat
+import strategies
 
 from deepecohab.core import topology
 from deepecohab.core.data_model import AnalysisParams, Recording
 from deepecohab.core.recording_pipeline import build_recording_quality
 
-CHAIN = strat.ANALYSIS_ANTENNA_COMBINATIONS
-RING = strat.ring_layout(*strat.RING_LAYOUTS["default"])[0]
+CHAIN = strategies.ANALYSIS_ANTENNA_COMBINATIONS
+RING = strategies.ring_layout(*strategies.RING_LAYOUTS["default"])[0]
 
 
 def quality(recording: Recording, reads: list[tuple[str, int]]) -> pl.DataFrame:
@@ -76,7 +76,7 @@ def test_ambiguous_steps_have_no_route():
 
 def test_missed_read_is_charged_to_the_skipped_antenna():
 	"""Stepping 2 -> 4 means antenna 3 failed to read, and only antenna 3."""
-	recording = strat.analysis_recording(animal_ids=["A", "B"])
+	recording = strategies.analysis_recording(animal_ids=["A", "B"])
 	result = quality(recording, [("A", 1), ("A", 2), ("A", 4)])
 
 	assert cell(result, "A", 3) == {
@@ -92,7 +92,7 @@ def test_missed_read_is_charged_to_the_skipped_antenna():
 
 def test_miss_rate_is_the_share_of_passes_that_went_unrecorded():
 	"""Antenna 3 reads twice and is skipped once, so one pass in three was missed."""
-	recording = strat.analysis_recording(animal_ids=["A"])
+	recording = strategies.analysis_recording(animal_ids=["A"])
 	result = quality(recording, [("A", a) for a in (1, 2, 3, 4, 3, 2, 4)])
 
 	assert cell(result, "A", 3)["detected"] == 2
@@ -102,7 +102,7 @@ def test_miss_rate_is_the_share_of_passes_that_went_unrecorded():
 
 def test_ambiguous_step_is_charged_to_nobody():
 	"""A step across the ring could have gone either way, so no antenna takes the blame."""
-	recording = strat.ring_recording(animal_ids=["A"])
+	recording = strategies.ring_recording(animal_ids=["A"])
 	result = quality(recording, [("A", 1), ("A", 5)])
 
 	assert result["missed"].sum() == 0
@@ -111,7 +111,7 @@ def test_ambiguous_step_is_charged_to_nobody():
 
 def test_grid_covers_every_animal_and_antenna():
 	"""An animal the board never saw still gets a row per antenna, at zero."""
-	recording = strat.analysis_recording(animal_ids=["A", "B", "C"])
+	recording = strategies.analysis_recording(animal_ids=["A", "B", "C"])
 	result = quality(recording, [("A", 1), ("A", 2)])
 
 	assert result.height == 3 * 4

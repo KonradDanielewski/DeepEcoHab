@@ -9,12 +9,13 @@ occurrence (day 1, phase_count 1).
 """
 
 import polars as pl
-import strategies as strat
+import pytest
+import strategies
 
 from deepecohab.core import antenna_analysis
 from deepecohab.core.data_model import AnalysisParams, Recording
 
-RECORDING = strat.analysis_recording(animal_ids=["A", "B", "C"])
+RECORDING = strategies.analysis_recording(animal_ids=["A", "B", "C"])
 PHASE_ENUM = pl.Enum(["light_phase", "dark_phase"])
 ANIMAL_ENUM = pl.Enum(RECORDING.cohort.animal_tags)
 
@@ -57,8 +58,8 @@ def activity_frame(rows: list[tuple[str, int, float, float]], hour: int = 0) -> 
 			**_base(len(rows), hour),
 			"animal_id": pl.Series([r[0] for r in rows], dtype=ANIMAL_ENUM),
 			"visits_to_position": pl.Series([r[1] for r in rows], dtype=pl.UInt32),
-			"time_alone": strat.seconds([float(r[2]) for r in rows]),
-			"time_in_position": strat.seconds([float(r[3]) for r in rows]),
+			"time_alone": strategies.seconds([float(r[2]) for r in rows]),
+			"time_in_position": strategies.seconds([float(r[3]) for r in rows]),
 		}
 	)
 
@@ -66,8 +67,8 @@ def activity_frame(rows: list[tuple[str, int, float, float]], hour: int = 0) -> 
 def pairwise_frame(rows: list[tuple[str, str, float, int]], hour: int = 0) -> pl.LazyFrame:
 	"""pairwise_meetings rows (animal_id, animal_id_2, time_together seconds, encounters).
 
-	The position is a cage: pairwise_meetings covers tunnels too, but calculate_features
-	counts cage co-presence only.
+	The position is a cage only because a fixture has to name one: calculate_features
+	sums over positions without filtering, so tunnel co-presence counts too.
 	"""
 	return pl.LazyFrame(
 		{
@@ -75,7 +76,7 @@ def pairwise_frame(rows: list[tuple[str, str, float, int]], hour: int = 0) -> pl
 			"position": pl.Series(["cage_1"] * len(rows), dtype=pl.Categorical),
 			"animal_id": pl.Series([r[0] for r in rows], dtype=ANIMAL_ENUM),
 			"animal_id_2": pl.Series([r[1] for r in rows], dtype=ANIMAL_ENUM),
-			"time_together": strat.seconds([float(r[2]) for r in rows]),
+			"time_together": strategies.seconds([float(r[2]) for r in rows]),
 			"pairwise_encounters": pl.Series([r[3] for r in rows], dtype=pl.UInt32),
 		}
 	)
@@ -271,4 +272,105 @@ def test_no_nulls_anywhere(monkeypatch):
 		activity=activity_frame([("A", 10, 0.0, HOUR), ("B", 20, 0.0, HOUR)]),
 		pairwise=pairwise_frame([("A", "B", 5.0, 1)]),
 	)
+	assert result.null_count().sum_horizontal().item() == 0
+
+
+def test_tunnel_co_presence_reaches_the_features(monkeypatch):
+	"""Every position counts: features sums pairwise_meetings without filtering it.
+
+	Time two animals spend together in a tunnel is contact - it is what the tube test
+	reads as a contest - so leaving it out would understate togetherness exactly where
+	it is most physical.
+	"""
+	tunnel = pairwise_frame([("A", "B", 5.0, 1)]).with_columns(
+		pl.lit("tunnel_1", dtype=pl.Categorical).alias("position")
+	)
+	result = run_features(
+		monkeypatch,
+		chasings=chasings_frame([("A", "B", 0)]),
+		activity=activity_frame([("A", 10, 0.0, HOUR), ("B", 20, 0.0, HOUR)]),
+		pairwise=tunnel,
+	)
+
+	assert column_for(result, "time_together", "value")["A"] == pytest.approx(5.0 / HOUR)
+	assert column_for(result, "pairwise_encounters", "value")["A"] == 1.0
+
+
+def test_undefined_time_is_part_of_the_observed_exposure(monkeypatch):
+	"""Time the analysis cannot place is still time the animal was watched for.
+
+	``observed_hours`` is summed over every position, ``undefined`` included, so the
+	denominator is the animal's whole timeline. Dropping it would inflate every rate for
+	an animal whose antenna reads are patchy.
+	"""
+	activity = pl.concat(
+		[
+			activity_frame([("A", 6, 0.0, HOUR / 2)]).with_columns(
+				pl.lit("cage_1", dtype=pl.Categorical).alias("position")
+			),
+			activity_frame([("A", 2, 0.0, HOUR / 2)]).with_columns(
+				pl.lit("undefined", dtype=pl.Categorical).alias("position")
+			),
+		]
+	)
+	result = quiet_hour(monkeypatch, activity)
+
+	assert column_for(result, "activity", "value")["A"] == 8.0
+	assert column_for(result, "activity", "exposure")["A"] == 1.0
+
+
+def test_one_animal_cohort_omits_the_paired_metrics(monkeypatch):
+	"""With no partner available, a paired metric has no exposure to be read against.
+
+	Its exposure would be ``observed_hours * 0``, so every rate over it would be 0/0.
+	The solo and per-detection metrics still mean what they always did.
+	"""
+	lone = strategies.analysis_recording(animal_ids=["A"])
+	animals = pl.Enum(lone.cohort.animal_tags)
+	calendar = {
+		"phase": pl.Enum(["light_phase", "dark_phase"]),
+		"day": pl.UInt16,
+		"phase_count": pl.UInt16,
+		"hour": pl.UInt8,
+	}
+	one = {
+		"phase": pl.Series(["light_phase"], dtype=calendar["phase"]),
+		"day": pl.Series([1], dtype=pl.UInt16),
+		"phase_count": pl.Series([1], dtype=pl.UInt16),
+		"hour": pl.Series([0], dtype=pl.UInt8),
+	}
+	tables = {
+		"activity_df": pl.LazyFrame(
+			{
+				**one,
+				"animal_id": pl.Series(["A"], dtype=animals),
+				"visits_to_position": pl.Series([4], dtype=pl.UInt32),
+				"time_alone": strategies.seconds([HOUR]),
+				"time_in_position": strategies.seconds([HOUR]),
+			}
+		),
+		"main_df": pl.LazyFrame({**one, "animal_id": pl.Series(["A"], dtype=animals)}),
+		# A lone cohort has no ordered pairs and no unordered ones, so both grids are empty.
+		"chasings_df": pl.LazyFrame(
+			schema={**calendar, "chaser": animals, "chased": animals, "chasings": pl.UInt32}
+		),
+		"pairwise_meetings": pl.LazyFrame(
+			schema={
+				**calendar,
+				"position": pl.Categorical,
+				"animal_id": animals,
+				"animal_id_2": animals,
+				"time_together": pl.Duration("us"),
+				"pairwise_encounters": pl.UInt32,
+			}
+		),
+	}
+	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: tables[key])
+
+	result = antenna_analysis.calculate_features(lone, AnalysisParams()).collect()
+
+	assert set(result["metric"].unique()) == SOLO | PER_DETECTION
+	assert dict(
+		result.filter(pl.col("metric") == "time_alone").select("value", "exposure").iter_rows()
+	) == {1.0: 1.0}
 	assert result.null_count().sum_horizontal().item() == 0

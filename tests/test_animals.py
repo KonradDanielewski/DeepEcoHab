@@ -8,12 +8,12 @@ and the one derived column (age at the start of the recording).
 import datetime as dt
 
 import polars as pl
-import strategies as strat
+import strategies
 
 from deepecohab.core import recording_pipeline
 from deepecohab.core.data_model import AnalysisParams
 
-RECORDING = strat.analysis_recording(animal_ids=["A", "B", "C"], start="2023-05-24 00:00:00")
+RECORDING = strategies.analysis_recording(animal_ids=["A", "B", "C"], start="2023-05-24 00:00:00")
 
 
 def build(recording=None) -> pl.DataFrame:
@@ -45,12 +45,12 @@ def test_carries_every_recorded_field():
 def test_join_key_matches_the_analysis_tables():
 	"""animal_id shares the enum the pipeline uses, so a join needs no casting."""
 	animals = build()
-	padded = strat.padded_df_frame(
+	padded = strategies.padded_df_frame(
 		[
 			{
 				"animal_id": "A",
 				"position": "cage_1",
-				"datetime": strat.at(2023, 5, 24, 12, 0, 0),
+				"datetime": strategies.at(2023, 5, 24, 12, 0, 0),
 				"time_spent": 10,
 			}
 		],
@@ -84,7 +84,7 @@ def test_age_is_whole_days_at_recording_start():
 
 def test_age_follows_the_recording_window():
 	"""Age is relative to the recording, so a later recording ages the same cohort."""
-	later = strat.analysis_recording(
+	later = strategies.analysis_recording(
 		animal_ids=["A", "B", "C"], start="2023-06-24 00:00:00", finish="2023-06-26 23:00:00"
 	)
 	assert (build(later)["age"] - build()["age"]).unique().to_list() == [dt.timedelta(days=31)]

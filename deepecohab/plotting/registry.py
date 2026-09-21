@@ -63,9 +63,6 @@ class PlotSpec:
 	def options_for(self, context: "PlotContext") -> tuple[Option, ...]:
 		"""Options with cohort-dependent choices resolved.
 
-		Args:
-			context: the context the plot would be built against.
-
 		Returns:
 			The options. A resolved option whose declared default is not among its
 			choices falls back to the first, so the default is always selectable.
@@ -81,42 +78,16 @@ class PlotSpec:
 				resolved.append(option)
 				continue
 
-			if isinstance(option.default, list):
+			if isinstance(option.default, (list, tuple)):
 				# A multi-select option, e.g. phase_type: narrow to what still applies
-				# rather than collapsing to one choice.
+				# rather than collapsing to one choice. Its default may be a tuple, so
+				# that one shared list cannot be mutated by a caller into every plot.
 				default = [value for value in option.default if value in choices] or list(choices)
 			else:
 				default = option.default if option.default in choices else choices[0]
 			resolved.append(Option(option.name, option.label, choices, default))
 
 		return tuple(resolved)
-
-	def describe(self, context: "PlotContext | None" = None) -> dict[str, Any]:
-		"""Serializable description of the plot, for a GUI to build controls from.
-
-		Args:
-			context: resolve cohort-dependent choices against this context.
-
-		Returns:
-			The plot's name, title, summary, required tables and options.
-		"""
-		options = self.options_for(context) if context is not None else self.options
-
-		return {
-			"name": self.name,
-			"title": self.title,
-			"summary": self.summary,
-			"requires": list(self.requires),
-			"options": [
-				{
-					"name": option.name,
-					"label": option.label,
-					"choices": list(option.choices),
-					"default": option.default,
-				}
-				for option in options
-			],
-		}
 
 
 def _literal_choices(annotation: Any) -> tuple[Any, ...]:
@@ -212,8 +183,6 @@ class PlotRegistry:
 		"""Register a plot builder under ``name``.
 
 		Args:
-			name: registry key.
-			title: display title.
 			requires: analysis tables the builder reads.
 			dynamic_choices: resolvers for options whose choices depend on the
 				cohort, keyed by option name.
@@ -257,24 +226,13 @@ class PlotRegistry:
 	def spec(cls, name: str) -> PlotSpec:
 		"""Return one plot's spec.
 
-		Args:
-			name: registry key.
-
 		Raises:
 			KeyError: no plot is registered under ``name``.
-
-		Returns:
-			The spec.
 		"""
 		if name not in cls._specs:
 			raise KeyError(f"unknown plot {name!r}; available: {sorted(cls._specs)}")
 
 		return cls._specs[name]
-
-	@classmethod
-	def specs(cls) -> list[PlotSpec]:
-		"""Every registered spec."""
-		return list(cls._specs.values())
 
 	@classmethod
 	def list_available(cls) -> list[str]:
@@ -286,7 +244,6 @@ class PlotRegistry:
 		"""Build a plot.
 
 		Args:
-			name: registry key.
 			context: the data and cohort metadata to plot.
 			**options: overrides for the builder's keyword arguments.
 
@@ -295,9 +252,6 @@ class PlotRegistry:
 			ValueError: a required table is missing, or an option was given a value
 				outside its choices.
 			TypeError: an option is not one the plot accepts.
-
-		Returns:
-			The figure.
 		"""
 		plot_spec = cls.spec(name)
 		missing = [table for table in plot_spec.requires if table not in context]
@@ -319,7 +273,7 @@ class PlotRegistry:
 			value = values[option.name]
 			valid = (
 				set(value) <= set(option.choices)
-				if isinstance(value, list)
+				if isinstance(value, (list, tuple))
 				else value in option.choices
 			)
 			if not valid:

@@ -1,8 +1,9 @@
 import datetime as dt
+from functools import partial
 
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 import tzlocal
 from hypothesis import given, settings, strategies as st
 
@@ -20,7 +21,7 @@ SCHEMA: dict[str, pl.DataType] = {
 
 # The span covers every datetime used by the example-based tests below; the grid it
 # builds is what _get_time_alone looks phase_count up from.
-RECORDING = strat.analysis_recording(
+RECORDING = strategies.analysis_recording(
 	animal_ids=["A", "B", "C"],
 	tz=str(TZ),
 	start="2023-05-24 00:00:00",
@@ -38,7 +39,7 @@ def _recording_spanning(frame: pl.DataFrame, tz: str, phases=None):
 	# and so the grid covers the hour every event falls in.
 	first = frame["datetime"].min().replace(tzinfo=None) - dt.timedelta(days=1)
 	last = frame["datetime"].max().replace(tzinfo=None) + dt.timedelta(days=1)
-	return strat.analysis_recording(
+	return strategies.analysis_recording(
 		animal_ids=["A", "B", "C"], tz=tz, start=str(first), finish=str(last), phases=phases
 	)
 
@@ -54,9 +55,7 @@ EXPECTED_COLUMNS = {
 }
 
 
-def at(*args: int) -> dt.datetime:
-	"""Construct a zone-aware datetime in the project timezone."""
-	return dt.datetime(*args, tzinfo=TZ)
+at = partial(strategies.at, tz=str(TZ))
 
 
 @pytest.fixture()
@@ -77,8 +76,10 @@ def alone(frame: pl.DataFrame, recording=None, minimum_time_alone: float = 0.0) 
 	These cases exercise the sweep, so the threshold is off unless a case sets it.
 	"""
 	params = AnalysisParams(minimum_time_alone=minimum_time_alone)
-	return _get_time_alone(frame, recording or RECORDING, params).with_columns(
-		pl.col("time_alone").dt.total_seconds(fractional=True)
+	return (
+		_get_time_alone(frame.lazy(), recording or RECORDING, params)
+		.with_columns(pl.col("time_alone").dt.total_seconds(fractional=True))
+		.collect()
 	)
 
 
@@ -328,15 +329,15 @@ def test_simultaneous_swap_with_bystander(make_df):
 
 @settings(max_examples=200)
 @given(
-	events=st.lists(strat.event, min_size=1, max_size=25),
-	tz=strat.timezones,
-	pcfg=strat.phase_configs,
+	events=st.lists(strategies.event, min_size=1, max_size=25),
+	tz=strategies.timezones,
+	pcfg=strategies.phase_configs,
 )
 def test_alone_never_exceeds_presence(events, tz, pcfg):
 	"""No animal can be alone longer than the total time it is present: summed
 	time_alone per animal <= summed visit duration per animal.
 	"""
-	frame = strat.time_alone_frame(events, tz)
+	frame = strategies.time_alone_frame(events, tz)
 	recording = _recording_spanning(frame, tz, phases=pcfg)
 	result = alone(frame, recording)
 
@@ -355,12 +356,12 @@ def test_alone_never_exceeds_presence(events, tz, pcfg):
 
 @settings(max_examples=200)
 @given(
-	animals=st.lists(st.sampled_from(strat.ANIMALS), min_size=2, max_size=6, unique=True),
-	position=st.sampled_from(strat.CAGES),
-	start=strat.naive_datetimes,
-	duration=strat.positive_durations,
-	tz=strat.timezones,
-	pcfg=strat.phase_configs,
+	animals=st.lists(st.sampled_from(strategies.ANIMALS), min_size=2, max_size=6, unique=True),
+	position=st.sampled_from(strategies.CAGES),
+	start=strategies.naive_datetimes,
+	duration=strategies.positive_durations,
+	tz=strategies.timezones,
+	pcfg=strategies.phase_configs,
 )
 def test_full_overlap_means_nobody_alone(animals, position, start, duration, tz, pcfg):
 	"""When >=2 animals occupy the exact same interval in one cage, at no instant
@@ -370,7 +371,7 @@ def test_full_overlap_means_nobody_alone(animals, position, start, duration, tz,
 		{"animal_id": a, "position": position, "start": start, "duration": duration}
 		for a in animals
 	]
-	frame = strat.time_alone_frame(events, tz)
+	frame = strategies.time_alone_frame(events, tz)
 	recording = _recording_spanning(frame, tz, phases=pcfg)
 	result = alone(frame, recording)
 	assert result.height == 0
@@ -378,17 +379,17 @@ def test_full_overlap_means_nobody_alone(animals, position, start, duration, tz,
 
 @settings(max_examples=200)
 @given(
-	animal=st.sampled_from(strat.ANIMALS),
-	position=st.sampled_from(strat.CAGES),
-	start=strat.naive_datetimes,
-	duration=strat.positive_durations,
-	tz=strat.timezones,
-	pcfg=strat.phase_configs,
+	animal=st.sampled_from(strategies.ANIMALS),
+	position=st.sampled_from(strategies.CAGES),
+	start=strategies.naive_datetimes,
+	duration=strategies.positive_durations,
+	tz=strategies.timezones,
+	pcfg=strategies.phase_configs,
 )
 def test_lone_animal_is_alone_for_its_whole_visit(animal, position, start, duration, tz, pcfg):
 	"""A single animal with a single visit is alone for exactly that duration."""
 	events = [{"animal_id": animal, "position": position, "start": start, "duration": duration}]
-	frame = strat.time_alone_frame(events, tz)
+	frame = strategies.time_alone_frame(events, tz)
 	recording = _recording_spanning(frame, tz, phases=pcfg)
 	result = alone(frame, recording)
 

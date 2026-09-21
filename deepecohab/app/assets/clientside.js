@@ -1,0 +1,570 @@
+/* Callbacks that need no server work, as window.dash_clientside.deh.
+ *
+ * Python references each one as ClientsideFunction(namespace="deh", function_name=...).
+ * Anything that reads a file, loads a project or builds a figure stays a server callback;
+ * what lives here only rearranges state the browser already holds.
+ */
+
+(function () {
+"use strict";
+
+window.dash_clientside = window.dash_clientside || {};
+
+/* The plot whose card button fired, out of the figures already held in the browser. */
+function _pickPlot(figures, ids) {
+	const dc = window.dash_clientside;
+	const trigger = dc.callback_context.triggered[0];
+	if (!trigger || !trigger.value) throw dc.PreventUpdate;
+	const name = dc.callback_context.triggered_id.plot;
+	const index = ids.findIndex((id) => id.plot === name);
+	if (index < 0 || !figures[index]) throw dc.PreventUpdate;
+	return {name: name, figure: figures[index]};
+}
+
+/* A card's <h3> text, which is PlotRegistry.spec(name).title as the page rendered it. */
+function _plotTitle(name, titles, titleIds) {
+	const index = titleIds.findIndex((id) => id.plot === name);
+	return index < 0 ? name : titles[index];
+}
+
+/* Format: builder/figure.py apply_format for the recording cards, with the same lapse rule
+ * - an override holds only while its element still carries the automatic text it was set
+ * on. What the server drew is stashed in layout.meta.dehFormat when an override first lands,
+ * so clearing one restores it; a rebuilt figure arrives without the stash and is read afresh.
+ * A figure's category colours are the ones its layout.colorway declares (see
+ * animals.collapse_legend); a palette swaps exactly those, so a weight-scaled edge keeps its. */
+const _FORMAT_BINDS = {
+	xaxis: "xaxis",
+	yaxis: "yaxis",
+	colorbar: "colorbar",
+	cmin: "colorbar",
+	cmax: "colorbar",
+	colorscale: "coloraxis",
+	palette: "colorway",
+};
+const _FORMAT_SELECTS = ["colorscale", "palette"];
+
+function _titleText(title) {
+	return (title && typeof title === "object" ? title.text : title) || "";
+}
+
+function _plain(text) {
+	return (text || "").replace(/<[^>]*>/g, "");
+}
+
+/* ``text`` in the automatic title's weight: the recording plots bold theirs with <b>. */
+function _like(auto, text) {
+	return /^<b>.*<\/b>$/s.test(auto || "") ? "<b>" + text + "</b>" : text;
+}
+
+function _withTitle(owner, text) {
+	const title = owner.title && typeof owner.title === "object" ? owner.title : {};
+	return Object.assign({}, owner, {title: Object.assign({}, title, {text: text})});
+}
+
+/* The layout Format rewrites, as the server drew it. */
+function _formatBase(layout) {
+	const stash = (layout.meta || {}).dehFormat;
+	if (stash) return stash;
+	const axes = {};
+	Object.keys(layout)
+		.filter((key) => /^[xy]axis\d*$/.test(key) && layout[key].visible !== false)
+		.sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))
+		.forEach((key) => (axes[key] = _titleText(layout[key].title)));
+	return {axes: axes, coloraxis: layout.coloraxis || null, colorway: layout.colorway || null};
+}
+
+/* Each element's automatic text: "" when drawn untitled, null when the figure has none. */
+function _autoTitles(base) {
+	const axis = (letter) => {
+		const texts = Object.keys(base.axes).filter((key) => key[0] === letter).map((key) => base.axes[key]);
+		return texts.length ? texts.find(Boolean) || "" : null;
+	};
+	const bar = base.coloraxis;
+	return {
+		xaxis: axis("x"),
+		yaxis: axis("y"),
+		colorbar: bar ? _titleText((bar.colorbar || {}).title) : null,
+		coloraxis: bar ? "" : null,
+		colorway: base.colorway ? "" : null,
+	};
+}
+
+function _liveFormat(fmt, auto) {
+	const live = {};
+	Object.entries(fmt || {}).forEach(([key, entry]) => {
+		const on = auto[_FORMAT_BINDS[key]];
+		if (on !== null && entry.on === on) live[key] = entry.value;
+	});
+	return live;
+}
+
+/* The colour range the live bounds draw; null when there are none, "inverted" when unusable. */
+function _colorRange(live, base) {
+	if (live.cmin === undefined && live.cmax === undefined) return null;
+	const axis = base.coloraxis || {};
+	const cmin = live.cmin ?? axis.cmin;
+	const cmax = live.cmax ?? axis.cmax;
+	// With cauto off plotly fills a missing bound from the data.
+	return cmin != null && cmax != null && cmin >= cmax ? "inverted" : {cauto: false, cmin: cmin, cmax: cmax};
+}
+
+/* "r,g,b" and the alpha of an rgb()/rgba() colour, or null for anything else. */
+function _rgb(color) {
+	const match = typeof color === "string" && /^rgba?\(([^)]*)\)$/.exec(color.trim());
+	if (!match) return null;
+	const parts = match[1].split(",").map(Number);
+	return {key: parts.slice(0, 3).join(","), alpha: parts[3]};
+}
+
+/* The colorway the live palette draws; the server's while none is picked, or the pick has
+ * too few colours to give every category its own. */
+function _colorway(live, base, palettes) {
+	const chosen = palettes[live.palette];
+	return chosen && chosen.length >= base.colorway.length ? chosen.slice(0, base.colorway.length) : base.colorway;
+}
+
+/* ``data`` with each colour of ``from`` swapped for the one at its place in ``to``; an rgba()
+ * shade of one keeps its alpha. */
+function _recolor(data, from, to) {
+	const place = new Map();
+	from.forEach((color, i) => {
+		const parsed = _rgb(color);
+		if (parsed && _rgb(to[i])) place.set(parsed.key, to[i]);
+	});
+	const swap = (color) => {
+		const parsed = _rgb(color);
+		const target = parsed && place.get(parsed.key);
+		if (!target) return color;
+		return parsed.alpha === undefined ? target : `rgba(${_rgb(target).key},${parsed.alpha})`;
+	};
+	const walk = (node) => {
+		const out = Object.assign({}, node);
+		Object.entries(node).forEach(([key, value]) => {
+			if (/color$/.test(key)) out[key] = Array.isArray(value) ? value.map(swap) : swap(value);
+			else if (value && typeof value === "object" && !Array.isArray(value)) out[key] = walk(value);
+		});
+		return out;
+	};
+	return data.map(walk);
+}
+
+/* ``fig`` with ``fmt`` drawn on it, or null when that would change nothing. */
+function _formatFigure(fig, fmt, choices) {
+	if (!fig || !fig.layout) return null;
+	const {colorscale: scales = {}, palette: palettes = {}} = choices || {};
+	const stashed = Boolean((fig.layout.meta || {}).dehFormat);
+	const base = _formatBase(fig.layout);
+	const live = _liveFormat(fmt, _autoTitles(base));
+	if (!stashed && !Object.keys(live).length) return null;
+
+	const layout = Object.assign({}, fig.layout, {
+		meta: Object.assign({}, fig.layout.meta, {dehFormat: base}),
+	});
+	["x", "y"].forEach((letter) => {
+		const keys = Object.keys(base.axes).filter((key) => key[0] === letter);
+		// Facets title only their outer axes; an untitled axis gets it on the first.
+		const titled = keys.filter((key) => base.axes[key]);
+		const targets = letter + "axis" in live ? (titled.length ? titled : keys.slice(0, 1)) : [];
+		keys.forEach((key) => {
+			const text = targets.includes(key) ? _like(base.axes[key], live[letter + "axis"]) : base.axes[key];
+			if (_titleText(layout[key].title) !== text) layout[key] = _withTitle(layout[key], text);
+		});
+	});
+	if (base.coloraxis) {
+		const axis = Object.assign({}, base.coloraxis);
+		if ("colorbar" in live) {
+			const bar = axis.colorbar || {};
+			axis.colorbar = _withTitle(bar, _like(_titleText(bar.title), live.colorbar));
+		}
+		if (scales[live.colorscale]) axis.colorscale = scales[live.colorscale];
+		const range = _colorRange(live, base);
+		if (range && range !== "inverted") Object.assign(axis, range);
+		layout.coloraxis = axis;
+	}
+	// The data only changes along with the colorway, so comparing layouts still decides.
+	let data = fig.data;
+	if (base.colorway) {
+		const colorway = _colorway(live, base, palettes);
+		if (JSON.stringify(colorway) !== JSON.stringify(fig.layout.colorway)) {
+			data = _recolor(fig.data || [], fig.layout.colorway || base.colorway, colorway);
+			layout.colorway = colorway;
+		}
+	}
+	return JSON.stringify(layout) === JSON.stringify(fig.layout) ? null : Object.assign({}, fig, {data, layout});
+}
+
+/* What the form flags: a colour max under the min, or a palette with too few colours. */
+function _formErrors(fmt, layout, palettes) {
+	const base = _formatBase(layout || {});
+	const live = _liveFormat(fmt, _autoTitles(base));
+	const chosen = (palettes || {})[live.palette];
+	const needed = (base.colorway || []).length;
+	return {
+		cmax: _colorRange(live, base) === "inverted" ? "Must be above min" : null,
+		palette: chosen && chosen.length < needed ? `${chosen.length} colours for ${needed} categories` : null,
+	};
+}
+
+function _flagErrors(fmt, layout, palettes) {
+	const dc = window.dash_clientside;
+	Object.entries(_formErrors(fmt, layout, palettes)).forEach(([key, error]) =>
+		dc.set_props({type: "rec-fmt", key: key}, {error: error})
+	);
+}
+
+/* Square heatmaps shrink their x axis to the cells and push them toward the colour bar
+ * (plot_factory's constraintoward="right"), so a wide card leaves all its spare width left
+ * of the matrix. Sliding the drawing back by half of it centres matrix and colour bar as
+ * one; the figure title, placed on the whole container, is held where it was. */
+function _centreSquare(gd) {
+	const layout = gd._fullLayout;
+	const xaxis = layout && layout.xaxis;
+	const paper = gd.querySelector(".svg-container");
+	if (!xaxis || !paper) return;
+	const domain = xaxis._inputDomain;
+	const square = xaxis.constrain === "domain" && xaxis.constraintoward === "right";
+	const shift = square ? ((domain[1] - domain[0]) * layout._size.w - xaxis._length) / 2 : 0;
+	const slide = (element, px) => element && (element.style.transform = shift > 0.5 ? `translateX(${px}px)` : "");
+	slide(paper, -shift);
+	slide(gd.querySelector(".g-gtitle"), shift);
+}
+
+new MutationObserver(() => {
+	document.querySelectorAll(".js-plotly-plot").forEach((gd) => {
+		if (gd._dehCentre || !gd.on) return;
+		gd._dehCentre = true;
+		gd.on("plotly_afterplot", () => _centreSquare(gd));
+		_centreSquare(gd);
+	});
+}).observe(document.body, {childList: true, subtree: true});
+
+
+window.dash_clientside.deh = {
+	/* --- shell ------------------------------------------------------------ */
+
+	themeToggle: function () {
+		const dark = document.documentElement.getAttribute("data-mantine-color-scheme") === "dark";
+		return dark ? "light" : "dark";
+	},
+
+	applyTheme: function (theme) {
+		const dc = window.dash_clientside;
+		const resolved = theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+		return [theme || dc.no_update, resolved];
+	},
+
+	toggleNav: function (nClicks, collapsed) {
+		return !collapsed;
+	},
+
+	shellNavbar: function (collapsed, mobileOpened) {
+		const tips = window.dash_clientside.callback_context.outputs_list[2];
+		return [
+			{width: collapsed ? 64 : 232, breakpoint: "sm", collapsed: {mobile: !mobileOpened}},
+			collapsed ? "nav-collapsed" : null,
+			tips.map(() => !collapsed),
+		];
+	},
+
+	// Each nav link keeps the last URL its page showed, so returning lands on the same
+	// recording or project, and the window scroll is kept per page.
+	pageScroll: function (pathname, search, hrefs) {
+		const dc = window.dash_clientside;
+		const [pages, links] = dc.callback_context.outputs_list;
+		if (!dc.pageScroll) {
+			dc.pageScroll = {};
+			history.scrollRestoration = "manual";
+			// Links scroll to the top before this callback runs, so the offset is recorded
+			// as the page scrolls, and not once the URL has already moved on.
+			window.addEventListener("scroll", () => {
+				if (location.pathname === dc.page) dc.pageScroll[dc.page] = window.scrollY;
+			});
+		}
+		if (dc.page !== pathname) {
+			dc.page = pathname;
+			const top = dc.pageScroll[pathname] || 0;
+			// The page is still hidden until Dash applies the outputs, and a hidden page
+			// is too short to scroll, so wait for it to show.
+			const page = document.getElementById(JSON.stringify({index: pathname, type: "page"}));
+			const restore = () => {
+				if (dc.page !== pathname) return;
+				if (page && page.hidden) return requestAnimationFrame(restore);
+				window.scrollTo(0, top);
+			};
+			requestAnimationFrame(restore);
+		}
+		return [
+			pages.map((page) => page.id.index !== pathname),
+			links.map((link, i) => (link.id.index === pathname ? pathname + search : hrefs[i])),
+		];
+	},
+
+	/* --- recording -------------------------------------------------------- */
+
+	filterControls: function (hours, phases, colorBy, groupMean, controls) {
+		const disabled = colorBy === "animal_id" || colorBy === "subject_name";
+		const merged = Object.assign({}, controls || {}, {
+			hours: hours,
+			phases: phases || [],
+			color_by: colorBy,
+			group_mean: Boolean(groupMean) && !disabled,
+		});
+		return [merged, disabled];
+	},
+
+	// Only a figure whose event shapes/annotations show the wrong way is set, so the switch
+	// redraws just those plots; one with no events, or not loaded yet, is left alone.
+	toggleEvents: function (show, figures, ids) {
+		const dc = window.dash_clientside;
+		const isEvent = (item) => item.name === "event-span" || item.name === "event-label";
+		const stale = (item) => isEvent(item) && (item.visible !== false) !== show;
+		const toggle = (item) => (isEvent(item) ? Object.assign({}, item, {visible: show}) : item);
+		(figures || []).forEach((fig, i) => {
+			const layout = (fig && fig.layout) || {};
+			const shapes = layout.shapes || [];
+			const annotations = layout.annotations || [];
+			if (!shapes.some(stale) && !annotations.some(stale)) return;
+			const next = Object.assign({}, layout, {shapes: shapes.map(toggle), annotations: annotations.map(toggle)});
+			dc.set_props(ids[i], {figure: Object.assign({}, fig, {layout: next})});
+		});
+	},
+
+	// A card is rebuilt only while its tab shows, and only for inputs it was not already
+	// drawn with: a hidden tab catches up when opened, and returning to one costs nothing.
+	// Each store starts as {tab}, the tab its card sits on. One run serves every card and sets
+	// only the stores that change: every callback run and every write re-runs the renderer's
+	// per-component checks, so one callback per card made each tab switch several times dearer.
+	plotRequest: function (context, controls, tab, theme) {
+		const dc = window.dash_clientside;
+		if (!context || !controls) return;
+		const opts = {};
+		dc.callback_context.inputs_list[4].forEach((option) => {
+			(opts[option.id.plot] = opts[option.id.plot] || {})[option.id.option] = option.value;
+		});
+		dc.callback_context.states_list[0].forEach((store) => {
+			const previous = store.value || {};
+			if (previous.tab !== tab) return;
+			const request = {tab: tab, context: context, controls: controls, theme: theme, opts: opts[store.id.plot] || {}};
+			if (JSON.stringify(request) !== JSON.stringify(previous)) dc.set_props(store.id, {data: request});
+		});
+	},
+
+	// The cohort cards follow colour alone, so the other controls leave them be.
+	colorBy: function (controls, current) {
+		const next = (controls || {}).color_by || "animal_id";
+		return next === current ? window.dash_clientside.no_update : next;
+	},
+
+	// Also the only writer of rec-tab, which plotRequest reads instead of rec-tabs itself:
+	// this fires only when the tabs exist, so it stays a safe place to touch them.
+	switchTab: function (tab, search) {
+		const params = new URLSearchParams(search || "");
+		if (params.get("tab") === tab) return [window.dash_clientside.no_update, tab];
+		params.set("tab", tab);
+		return ["?" + params.toString(), tab];
+	},
+
+	windowControl: function (granularity, window_, context, controls) {
+		const dc = window.dash_clientside;
+		if (!context) throw dc.PreventUpdate;
+		const bound = granularity === "day" ? context.days : context.phases;
+		const value = dc.callback_context.triggered_id === "rec-granularity" ? [1, bound] : window_;
+		const step = bound > 12 ? 2 : 1;  // mirrors _window_marks
+		const marks = [];
+		for (let v = 1; v <= bound; v += 1) {
+			if ((v - 1) % step === 0 || v === bound) marks.push({value: v, label: String(v)});
+		}
+		const merged = Object.assign({}, controls || {}, {granularity: granularity, window: value});
+		return [1, bound, marks, value, merged];
+	},
+
+	fullscreen: function (_clicks, figures, ids, titles, titleIds) {
+		const picked = _pickPlot(figures, ids);
+		return [true, _plotTitle(picked.name, titles, titleIds), picked.figure];
+	},
+
+	openExport: function (_clicks, figures, ids, titles, titleIds, context) {
+		const picked = _pickPlot(figures, ids);
+		const recording = (context || {}).recording || "recording";
+		return [
+			true,
+			{figure: picked.figure, title: _plotTitle(picked.name, titles, titleIds)},
+			(recording + "__" + picked.name).toLowerCase().split(" ").join("-"),
+		];
+	},
+
+	openFormat: function (_clicks, figures, ids, titles, titleIds, formats, choices) {
+		const dc = window.dash_clientside;
+		const picked = _pickPlot(figures, ids);
+		const layout = picked.figure.layout || {};
+		const base = _formatBase(layout);
+		const auto = _autoTitles(base);
+		const fmt = (formats || {})[picked.name];
+		const live = _liveFormat(fmt, auto);
+		const keys = dc.callback_context.outputs_list[3].map((field) => field.id.key);
+		const hint = (key) => {
+			if (key in auto) return _plain(auto[key]) || (auto[key] === "" ? "No title" : "Not on this plot");
+			if (_FORMAT_SELECTS.includes(key)) return "Default";
+			return String((base.coloraxis || {})[key] ?? "Auto");
+		};
+		const palettes = (choices || {}).palette || {};
+		const needed = (base.colorway || []).length;
+		_flagErrors(fmt, layout, palettes);
+		return [
+			true,
+			"Format · " + _plotTitle(picked.name, titles, titleIds),
+			picked.name,
+			keys.map((key) => live[key] ?? (_FORMAT_SELECTS.includes(key) ? null : "")),
+			keys.map(hint),
+			keys.map((key) => auto[_FORMAT_BINDS[key]] === null),
+			Object.entries(palettes).map(([name, colors]) => ({
+				value: name,
+				label: `${name} · ${colors.length}`,
+				disabled: colors.length < needed,
+			})),
+		];
+	},
+
+	// Only the fields that fired are touched, so an override that has lapsed - its element
+	// shows other text now, and the form shows it empty - is kept for when that text returns.
+	editFormat: function (_values, _reset, plot, formats, figures, ids, choices) {
+		const dc = window.dash_clientside;
+		const ctx = dc.callback_context;
+		const index = ids.findIndex((id) => id.plot === plot);
+		if (index < 0 || !figures[index]) throw dc.PreventUpdate;
+		const layout = figures[index].layout || {};
+		const auto = _autoTitles(_formatBase(layout));
+		const next = Object.assign({}, formats);
+		const fmt = Object.assign({}, next[plot]);
+
+		if (ctx.triggered_id === "rec-fmt-reset") {
+			if (!ctx.triggered[0].value) throw dc.PreventUpdate;
+			ctx.inputs_list[0].forEach((field) =>
+				dc.set_props(field.id, {value: _FORMAT_SELECTS.includes(field.id.key) ? null : ""})
+			);
+			Object.keys(fmt).forEach((key) => delete fmt[key]);
+		} else {
+			const live = _liveFormat(fmt, auto);
+			ctx.triggered.forEach((trigger) => {
+				const key = JSON.parse(trigger.prop_id.slice(0, trigger.prop_id.lastIndexOf("."))).key;
+				let value = typeof trigger.value === "string" ? trigger.value.trim() : trigger.value;
+				if ((key === "cmin" || key === "cmax") && typeof value !== "number") value = null;
+				if (value === "" || value === undefined || value === _plain(auto[key])) value = null;
+				if (value === (live[key] ?? null)) return;
+				if (value === null) delete fmt[key];
+				else fmt[key] = {on: auto[_FORMAT_BINDS[key]], value: value};
+			});
+		}
+
+		_flagErrors(fmt, layout, (choices || {}).palette);
+		if (Object.keys(fmt).length) next[plot] = fmt;
+		else delete next[plot];
+		return JSON.stringify(next) === JSON.stringify(formats || {}) ? dc.no_update : next;
+	},
+
+	// The figures are Inputs, so an override is redrawn onto every figure the server rebuilds;
+	// they are set rather than declared as outputs, which would close a loop Dash refuses, and
+	// _formatFigure's null for "nothing changed" is what ends the echo of each set.
+	applyFormat: function (formats, figures, ids, choices) {
+		const dc = window.dash_clientside;
+		(figures || []).forEach((fig, i) => {
+			const next = _formatFigure(fig, (formats || {})[ids[i].plot], choices);
+			if (next) dc.set_props(ids[i], {figure: next});
+		});
+	},
+
+	/* --- shared ----------------------------------------------------------- */
+
+	// Buttons a callback re-renders fire their pattern-matched callbacks again with no click
+	// behind them. Routed through here, only a real click reaches the server, as {id, at}
+	// in a store; `at` makes a repeat click on the same button a new value.
+	clickEvent: function () {
+		const dc = window.dash_clientside;
+		const trigger = dc.callback_context.triggered[0];
+		if (!trigger || !trigger.value) return dc.no_update;
+		return {id: dc.callback_context.triggered_id, at: Date.now()};
+	},
+
+	/* --- builder ---------------------------------------------------------- */
+
+	// The palette's chips offer the plot type's shelves, so it redraws for a new type only.
+	builderKind: function (state, current) {
+		const kind = (state || {}).kind;
+		return !kind || kind === current ? window.dash_clientside.no_update : kind;
+	},
+
+	/* --- projects --------------------------------------------------------- */
+
+	// The selection lives in the browser: a tick only repaints checkboxes, so nothing here is
+	// worth a round trip. The two halves pair up — clicks write the store, the store paints the
+	// boxes — and a repaint echoes back as an Input, so selectRecordings ignores any trigger
+	// that already agrees with the store. A repaint only ever runs after the store is written,
+	// so the echo never reads a stale one.
+	selectRecordings: function (_checks, _all, _clear, selection) {
+		const dc = window.dash_clientside;
+		const ctx = dc.callback_context;
+		const trigger = ctx.triggered_id;
+		if (trigger === "selection-clear") return selection.length ? [] : dc.no_update;
+		if (!trigger) return dc.no_update;
+
+		const key = (id) => JSON.stringify([id.project, id.index]);
+		const value = ctx.triggered[0].value;
+		const keys = new Set(selection.map((pair) => JSON.stringify(pair)));
+		const boxes = ctx.inputs_list[0].filter((box) =>
+			trigger.type === "select-all"
+				? box.id.project === trigger.index
+				: box.id.project === trigger.project && box.id.index === trigger.index
+		);
+		const ticked = boxes.length > 0 && boxes.every((box) => keys.has(key(box.id)));
+		if (ticked === value) return dc.no_update;  // a repaint, not a click
+
+		boxes.forEach((box) => keys[value ? "add" : "delete"](key(box.id)));
+		const same = keys.size === selection.length && selection.every((pair) => keys.has(JSON.stringify(pair)));
+		return same ? dc.no_update : [...keys].sort().map((pair) => JSON.parse(pair));
+	},
+
+	// Sets the boxes instead of outputting them: they are selectRecordings' inputs, so declared
+	// outputs here would close a loop through the store that Dash refuses to register.
+	paintSelection: function (selection) {
+		const dc = window.dash_clientside;
+		const key = (id) => JSON.stringify([id.project, id.index]);
+		const [boxes, heads] = dc.callback_context.states_list;
+		const keys = new Set((selection || []).map((pair) => JSON.stringify(pair)));
+		const paint = (box, checked) => box.value === checked || dc.set_props(box.id, {checked});
+		boxes.forEach((box) => paint(box, keys.has(key(box.id))));
+		heads.forEach((head) => {
+			const mine = boxes.filter((box) => box.id.project === head.id.index);
+			paint(head, mine.length > 0 && mine.every((box) => keys.has(key(box.id))));
+		});
+	},
+
+	resetProgress: function () {
+		return null;
+	},
+
+	resetParams: function (_clicks, defaults) {
+		return [
+			defaults.minimum_time,
+			defaults.minimum_time_alone,
+			defaults.chasing_time_window,
+		];
+	},
+
+	copyPath: function () {
+		const dc = window.dash_clientside;
+		const trigger = dc.callback_context.triggered[0];
+		if (!trigger || !trigger.value) return dc.no_update;
+		const toast = (kind, message) => dc.set_props("notifications", {sendNotifications: [{
+			action: "show", message, className: `deh-toast deh-toast-${kind}`,
+			withCloseButton: false, autoClose: 5200,
+		}]});
+		const path = dc.callback_context.triggered_id.index;
+		(navigator.clipboard ? navigator.clipboard.writeText(path) : Promise.reject()).then(
+			() => toast("info", "Path copied"),
+			() => toast("warn", "The browser blocked clipboard access; select the path instead."),
+		);
+		return dc.no_update;
+	},
+};
+})();

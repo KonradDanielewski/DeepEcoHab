@@ -1,5 +1,3 @@
-from typing import Literal
-
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
@@ -7,20 +5,15 @@ import plotly.io as pio
 
 
 def sample_palette(count: int, cmap: str = "Phase") -> list[str]:
-	"""Sample ``count`` visually distinct colours from a colorscale.
+	"""Sample ``count`` visually distinct colours from any named plotly colorscale.
 
-	Args:
-		count: how many colours are needed.
-		cmap: any named plotly colorscale.
-
-	Returns:
-		Exactly ``count`` colours, empty when ``count`` is not positive.
+	Returns exactly ``count`` colours, empty when ``count`` is not positive.
 	"""
 	if count <= 0:
 		return []
 
 	# Drop the closing endpoint: Phase is cyclic, so both ends give the same colour.
-	positions = np.linspace(0, 1, count + 1)[:-1]
+	positions = np.linspace(0, 1, count + 1)[:-1][::-1]
 
 	return px.colors.sample_colorscale(cmap, positions)
 
@@ -32,17 +25,17 @@ FONT = "Geist, Segoe UI, system-ui, sans-serif"
 
 #: House sequential scale for heatmaps, teal through gold, replacing plain Viridis.
 _AURORA_STOPS: list[str] = [
-	"rgb(22, 191, 168)",  # teal
-	"rgb(30, 155, 224)",  # cyan-blue
-	"rgb(58, 111, 232)",  # blue
-	"rgb(107, 83, 222)",  # indigo
-	"rgb(154, 76, 214)",  # violet
-	"rgb(197, 63, 192)",  # magenta
-	"rgb(232, 67, 147)",  # pink
-	"rgb(246, 92, 106)",  # rose
-	"rgb(250, 126, 78)",  # orange-red
-	"rgb(252, 160, 44)",  # orange
-	"rgb(255, 210, 63)",  # gold
+	"rgba(22, 191, 168, 0.7)",  # teal
+	"rgba(30, 155, 224, 0.7)",  # cyan-blue
+	"rgba(58, 111, 232, 0.7)",  # blue
+	"rgba(107, 83, 222, 0.7)",  # indigo
+	"rgba(154, 76, 214, 0.7)",  # violet
+	"rgba(197, 63, 192, 0.7)",  # magenta
+	"rgba(232, 67, 147, 0.7)",  # pink
+	"rgba(246, 92, 106, 0.7)",  # rose
+	"rgba(250, 126, 78, 0.7)",  # orange-red
+	"rgba(252, 160, 44, 0.7)",  # orange
+	"rgba(255, 210, 63, 0.7)",  # gold
 ]
 AURORA: list[list] = [
 	[position, color]
@@ -51,16 +44,36 @@ AURORA: list[list] = [
 	)
 ]
 
-#: Severity scale for miss-rate plots: the same good/warn/bad hues as the status badges
-#: (app.css --good/--warn/--bad), so a "worse" colour on a plot means the same thing it
-#: does everywhere else in the app.
-SEVERITY: list[list] = [
-	[0.0, "rgb(31, 116, 69)"],
-	[0.5, "rgb(230, 176, 74)"],
-	[1.0, "rgb(180, 35, 47)"],
-]
-
 _COLORSCALE = {"sequential": AURORA, "sequentialminus": "Plasma", "diverging": "curl"}
+
+#: What a heatmap's colour scale can be switched to, house scale first. Plotly.js knows
+#: only a few scales by name, so every one is spelled out as explicit stops.
+COLORSCALES: dict[str, list] = {
+	"Aurora": AURORA,
+	**{
+		name: px.colors.make_colorscale(getattr(px.colors.sequential, name))
+		for name in ("Viridis", "Cividis", "Plasma", "Inferno", "Magma", "Greys", "Blues", "YlOrRd")
+	},
+}
+
+#: What a plot's categories can be recoloured with, which replaces the figure's
+#: ``colorway`` colour for colour. As rgb() so the browser can match a shaded rgba() too.
+PALETTES: dict[str, list[str]] = {
+	name: px.colors.convert_colors_to_same_type(getattr(px.colors.qualitative, name), "rgb")[0]
+	for name in (
+		"Plotly",
+		"D3",
+		"T10",
+		"Set1",
+		"Set2",
+		"Dark2",
+		"Safe",
+		"Bold",
+		"Vivid",
+		"Dark24",
+		"Alphabet",
+	)
+}
 
 #: App design tokens the card surface shows through, so plots carry no background of
 #: their own. Values come from the blueprint's "Plot theme" spec, not the app's --ink /
@@ -85,36 +98,39 @@ _TOKENS: dict[str, dict[str, str]] = {
 }
 
 
-def _template(t: dict[str, str]) -> go.layout.Template:
+def _template(tokens: dict[str, str]) -> go.layout.Template:
 	"""Build a card-surface template from one theme's tokens."""
 	axis = {
-		"gridcolor": t["grid"],
-		"linecolor": t["axis"],
-		"zerolinecolor": t["axis"],
-		"tickcolor": t["axis"],
-		"tickfont": {"color": t["ink2"]},
-		"title": {"font": {"color": t["ink2"]}},
+		"gridcolor": tokens["grid"],
+		"linecolor": tokens["axis"],
+		"zerolinecolor": tokens["axis"],
+		"tickcolor": tokens["axis"],
+		"tickfont": {"color": tokens["ink2"]},
+		"title": {"font": {"color": tokens["ink2"]}},
 	}
 	return go.layout.Template(
 		layout=go.Layout(
 			paper_bgcolor="rgba(0,0,0,0)",
 			plot_bgcolor="rgba(0,0,0,0)",
-			font={"family": FONT, "size": 13, "color": t["ink"]},
+			font={"family": FONT, "size": 13, "color": tokens["ink"]},
 			xaxis=axis,
 			yaxis=axis,
+			shapedefaults={"line": {"color": tokens["axis"]}},
 			polar={
 				"bgcolor": "rgba(0,0,0,0)",
-				"angularaxis": {"gridcolor": t["grid"], "linecolor": t["axis"]},
-				"radialaxis": {"gridcolor": t["grid"], "linecolor": t["axis"]},
+				"angularaxis": {"gridcolor": tokens["grid"], "linecolor": tokens["axis"]},
+				"radialaxis": {"gridcolor": tokens["grid"], "linecolor": tokens["axis"]},
 			},
-			legend={"bgcolor": "rgba(0,0,0,0)", "font": {"color": t["ink2"]}},
+			legend={"bgcolor": "rgba(0,0,0,0)", "font": {"color": tokens["ink2"]}},
 			hoverlabel={
-				"bgcolor": t["hover_bg"],
-				"bordercolor": t["hover_border"],
-				"font": {"color": t["ink"]},
+				"bgcolor": tokens["hover_bg"],
+				"bordercolor": tokens["hover_border"],
+				"font": {"color": tokens["ink"]},
 			},
 			colorway=DEFAULT_COLORWAY,
 			colorscale=_COLORSCALE,
+			# Every heatmap in the app shares one colour bar shape, whatever built it.
+			coloraxis={"colorbar": {"thickness": 14, "title": {"side": "right"}}},
 		)
 	)
 
@@ -151,6 +167,7 @@ PUBLICATION_THEME = go.layout.Template(
 		},
 		legend={"bgcolor": "rgba(0,0,0,0)", "font": {"color": "#000000"}},
 		hoverlabel={"bgcolor": "#ffffff", "bordercolor": "#000000", "font": {"color": "#000000"}},
+		shapedefaults={"line": {"color": "#000000"}},
 		colorway=DEFAULT_COLORWAY,
 		colorscale=_COLORSCALE,
 	)
@@ -159,12 +176,3 @@ PUBLICATION_THEME = go.layout.Template(
 pio.templates["dark"] = DARK_THEME
 pio.templates["light"] = LIGHT_THEME
 pio.templates["publication"] = PUBLICATION_THEME
-
-
-def set_default_theme(theme: Literal["dark", "light"] = "dark") -> None:
-	"""Make one of the package themes plotly's default for this process.
-
-	Args:
-		theme: which registered template to select.
-	"""
-	pio.templates.default = theme

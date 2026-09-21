@@ -18,28 +18,21 @@ import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 
-from deepecohab.plotting import animals as animals_module, durations, plot_factory, prepare, theme
+from deepecohab.plotting import (
+	animals as animals_module,
+	durations,
+	export,
+	plot_factory,
+	prepare,
+	theme,
+)
 from deepecohab.plotting.context import PlotContext
 from deepecohab.plotting.prepare import Heatmap
 from deepecohab.plotting.registry import PlotRegistry
 
 ANIMALS = ["0035A", "0035B", "0035C", "0035D"]
-
-
-class FakeTables:
-	"""Table provider serving one in-memory cohort table."""
-
-	def __init__(self, animals: pl.DataFrame, available: set[str] | None = None) -> None:
-		self._animals = animals
-		self._available = {"animals"} if available is None else available
-
-	def table(self, key: str) -> pl.DataFrame:
-		return self._animals
-
-	def has(self, key: str) -> bool:
-		return key in self._available
 
 
 @pytest.fixture
@@ -58,7 +51,7 @@ def context() -> PlotContext:
 	)
 
 	return PlotContext(
-		tables=FakeTables(cohort),
+		_loaded={"animals": cohort},
 		animal_ids=list(ANIMALS),
 		cages=["cage_1", "cage_2"],
 		# As layout.positions_non_directional carries them: cages, tunnels, sentinel.
@@ -113,12 +106,12 @@ def _frame(values: list[dt.timedelta]) -> pl.DataFrame:
 )
 def test_unit_follows_the_largest_value(value, expected):
 	"""The unit is picked so the biggest value reads as a whole number."""
-	assert durations.pick_unit(_frame([value]), "t") == expected
+	assert durations._pick_unit(_frame([value]), "t") == expected
 
 
 def test_unit_of_an_empty_column_falls_back_to_seconds():
 	"""A filtered-away selection still needs a label."""
-	assert durations.pick_unit(_frame([]), "t") == "seconds"
+	assert durations._pick_unit(_frame([]), "t") == "seconds"
 
 
 @pytest.mark.parametrize(
@@ -135,7 +128,7 @@ def test_unit_of_an_empty_column_falls_back_to_seconds():
 def test_hover_text_is_trimmed_to_the_units_resolution(value, unit, expected):
 	"""Hover text keeps the precision the axis implies, and never denies a value."""
 	frame = _frame([value])
-	rendered = durations.display(frame, "t", unit)
+	_frame_out, rendered = durations.to_display(frame, "t", unit)
 
 	assert frame.select(rendered.text).item() == expected
 
@@ -143,7 +136,7 @@ def test_hover_text_is_trimmed_to_the_units_resolution(value, unit, expected):
 def test_value_and_label_agree_on_the_unit():
 	"""The number plotted and the unit in the axis title come from one call."""
 	frame = _frame([dt.timedelta(hours=3)])
-	rendered = durations.display(frame, "t", "hours")
+	_frame_out, rendered = durations.to_display(frame, "t", "hours")
 
 	assert rendered.label == "<b>Time [h]</b>"
 	assert frame.select(rendered.value).item() == pytest.approx(3.0)
@@ -158,19 +151,6 @@ def test_to_display_replaces_the_duration_and_adds_its_text():
 
 
 # --- scope -------------------------------------------------------------------
-
-
-class SociabilityTables:
-	"""Provider serving the two tables the scoped proportion is computed from."""
-
-	def __init__(self, pairwise: pl.DataFrame, phase_durations: pl.DataFrame) -> None:
-		self._tables = {"pairwise_meetings": pairwise, "phase_durations": phase_durations}
-
-	def table(self, key: str) -> pl.DataFrame:
-		return self._tables[key]
-
-	def has(self, key: str) -> bool:
-		return key in self._tables
 
 
 def scoped_proportion(context, scope, rows, phase_seconds: float = 100.0) -> float:
@@ -197,7 +177,10 @@ def scoped_proportion(context, scope, rows, phase_seconds: float = 100.0) -> flo
 			"duration": pl.Series([dt.timedelta(seconds=phase_seconds)], dtype=pl.Duration("us")),
 		}
 	)
-	scoped = replace(context, tables=SociabilityTables(pairwise, phase_durations))
+	scoped = replace(
+		context,
+		_loaded={"pairwise_meetings": pairwise, "phase_durations": phase_durations},
+	)
 
 	return prepare._proportion_together(scoped, scope).collect()["proportion_together"].item()
 
@@ -240,30 +223,32 @@ def test_proportion_together_counts_only_the_scoped_positions(context):
 
 
 @pytest.mark.parametrize(
-	("plot", "expected"),
+	("plot", "expected", "default"),
 	[
-		("time-alone-bar", ("all", "cages", "tunnels")),
-		("cage-preference", ("all", "cages", "tunnels")),
-		("cohort-heatmap", ("all", "cages", "tunnels")),
-		("social-stability", ("all", "cages", "tunnels")),
-		("network-sociability", ("all", "cages", "tunnels")),
-		("time-per-cage-heatmap", ("cages", "tunnels")),
-		("cage-preference-evolution", ("cages", "tunnels")),
-		("sociability-heatmap", ("cages", "tunnels")),
+		("time-alone-bar", ("all", "cages", "tunnels"), "all"),
+		("cage-preference", ("all", "cages", "tunnels"), "all"),
+		("cohort-heatmap", ("all", "cages", "tunnels"), "all"),
+		("social-stability", ("all", "cages", "tunnels"), "all"),
+		("network-sociability", ("all", "cages", "tunnels"), "all"),
+		("time-per-cage-heatmap", ("cages", "tunnels"), "cages"),
+		("cage-preference-evolution", ("cages", "tunnels"), "cages"),
+		("sociability-heatmap", ("cages", "tunnels"), "cages"),
 	],
 )
-def test_faceted_plots_offer_no_all_scope(plot, expected):
+def test_faceted_plots_offer_no_all_scope(plot, expected, default):
 	"""A faceted heatmap's panels share one colour axis, so it shows one kind at a time.
 
 	Cage dwell runs to hours and tunnel dwell to seconds, so mixing them on that shared
 	scale renders the tunnel panels a uniform dark. Which plots take ``FacetScope`` and
 	which take ``Scope`` is carried by the annotation alone, and a typo there would
 	silently restore the unreadable option - so the split is pinned rather than reviewed.
+	A faceted plot keeps ``"cages"`` as its default; every other scoped plot now opens
+	on ``"all"``.
 	"""
 	scope = next(option for option in PlotRegistry.spec(plot).options if option.name == "scope")
 
 	assert scope.choices == expected
-	assert scope.default == "cages"
+	assert scope.default == default
 
 
 # --- colours -----------------------------------------------------------------
@@ -301,7 +286,7 @@ def test_colours_survive_dropping_an_animal(context):
 	full = animals_module.resolve_colors(context, "animal_id").colors
 
 	smaller = PlotContext(
-		tables=context.tables,
+		_loaded=context._loaded,
 		animal_ids=ANIMALS[:2],
 		cages=context.cages,
 		positions=context.positions,
@@ -341,6 +326,8 @@ def test_legend_collapses_to_one_entry_per_group(context):
 
 	assert [trace.name for trace in figure.data] == ["M", "M", "F", "F"]
 	assert [bool(trace.showlegend) for trace in figure.data] == [True, False, True, False]
+	# and the categories' colours are declared, for the recording page's palette swap
+	assert list(figure.layout.colorway) == list(mapping.colors.values())
 
 
 # --- registry ----------------------------------------------------------------
@@ -450,28 +437,6 @@ def test_unknown_plot_raises(clean_registry, context):
 		clean_registry.build("nope", context)
 
 
-def test_spec_describes_itself_in_json(clean_registry, context):
-	"""A web client builds its controls from this, so it must serialize."""
-
-	@clean_registry.register(
-		"demo",
-		title="Demo",
-		requires=("animals",),
-		dynamic_choices={"color_by": animals_module.available_attributes},
-	)
-	def demo(
-		context, *, agg: Literal["sum", "mean"] = "sum", color_by: str = "animal_id"
-	) -> go.Figure:
-		"""One line of summary."""
-		return go.Figure()
-
-	described = clean_registry.spec("demo").describe(context)
-
-	assert described["summary"] == "One line of summary."
-	assert json.loads(json.dumps(described)) == described
-	assert {option["name"] for option in described["options"]} == {"agg", "color_by"}
-
-
 def test_unit_option_flattens_its_literal_union():
 	"""``unit: Unit | Literal["auto"]`` is a union of two Literals, not one."""
 	option = next(o for o in PlotRegistry.spec("time-alone-bar").options if o.name == "unit")
@@ -510,14 +475,7 @@ def test_hours_range_narrows_the_hourly_scaffold(context):
 		}
 	)
 
-	class OneTable:
-		def table(self, key):
-			return frame
-
-		def has(self, key):
-			return True
-
-	with_table = replace(context, tables=OneTable())
+	with_table = replace(context, _loaded={"t": frame})
 	full = prepare.prep_hourly_line(with_table, (1, 1), "day", "t", "animal_id", pl.len())
 	narrowed = prepare.prep_hourly_line(
 		with_table, (1, 1), "day", "t", "animal_id", pl.len(), hours_range=(3, 6)
@@ -528,20 +486,6 @@ def test_hours_range_narrows_the_hourly_scaffold(context):
 
 
 # --- events ------------------------------------------------------------------
-
-
-class EventTables:
-	"""Table provider serving one event_bouts table, or nothing at all."""
-
-	def __init__(self, bouts: pl.DataFrame | None) -> None:
-		self._bouts = bouts
-
-	def table(self, key: str) -> pl.DataFrame:
-		assert self._bouts is not None
-		return self._bouts
-
-	def has(self, key: str) -> bool:
-		return key == "event_bouts" and self._bouts is not None
 
 
 def bout_cells(cells: list[tuple[str, str | None, int, int]]) -> pl.DataFrame:
@@ -564,14 +508,14 @@ def spans(
 	x: Literal["datetime", "hour", "day", "phase_count"] = "hour",
 ) -> list[tuple]:
 	"""Event spans over days 1-2 of the window, sorted for comparison."""
-	with_bouts = replace(context, tables=EventTables(bouts))
+	with_bouts = replace(context, _loaded={"event_bouts": bouts} if bouts is not None else {})
 
 	return prepare.prep_event_spans(with_bouts, (1, 2), "day", x).sort("event", "x0").rows()
 
 
 def test_phase_onsets_are_measured_from_the_start_onset():
 	"""The hour axis counts from the start_from onset, so the onset lines must too."""
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		start="2023-05-24 13:00:00",
 		phases={"light_phase": dt.time(1, 0), "dark_phase": dt.time(13, 0)},
 		start_from="dark_phase",
@@ -723,7 +667,7 @@ def test_datetime_spans_are_written_like_the_trace_they_mark(context):
 	bouts = bout_cells([("injection", None, 1, 13)]).with_columns(
 		start=pl.lit(moment), end=pl.lit(moment + dt.timedelta(minutes=10))
 	)
-	with_bouts = replace(context, tables=EventTables(bouts))
+	with_bouts = replace(context, _loaded={"event_bouts": bouts} if bouts is not None else {})
 	mapping = animals_module.resolve_colors(context, "animal_id")
 
 	figure = plot_factory.plot_ranking_line(
@@ -734,20 +678,48 @@ def test_datetime_spans_are_written_like_the_trace_they_mark(context):
 	assert payload["layout"]["shapes"][0]["x0"] == payload["data"][0]["x"][0]
 
 
+def test_timeline_ships_wall_clock_numbers_and_reads_back_as_dates():
+	"""The timeline's axes are typed arrays, but its hover and CSV still name dates and animals."""
+	zone = "Europe/Warsaw"
+
+	def at(hour: int) -> dt.datetime:
+		return dt.datetime(2023, 5, 24, hour, tzinfo=ZoneInfo(zone))
+
+	visits = pl.DataFrame(
+		{
+			"animal_id": ["0035B", "0035A", "0035A"],
+			"position": ["cage_1", "cage_1", "tunnel_1"],
+			"start": [at(1), at(2), at(4)],
+			"end": [at(2), at(3), at(5)],
+		},
+		schema_overrides={"start": pl.Datetime("us", zone), "end": pl.Datetime("us", zone)},
+	)
+	no_spans = pl.DataFrame(schema={"event": pl.String, "position": pl.String})
+
+	figure = plot_factory.plot_timeline(visits, ANIMALS[:2], ["cage_1", "tunnel_1"], no_spans)
+	payload = json.loads(figure.to_json())
+
+	assert [(t["name"], t["meta"], t["showlegend"]) for t in payload["data"]] == [
+		("cage_1", "0035A", True),
+		("cage_1", "0035B", False),
+		("tunnel_1", "0035A", True),
+	]
+	assert all("bdata" in trace["x"] and "bdata" in trace["y"] for trace in payload["data"])
+	assert payload["layout"]["xaxis"]["type"] == "date"
+
+	csv = export.figure_data_csv(payload)
+	assert csv is not None
+	assert pl.read_csv(csv.encode()).rows() == [
+		("cage_1", "2023-05-24T02:00:00.000", "0035A"),
+		("cage_1", "2023-05-24T03:00:00.000", "0035A"),
+		("cage_1", "2023-05-24T01:00:00.000", "0035B"),
+		("cage_1", "2023-05-24T02:00:00.000", "0035B"),
+		("tunnel_1", "2023-05-24T04:00:00.000", "0035A"),
+		("tunnel_1", "2023-05-24T05:00:00.000", "0035A"),
+	]
+
+
 # --- quality -------------------------------------------------------------------
-
-
-class QualityTables:
-	"""Table provider serving one recording_quality table."""
-
-	def __init__(self, quality: pl.DataFrame) -> None:
-		self._quality = quality
-
-	def table(self, key: str) -> pl.DataFrame:
-		return self._quality
-
-	def has(self, key: str) -> bool:
-		return key == "recording_quality"
 
 
 def test_quality_heatmap_pivots_miss_rate_by_animal_and_antenna(context):
@@ -760,12 +732,12 @@ def test_quality_heatmap_pivots_miss_rate_by_animal_and_antenna(context):
 			"miss_rate": [0.0, 33.3, 16.7, 0.0],
 		}
 	)
-	with_quality = replace(context, tables=QualityTables(quality))
+	with_quality = replace(context, _loaded={"recording_quality": quality})
 
-	img, antennas = prepare.prep_quality_heatmap(with_quality, [ANIMALS[0], ANIMALS[1]])
+	matrix, antennas = prepare.prep_quality_heatmap(with_quality, [ANIMALS[0], ANIMALS[1]])
 
 	assert antennas == ["1", "2"]
-	assert img.tolist() == [[0.0, 33.3], [16.7, 0.0]]
+	assert matrix.tolist() == [[0.0, 33.3], [16.7, 0.0]]
 
 
 def test_quality_by_antenna_pools_counts_rather_than_averaging_rates():
@@ -782,7 +754,7 @@ def test_quality_by_antenna_pools_counts_rather_than_averaging_rates():
 		}
 	)
 	context = PlotContext(
-		tables=QualityTables(quality),
+		_loaded={"recording_quality": quality},
 		animal_ids=["a", "b"],
 		cages=[],
 		positions=[],
@@ -797,6 +769,32 @@ def test_quality_by_antenna_pools_counts_rather_than_averaging_rates():
 	assert frame.sort("antenna")["miss_rate"].to_list() == pytest.approx(
 		[1 / 1001 * 100, 1 / 3 * 100]
 	)
+
+
+# --- network graphs ----------------------------------------------------------
+
+
+def test_dominance_node_size_is_the_animals_own_ordinal():
+	"""Sizes are looked up by animal id; the ranking table is in no particular order."""
+	connections = pl.DataFrame({"source": ["a", "b"], "target": ["b", "c"], "chasings": [3.0, 1.0]})
+	nodes = pl.DataFrame({"animal_id": ["c", "a", "b"], "ordinal": [10.0, 30.0, 20.0]})
+
+	figure = plot_factory.plot_network_graph(
+		connections, nodes, ["a", "b", "c"], ["#111", "#222", "#333"], "chasings", "circular"
+	)
+
+	assert figure.data[-1].marker.size == (30.0, 20.0, 10.0)
+
+
+def test_sociability_nodes_are_uniform_without_a_ranking():
+	"""An undirected graph carries no ranking, so every node takes the same size."""
+	connections = pl.DataFrame({"source": ["a"], "target": ["b"], "proportion_together": [0.5]})
+
+	figure = plot_factory.plot_network_graph(
+		connections, None, ["a", "b"], ["#111", "#222"], "proportion_together", "circular"
+	)
+
+	assert figure.data[-1].marker.size == (30, 30)
 
 
 # --- module boundaries -------------------------------------------------------

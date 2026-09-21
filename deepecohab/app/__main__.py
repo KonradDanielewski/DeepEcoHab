@@ -1,14 +1,10 @@
-"""CLI entry point: ``deepecohab-app [--host --port --debug --no-browser]``."""
-
 import argparse
 import logging
 import webbrowser
 from threading import Timer
 
 from deepecohab.app import create_app
-from deepecohab.plotting.export import ensure_chrome_available
-
-logger = logging.getLogger(__name__)
+from deepecohab.app.services import CACHE_DIR
 
 
 def main() -> None:
@@ -20,8 +16,12 @@ def main() -> None:
 	parser.add_argument("--no-browser", action="store_true")
 	args = parser.parse_args()
 
-	if not ensure_chrome_available():
-		logger.warning("kaleido has no Chrome binary; plot export will be disabled.")
+	# A double-clicked GUI has no stderr to read, so warnings go to a file instead.
+	CACHE_DIR.mkdir(parents=True, exist_ok=True)
+	logging.basicConfig(
+		filename=None if args.debug else CACHE_DIR / "app.log",
+		format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+	)
 
 	app = create_app()
 

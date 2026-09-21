@@ -1,17 +1,9 @@
-"""Lay a figure out for a physical export size, then render it.
-
-Plotly does not fit a figure to a target size on its own: legends overlap plots,
-long axis titles get clipped, and stacked panels collide. :func:`fit_for_export`
-applies one set of rules - checked through kaleido at 85x64 and 174x140 mm on a
-stacked heatmap, a line plot with events and a four-row facet plot - so both the
-app and a notebook get the same, readable output. It mirrors the blueprint's
-``fitForExport``, used for the live export preview, rule for rule.
-"""
-
 import base64
 import copy
 import math
 import re
+import textwrap
+from functools import cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -26,6 +18,66 @@ _CHAR = 0.55
 
 _MIN_PANEL_LINES = 3.5
 """Panels shorter than this many lines of text at the chosen point size are warned about."""
+
+_TICK_SCALE = 0.875
+"""Tick and legend font size, as a fraction of the base font size."""
+
+_TITLE_SCALE = 1.15
+"""Figure title font size, as a multiple of the base font size."""
+
+_LINE_HEIGHT = 1.6
+"""One line of text, as a multiple of its font size: the height a title or legend row needs."""
+
+_ROW_TITLE_HEIGHT = 1.7
+"""The gap a facet row title needs above its panel, as a multiple of the base font size."""
+
+_PANEL_GAP = 0.9
+"""The gap between untitled stacked panels, as a multiple of the base font size."""
+
+_MAX_PANEL_GAP = 0.3
+"""Total share of the plot height the inter-panel gaps may take."""
+
+_MIN_TICK_GAP = 1.15
+"""Smallest slot a tick label may sit in, as a multiple of the tick font size."""
+
+_MAX_LINE_PX = 1.5
+"""Line width is capped here: a heavier stroke reads as a smear at export sizes."""
+
+_LEGEND_ITEM_PX = 46
+"""Swatch, padding and margin around a legend label, in pixels."""
+
+_LEGEND_WARN_FRACTION = 0.4
+"""A legend wider than this share of the figure earns a warning."""
+
+_PLOT_WIDTH_FRACTION = 0.72
+"""Share of the figure width the plotting area gets once axes and margins are paid for."""
+
+_EVENT_LABEL_FRACTION = 0.45
+"""Share of the figure width an event label may run to before it wraps."""
+
+_COLORBAR_THICKNESS = 0.8
+"""Colour bar thickness, as a multiple of the base font size, floored at 6 px."""
+
+_AXIS_STANDOFF = {"y": 0.4, "x": 0.3}
+"""Gap between an axis title and its ticks, as a multiple of the base font size."""
+
+_TICK_SPACING = 3.2
+"""Smallest gap between automatic x ticks, as a multiple of the tick font size."""
+
+_TICK_ROW_HEIGHT = 1.5
+"""Height a row of tick labels needs, as a multiple of the tick font size."""
+
+_COLORBAR_LABEL_CHARS = 4
+"""Tick labels beside a colour bar, in characters: how far past it the legend must sit."""
+
+_WIDE_LABEL_SCALE = 2.5
+"""Labels longer than this many tick heights are thinned rather than rotated."""
+
+_ROTATE_BELOW = 1.1
+"""Horizontal labels are rotated once their slot falls below this share of their width."""
+
+_ROTATED_TICK_GAP = 1.3
+"""Smallest slot a rotated tick label may sit in, as a multiple of the tick font size."""
 
 _TAG_RE = re.compile(r"<[^>]+>")
 
@@ -46,16 +98,11 @@ def _title_text(title: Any) -> str:
 
 def _wrap_text(text: str, max_chars: int) -> str:
 	"""Greedy word wrap to roughly ``max_chars`` per line, joined with plotly's ``<br>``."""
-	lines: list[str] = []
-	line = ""
-	for word in text.split():
-		if line and len(line) + 1 + len(word) > max_chars:
-			lines.append(line)
-			line = word
-		else:
-			line = f"{line} {word}".strip()
-	lines.append(line)
-	return "<br>".join(lines)
+	# Neither break keeps a word whole past max_chars, as a plot title needs.
+	words = " ".join(text.split())
+	return "<br>".join(
+		textwrap.wrap(words, max_chars, break_long_words=False, break_on_hyphens=False)
+	)
 
 
 def _axis_keys(layout: dict[str, Any], letter: str) -> list[str]:
@@ -91,11 +138,13 @@ def _thin_axis(axis: dict[str, Any], labels: list[Any], slot: float, tick: float
 	"""Drop enough tick labels that the survivors fit their slot, rotating first."""
 	longest = max(len(str(label)) for label in labels) * _CHAR * tick
 
-	if longest <= tick * 2.5:
-		step = math.ceil((longest * 1.6) / slot) if slot < longest * 1.6 else 1
+	if longest <= tick * _WIDE_LABEL_SCALE:
+		step = math.ceil((longest * _LINE_HEIGHT) / slot) if slot < longest * _LINE_HEIGHT else 1
 	else:
-		axis["tickangle"] = -90 if slot < longest * 1.1 else 0
-		step = math.ceil((tick * 1.3) / slot) if slot < tick * 1.3 else 1
+		axis["tickangle"] = -90 if slot < longest * _ROTATE_BELOW else 0
+		step = (
+			math.ceil((tick * _ROTATED_TICK_GAP) / slot) if slot < tick * _ROTATED_TICK_GAP else 1
+		)
 
 	if step > 1:
 		kept = labels[::step]
@@ -103,7 +152,7 @@ def _thin_axis(axis: dict[str, Any], labels: list[Any], slot: float, tick: float
 
 
 def fit_for_export(
-	fig: go.Figure,
+	figure: go.Figure,
 	width_mm: float,
 	height_mm: float,
 	pt: float,
@@ -122,7 +171,7 @@ def fit_for_export(
 	are capped at 1.5 px.
 
 	Args:
-		fig: the figure to export. Its ``layout.template`` is used as given - callers
+		figure: the figure to export. Its ``layout.template`` is used as given - callers
 			choose ``light``, ``dark`` or ``publication`` before calling this.
 		width_mm: physical width.
 		height_mm: physical height.
@@ -135,7 +184,7 @@ def fit_for_export(
 		A new figure sized and typeset for export, and warnings about anything that
 		still would not fit - an oversized legend, or panels too short to read.
 	"""
-	source = fig.to_dict()
+	source = figure.to_dict()
 	data: list[dict[str, Any]] = copy.deepcopy(source.get("data", []))
 	layout: dict[str, Any] = copy.deepcopy(source.get("layout", {}))
 	notes: list[str] = []
@@ -143,7 +192,7 @@ def fit_for_export(
 	width = round(width_mm * PX_PER_MM)
 	height = round(height_mm * PX_PER_MM)
 	base = pt * 96 / 72
-	tick = base * 0.875
+	tick = base * _TICK_SCALE
 
 	layout.update(
 		{
@@ -155,7 +204,7 @@ def fit_for_export(
 			"margin": {"l": 2, "r": 2, "t": 2, "b": 2, "pad": 0, "autoexpand": True},
 			"title": {
 				"text": title or "",
-				"font": {"size": base * 1.15},
+				"font": {"size": base * _TITLE_SCALE},
 				"automargin": True,
 				"x": 0,
 				"xanchor": "left",
@@ -205,7 +254,7 @@ def fit_for_export(
 			continue
 		if show_events:
 			note["font"] = {**note.get("font", {}), "size": tick}
-			width_chars = max(12, int((width * 0.45) / (_CHAR * tick)))
+			width_chars = max(12, int((width * _EVENT_LABEL_FRACTION) / (_CHAR * tick)))
 			note["text"] = _wrap_text(_plain_text(note.get("text")), width_chars)
 		else:
 			note["visible"] = False
@@ -213,7 +262,7 @@ def fit_for_export(
 	for shape in layout.get("shapes") or []:
 		line = shape.get("line")
 		if line and line.get("width"):
-			line["width"] = min(line["width"], 1.5)
+			line["width"] = min(line["width"], _MAX_LINE_PX)
 		label = shape.get("label")
 		if label and label.get("text"):
 			if show_events:
@@ -229,9 +278,10 @@ def fit_for_export(
 			key = trace.get("legendgroup") or trace["name"]
 			entries.setdefault(key, _plain_text(trace["name"]))
 
-	item_px = (max((len(name) for name in entries.values()), default=0)) * _CHAR * tick + 46
+	longest_entry = max((len(name) for name in entries.values()), default=0)
+	item_px = longest_entry * _CHAR * tick + _LEGEND_ITEM_PX
 	has_colorbar = any(key.startswith("coloraxis") for key in layout)
-	axis_bottom = tick * 1.5 + base * 1.6
+	axis_bottom = tick * _TICK_ROW_HEIGHT + base * _LINE_HEIGHT
 
 	if entries:
 		# The legend always sits at the side, past the colour bar when there is one.
@@ -242,12 +292,16 @@ def fit_for_export(
 			"bgcolor": "rgba(0,0,0,0)",
 			"itemwidth": 30,
 			"orientation": "v",
-			"x": 1.02 + (base * 0.8 + tick * 4) / (width * 0.72) if has_colorbar else 1.01,
+			"x": 1.02
+			+ (base * _COLORBAR_THICKNESS + tick * _COLORBAR_LABEL_CHARS)
+			/ (width * _PLOT_WIDTH_FRACTION)
+			if has_colorbar
+			else 1.01,
 			"xanchor": "left",
 			"y": 1,
 			"yanchor": "top",
 		}
-		if item_px > 0.4 * width:
+		if item_px > _LEGEND_WARN_FRACTION * width:
 			notes.append(
 				f"The legend takes {round(100 * item_px / width)}% of the width; "
 				"widen the figure or shorten the names."
@@ -259,7 +313,7 @@ def fit_for_export(
 		bar = layout[key].get("colorbar") or {}
 		layout[key]["colorbar"] = {
 			**bar,
-			"thickness": max(6, base * 0.8),
+			"thickness": max(6, base * _COLORBAR_THICKNESS),
 			"outlinewidth": 0,
 			"tickfont": {"size": tick},
 			"title": {**(bar.get("title") or {}), "font": {"size": tick}, "side": "right"},
@@ -274,12 +328,14 @@ def fit_for_export(
 		and id(note) not in above_ids
 		for note in annotations
 	)
-	top_px = (base * 1.6 if title else 0) + (base * 1.7 if (above or titles_above) else 0)
+	top_px = (base * _LINE_HEIGHT if title else 0) + (
+		base * _ROW_TITLE_HEIGHT if (above or titles_above) else 0
+	)
 	bottom_px = axis_bottom
 	plot_h = max(height - top_px - bottom_px, 1)
 
-	if entries and len(entries) * tick * 1.6 > plot_h:
-		needed = math.ceil((len(entries) * tick * 1.6 + top_px + bottom_px) / PX_PER_MM)
+	if entries and len(entries) * tick * _LINE_HEIGHT > plot_h:
+		needed = math.ceil((len(entries) * tick * _LINE_HEIGHT + top_px + bottom_px) / PX_PER_MM)
 		notes.append(
 			f"The legend needs {needed} mm of height for {len(entries)} entries at {pt} pt."
 		)
@@ -294,8 +350,8 @@ def fit_for_export(
 	n = len(rows)
 
 	if n > 1:
-		gap_px = base * (1.7 if titles_above else 0.9)
-		gap = min(gap_px / plot_h, 0.3 / (n - 1))
+		gap_px = base * (_ROW_TITLE_HEIGHT if titles_above else _PANEL_GAP)
+		gap = min(gap_px / plot_h, _MAX_PANEL_GAP / (n - 1))
 		span = (1 - gap * (n - 1)) / n
 		mapping = {
 			row: (max(0.0, 1 - (i + 1) * span - i * gap), min(1.0, 1 - i * span - i * gap))
@@ -351,23 +407,27 @@ def fit_for_export(
 			{
 				"automargin": True,
 				"tickfont": {**axis.get("tickfont", {}), "size": tick},
-				"title": axis_title(axis, max(8, int(px_h / (_CHAR * base))), base * 0.4),
+				"title": axis_title(
+					axis, max(8, int(px_h / (_CHAR * base))), base * _AXIS_STANDOFF["y"]
+				),
 			}
 		)
 		labels = _category_labels(data, key, "y")
-		if labels and px_h / len(labels) < tick * 1.15:
-			step = math.ceil((tick * 1.15) / (px_h / len(labels)))
+		if labels and px_h / len(labels) < tick * _MIN_TICK_GAP:
+			step = math.ceil((tick * _MIN_TICK_GAP) / (px_h / len(labels)))
 			kept = labels[::step]
 			axis.update({"tickmode": "array", "tickvals": kept, "ticktext": kept})
 
-	plot_w = width * 0.72 - (item_px if entries else 0)
+	plot_w = width * _PLOT_WIDTH_FRACTION - (item_px if entries else 0)
 	for key in _axis_keys(layout, "x"):
 		axis = layout[key]
 		axis.update(
 			{
 				"automargin": True,
 				"tickfont": {**axis.get("tickfont", {}), "size": tick},
-				"title": axis_title(axis, max(10, int(plot_w / (_CHAR * base))), base * 0.3),
+				"title": axis_title(
+					axis, max(10, int(plot_w / (_CHAR * base))), base * _AXIS_STANDOFF["x"]
+				),
 			}
 		)
 		labels = _category_labels(data, key, "x")
@@ -375,7 +435,9 @@ def fit_for_export(
 			_thin_axis(axis, labels, plot_w / len(labels), tick)
 		elif axis.get("dtick") is not None:
 			axis.pop("dtick", None)
-			axis.update({"tickmode": "auto", "nticks": max(3, int(plot_w / (tick * 3.2)))})
+			axis.update(
+				{"tickmode": "auto", "nticks": max(3, int(plot_w / (tick * _TICK_SPACING)))}
+			)
 
 	if "polar" in layout:
 		layout["polar"]["angularaxis"] = {
@@ -391,16 +453,17 @@ def fit_for_export(
 		if trace.get("type") in ("scatter", "scattergl"):
 			line = trace.get("line")
 			if line and line.get("width"):
-				line["width"] = min(line["width"], 1.5)
+				line["width"] = min(line["width"], _MAX_LINE_PX)
 
 	return go.Figure(data=data, layout=layout), notes
 
 
+@cache
 def ensure_chrome_available() -> bool:
-	"""Whether kaleido has a Chrome binary to render through.
+	"""Whether kaleido has a Chrome binary to render through, checked once per process.
 
-	kaleido 1.3 needs one; call this once at app start so export can be disabled with
-	a clear message instead of every attempt failing deep inside kaleido.
+	kaleido 1.3 needs one; call this at app start so export can be disabled with a
+	clear message instead of every attempt failing deep inside kaleido.
 	"""
 	import kaleido
 
@@ -412,7 +475,7 @@ def ensure_chrome_available() -> bool:
 
 
 def export_figure(
-	fig: go.Figure,
+	figure: go.Figure,
 	path: str | Path,
 	width_mm: float,
 	height_mm: float,
@@ -430,7 +493,7 @@ def export_figure(
 	the layout - built for ``width_mm``/``height_mm`` at 96 px/inch - stays unscaled.
 
 	Args:
-		fig: the figure to export.
+		figure: the figure to export.
 		path: where to write the file.
 		width_mm: physical width.
 		height_mm: physical height.
@@ -445,7 +508,7 @@ def export_figure(
 		Warnings from :func:`fit_for_export`, so a caller can surface them alongside
 		the file it wrote.
 	"""
-	fitted, notes = fit_for_export(fig, width_mm, height_mm, pt, title, show_legend, show_events)
+	fitted, notes = fit_for_export(figure, width_mm, height_mm, pt, title, show_legend, show_events)
 	scale = dpi / 96 if format == "png" else 1
 	fitted.write_image(str(path), format=format, scale=scale)
 
@@ -468,8 +531,25 @@ def _plotly_array(value: Any) -> Any:
 	return array.tolist()
 
 
-def figure_data_csv(fig: dict[str, Any]) -> str | None:
-	"""The data actually drawn in ``fig``, as one long CSV, or ``None`` if there is none.
+def _axis_values(values: list[Any], axis: dict[str, Any]) -> list[Any]:
+	"""A trace's coordinates as its axis labels them, where the trace holds plain numbers.
+
+	Epoch milliseconds on a date axis become ISO datetimes, and positions on an axis whose
+	ticks are relabelled through ``tickvals``/``ticktext`` become that tick text.
+	"""
+	if not values or not all(isinstance(value, int | float) for value in values):
+		return values
+	if axis.get("type") == "date":
+		stamps = np.array(values, dtype="float64").astype("datetime64[ms]")
+		return np.datetime_as_string(stamps).tolist()
+	if axis.get("tickvals") is not None and axis.get("ticktext") is not None:
+		labels = dict(zip(axis["tickvals"], axis["ticktext"], strict=False))
+		return [labels.get(value, value) for value in values]
+	return values
+
+
+def figure_data_csv(figure: dict[str, Any]) -> str | None:
+	"""The data actually drawn in ``figure``, as one long CSV, or ``None`` if there is none.
 
 	Generic across chart types rather than reading from a plot-specific table, so the
 	export dialog's "plotted data" checkbox needs no per-plot backend hook: every trace
@@ -478,14 +558,16 @@ def figure_data_csv(fig: dict[str, Any]) -> str | None:
 	``labels``/``values``, say - contributes nothing.
 
 	Args:
-		fig: a plotly figure, as the dict a ``dcc.Graph`` carries.
-
-	Returns:
-		The CSV text, or ``None`` when no trace has tabular data to offer.
+		figure: a plotly figure, as the dict a ``dcc.Graph`` carries.
 	"""
 	rows: list[dict[str, Any]] = []
+	layout = figure.get("layout", {})
 
-	for trace in fig.get("data", []):
+	def axis(trace: dict[str, Any], letter: str) -> dict[str, Any]:
+		ref = trace.get(f"{letter}axis") or letter
+		return layout.get(f"{letter}axis{ref[1:]}", {})
+
+	for trace in figure.get("data", []):
 		name = trace.get("name") or trace.get("type", "trace")
 		x, y = _plotly_array(trace.get("x")), _plotly_array(trace.get("y"))
 		z = _plotly_array(trace.get("z"))
@@ -506,7 +588,10 @@ def figure_data_csv(fig: dict[str, Any]) -> str | None:
 		elif x is not None and y is not None:
 			texts = _plotly_array(trace.get("text"))
 			has_text = isinstance(texts, list) and len(texts) == len(x)
-			for index, (xv, yv) in enumerate(zip(x, y, strict=False)):
+			xs, ys = _axis_values(x, axis(trace, "x")), _axis_values(y, axis(trace, "y"))
+			for index, (xv, yv) in enumerate(zip(xs, ys, strict=False)):
+				if x[index] is None or x[index] != x[index]:  # a gap between segments, not a point
+					continue
 				row = {"trace": name, "x": xv, "y": yv}
 				if has_text:
 					row["text"] = texts[index]

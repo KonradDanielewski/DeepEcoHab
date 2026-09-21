@@ -8,10 +8,11 @@ hand-built match table and exercise the pure compute body directly via
 """
 
 import datetime as dt
+from functools import partial
 
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 import tzlocal
 from openskill.models import PlackettLuce
 
@@ -27,9 +28,7 @@ PHASE_CFG = {"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 0)}
 MODEL = PlackettLuce(limit_sigma=True, balance=True)
 
 
-def at(*args: int) -> dt.datetime:
-	"""Construct a zone-aware datetime in the project timezone."""
-	return dt.datetime(*args, tzinfo=TZ)
+at = partial(strategies.at, tz=str(TZ))
 
 
 def expected_ordinal(mu: float | None = None, sigma: float | None = None) -> float:
@@ -43,7 +42,7 @@ def make_match_df(rows: list[tuple[str, str, dt.datetime]], recording) -> pl.Laz
 	The ranking carries the calendar columns of each match through, so the frame has
 	to be a full match_df rather than just the three columns the replay reads.
 	"""
-	return strat.match_df_frame(
+	return strategies.match_df_frame(
 		[
 			{"loser": loser, "winner": winner, "position": "c1_c2", "datetime": moment}
 			for loser, winner, moment in rows
@@ -56,7 +55,7 @@ def run_ranking(monkeypatch, matches, animal_ids, prev_ranking=None) -> pl.DataF
 	"""Call the pure ranking body with match_df injected in place of _get_data."""
 	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: match_df)
 	# The window spans the match datetimes below, so phase_count resolves off the grid.
-	recording = strat.analysis_recording(
+	recording = strategies.analysis_recording(
 		animal_ids=animal_ids,
 		tz=str(TZ),
 		start="2023-05-24 00:00:00",
@@ -240,6 +239,28 @@ def test_get_prev_ranking_takes_latest_rating(monkeypatch):
 		assert round(seeded.ordinal(), 3) == ordinal
 
 
+def test_prev_ranking_from_a_full_trajectory_uses_the_chronologically_last_row(monkeypatch):
+	"""prev_ranking need not be pre-collapsed - calculate_ranking runs it through
+	get_prev_ranking itself, which sorts by datetime before taking each animal's last
+	rating. An unsorted multi-row trajectory must still seed the chronologically LAST
+	mu/sigma, not whatever row happens to land last in the frame.
+	"""
+	phase1 = [
+		("B", "A", at(2023, 5, 24, 12, i, 0)) for i in range(5)
+	]  # A's rating moves every match
+	r1 = run_ranking(monkeypatch, phase1, ["A", "B", "C"])
+	final1 = final_block(r1)
+
+	shuffled = r1.sample(fraction=1.0, shuffle=True, seed=3)
+	phase2 = [
+		("B", "C", at(2023, 5, 25, 12, 0, 0))
+	]  # A stays uninvolved, so its seed shows through
+	result = run_ranking(monkeypatch, phase2, ["A", "B", "C"], prev_ranking=shuffled)
+
+	a_rows = result.filter(pl.col("animal_id") == "A")
+	assert (a_rows["ordinal"] == final1["A"]).all()
+
+
 def test_round_trip_continues_from_prev(monkeypatch):
 	"""get_prev_ranking output fed back as prev_ranking carries ratings forward.
 
@@ -285,3 +306,65 @@ def test_empty_match_df_emits_empty_schema(monkeypatch):
 		"hour",
 		"social_rank",
 	}
+
+
+# --- guards and determinism -------------------------------------------------
+
+
+def test_prev_ranking_from_another_cohort_raises(monkeypatch):
+	"""Seeding from a recording of different animals is a mistake, not a merge.
+
+	Their ratings would be silently discarded while the current cohort started from
+	scratch, so the continuation would look like it worked and mean nothing.
+	"""
+	prev = pl.DataFrame(
+		{"animal_id": ["A", "Z"], "mu": [40.0, 30.0], "sigma": [2.0, 3.0]},
+		schema={"animal_id": pl.Utf8, "mu": pl.Float64, "sigma": pl.Float64},
+	)
+
+	with pytest.raises(ValueError, match="not in the current cohort"):
+		run_ranking(
+			monkeypatch, [("B", "A", at(2023, 5, 24, 12, 0, 0))], ["A", "B"], prev_ranking=prev
+		)
+
+
+def test_tied_ordinals_share_the_same_rank_label(monkeypatch):
+	"""Ranks are read off the ordinal, so animals on the same ordinal get the same label.
+
+	A beats B and C beats D, each from the default rating, so the two winners end on one
+	ordinal and the two losers on another. Naming a single dominant animal would mean
+	picking arbitrarily between two that the data does not separate.
+	"""
+	matches = [
+		("B", "A", at(2023, 5, 24, 12, 0, 0)),
+		("D", "C", at(2023, 5, 24, 12, 1, 0)),
+	]
+	result = run_ranking(monkeypatch, matches, ["A", "B", "C", "D"])
+
+	last = result.filter(pl.col("datetime") == result["datetime"].max())
+	labels = dict(last.select("animal_id", "social_rank").iter_rows())
+
+	assert labels == {
+		"A": "dominant",
+		"C": "dominant",
+		"B": "subordinate",
+		"D": "subordinate",
+	}
+
+
+def test_replay_is_deterministic_when_matches_share_a_timestamp(monkeypatch):
+	"""Simultaneous events are replayed in one fixed order however they arrive.
+
+	The ratings depend on the order the matches are applied in, and sorting on datetime
+	alone leaves ties to the engine - so the same recording could publish different
+	ranks on a re-run. The tiebreak is on the animals, which are unique per instant.
+	"""
+	moment = at(2023, 5, 24, 12, 0, 0)
+	events = [("B", "A", moment), ("C", "B", moment), ("A", "C", moment)]
+
+	forwards = run_ranking(monkeypatch, events, ["A", "B", "C"])
+	backwards = run_ranking(monkeypatch, list(reversed(events)), ["A", "B", "C"])
+
+	assert final_block(forwards) == final_block(backwards)
+	# The tiebreak has to do something: the three animals do not end up level.
+	assert len(set(final_block(forwards).values())) > 1

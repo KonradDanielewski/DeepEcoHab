@@ -1,4 +1,5 @@
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import combinations, product
 from typing import Literal
@@ -47,9 +48,6 @@ def window_filter(
 		hours_range: first and last hour since the ``start_from`` onset to keep, or
 			``None`` to keep every hour. Only tables carrying their own ``hour`` -
 			not ``phase_durations``, or anything normalised against it - can take one.
-
-	Returns:
-		A boolean expression combining both bounds.
 	"""
 	expr = pl.col(granularity).is_between(days_range[0], days_range[1])
 
@@ -224,7 +222,6 @@ def prep_ranking_distribution(
 	granularity: Granularity,
 ) -> pl.DataFrame:
 	"""Fit a normal probability density over each animal's latest ranking."""
-	x_df = pl.LazyFrame({"ranking": np.arange(-10, 50, 0.1)})
 	diff = (pl.col(granularity) - days_range[-1]).abs()
 	pdf_expression = (1 / (pl.col("sigma") * math.sqrt(2 * math.pi))) * (
 		-0.5 * ((pl.col("ranking") - pl.col("mu")) / pl.col("sigma")) ** 2
@@ -236,7 +233,7 @@ def prep_ranking_distribution(
 		.filter(diff == diff.min())
 		.group_by("animal_id")
 		.agg(pl.last("mu"), pl.last("sigma"))
-		.join(x_df, how="cross")
+		.join(pl.LazyFrame({"ranking": np.arange(-10, 50, 0.1)}), how="cross")
 		.with_columns(pdf_expression.alias("probability_density"))
 		.select("animal_id", "ranking", "probability_density")
 		.sort("animal_id")
@@ -244,10 +241,10 @@ def prep_ranking_distribution(
 	)
 
 
-def prep_polar_df(
+def prep_polar(
 	context: PlotContext,
 	days_range: tuple[int, int],
-	phase_type: list[str],
+	phase_type: Sequence[str],
 	granularity: Granularity,
 	hours_range: tuple[int, int] | None = None,
 ) -> pl.DataFrame:
@@ -281,7 +278,7 @@ def prep_polar_df(
 			.alias("z-score")
 		)
 		.filter(
-			pl.col("phase").is_in(phase_type),
+			pl.col("phase").is_in(list(phase_type)),
 			window_filter(days_range, granularity),
 		)
 		.group_by("animal_id", "metric", granularity)
@@ -311,7 +308,7 @@ def prep_network_dominance(
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
 	"""Return chasing edges and the latest ranking per animal."""
 	animals = context.animal_ids
-	join_df = pl.LazyFrame(
+	join_frame = pl.LazyFrame(
 		data=product(animals, animals),
 		schema=[("target", pl.Enum(context.animal_ids)), ("source", pl.Enum(context.animal_ids))],
 	)
@@ -322,7 +319,7 @@ def prep_network_dominance(
 		.filter(window_filter(days_range, granularity))
 		.group_by("chased", "chaser")
 		.agg(pl.sum("chasings"))
-		.join(join_df, left_on=["chaser", "chased"], right_on=["source", "target"], how="right")
+		.join(join_frame, left_on=["chaser", "chased"], right_on=["source", "target"], how="right")
 		.fill_null(0)
 		.sort("target", "source")  # necessary for deterministic output
 		.collect(engine="in-memory")
@@ -380,7 +377,7 @@ def prep_network_sociability(
 ) -> pl.DataFrame:
 	"""Return edges weighted by the time each pair spent together."""
 	animals = context.animal_ids
-	join_df = pl.LazyFrame(
+	join_frame = pl.LazyFrame(
 		data=combinations(animals, 2),
 		schema=[("source", pl.Enum(context.animal_ids)), ("target", pl.Enum(context.animal_ids))],
 	)
@@ -391,7 +388,7 @@ def prep_network_sociability(
 		.group_by("animal_id", "animal_id_2")
 		.agg(pl.sum("proportion_together"))
 		.join(
-			join_df,
+			join_frame,
 			left_on=["animal_id", "animal_id_2"],
 			right_on=["source", "target"],
 			how="right",
@@ -405,7 +402,7 @@ def prep_network_sociability(
 def prep_directed_heatmap(
 	context: PlotContext,
 	days_range: tuple[int, int],
-	phase_type: list[str],
+	phase_type: Sequence[str],
 	agg: Aggregation,
 	granularity: Granularity,
 	animals: list[str],
@@ -423,7 +420,7 @@ def prep_directed_heatmap(
 		column: the animal column laid along the matrix columns, such as ``chaser``.
 		row: the animal column laid along the matrix rows, such as ``chased``.
 	"""
-	join_df = pl.LazyFrame(
+	join_frame = pl.LazyFrame(
 		product(animals, animals),
 		schema=[(row, pl.Enum(context.animal_ids)), (column, pl.Enum(context.animal_ids))],
 	)
@@ -439,14 +436,14 @@ def prep_directed_heatmap(
 		.lazy()
 		.sort(row, column)
 		.filter(
-			pl.col("phase").is_in(phase_type),
+			pl.col("phase").is_in(list(phase_type)),
 			window_filter(days_range, granularity, hours_range),
 		)
 		.group_by(granularity, column, row)
 		.agg(pl.sum(value))
 		.group_by(column, row, maintain_order=True)
 		.agg(agg_func)
-		.join(join_df, on=[column, row], how="right")
+		.join(join_frame, on=[column, row], how="right")
 		.collect(engine="in-memory")
 	)
 
@@ -475,7 +472,7 @@ def prep_hourly_line(
 	n_bins = _bins(days_range)
 	hours = range(24) if hours_range is None else range(hours_range[0], hours_range[1] + 1)
 
-	join_df = pl.LazyFrame(
+	join_frame = pl.LazyFrame(
 		product(context.animal_ids, range(days_range[0], days_range[1] + 1), hours),
 		schema=[
 			(animal_column, pl.Enum(context.animal_ids)),
@@ -490,7 +487,7 @@ def prep_hourly_line(
 		.filter(window_filter(days_range, granularity, hours_range))
 		.group_by(granularity, "hour", animal_column)
 		.agg(count.alias("count"))
-		.join(join_df, on=[animal_column, "hour", granularity], how="right")
+		.join(join_frame, on=[animal_column, "hour", granularity], how="right")
 		.fill_null(0)
 		.group_by("hour", animal_column)
 		.agg(
@@ -510,24 +507,25 @@ def prep_hourly_line(
 def prep_activity(
 	context: PlotContext,
 	days_range: tuple[int, int],
-	phase_type: list[str],
+	phase_type: Sequence[str],
 	granularity: Granularity,
 	agg: Aggregation,
-	unit: durations.Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
-) -> tuple[pl.DataFrame, durations.DurationDisplay]:
-	"""Visits and time spent per position and animal.
+) -> pl.DataFrame:
+	"""Visits and time spent per position and animal, ``time`` a raw Duration.
 
 	A summed plot draws one row per animal and position; a mean plot keeps the
 	window units so the box has a distribution to show. Aggregating here rather
-	than in the plot is what keeps the hover text describing the value on screen.
+	than in the plot is what keeps the hover text describing the value on screen -
+	the catalog step still owns turning ``time`` into a display unit, once any
+	group averaging has run.
 	"""
 	per_unit = (
 		context.table("activity_df")
 		.lazy()
 		.with_columns(pl.col("position").cast(pl.String))
 		.filter(
-			pl.col("phase").is_in(phase_type),
+			pl.col("phase").is_in(list(phase_type)),
 			window_filter(days_range, granularity, hours_range),
 		)
 		.group_by(granularity, "animal_id", "position")
@@ -540,27 +538,24 @@ def prep_activity(
 	if agg == "sum":
 		per_unit = per_unit.group_by("animal_id", "position").agg(pl.sum("visits"), pl.sum("time"))
 
-	frame = per_unit.sort("animal_id", "position").collect(engine="in-memory")
-
-	return durations.to_display(frame, "time", unit, "Time spent")
+	return per_unit.sort("animal_id", "position").collect(engine="in-memory")
 
 
 def prep_time_alone(
 	context: PlotContext,
 	days_range: tuple[int, int],
-	phase_type: list[str],
+	phase_type: Sequence[str],
 	granularity: Granularity,
 	agg: Aggregation,
 	positions: list[str],
-	unit: durations.Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
-) -> tuple[pl.DataFrame, durations.DurationDisplay]:
-	"""Time each animal spent alone, per position."""
+) -> pl.DataFrame:
+	"""Time each animal spent alone, per position, as a raw Duration column."""
 	per_unit = (
 		context.table("activity_df")
 		.lazy()
 		.filter(
-			pl.col("phase").is_in(phase_type),
+			pl.col("phase").is_in(list(phase_type)),
 			window_filter(days_range, granularity, hours_range),
 			pl.col("position").is_in(positions),
 		)
@@ -571,9 +566,7 @@ def prep_time_alone(
 	if agg == "sum":
 		per_unit = per_unit.group_by("animal_id", "position").agg(pl.sum("time_alone"))
 
-	frame = per_unit.sort("animal_id", "position").collect(engine="in-memory")
-
-	return durations.to_display(frame, "time_alone", unit, "Time alone")
+	return per_unit.sort("animal_id", "position").collect(engine="in-memory")
 
 
 def _facet_matrices(
@@ -625,7 +618,7 @@ def prep_time_per_position(
 	else:
 		x_values = list(range(days_range[0], days_range[1] + 1))
 
-	join_df = pl.LazyFrame(
+	join_frame = pl.LazyFrame(
 		product(x_values, positions, animals),
 		schema=[
 			(x, pl.Int16()),
@@ -650,7 +643,7 @@ def prep_time_per_position(
 		)
 		.group_by([x, "animal_id", "position"])
 		.agg(agg_func)
-		.join(join_df, on=[x, "position", "animal_id"], how="right")
+		.join(join_frame, on=[x, "position", "animal_id"], how="right")
 		.collect(engine="in-memory")
 	)
 
@@ -670,7 +663,7 @@ def prep_time_per_position(
 def prep_cage_preference(
 	context: PlotContext,
 	days_range: tuple[int, int],
-	phase_type: list[str],
+	phase_type: Sequence[str],
 	granularity: Granularity,
 	positions: list[str],
 	unit: durations.Unit | Literal["auto"] = "auto",
@@ -681,7 +674,7 @@ def prep_cage_preference(
 		context.table("activity_df")
 		.lazy()
 		.filter(
-			pl.col("phase").is_in(phase_type),
+			pl.col("phase").is_in(list(phase_type)),
 			window_filter(days_range, granularity, hours_range),
 		)
 		.with_columns(pl.col("position").cast(pl.String))
@@ -698,7 +691,7 @@ def prep_cage_preference(
 def prep_pairwise_sociability(
 	context: PlotContext,
 	days_range: tuple[int, int],
-	phase_type: list[str],
+	phase_type: Sequence[str],
 	agg: Aggregation,
 	metric: Literal["time_together", "pairwise_encounters"],
 	granularity: Granularity,
@@ -708,7 +701,7 @@ def prep_pairwise_sociability(
 	hours_range: tuple[int, int] | None = None,
 ) -> Heatmap:
 	"""Pivot pairwise meetings into one animal-by-animal matrix per position."""
-	join_df = pl.LazyFrame(
+	join_frame = pl.LazyFrame(
 		product(positions, animals, animals),
 		schema=[
 			("position", pl.Categorical()),
@@ -721,7 +714,7 @@ def prep_pairwise_sociability(
 		context.table("pairwise_meetings")
 		.lazy()
 		.filter(
-			pl.col("phase").is_in(phase_type),
+			pl.col("phase").is_in(list(phase_type)),
 			window_filter(days_range, granularity, hours_range),
 		)
 		.group_by(["animal_id", "animal_id_2", "position"], maintain_order=True)
@@ -729,7 +722,7 @@ def prep_pairwise_sociability(
 			pl.sum(metric).alias("sum"),
 			pl.mean(metric).alias("mean"),
 		)
-		.join(join_df, on=["position", "animal_id", "animal_id_2"], how="right")
+		.join(join_frame, on=["position", "animal_id", "animal_id_2"], how="right")
 		.collect(engine="in-memory")
 	)
 
@@ -760,7 +753,7 @@ def prep_pairwise_sociability(
 def prep_within_cohort_sociability(
 	context: PlotContext,
 	days_range: tuple[int, int],
-	phase_type: list[str],
+	phase_type: Sequence[str],
 	metric: Literal["proportion_together", "sociability"],
 	granularity: Granularity,
 	animals: list[str],
@@ -771,7 +764,7 @@ def prep_within_cohort_sociability(
 	``scope`` applies to ``proportion_together`` only. ``sociability`` is measured against
 	a cage-only chance expectation, so it is read from ``incohort_sociability`` as stored.
 	"""
-	join_df = pl.LazyFrame(
+	join_frame = pl.LazyFrame(
 		product(animals, animals),
 		schema=[
 			("animal_id", pl.Enum(context.animal_ids)),
@@ -788,12 +781,12 @@ def prep_within_cohort_sociability(
 	frame = (
 		source.with_columns(pl.col(metric).round(3))
 		.filter(
-			pl.col("phase").is_in(phase_type),
+			pl.col("phase").is_in(list(phase_type)),
 			window_filter(days_range, granularity),
 		)
 		.group_by(["animal_id", "animal_id_2"], maintain_order=True)
 		.agg(pl.mean(metric).round(2).alias("mean"))
-		.join(join_df, on=["animal_id", "animal_id_2"], how="right")
+		.join(join_frame, on=["animal_id", "animal_id_2"], how="right")
 		.collect(engine="in-memory")
 	)
 
@@ -803,7 +796,7 @@ def prep_within_cohort_sociability(
 def prep_social_stability(
 	context: PlotContext,
 	days_range: tuple[int, int],
-	phase_type: list[str],
+	phase_type: Sequence[str],
 	granularity: Granularity,
 	scope: Scope = "cages",
 ) -> pl.DataFrame:
@@ -817,7 +810,7 @@ def prep_social_stability(
 
 	return (
 		frame.filter(
-			pl.col("phase").is_in(phase_type),
+			pl.col("phase").is_in(list(phase_type)),
 			window_filter(days_range, granularity),
 		)
 		.group_by(granularity, "animal_id", "animal_id_2")
@@ -845,8 +838,7 @@ def prep_quality_heatmap(context: PlotContext, animals: list[str]) -> tuple[np.n
 	matrices.
 
 	Returns:
-		The matrix, its rows in ``animals`` order, and the antenna column labels in
-		antenna order.
+		The matrix, its rows in ``animals`` order, and the antenna column labels.
 	"""
 	frame = context.table("recording_quality")
 	antennas = [str(antenna) for antenna in sorted(frame["antenna"].unique().to_list())]

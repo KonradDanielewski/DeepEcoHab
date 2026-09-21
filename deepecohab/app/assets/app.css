@@ -663,7 +663,7 @@ code {
 	border-bottom: 0;
 }
 
-.deh-inner tr.is-selected td {
+.deh-inner tbody tr:has(input:checked) td {
 	background: var(--accent-soft);
 }
 
@@ -952,6 +952,11 @@ code {
 	color: var(--bad);
 }
 
+.deh-menu .deh-bin-field {
+	margin: 0;
+	padding: 2px 10px 8px;
+}
+
 .mantine-Notification-root.deh-toast {
 	padding: 10px 12px 10px 38px;
 	border: 1px solid var(--line);
@@ -1030,14 +1035,6 @@ code {
 	align-items: center;
 	gap: 6px;
 	white-space: nowrap;
-}
-
-.deh-notes {
-	margin: 0;
-	max-width: 42ch;
-	white-space: pre-wrap;
-	color: var(--ink-2);
-	font-size: 13.5px;
 }
 
 .deh-controls {
@@ -1220,7 +1217,7 @@ code {
 }
 
 .deh-plot {
-	margin: 4px 8px 0;
+	margin: 4px 8px 6px;
 }
 
 .deh-card-badge {
@@ -1234,7 +1231,8 @@ code {
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 4px 8px;
-	margin-top: 6px;
+	/* Bottom of the card, so the footers of one grid row line up. */
+	margin-top: auto;
 	padding: 8px 16px 12px;
 	border-top: 1px solid var(--line);
 	color: var(--ink-3);
@@ -1307,7 +1305,7 @@ code {
 .deh-cohort-table {
 	flex: 1;
 	min-height: 0;
-	margin: 10px 8px 0;
+	margin: 10px 8px 6px;
 	overflow: auto;
 }
 
@@ -1395,12 +1393,19 @@ code {
 	padding-bottom: 4px;
 }
 
+/* Covers DMC's MenuTarget wrapper div around the event-slot preset card too, which a
+   .deh-preset selector can't reach since that div, not .deh-preset, is the direct child. */
+.deh-presets > * {
+	flex: 0 0 224px;
+}
+
 .deh-preset {
 	position: relative;
 	display: flex;
 	flex: 0 0 224px;
 	flex-direction: column;
 	gap: 3px;
+	height: 76px;
 	padding: 10px 12px;
 	border: 1px solid var(--line);
 	border-radius: 10px;
@@ -1419,7 +1424,10 @@ code {
 }
 
 .deh-preset b {
+	overflow: hidden;
 	padding-right: 24px;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 	font-size: 13.5px;
 	font-weight: 600;
 }
@@ -1428,13 +1436,14 @@ code {
 	display: -webkit-box;
 	overflow: hidden;
 	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 2;
+	-webkit-line-clamp: 1;
 }
 
 .deh-preset-scope {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
+	margin-top: auto;
 	color: var(--ink-3);
 	font: 11px var(--mono);
 }
@@ -1696,10 +1705,10 @@ code {
 	font-weight: 600;
 }
 
-.deh-graph-head .deh-modified {
-	color: var(--warn);
-	font-size: 12px;
-	font-weight: 400;
+.deh-format-pair {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
 }
 
 .deh-filter-block {
@@ -1711,13 +1720,6 @@ code {
 .deh-filter-block + .deh-filter-block {
 	padding-top: 10px;
 	border-top: 1px solid var(--line);
-}
-
-.deh-filter-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 6px;
 }
 
 .deh-seg-row {

@@ -1,15 +1,9 @@
-"""Server-side work for the app: cached projects, their table summaries and the analysis job.
-
-Caches are keyed by path and file mtimes, never by user, so an entry retires itself when its
-files change and nothing per-user outlives a request.
-"""
-
 import hashlib
 import json
 import threading
 import time
 from collections.abc import Callable
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 
 import diskcache
@@ -19,9 +13,8 @@ from dash import no_update
 from deepecohab import AnalysisParams, Project, Recording, recording_status
 from deepecohab.app.builder import catalog as builder_catalog
 from deepecohab.app.components import notify
-from deepecohab.core.data_model import DataFrameRegistry
-from deepecohab.plotting import PlotContext
-from deepecohab.plotting.export import ensure_chrome_available
+from deepecohab.core.data_model import DataFrameRegistry, Layout
+from deepecohab.plotting import PlotContext, durations
 
 BUILDER_PRESETS_FILE = "builder_presets.json"
 
@@ -43,24 +36,26 @@ def remember_project(location: str) -> str:
 
 	The browser's project list lives in local storage, which a plain Flask route
 	cannot read, so every time a project is summarised for the Projects table this
-	registers it; a download link's route then looks the path back up by id.
+	registers it; a download link's route then looks the path back up by id. Written
+	once per process: opening the disk cache costs more than the rest of the summary.
 	"""
+	return _remember(location, CACHE_DIR)
+
+
+@cache
+def _remember(location: str, cache_dir: Path) -> str:
+	# cache_dir is part of the cache key, not just the destination: a test that points
+	# CACHE_DIR at a tmp_path would otherwise get the previous test's hit and write nothing.
 	pid = project_id(location)
-	with diskcache.Cache(CACHE_DIR) as cache:
-		cache.set(f"path:{pid}", location)
+	with diskcache.Cache(cache_dir) as disk:
+		disk.set(f"path:{pid}", location)
 	return pid
 
 
 def resolve_project_path(pid: str) -> str | None:
 	"""The project folder last registered under ``pid`` by :func:`remember_project`."""
-	with diskcache.Cache(CACHE_DIR) as cache:
-		return cache.get(f"path:{pid}")
-
-
-@lru_cache(maxsize=1)
-def kaleido_ok() -> bool:
-	"""Whether kaleido has a Chrome to render exports through, checked once per process."""
-	return ensure_chrome_available()
+	with diskcache.Cache(CACHE_DIR) as disk:
+		return disk.get(f"path:{pid}")
 
 
 def csv_ready(frame: pl.DataFrame) -> pl.DataFrame:
@@ -81,11 +76,7 @@ def csv_ready(frame: pl.DataFrame) -> pl.DataFrame:
 
 
 def load_project(location: str) -> Project:
-	"""The project at ``location``, loaded again only once its manifest or a config changes.
-
-	Raises:
-		Whatever ``Project.load`` raises for the folder.
-	"""
+	"""The project at ``location``, loaded again only once its manifest or a config changes."""
 	root = Path(location)
 	configs = sorted(root.glob(f"*/{Project.CONFIG}"))
 	stamp = tuple(path.stat().st_mtime_ns for path in [root / Project.MANIFEST, *configs])
@@ -176,20 +167,16 @@ def _recording_summary(recording: Recording, steps: int) -> dict:
 
 
 def plot_context(location: str, name: str) -> PlotContext:
-	"""The plot context for one recording, rebuilt only once its results change.
+	"""The plot context for one recording, rebuilt only once its results change."""
+	return _plot_context(location, name, results_stamp(location, name))
 
-	Args:
-		location: the project folder.
-		name: the recording's name.
-	"""
-	recording = load_project(location)[name]
-	results = recording.results_path
-	stamp = (
-		tuple(sorted((path.name, path.stat().st_mtime_ns) for path in results.glob("*.parquet")))
-		if results.is_dir()
-		else ()
-	)
-	return _plot_context(location, name, stamp)
+
+def results_stamp(location: str, name: str) -> tuple[tuple[str, int], ...]:
+	"""Each results table's name and mtime, so it changes whenever the recording is re-analysed."""
+	results = load_project(location)[name].results_path
+	if not results.is_dir():
+		return ()
+	return tuple(sorted((path.name, path.stat().st_mtime_ns) for path in results.glob("*.parquet")))
 
 
 @lru_cache(maxsize=8)
@@ -198,12 +185,7 @@ def _plot_context(location: str, name: str, _stamp: tuple[tuple[str, int], ...])
 
 
 def recording_summary(location: str, name: str) -> dict:
-	"""Everything the recording dashboard header and control bar show.
-
-	Args:
-		location: the project folder.
-		name: the recording's name.
-	"""
+	"""Everything the recording dashboard header and control bar show."""
 	recording = load_project(location)[name]
 	timeline = recording.timeline
 	zone = timeline.recording_timezone
@@ -228,9 +210,11 @@ def recording_summary(location: str, name: str) -> dict:
 	}
 
 
-def update_notes(location: str, name: str, notes: str) -> None:
-	"""Persist new notes for one recording; the next `load_project` picks them up from disk."""
-	load_project(location)[name].update_notes(notes)
+def update_notes(location: str, name: str, notes: str, tag: str | None = None) -> None:
+	"""Persist new notes for one recording or animal; the next `load_project` picks them up."""
+	project = load_project(location)
+	project[name].update_notes(notes, tag)
+	project.log.info("%s: notes updated%s", name, f" for animal {tag}" if tag else "")
 
 
 def quality_summary(context: PlotContext) -> dict:
@@ -264,6 +248,43 @@ def quality_summary(context: PlotContext) -> dict:
 		"clean_cells": frame.filter(pl.col("missed") == 0).height,
 		"cells": frame.height,
 		"antennas": by_antenna.height,
+	}
+
+
+def missing_time(context: PlotContext) -> dict:
+	"""Time each animal spent at a position antennas could not resolve, and its share.
+
+	Args:
+		context: the plot context holding ``activity_df`` and ``phase_durations``.
+
+	Returns:
+		``rows`` (worst first): ``animal_id``, ``time_in_position_text`` and ``share`` as
+		a percentage of the recording length, plus the cohort ``mean_share``.
+	"""
+	# Series.sum() is typed as a broad scalar union; it is a Duration here, same column.
+	length = context.table("phase_durations")["duration"].sum().total_seconds()  # ty: ignore[unresolved-attribute]
+
+	frame = (
+		context.table("activity_df")
+		.with_columns(pl.col("animal_id").cast(pl.String))
+		.filter(pl.col("position").cast(pl.String) == Layout.UNDEFINED)
+		.group_by("animal_id")
+		.agg(pl.col("time_in_position").sum())
+		.join(pl.DataFrame({"animal_id": context.animal_ids}), on="animal_id", how="right")
+		.with_columns(pl.col("time_in_position").fill_null(pl.duration(microseconds=0)))
+		.with_columns(
+			(100 * pl.col("time_in_position").dt.total_seconds(fractional=True) / length).alias(
+				"share"
+			)
+		)
+		.sort("share", descending=True)
+	)
+	frame, _rendered = durations.to_display(frame, "time_in_position", "auto", "Time unknown")
+
+	return {
+		"rows": frame.select("animal_id", "time_in_position_text", "share").to_dicts(),
+		# Series.mean() is typed as a broad scalar union; "share" is a plain float column.
+		"mean_share": float(frame["share"].mean()),  # ty: ignore[invalid-argument-type]
 	}
 
 
@@ -304,19 +325,21 @@ def load_saved_presets(location: str) -> list[dict]:
 	return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _write_presets(location: str, presets: list[dict]) -> None:
+	"""Overwrite ``<project>/builder_presets.json``."""
+	path = Path(location) / BUILDER_PRESETS_FILE
+	path.write_text(json.dumps(presets, indent=2), encoding="utf-8")
+
+
 def save_preset(location: str, preset: dict) -> None:
 	"""Add or replace one preset in ``<project>/builder_presets.json``."""
-	path = Path(location) / BUILDER_PRESETS_FILE
-	presets = [p for p in load_saved_presets(location) if p["id"] != preset["id"]]
-	presets.append(preset)
-	path.write_text(json.dumps(presets, indent=2), encoding="utf-8")
+	kept = [p for p in load_saved_presets(location) if p["id"] != preset["id"]]
+	_write_presets(location, [*kept, preset])
 
 
 def delete_saved_preset(location: str, preset_id: str) -> None:
 	"""Remove one preset from ``<project>/builder_presets.json``."""
-	path = Path(location) / BUILDER_PRESETS_FILE
-	presets = [p for p in load_saved_presets(location) if p["id"] != preset_id]
-	path.write_text(json.dumps(presets, indent=2), encoding="utf-8")
+	_write_presets(location, [p for p in load_saved_presets(location) if p["id"] != preset_id])
 
 
 def request_cancel(location: str) -> None:
@@ -344,6 +367,11 @@ def run_analysis(
 		The failed-recordings store and the selection, cleared after a clean run. The outcome
 		goes out as a notification.
 	"""
+	params = dict(params or {})
+	prev_ranking = params.get("prev_ranking")
+	if prev_ranking is not None:
+		params["prev_ranking"] = pl.DataFrame(prev_ranking)
+
 	order = DataFrameRegistry.step_order()
 	todo: dict[str, list[str]] = {}
 	for location, name in selection:
@@ -358,54 +386,11 @@ def run_analysis(
 		notify("warn", message)
 		return no_update, no_update
 
-	progress = {
-		location: {name: [0, len(order), order[0]] for name in names}
-		for location, names in todo.items()
-	}
 	started = time.perf_counter()
-	cancel, finished = threading.Event(), threading.Event()
-	errors: dict[str, Exception] = {}
-
-	with diskcache.Cache(CACHE_DIR) as flags:
-		keys = [f"cancel:{location}" for location in todo]
-		for key in keys:
-			flags.delete(key)
-		# Cancel shows once progress does, so a click can no longer land before this reset.
-		set_progress(progress)
-
-		def watch() -> None:
-			while not finished.wait(0.5):
-				if any(flags.get(key) for key in keys):
-					cancel.set()
-
-		threading.Thread(target=watch, daemon=True).start()
-		try:
-			for location, names in todo.items():
-				if cancel.is_set():
-					break
-				try:
-					with Project.load(Path(location)) as project:
-						events = project._analyze_project(
-							AnalysisParams(**(params or {})),
-							names,
-							overwrite=overwrite,
-							cancel=cancel,
-						)
-						for event in events:
-							project._log.info("%s: built %s", event.recording, event.step)
-							building = (
-								order[event.step_index] if event.step_index < len(order) else ""
-							)
-							progress[location][event.recording] = [
-								event.step_index,
-								len(order),
-								building,
-							]
-							set_progress(progress)
-				except Exception as exc:  # the project's other recordings still finished
-					errors[location] = exc
-		finally:
-			finished.set()
+	cancel = threading.Event()
+	errors = _analyse_projects(
+		todo, AnalysisParams(**params), overwrite, order, set_progress, cancel
+	)
 
 	failed = dict(failed or {})
 	for location, names in todo.items():
@@ -431,6 +416,68 @@ def run_analysis(
 	noun = "recording" if count == 1 else "recordings"
 	notify("good", f"Analysed {count} {noun} in {time.perf_counter() - started:.1f} s")
 	return failed, []
+
+
+def _analyse_projects(
+	todo: dict[str, list[str]],
+	params: AnalysisParams,
+	overwrite: bool,
+	order: list[str],
+	set_progress: Callable[[dict], None],
+	cancel: threading.Event,
+) -> dict[str, Exception]:
+	"""Analyse each project in turn, reporting progress and collecting the ones that raised.
+
+	A watcher thread turns :func:`request_cancel` into ``cancel``, so the steps in flight
+	still land. ``cancel`` is the caller's, so it can tell a cancelled run from a clean one.
+	"""
+	progress = {
+		location: {name: [0, len(order), order[0]] for name in names}
+		for location, names in todo.items()
+	}
+	errors: dict[str, Exception] = {}
+	finished = threading.Event()
+
+	with diskcache.Cache(CACHE_DIR) as flags:
+		keys = [f"cancel:{location}" for location in todo]
+		for key in keys:
+			flags.delete(key)
+		# Cancel shows once progress does, so a click can no longer land before this reset.
+		set_progress(progress)
+
+		def watch() -> None:
+			while not finished.wait(0.5):
+				if any(flags.get(key) for key in keys):
+					cancel.set()
+
+		threading.Thread(target=watch, daemon=True).start()
+		try:
+			for location, names in todo.items():
+				if cancel.is_set():
+					break
+				try:
+					with Project.load(Path(location)) as project:
+						for event in project.iter_analysis(
+							params, names, overwrite=overwrite, cancel=cancel
+						):
+							project.log.info("%s: built %s", event.recording, event.step)
+							building = (
+								order[event.step_index] if event.step_index < len(order) else ""
+							)
+							progress[location][event.recording] = [
+								event.step_index,
+								len(order),
+								building,
+							]
+							set_progress(progress)
+						if cancel.is_set():
+							project.log.warning("cancelled; steps in flight finished")
+				except Exception as exc:  # the project's other recordings still finished
+					errors[location] = exc
+		finally:
+			finished.set()
+
+	return errors
 
 
 def _analysed(location: str, name: str) -> bool:

@@ -8,6 +8,7 @@ import polars as pl
 import pytest
 
 from deepecohab.app.builder import catalog, figure
+from deepecohab.plotting import theme
 
 
 @pytest.fixture
@@ -96,3 +97,215 @@ def test_build_figure_colours_by_sample_palette(frame, fields):
 	assert notes == []
 	colors = {trace.line.color for trace in fig.data}
 	assert colors == set(figure.theme.sample_palette(2))
+
+
+def test_format_override_lapses_once_its_axis_shows_something_else(frame, fields):
+	state = {
+		"kind": "line",
+		"measure_as": "rate",
+		"channels": {"x": ["hour"], "y": ["value"], "facet_col": ["genotype"]},
+		"filters": {"metric": ["activity"]},
+	}
+	fig, _notes = figure.build_figure(frame, state, fields)
+	auto = figure.auto_titles(fig)
+	fmt = {
+		"xaxis": {"on": auto["xaxis"], "value": "Hour of day"},
+		"yaxis": {"on": "Some other field", "value": "Stale"},
+	}
+	figure.apply_format(fig, fmt)
+
+	assert {axis.title.text for axis in fig.select_xaxes() if axis.title.text} == {"Hour of day"}
+	assert fig.layout.yaxis.title.text == auto["yaxis"]
+
+
+def test_colour_range_takes_one_bound_and_skips_an_inverted_pair(frame, fields):
+	state = {
+		"kind": "density_heatmap",
+		"measure_as": "rate",
+		"channels": {"x": ["hour"], "y": ["animal_id"], "z": ["value"]},
+		"filters": {"metric": ["activity"]},
+	}
+	fig, _notes = figure.build_figure(frame, state, fields)
+	on = figure.auto_titles(fig)["colorbar"]
+	figure.apply_format(fig, {"cmin": {"on": on, "value": 1}})
+	assert (fig.layout.coloraxis.cauto, fig.layout.coloraxis.cmin) == (False, 1)
+
+	fig, _notes = figure.build_figure(frame, state, fields)
+	figure.apply_format(fig, {"cmin": {"on": on, "value": 5}, "cmax": {"on": on, "value": 2}})
+	assert fig.layout.coloraxis.cmin is None
+
+
+def test_palette_recolours_categories_unless_too_short(frame, fields, monkeypatch):
+	state = {
+		"kind": "line",
+		"measure_as": "rate",
+		"channels": {"x": ["hour"], "y": ["value"], "color": ["genotype"]},
+		"filters": {"metric": ["activity"]},
+		"format": {"palette": {"on": "", "value": "Set1"}},
+	}
+	fig, _notes = figure.build_figure(frame, state, fields)
+	assert {trace.line.color for trace in fig.data} == set(theme.PALETTES["Set1"][:2])
+	assert figure.auto_titles(fig)["colorway"] == ""
+
+	monkeypatch.setitem(theme.PALETTES, "One", ["rgb(0, 0, 0)"])
+	state["format"] = {"palette": {"on": "", "value": "One"}}
+	fig, _notes = figure.build_figure(frame, state, fields)
+	assert list(fig.layout.colorway) == theme.sample_palette(2)
+
+
+def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
+	"""``_reduce`` matches each trigger it handles, and prevents the update on anything else.
+
+	The reducer is one ``match`` over the id Dash triggered with, so a mistyped pattern
+	silently falls through to ``PreventUpdate`` rather than failing loudly.
+	"""
+	import dash
+	from dash.exceptions import PreventUpdate
+
+	dash.Dash(__name__, use_pages=True, pages_folder="")  # the page module registers itself
+
+	from deepecohab.app import services
+	from deepecohab.app.pages import builder as page
+
+	monkeypatch.setattr(services, "builder_frame", lambda location: (frame, fields))
+
+	def reduce(trigger, value=None, event=None, state=None):
+		monkeypatch.setattr(dash._callback_context, "context_value", None, raising=False)
+		monkeypatch.setattr(
+			page,
+			"ctx",
+			type("Ctx", (), {"triggered_id": trigger, "triggered": [{"value": value}]}),
+		)
+		return page._reduce(
+			event,
+			None,
+			None,
+			None,
+			None,
+			None,
+			None,
+			state if state is not None else figure.new_state(),
+			{"location": "somewhere"},
+			None,
+			[],
+			{"title": ""},  # the automatic titles an override is pinned to
+		)
+
+	held = figure.new_state()
+	held["channels"] = {"x": ["hour"], "y": ["value"]}
+	held["filters"] = {"metric": {"mode": "pick", "values": ["activity"]}}
+
+	assert reduce("builder-clear", state=dict(held, channels={"x": ["hour"]}))[0]["channels"] == {}
+	assert reduce({"type": "builder-kind", "kind": "bar"})[0]["kind"] == "bar"
+	assert reduce({"type": "builder-mode", "mode": "mean"})[0]["measure_as"] == "mean"
+	assert (
+		reduce({"type": "chip-x", "shelf": "x", "field": "hour"}, state=held)[0]["channels"]["x"]
+		== []
+	)
+	assert (
+		"metric"
+		not in reduce({"type": "chip-x", "shelf": page.FILTERS, "field": "metric"}, state=held)[0][
+			"filters"
+		]
+	)
+	assert reduce({"type": "chip-send", "field": "hour", "from": page.PALETTE, "to": "x"})[0][
+		"channels"
+	]["x"] == ["hour"]
+	assert reduce("dnd-event", event={"field": "hour", "shelf": "x"})[0]["channels"]["x"] == [
+		"hour"
+	]
+	assert (
+		reduce({"type": "filter-mode", "field": "hour", "mode": "range"}, state=held)[0]["filters"][
+			"hour"
+		]["mode"]
+		== "range"
+	)
+	assert reduce({"type": "filter-pick", "field": "metric"}, value=["time_alone"], state=held)[0][
+		"filters"
+	]["metric"]["values"] == ["time_alone"]
+	assert reduce({"type": "filter-range", "field": "hour"}, value=[0, 1], state=held)[0][
+		"filters"
+	]["hour"] == {"mode": "range", "lo": 0, "hi": 1}
+	assert (
+		reduce({"type": "chip-bin", "field": "hour"}, value=" 1-3, 4-6 ", state=held)[0]["bins"][
+			"hour"
+		]
+		== "1-3, 4-6"
+	)
+	assert (
+		reduce({"type": "builder-fmt", "key": "title"}, value="T")[0]["format"]["title"]["value"]
+		== "T"
+	)
+
+	# A Blocks spec outlives the field it was typed on unless something clears it, and
+	# would then come back to life under the field when it is dropped again.
+	binned = dict(held, channels={"facet_col": ["day"]}, bins={"day": "1-3, 4-6"})
+	assert reduce({"type": "builder-mode", "mode": "rate"}, state=binned)[0]["bins"] == {
+		"day": "1-3, 4-6"
+	}
+	unshelved = dict(binned, channels={})
+	assert "bins" not in reduce({"type": "builder-mode", "mode": "rate"}, state=unshelved)[0]
+
+	formatted = reduce({"type": "builder-fmt", "key": "title"}, value="T")[0]
+	assert "format" not in reduce("builder-fmt-reset", value=1, state=formatted)[0]
+
+	for unknown in ("no-such-id", {"type": "no-such-type"}, {"type": "chip-x", "shelf": "x"}):
+		with pytest.raises(PreventUpdate):
+			reduce(unknown)
+
+
+def _daily(frame: pl.LazyFrame, days: int) -> pl.LazyFrame:
+	"""The fixture repeated over ``days`` days, so a block has something to span."""
+	return pl.concat(
+		[frame.with_columns(pl.lit(day, dtype=pl.Int64).alias("day")) for day in range(1, days + 1)]
+	)
+
+
+def _binned(frame, fields, spec: str):
+	state = {
+		"kind": "line",
+		"measure_as": "total",
+		"channels": {"x": ["day"], "y": ["value"]},
+		"filters": {"metric": ["activity"]},
+		"bins": {"day": spec},
+	}
+	return figure.build_frame(frame, state, fields), state
+
+
+@pytest.mark.parametrize(
+	("spec", "expected"),
+	[
+		("3", ["day 1-3", "day 4-6"]),
+		("5", ["day 1-5", "day 6-10"]),
+		("1-3, 4-6", ["day 1-3", "day 4-6"]),
+		# Uneven spans, more than two of them, in the order typed rather than sorted.
+		("4-6, 1-2, 3-3", ["day 4-6", "day 1-2", "day 3-3"]),
+	],
+)
+def test_build_frame_bins_ordered_field(frame, fields, spec, expected):
+	data, _state = _binned(_daily(frame, 6), fields, spec)
+
+	assert data["day"].to_list() == expected
+
+
+def test_build_frame_drops_values_outside_every_span(frame, fields):
+	data, _state = _binned(_daily(frame, 6), fields, "1-2, 5-6")
+
+	assert data["day"].to_list() == ["day 1-2", "day 5-6"]
+	# 4 rows/day over 2 days, activity only: (1.0 + 3.0) per day.
+	assert data["value"].to_list() == pytest.approx([8.0, 8.0])
+
+
+def test_unreadable_block_spec_warns_without_blocking(frame, fields):
+	_data, state = _binned(_daily(frame, 6), fields, "every other")
+	notes = figure.warnings_for(frame, state, fields)
+
+	assert any("could not be read" in note.text and not note.blocking for note in notes)
+
+
+@pytest.mark.parametrize(
+	("spec", "expected"),
+	[("3", 3), ("1", None), ("", None), ("2-4", [(2.0, 4.0)]), ("4-2", None), ("x-y", None)],
+)
+def test_parse_bins(spec, expected):
+	assert figure.parse_bins(spec) == expected

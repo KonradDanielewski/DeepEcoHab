@@ -34,11 +34,7 @@ context.plot("ranking-line", mode="stability")
 ```
 
 Each plot reads specific analysis tables. If one has not been built, the plot raises a
-`ValueError` naming it. To list the plots a recording can draw right now:
-
-```python
-context.available_plots(computed_only=True)
-```
+`ValueError` naming it.
 
 An option value outside its allowed choices raises a `ValueError` listing them.
 
@@ -131,10 +127,12 @@ animals within it, not across recordings. Compare recordings with the rates in t
 Two themes are included. To use one for every figure in the session:
 
 ```python
-deh.set_default_theme("light")  # or "dark"
+import plotly.io as pio
+
+pio.templates.default = "light"  # or "dark"
 ```
 
-Without this call, figures use Plotly's default. To theme a single figure:
+Without this, figures use Plotly's default. To theme a single figure:
 `figure.update_layout(template="dark")`.
 
 ## Save a figure
@@ -143,15 +141,4 @@ Without this call, figures use Plotly's default. To theme a single figure:
 figure.write_html("activity.html")    # interactive, opens in any browser
 figure.write_image("activity.png", scale=3)  # static image for publication
 figure.write_json("activity.json")    # reopen later with plotly.io.read_json()
-```
-
-## Describe plots for an interface
-
-`deh.plot_specs(recording)` describes every plot as plain data - its name, title, summary,
-the tables it reads, and each option with its allowed choices and default, resolved against
-the recording's cohort. It is meant for building controls in a user interface:
-
-```python
-spec = deh.plot_specs(recording)[0]
-spec["name"], spec["options"][0]
 ```

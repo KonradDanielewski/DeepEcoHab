@@ -13,56 +13,63 @@ single light_phase occurrence (day 1, phase_count 1) so the arithmetic is by han
 
 import polars as pl
 import pytest
-import strategies as strat
+import strategies
 
 from deepecohab.core import antenna_analysis
 from deepecohab.core.data_model import AnalysisParams, Recording
 
-RECORDING = strat.analysis_recording(animal_ids=["A", "B", "C"])
+RECORDING = strategies.analysis_recording(animal_ids=["A", "B", "C"])
 PHASE_ENUM = pl.Enum(["light_phase", "dark_phase"])
 ANIMAL_ENUM = pl.Enum(RECORDING.cohort.animal_tags)
 
 
-def activity_frame(entries: list[tuple[str, str, float]]) -> pl.LazyFrame:
-	"""activity_df rows (animal_id, position, time_in_position) in light_phase day 1."""
+def activity_frame(
+	entries: list[tuple[str, str, float]], phase: str = "light_phase", phase_count: int = 1
+) -> pl.LazyFrame:
+	"""activity_df rows (animal_id, position, time_in_position) in one phase of day 1."""
 	n = len(entries)
 	return pl.LazyFrame(
 		{
-			"phase": pl.Series(["light_phase"] * n, dtype=PHASE_ENUM),
+			"phase": pl.Series([phase] * n, dtype=PHASE_ENUM),
 			"day": pl.Series([1] * n, dtype=pl.UInt16),
-			"phase_count": pl.Series([1] * n, dtype=pl.UInt16),
+			"phase_count": pl.Series([phase_count] * n, dtype=pl.UInt16),
 			"hour": pl.Series([12] * n, dtype=pl.UInt8),
 			"position": pl.Series([e[1] for e in entries], dtype=pl.Categorical),
 			"animal_id": pl.Series([e[0] for e in entries], dtype=ANIMAL_ENUM),
-			"time_in_position": strat.seconds([float(e[2]) for e in entries]),
+			"time_in_position": strategies.seconds([float(e[2]) for e in entries]),
 		}
 	)
 
 
-def pairwise_frame(entries: list[tuple[str, str, str, float]]) -> pl.LazyFrame:
-	"""pairwise_meetings rows (a, b, position, time_together) in light_phase day 1."""
+def pairwise_frame(
+	entries: list[tuple[str, str, str, float]], phase: str = "light_phase", phase_count: int = 1
+) -> pl.LazyFrame:
+	"""pairwise_meetings rows (a, b, position, time_together) in one phase of day 1."""
 	n = len(entries)
 	return pl.LazyFrame(
 		{
-			"phase": pl.Series(["light_phase"] * n, dtype=PHASE_ENUM),
+			"phase": pl.Series([phase] * n, dtype=PHASE_ENUM),
 			"day": pl.Series([1] * n, dtype=pl.UInt16),
-			"phase_count": pl.Series([1] * n, dtype=pl.UInt16),
+			"phase_count": pl.Series([phase_count] * n, dtype=pl.UInt16),
 			"hour": pl.Series([12] * n, dtype=pl.UInt8),
 			"position": pl.Series([e[2] for e in entries], dtype=pl.Categorical),
 			"animal_id": pl.Series([e[0] for e in entries], dtype=ANIMAL_ENUM),
 			"animal_id_2": pl.Series([e[1] for e in entries], dtype=ANIMAL_ENUM),
-			"time_together": strat.seconds([float(e[3]) for e in entries]),
+			"time_together": strategies.seconds([float(e[3]) for e in entries]),
 			"pairwise_encounters": pl.Series([1] * n, dtype=pl.UInt32),
 		}
 	)
 
 
-def durations_frame(duration_seconds: float) -> pl.LazyFrame:
+def durations_frame(
+	duration_seconds: float, phase: str = "light_phase", phase_count: int = 1
+) -> pl.LazyFrame:
+	"""One phase occurrence's wall-clock length; concat several for a multi-phase case."""
 	return pl.LazyFrame(
 		{
-			"phase": pl.Series(["light_phase"], dtype=PHASE_ENUM),
-			"phase_count": pl.Series([1], dtype=pl.UInt16),
-			"duration": strat.seconds([float(duration_seconds)]),
+			"phase": pl.Series([phase], dtype=PHASE_ENUM),
+			"phase_count": pl.Series([phase_count], dtype=pl.UInt16),
+			"duration": strategies.seconds([float(duration_seconds)]),
 		}
 	)
 
@@ -170,3 +177,81 @@ def test_denominator_is_phase_duration(monkeypatch):
 		< pair_row(short, "A", "B")["proportion_together"]
 	)
 	assert pair_row(tall, "A", "B")["sociability"] < pair_row(short, "A", "B")["sociability"]
+
+
+def test_each_phase_occurrence_is_reported_on_its_own(monkeypatch):
+	"""The metric is per phase, so two occurrences never pool into one number.
+
+	The same pair is sociable in the light phase and avoidant in the dark one; a single
+	row averaging the two would report neither.
+	"""
+	activity = pl.concat(
+		[
+			activity_frame([("A", "cage_1", 40), ("B", "cage_1", 30)]),
+			activity_frame([("A", "cage_1", 40), ("B", "cage_1", 30)], "dark_phase", 2),
+		]
+	)
+	pairwise = pl.concat(
+		[
+			pairwise_frame([("A", "B", "cage_1", 30)]),
+			pairwise_frame([("A", "B", "cage_1", 5)], "dark_phase", 2),
+		]
+	)
+	durations = pl.concat([durations_frame(100), durations_frame(100, "dark_phase", 2)])
+
+	result = run_sociability(monkeypatch, activity=activity, pairwise=pairwise, durations=durations)
+
+	by_phase = dict(result.select("phase_count", "sociability").iter_rows())
+	assert by_phase[1] == pytest.approx(0.3 - (40 * 30) / 100**2)
+	assert by_phase[2] == pytest.approx(0.05 - (40 * 30) / 100**2)
+	assert by_phase[1] > 0 > by_phase[2]
+
+
+def test_the_duration_is_looked_up_per_phase_occurrence(monkeypatch):
+	"""Each occurrence divides by its own length, not by the first one's.
+
+	A recording cut short leaves its last phase shorter than the rest, so joining the
+	wrong duration would rescale every metric in it.
+	"""
+	activity = pl.concat(
+		[
+			activity_frame([("A", "cage_1", 40), ("B", "cage_1", 30)]),
+			activity_frame([("A", "cage_1", 40), ("B", "cage_1", 30)], "dark_phase", 2),
+		]
+	)
+	pairwise = pl.concat(
+		[
+			pairwise_frame([("A", "B", "cage_1", 20)]),
+			pairwise_frame([("A", "B", "cage_1", 20)], "dark_phase", 2),
+		]
+	)
+	# The dark phase is half as long, so the same 20 s is twice the proportion.
+	durations = pl.concat([durations_frame(100), durations_frame(50, "dark_phase", 2)])
+
+	result = run_sociability(monkeypatch, activity=activity, pairwise=pairwise, durations=durations)
+
+	proportions = dict(result.select("phase_count", "proportion_together").iter_rows())
+	assert proportions[1] == pytest.approx(0.2)
+	assert proportions[2] == pytest.approx(0.4)
+
+
+def test_a_pair_never_together_sits_at_minus_the_chance_sum(monkeypatch):
+	"""Avoidance is bounded below by how often chance alone would have met them.
+
+	Both animals use both cages but never at the same time, so the observed term is zero
+	in every cage and the metric is exactly the negated chance expectation - the floor
+	the measure can reach for that pair.
+	"""
+	activity = activity_frame(
+		[("A", "cage_1", 40), ("B", "cage_1", 30), ("A", "cage_2", 20), ("B", "cage_2", 10)]
+	)
+	pairwise = pairwise_frame([("A", "B", "cage_1", 0), ("A", "B", "cage_2", 0)])
+
+	result = run_sociability(
+		monkeypatch, activity=activity, pairwise=pairwise, durations=durations_frame(100)
+	)
+	row = pair_row(result, "A", "B")
+
+	chance = (40 * 30) / 100**2 + (20 * 10) / 100**2
+	assert row["proportion_together"] == pytest.approx(0.0)
+	assert row["sociability"] == pytest.approx(-chance)
