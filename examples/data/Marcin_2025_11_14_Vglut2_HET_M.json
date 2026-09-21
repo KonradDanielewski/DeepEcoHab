@@ -1,0 +1,382 @@
+{
+  "version": 2,
+  "recording": {
+    "name": "Marcin_2025_11_14_Vglut2_HET_M",
+    "project_name": "Tsc2",
+    "recording_location": "006",
+    "timeline": {
+      "start_datetime": "2025-11-14T11:14:52+01:00",
+      "end_datetime": "2025-11-21T14:20:15+01:00",
+      "recording_timezone": "Europe/Warsaw",
+      "start_from": "dark_phase",
+      "phases": {
+        "light_phase": "00:00",
+        "dark_phase": "12:00"
+      }
+    },
+    "notes": "Recording failed for ~3h during 1st dark phase\n\nAround 10:00 on 17.11.2025 bedding in most preffered cage (cage 1 but weak preference in general) was exchanged for sandpaper\n\nAround 11:15 on 19.11.2025 food & water were removed from cage 2 (very weak preference over cage 4)",
+    "events": [
+      {
+        "name": "Light Stimulus Presentation",
+        "description": "Pulsed visual stimulation applied in specific cages.",
+        "bouts": [
+          {
+            "start": "2025-11-15T15:59:09+01:00",
+            "end": "2025-11-15T16:59:09+01:00",
+            "position": "cage_1"
+          },
+          {
+            "start": "2025-11-16T15:59:09+01:00",
+            "end": "2025-11-16T16:59:09+01:00",
+            "position": "cage_2"
+          }
+        ]
+      },
+      {
+        "name": "Saline Injection",
+        "description": "Baseline vehicle control injection across the full habitat.",
+        "bouts": [
+          {
+            "start": "2025-11-16T15:59:09+01:00",
+            "end": "2025-11-16T16:10:09+01:00",
+            "position": null
+          }
+        ]
+      },
+      {
+        "name": "Auditory Tone Test",
+        "description": "8 kHz continuous tone delivered to entire habitat.",
+        "bouts": [
+          {
+            "start": "2025-11-16T16:30:09+01:00",
+            "end": "2025-11-16T18:00:09+01:00"
+          },
+          {
+            "start": "2025-11-15T16:30:09+01:00",
+            "end": "2025-11-15T18:00:09+01:00"
+          }
+        ]
+      }
+    ],
+    "layout": {
+      "cages": [
+        {
+          "name": "cage_1",
+          "cell_id": "C1",
+          "cage_type": "standard",
+          "antennas": [
+            "1",
+            "8"
+          ]
+        },
+        {
+          "name": "cage_2",
+          "cell_id": "C2",
+          "cage_type": "standard",
+          "antennas": [
+            "2",
+            "3"
+          ]
+        },
+        {
+          "name": "cage_3",
+          "cell_id": "C3",
+          "cage_type": "standard",
+          "antennas": [
+            "4",
+            "5"
+          ]
+        },
+        {
+          "name": "cage_4",
+          "cell_id": "C4",
+          "cage_type": "standard",
+          "antennas": [
+            "6",
+            "7"
+          ]
+        }
+      ],
+      "tunnels": [
+        {
+          "name": "tunnel_1",
+          "tunnel_no": 1,
+          "start_cell_id": "C1",
+          "end_cell_id": "C2",
+          "dead_end": false,
+          "antenna_count": 2,
+          "antennas": [
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "tunnel_2",
+          "tunnel_no": 2,
+          "start_cell_id": "C2",
+          "end_cell_id": "C3",
+          "dead_end": false,
+          "antenna_count": 2,
+          "antennas": [
+            "3",
+            "4"
+          ]
+        },
+        {
+          "name": "tunnel_3",
+          "tunnel_no": 3,
+          "start_cell_id": "C3",
+          "end_cell_id": "C4",
+          "dead_end": false,
+          "antenna_count": 2,
+          "antennas": [
+            "5",
+            "6"
+          ]
+        },
+        {
+          "name": "tunnel_4",
+          "tunnel_no": 4,
+          "start_cell_id": "C1",
+          "end_cell_id": "C4",
+          "dead_end": false,
+          "antenna_count": 2,
+          "antennas": [
+            "8",
+            "7"
+          ]
+        }
+      ],
+      "antenna_combinations_interpolated": {
+        "1_1": "cage_1",
+        "1_2": "c1_c2",
+        "1_3": "cage_2",
+        "1_4": "cage_2",
+        "1_7": "cage_1",
+        "1_8": "cage_1",
+        "2_1": "c2_c1",
+        "2_2": "cage_2",
+        "2_3": "cage_2",
+        "2_4": "cage_2",
+        "2_7": "cage_1",
+        "2_8": "cage_1",
+        "3_1": "cage_2",
+        "3_2": "cage_2",
+        "3_3": "cage_2",
+        "3_4": "c2_c3",
+        "3_5": "cage_3",
+        "3_6": "cage_3",
+        "4_1": "cage_2",
+        "4_2": "cage_2",
+        "4_3": "c3_c2",
+        "4_4": "cage_3",
+        "4_5": "cage_3",
+        "4_6": "cage_3",
+        "5_3": "cage_3",
+        "5_4": "cage_3",
+        "5_5": "cage_3",
+        "5_6": "c3_c4",
+        "5_7": "cage_4",
+        "5_8": "cage_4",
+        "6_3": "cage_3",
+        "6_4": "cage_3",
+        "6_5": "c4_c3",
+        "6_6": "cage_4",
+        "6_7": "cage_4",
+        "6_8": "cage_4",
+        "7_1": "cage_1",
+        "7_2": "cage_1",
+        "7_5": "cage_4",
+        "7_6": "cage_4",
+        "7_7": "cage_4",
+        "7_8": "c4_c1",
+        "8_1": "cage_1",
+        "8_2": "cage_1",
+        "8_5": "cage_4",
+        "8_6": "cage_4",
+        "8_7": "c1_c4",
+        "8_8": "cage_1"
+      },
+      "antenna_combinations": {
+        "1_1": "cage_1",
+        "1_2": "c1_c2",
+        "1_8": "cage_1",
+        "2_1": "c2_c1",
+        "2_2": "cage_2",
+        "2_3": "cage_2",
+        "3_2": "cage_2",
+        "3_3": "cage_2",
+        "3_4": "c2_c3",
+        "4_3": "c3_c2",
+        "4_4": "cage_3",
+        "4_5": "cage_3",
+        "5_4": "cage_3",
+        "5_5": "cage_3",
+        "5_6": "c3_c4",
+        "6_5": "c4_c3",
+        "6_6": "cage_4",
+        "6_7": "cage_4",
+        "7_6": "cage_4",
+        "7_7": "cage_4",
+        "7_8": "c4_c1",
+        "8_1": "cage_1",
+        "8_7": "c1_c4",
+        "8_8": "cage_1"
+      },
+      "tunnels_map": {
+        "c1_c2": "tunnel_1",
+        "c1_c4": "tunnel_4",
+        "c2_c1": "tunnel_1",
+        "c2_c3": "tunnel_2",
+        "c3_c2": "tunnel_2",
+        "c3_c4": "tunnel_3",
+        "c4_c1": "tunnel_4",
+        "c4_c3": "tunnel_3"
+      }
+    },
+    "cohort": {
+      "n_mice": 9,
+      "animals": [
+        {
+          "tag": "15D5E51A04",
+          "row_index": 1,
+          "mouse_line": "Vglut2",
+          "genotype": "HET",
+          "subject_name": "ID1",
+          "sex": "Male",
+          "date_of_birth": "2025-05-14",
+          "genetic_background": "C57B",
+          "treatment": "no",
+          "notes": ""
+        },
+        {
+          "tag": "1972E61A04",
+          "row_index": 2,
+          "mouse_line": "Vglut2",
+          "genotype": "HET",
+          "subject_name": "ID2",
+          "sex": "Male",
+          "date_of_birth": "2025-05-14",
+          "genetic_background": "C57B",
+          "treatment": "no",
+          "notes": ""
+        },
+        {
+          "tag": "20EAE51A04",
+          "row_index": 3,
+          "mouse_line": "Vglut2",
+          "genotype": "HET",
+          "subject_name": "ID3",
+          "sex": "Male",
+          "date_of_birth": "2025-05-14",
+          "genetic_background": "C57B",
+          "treatment": "no",
+          "notes": ""
+        },
+        {
+          "tag": "5D60E61A04",
+          "row_index": 4,
+          "mouse_line": "Vglut2",
+          "genotype": "HET",
+          "subject_name": "ID4",
+          "sex": "Male",
+          "date_of_birth": "2025-05-14",
+          "genetic_background": "C57B",
+          "treatment": "no",
+          "notes": ""
+        },
+        {
+          "tag": "650CEC1A04",
+          "row_index": 5,
+          "mouse_line": "Vglut2",
+          "genotype": "HET",
+          "subject_name": "ID5",
+          "sex": "Male",
+          "date_of_birth": "2025-05-14",
+          "genetic_background": "C57B",
+          "treatment": "no",
+          "notes": ""
+        },
+        {
+          "tag": "6E94EC1A04",
+          "row_index": 6,
+          "mouse_line": "Vglut2",
+          "genotype": "HET",
+          "subject_name": "ID6",
+          "sex": "Male",
+          "date_of_birth": "2025-05-14",
+          "genetic_background": "C57B",
+          "treatment": "no",
+          "notes": ""
+        },
+        {
+          "tag": "72FCE51A04",
+          "row_index": 7,
+          "mouse_line": "Vglut2",
+          "genotype": "HET",
+          "subject_name": "ID7",
+          "sex": "Male",
+          "date_of_birth": "2025-05-14",
+          "genetic_background": "C57B",
+          "treatment": "no",
+          "notes": ""
+        },
+        {
+          "tag": "C10DA01A04",
+          "row_index": 8,
+          "mouse_line": "Vglut2",
+          "genotype": "HET",
+          "subject_name": "ID8",
+          "sex": "Male",
+          "date_of_birth": "2025-05-14",
+          "genetic_background": "C57B",
+          "treatment": "no",
+          "notes": ""
+        },
+        {
+          "tag": "E07BEC1A04",
+          "row_index": 9,
+          "mouse_line": "Vglut2",
+          "genotype": "HET",
+          "subject_name": "ID9",
+          "sex": "Male",
+          "date_of_birth": "2025-05-14",
+          "genetic_background": "C57B",
+          "treatment": "no",
+          "notes": ""
+        }
+      ]
+    }
+  },
+  "acqusition": {
+    "environment": {
+      "com_port": "COM",
+      "light_start_hhmm": "00:00",
+      "light_end_hhmm": "12:00",
+      "started_iso": "2025-11-14T11:16:45+01:00",
+      "experiment_env_log_csv": "habitat_log.csv",
+      "last_record": {}
+    },
+    "_provenance": {
+      "generated_by": "generate_experiment_configs.py",
+      "generated_at": "2026-08-31T10:28:06.129328+02:00",
+      "recording_dir": "C:/Users/KonradD/Documents/deepecohab/data_catalog/Eco-HAB/vGLUT/Marcin_2025_11_14_Vglut2_HET_M",
+      "com_ports": [
+        "COM",
+        "COM2"
+      ],
+      "acquisition_parts": [],
+      "sources": {
+        "layout": "Eco_hab_results_2026-04-17/config.toml",
+        "environment.light_start_hhmm": "habitat_config.csv",
+        "environment.started_iso": "habitat_config.csv",
+        "experiment.start_datetime": "Eco_hab_results_2026-04-17/config.toml",
+        "animals.rows": "rfid_list.csv",
+        "experiment.notes": "README.txt"
+      },
+      "warnings": [
+        "start_from set to 'dark_phase' by user instruction (was 'light_phase'); every recording in this catalog starts from the dark phase."
+      ]
+    }
+  }
+}
