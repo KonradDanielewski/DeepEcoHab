@@ -1,5 +1,8 @@
 import json
+import math
+from collections import deque
 from collections.abc import Sequence
+from html import escape
 from typing import Any
 from urllib.parse import quote
 
@@ -8,6 +11,7 @@ import dash_mantine_components as dmc
 import plotly.graph_objects as go
 from dash import dcc, html
 
+from deepecohab.core.data_model import Layout
 from deepecohab.plotting import export as plot_export
 from deepecohab.plotting.theme import COLORSCALES, PALETTES
 
@@ -170,7 +174,17 @@ def format_dialog(prefix: str, note: str, props: dict[str, dict] | None = None) 
 				[
 					*([text("title", "Title")] if "title" in props else []),
 					text("xaxis", "X axis title"),
+					# ponytail: numbers only, so a date axis would take epoch ms; parse date
+					# strings here if anyone wants to bound a timeline.
+					html.Div(
+						[bound("xmin", "X min"), bound("xmax", "X max")],
+						className="deh-format-pair",
+					),
 					text("yaxis", "Y axis title"),
+					html.Div(
+						[bound("ymin", "Y min"), bound("ymax", "Y max")],
+						className="deh-format-pair",
+					),
 					text("colorbar", "Colour bar title"),
 					html.Div(
 						[bound("cmin", "Colour min"), bound("cmax", "Colour max")],
@@ -222,11 +236,18 @@ def export_dialog() -> dmc.Modal:
 			[
 				html.Div(
 					[
-						dcc.Graph(
-							id="export-preview",
-							figure=EMPTY_FIGURE,
-							config={"staticPlot": True, "displayModeBar": False},
-							style={"height": "320px"},
+						# The preview is the real export figure at its real pixel size - the
+						# warnings beside it are measured there - so it is scaled to fit this
+						# stage rather than re-fitted smaller. deh.fitPreview sets the
+						# transform from the figure's own size; the stage clips the rest.
+						html.Div(
+							dcc.Graph(
+								id="export-preview",
+								figure=EMPTY_FIGURE,
+								config={"staticPlot": True, "displayModeBar": False},
+							),
+							id="export-stage",
+							className="deh-export-stage",
 						),
 						html.Div(id="export-dims", className="deh-sub"),
 						html.Div(id="export-warnings"),
@@ -397,11 +418,8 @@ def export_preview(fig: dict[str, Any], title: str, form: dict[str, Any]) -> dic
 	if form["style"] == "publication":
 		working.update_layout(template="publication")
 
-	annotations = working.layout.annotations or ()
 	shapes = working.layout.shapes or ()
-	has_events = any(str(a.name or "").startswith("event-label") for a in annotations) or any(
-		s.label and s.label.text for s in shapes
-	)
+	has_events = any(s.label and s.label.text for s in shapes)
 	show_events = has_events and form["events"]
 
 	fitted, notes = plot_export.fit_for_export(
@@ -434,3 +452,197 @@ def export_preview(fig: dict[str, Any], title: str, form: dict[str, Any]) -> dic
 		"payload_figure": json.dumps(fig),
 		"payload_params": json.dumps(payload_params),
 	}
+
+
+#: Cage box size and the spacing between neighbouring cages, in SVG user units.
+_HAB_W, _HAB_H, _HAB_GAP = 92, 66, 180
+
+
+def _habitat_positions(layout: Layout) -> dict[str, tuple[float, float]]:
+	"""Cage centres, derived from the layout graph rather than read from the config.
+
+	Cages and tunnels form a graph. Its longest cycle goes on a circle - four cages give
+	the square everyone sketches on the whiteboard, eight give an octagon - and a cage
+	that is not on that cycle is pushed one gap further out along its neighbour's spoke.
+	Nothing about four cages is written in, so any topology the backend accepts draws.
+
+	Returns:
+		Centre ``(x, y)`` per ``cell_id``, in the same units as ``_HAB_W``.
+	"""
+	# Imported here rather than at module scope: networkx costs ~150ms to import, and the
+	# habitat map is the only thing in the app that needs it.
+	import networkx as nx
+
+	declared = [cage.cell_id for cage in layout.cages]
+	if not declared:
+		return {}
+
+	graph = nx.Graph()
+	graph.add_nodes_from(declared)
+	graph.add_edges_from((tunnel.start_cell_id, tunnel.end_cell_id) for tunnel in layout.tunnels)
+
+	cycles = nx.cycle_basis(graph)
+	ring: list[str] = max(cycles, key=lambda cycle: len(cycle)) if cycles else declared
+	# Lead with the first cage the config declares and run clockwise from there, so the
+	# same habitat always draws the same way round.
+	lead = ring.index(min(ring, key=declared.index))
+	ring = ring[lead:] + ring[:lead]
+	if len(ring) > 2 and declared.index(ring[1]) > declared.index(ring[-1]):
+		ring = [ring[0], *reversed(ring[1:])]
+
+	# x, y, and the angle and radius a cage hanging off this one would be pushed out along.
+	placed: dict[str, tuple[float, float, float, float]] = {}
+	count = len(ring)
+	radius = max(120.0, _HAB_GAP / (2 * math.sin(math.pi / count))) if count > 1 else 0.0
+	for index, cell in enumerate(ring):
+		angle = math.radians(90 + 180 / count - (360 / count) * index)
+		placed[cell] = (radius * math.cos(angle), -radius * math.sin(angle), angle, radius)
+
+	queue = deque(ring)
+	while queue:
+		cell = queue.popleft()
+		_, _, spoke, reach = placed[cell]
+		# Settled before any of them is placed, so siblings fan out around the spoke
+		# rather than each one shifting the next.
+		kids = [neighbour for neighbour in graph[cell] if neighbour not in placed]
+		for index, kid in enumerate(kids):
+			angle = spoke + math.radians((index - (len(kids) - 1) / 2) * 22)
+			out = reach + _HAB_GAP
+			placed[kid] = (out * math.cos(angle), -out * math.sin(angle), angle, out)
+			queue.append(kid)
+
+	return {cell: (x, y) for cell, (x, y, _, _) in placed.items()}
+
+
+def _habitat_mouth(x: float, y: float, dx: float, dy: float) -> tuple[float, float]:
+	"""Where a tunnel leaving the cage at ``(x, y)`` towards ``(dx, dy)`` meets its wall."""
+	length = math.hypot(dx, dy) or 1.0
+	reach = 13 + min(
+		_HAB_W / 2 / (abs(dx / length) or 1e-6),
+		_HAB_H / 2 / (abs(dy / length) or 1e-6),
+	)
+	return x + dx / length * reach, y + dy / length * reach
+
+
+def _habitat_band(miss: float | None) -> str:
+	"""The quality class for one antenna, on the bands the header badge already uses."""
+	if miss is None or miss < 1:
+		return ""
+	return "warn" if miss < 2.5 else "bad"
+
+
+def _habitat_svg(layout: Layout, label: str, antenna_miss: dict[str, float] | None) -> str:
+	"""The habitat as one SVG element, for ``deh.paintHabitat`` to paint in.
+
+	Every interpolated piece comes from a hand-editable ``config.json`` and this string is
+	set as ``innerHTML``, so all of it is escaped.
+	"""
+	at = _habitat_positions(layout)
+	cages = {cage.cell_id: cage for cage in layout.cages}
+
+	tubes, labels, antennas = [], [], []
+	for tunnel in layout.tunnels:
+		ax, ay = at[tunnel.start_cell_id]
+		bx, by = at[tunnel.end_cell_id]
+		line = f"M{ax:.2f} {ay:.2f} L{bx:.2f} {by:.2f}"
+		tubes.append(
+			f'<path class="deh-hab-tube" d="{line}"/><path class="deh-hab-tube-in" d="{line}"/>'
+		)
+		labels.append(
+			f'<text class="deh-hab-tunnel" x="{(ax + bx) / 2:.2f}" '
+			f'y="{(ay + by) / 2 + 3.5:.2f}">T{tunnel.tunnel_no}</text>'
+		)
+		# zip stops at the shorter side, which is what leaves a dead-end tunnel with the
+		# one antenna it has.
+		ends = (
+			(_habitat_mouth(ax, ay, bx - ax, by - ay), tunnel.start_cell_id),
+			(_habitat_mouth(bx, by, ax - bx, ay - by), tunnel.end_cell_id),
+		)
+		for ((px, py), cell), antenna in zip(ends, tunnel.antennas, strict=False):
+			miss = (antenna_miss or {}).get(str(antenna))
+			band = _habitat_band(miss)
+			title = f"Antenna {antenna} · {cages[cell].name} end of {tunnel.name}"
+			if miss is not None:
+				title += f" · {miss:.2f}% missed passes"
+			antennas.append(
+				f'<g class="deh-hab-ant{f" {band}" if band else ""}">'
+				f"<title>{escape(title)}</title>"
+				f'<circle cx="{px:.2f}" cy="{py:.2f}" r="11"/>'
+				f'<text x="{px:.2f}" y="{py:.2f}">{escape(str(antenna))}</text></g>'
+			)
+
+	# Drawn last, so a cage box covers any antenna that falls inside it.
+	boxes = []
+	for cage in layout.cages:
+		x, y = at[cage.cell_id]
+		title = f"{cage.name} · {cage.cage_type} · antennas {', '.join(cage.antennas)}"
+		boxes.append(
+			f'<g class="deh-hab-cage {escape(cage.cage_type)}"><title>{escape(title)}</title>'
+			f'<rect x="{x - _HAB_W / 2:.2f}" y="{y - _HAB_H / 2:.2f}" '
+			f'width="{_HAB_W}" height="{_HAB_H}" rx="13"/>'
+			f'<text class="deh-hab-name" x="{x:.2f}" y="{y - 2:.2f}">'
+			f"{escape(cage.name.replace('cage_', 'Cage '))}</text>"
+			f'<text class="deh-hab-type" x="{x:.2f}" y="{y + 15:.2f}">'
+			f"{escape(cage.cage_type)}</text></g>"
+		)
+
+	xs = [x for x, _ in at.values()]
+	ys = [y for _, y in at.values()]
+	x0, y0 = min(xs) - _HAB_W / 2 - 40, min(ys) - _HAB_H / 2 - 40
+	return (
+		f'<svg viewBox="{x0:.2f} {y0:.2f} {max(xs) + _HAB_W / 2 + 40 - x0:.2f} '
+		f'{max(ys) + _HAB_H / 2 + 40 - y0:.2f}" role="img" aria-label="{escape(label)}" '
+		f'preserveAspectRatio="xMidYMid meet">'
+		f"{''.join(tubes)}{''.join(antennas)}{''.join(labels)}{''.join(boxes)}</svg>"
+	)
+
+
+#: Legend keys, as (extra class, label); the empty class is the plain standard cage.
+_HAB_KEYS = (
+	("social", "social"),
+	("", "standard"),
+	("nonsocial", "nonsocial"),
+	("tunnel", "tunnel"),
+	("ant", "antenna"),
+)
+
+#: Shown only when there are miss rates to band by; same cuts as the header's quality badge.
+_HAB_BAND_KEYS = (("ant warn", "1-2.5% missed"), ("ant bad", "2.5% and over"))
+
+
+def habitat_map(
+	layout: Layout,
+	label: str,
+	*,
+	antenna_miss: dict[str, float] | None = None,
+	height: int | None = None,
+) -> list:
+	"""The habitat a recording was made in, as an SVG map and its legend.
+
+	Drawn from ``layout`` alone, so it renders for a recording whose pipeline has never
+	run. The SVG rides on a ``data-hab`` attribute for ``deh.paintHabitat`` to paint in,
+	because Dash carries no SVG components; being a real SVG rather than a figure is what
+	lets it inherit the theme tokens and hover for free.
+
+	Args:
+		layout: the validated habitat, as ``config.json`` lays it out.
+		label: the SVG's accessible name, e.g. ``"Habitat of 2024-05-02"``.
+		antenna_miss: missed-pass percentage per antenna, which tints each one on the same
+			bands as the header's quality badge and adds its rate to the tooltip. Without it
+			every antenna draws plain, which is what a recording with no results shows.
+		height: map height in px; the CSS falls back to 300px.
+	"""
+	return [
+		html.Div(
+			className="deh-hab",
+			style={"height": f"{height}px"} if height else {},
+			**{"data-hab": _habitat_svg(layout, label, antenna_miss)},  # ty: ignore[invalid-argument-type]
+		),
+		html.Div(
+			[
+				html.Span([html.I(className=f"deh-hab-key {modifier}".strip()), name])
+				for modifier, name in _HAB_KEYS + (_HAB_BAND_KEYS if antenna_miss else ())
+			],
+			className="deh-hab-legend",
+		),
+	]

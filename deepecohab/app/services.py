@@ -244,11 +244,95 @@ def quality_summary(context: PlotContext) -> dict:
 		"detected": detected,
 		"missed": missed,
 		"worst_antenna": {"antenna": worst_antenna["antenna"], "miss": worst_antenna["miss_rate"]},
+		"antenna_miss": {
+			str(antenna): miss
+			for antenna, miss in zip(by_antenna["antenna"], by_antenna["miss_rate"], strict=True)
+		},
 		"worst_animal": {"animal_id": worst_animal["animal_id"], "miss": worst_animal["miss_rate"]},
 		"clean_cells": frame.filter(pl.col("missed") == 0).height,
 		"cells": frame.height,
 		"antennas": by_antenna.height,
 	}
+
+
+def overview_tiles(context: PlotContext) -> list[dict]:
+	"""What the recording amounts to, for the Overview tab's stat card.
+
+	Every tile that needs a table the pipeline has not written is left out rather than
+	blanked, so a half-analysed recording still shows what it does have.
+
+	Returns:
+		One ``label`` / ``value`` / ``note`` dict per tile, in reading order.
+	"""
+	days = context.days_range[1] - context.days_range[0] + 1
+	phases = context.phase_range[1] - context.phase_range[0] + 1
+	tiles = [
+		{
+			"label": "Duration",
+			"value": f"{days} d",
+			"note": f"{phases} phases · {len(context.animal_ids)} mice",
+		}
+	]
+
+	if "main_df" in context and context.recording is not None:
+		# Lazily: this card is built for every recording that is opened, and main_df runs
+		# to hundreds of thousands of rows that nothing here reads except to count them.
+		rows = context.recording.load_results("main_df", eager=False).select(pl.len())
+		note = ""
+		if "activity_df" in context:
+			visits = _placed(context).select(pl.sum("visits_to_position")).item()
+			note = f"{visits:,} visits".replace(",", " ")
+		tiles.append(
+			{
+				"label": "Registrations",
+				"value": f"{rows.collect().item():,}".replace(",", " "),
+				"note": note,
+			}
+		)
+
+	if "chasings_df" in context:
+		frame = context.table("chasings_df")
+		won = frame.group_by("chaser").agg(pl.sum("chasings")).sort("chasings", descending=True)
+		total = int(frame["chasings"].sum())
+		tiles.append(
+			{
+				"label": "Chasings",
+				"value": f"{total:,}".replace(",", " "),
+				"note": f"top animal won {won['chasings'][0]} - {won['chaser'][0]}"
+				if total
+				else "none recorded",
+			}
+		)
+
+	if "activity_df" in context and context.cages:
+		share = (
+			_placed(context)
+			.filter(pl.col("position").is_in(context.cages))
+			.group_by("position")
+			.agg(pl.col("time_in_position").sum().dt.total_seconds().alias("seconds"))
+			.with_columns((100 * pl.col("seconds") / pl.col("seconds").sum()).alias("pct"))
+			.sort("pct", descending=True)
+			.row(0, named=True)
+		)
+		layout = context.recording.layout if context.recording else None
+		kinds = {cage.name: cage.cage_type for cage in layout.cages} if layout else {}
+		kind = kinds.get(share["position"])
+		tiles.append(
+			{
+				"label": "Busiest cage",
+				"value": share["position"].capitalize().replace("_", " "),
+				"note": f"{share['pct']:.0f}% of cohort time" + (f" · {kind}" if kind else ""),
+			}
+		)
+
+	return tiles
+
+
+def _placed(context: PlotContext) -> pl.DataFrame:
+	"""``activity_df`` without the undefined sentinel, which is not a place."""
+	return context.table("activity_df").filter(
+		pl.col("position").cast(pl.String) != Layout.UNDEFINED
+	)
 
 
 def missing_time(context: PlotContext) -> dict:

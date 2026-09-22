@@ -1,6 +1,7 @@
 """Tests for the recording dashboard's navigation callbacks."""
 
 import contextlib
+import math
 
 import pytest
 from dash import Dash
@@ -8,7 +9,8 @@ from dash._callback_context import context_value
 from dash._utils import AttributeDict
 from dash.exceptions import PreventUpdate
 
-from deepecohab.app import services
+from deepecohab.app import components, services
+from deepecohab.core.data_model import Cage, Layout, Tunnel
 
 # The page module calls dash.register_page at import time, which needs an app to register
 # against; pages_folder="" keeps this one from re-importing the whole pages package.
@@ -58,3 +60,138 @@ def test_prev_click_wraps_past_the_first_recording():
 	with _triggered({"prop_id": "rec-prev.n_clicks", "value": 1}):
 		search = recording._switch_recording("rec_a", 1, None, context, "?recording=rec_a")
 	assert search == "?recording=rec_c"
+
+
+def _layout(cages: list[tuple], tunnels: list[tuple]) -> Layout:
+	"""A habitat from ``(cell_id, cage_type, antennas)`` and ``(no, start, end, antennas)``."""
+	return Layout(
+		cages=[
+			{"name": f"cage_{cell[1:]}", "cell_id": cell, "cage_type": kind, "antennas": antennas}
+			for cell, kind, antennas in cages
+		],
+		tunnels=[
+			{
+				"name": f"tunnel_{no}",
+				"tunnel_no": no,
+				"start_cell_id": start,
+				"end_cell_id": end,
+				"dead_end": False,
+				"antenna_count": len(antennas),
+				"antennas": antennas,
+			}
+			for no, start, end, antennas in tunnels
+		],
+		antenna_combinations={},
+		tunnels_map={},
+	)
+
+
+def _square() -> Layout:
+	"""The four-cage habitat every config in the wild uses."""
+	return _layout(
+		[
+			("C1", "social", ["1", "8"]),
+			("C2", "standard", ["2", "3"]),
+			("C3", "nonsocial", ["4", "5"]),
+			("C4", "standard", ["6", "7"]),
+		],
+		[
+			(1, "C1", "C2", ["1", "2"]),
+			(2, "C2", "C3", ["3", "4"]),
+			(3, "C3", "C4", ["5", "6"]),
+			(4, "C1", "C4", ["8", "7"]),
+		],
+	)
+
+
+def test_four_cages_sit_on_one_circle():
+	# No coordinates are in the config: the cage graph's cycle is what puts them on a ring.
+	places = components._habitat_positions(_square())
+
+	assert len(set(places.values())) == 4
+	radii = {round(math.hypot(x, y), 6) for x, y in places.values()}
+	assert len(radii) == 1
+	# First cage declared leads, top left, and the rest run clockwise from it.
+	assert places["C1"][0] < 0 and places["C1"][1] < 0
+	assert places["C2"][0] > 0 and places["C2"][1] < 0
+	assert places["C3"][0] > 0 and places["C3"][1] > 0
+
+
+def test_a_cage_off_the_ring_is_pushed_out_past_its_neighbour():
+	# cage_5 hangs off cage_4 rather than closing a second cycle, so it cannot go on the ring.
+	pendant = _square()
+	pendant.cages.append(
+		Cage(name="cage_5", cell_id="C5", cage_type="social", antennas=["10"]),
+	)
+	pendant.tunnels.append(
+		Tunnel(
+			name="tunnel_5",
+			tunnel_no=5,
+			start_cell_id="C4",
+			end_cell_id="C5",
+			dead_end=False,
+			antenna_count=2,
+			antennas=["9", "10"],
+		),
+	)
+	places = components._habitat_positions(pendant)
+
+	assert len(set(places.values())) == 5
+	ring = [math.hypot(*places[cell]) for cell in ("C1", "C2", "C3", "C4")]
+	assert len({round(radius, 6) for radius in ring}) == 1
+	assert math.hypot(*places["C5"]) > ring[0]
+
+
+def test_an_eight_cage_ring_draws_as_an_octagon():
+	# Nothing about four cages is written in, so a bigger habitat is still one circle.
+	cells = [(f"C{i}", "standard", [str(2 * i - 2 or 16), str(2 * i - 1)]) for i in range(1, 9)]
+	tunnels = [(i, f"C{i}", f"C{i % 8 + 1}", [str(2 * i - 1), str(2 * i)]) for i in range(1, 9)]
+	places = components._habitat_positions(_layout(cells, tunnels))
+
+	assert len(set(places.values())) == 8
+	assert len({round(math.hypot(x, y), 6) for x, y in places.values()}) == 1
+
+
+def test_every_antenna_is_tinted_by_its_own_miss_rate():
+	# The bands are the header badge's: under 1% plain, 1-2.5% warn, 2.5% and over bad.
+	miss = {"1": 0.4, "2": 1.0, "3": 2.49, "4": 2.5, "5": 9.9}
+	svg = components._habitat_svg(_square(), "Habitat of rec_b", miss)
+
+	assert svg.count('class="deh-hab-ant warn"') == 2
+	assert svg.count('class="deh-hab-ant bad"') == 2
+	# Antenna 1 is under the band, and 6-8 have no rate at all.
+	assert svg.count('class="deh-hab-ant"') == 4
+	assert "2.49% missed passes" in svg
+
+
+def test_antennas_draw_plain_without_a_quality_table():
+	# The card still renders for a recording whose pipeline has never run.
+	svg = components._habitat_svg(_square(), "Habitat of rec_b", None)
+
+	assert svg.count('class="deh-hab-ant"') == 8
+	assert "missed passes" not in svg
+
+
+def test_layout_names_are_escaped_into_the_markup():
+	# The SVG is set as innerHTML and every name in it comes from a hand-edited config.json.
+	nasty = _square()
+	nasty.cages[0].name = '<script>alert("x")</script>'
+	svg = components._habitat_svg(nasty, "Habitat of <b>rec</b>", None)
+
+	assert "<script>" not in svg
+	assert "&lt;script&gt;" in svg
+	assert 'aria-label="Habitat of &lt;b&gt;rec&lt;/b&gt;"' in svg
+
+
+def test_the_map_carries_its_svg_for_the_painter():
+	# Dash has no SVG components, so deh.paintHabitat reads this attribute.
+	body, legend = components.habitat_map(_square(), "Habitat of rec_b", height=500)
+
+	assert body.className == "deh-hab"
+	assert body.style == {"height": "500px"}
+	assert getattr(body, "data-hab").startswith("<svg viewBox=")
+	assert legend.className == "deh-hab-legend"
+	# The band keys only mean something once there are rates to band by.
+	assert len(legend.children) == 5
+	_, banded = components.habitat_map(_square(), "Habitat of rec_b", antenna_miss={"1": 3.0})
+	assert len(banded.children) == 7

@@ -34,6 +34,8 @@
 	--k-dim: #3f7cc4;
 	--k-time: #11836a;
 	--k-measure: #b85a2b;
+	--tick-dark: #5b6b85;
+	--tick-light: #e2c27e;
 	--shadow: 0 1px 2px rgba(20, 32, 31, 0.06);
 	--shadow-lg: 0 1px 2px rgba(20, 32, 31, 0.05), 0 12px 32px rgba(20, 32, 31, 0.1);
 	--mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -61,6 +63,8 @@
 	--k-dim: #72a4e4;
 	--k-time: #45bd9e;
 	--k-measure: #e38c5f;
+	--tick-dark: #7d8fae;
+	--tick-light: #9b8347;
 	--shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 	--shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.45);
 }
@@ -233,6 +237,25 @@
 	font-weight: 500;
 }
 
+/* Mantine slides the switch thumb on inset-inline-start, which is laid out on the main
+   thread every frame, so the 40-90ms a dash control spends resolving its callback and
+   re-rendering the tree lands as dropped frames in the thumb's own 150ms slide. The same
+   slide written as a transform runs on the compositor, out of reach of anything the page
+   is doing. The offsets mirror mantine's: the thumb rests one padding in, and travels the
+   track less its own width and both paddings.
+   ponytail: couples to Switch.module.css; if an upgrade moves the thumb, delete this block
+   and the switch goes back to the correct but stuttering slide. */
+.mantine-Switch-root .mantine-Switch-thumb {
+	inset-inline-start: var(--switch-track-label-padding);
+	transition: transform 150ms ease;
+}
+
+.mantine-Switch-root .mantine-Switch-input:checked + * > .mantine-Switch-thumb {
+	transform: translateX(
+		calc(var(--switch-width) - var(--switch-thumb-size) - 2 * var(--switch-track-label-padding))
+	);
+}
+
 @media (min-width: 48em) {
 	[data-nav-collapsed] .deh-brand {
 		justify-content: center;
@@ -265,6 +288,14 @@
 .mantine-AppShell-root .mantine-AppShell-main {
 	padding-top: calc(var(--app-shell-header-offset, 0rem) + 20px);
 	padding-bottom: 28px;
+}
+
+/* Mantine animates the main area's padding but only the navbar's transform, so collapsing
+   snapped the sidebar to its new width while the content slid over to meet it. Width joins
+   the same transition - duration and easing come from the shell's own variables. Two
+   classes because mantine's own rule is injected after this file. */
+.mantine-AppShell-root .mantine-AppShell-navbar {
+	transition-property: transform, top, height, width;
 }
 
 code,
@@ -866,6 +897,21 @@ code {
 	border-right: 1px solid var(--line);
 }
 
+/* Holds the preview at a fixed size and clips it; deh.fitPreview scales the graph to
+   fit, so an export wider than this box shrinks instead of running into the form. */
+.deh-export-stage {
+	position: relative;
+	flex: 1;
+	min-height: 360px;
+	overflow: hidden;
+}
+
+.deh-export-stage > .dash-graph {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+}
+
 .deh-export-form {
 	display: flex;
 	flex-direction: column;
@@ -1039,18 +1085,55 @@ code {
 
 .deh-controls {
 	position: sticky;
-	top: 0;
+	top: var(--app-shell-header-offset, 0rem);
 	z-index: 20;
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 12px 20px;
 	margin: 0 0 12px;
-	padding: 12px 16px;
+	/* The deeper bottom padding is the strip the bar leaves showing when it tucks away,
+	   so it is kept clear of the slider mark labels below. */
+	padding: 12px 16px 16px;
 	border-radius: 12px;
 	background: color-mix(in srgb, var(--ground) 92%, transparent);
 	backdrop-filter: blur(8px);
 	border: 1px solid var(--line);
+	transition: transform 0.18s ease;
+	/* How far down the slider's own box its track starts, which the hours band is placed
+	   against: the two have to move together. */
+	--slider-pad: 7px;
+}
+
+/* Once the page has scrolled past the head, the bar slides up under the fixed header and
+   leaves a strip behind: the plots get the height back, and moving the cursor up to the
+   header crosses the strip, which brings the whole bar back down. */
+.deh-controls.is-tucked {
+	transform: translateY(calc(-100% + 10px));
+	box-shadow: var(--shadow);
+}
+
+.deh-controls.is-tucked:hover,
+.deh-controls.is-tucked:focus-within {
+	transform: none;
+	box-shadow: var(--shadow-lg);
+}
+
+.deh-controls.is-tucked::after {
+	content: "";
+	position: absolute;
+	left: 50%;
+	bottom: 3px;
+	width: 44px;
+	height: 3px;
+	margin-left: -22px;
+	border-radius: 2px;
+	background: var(--line-strong);
+}
+
+.deh-controls.is-tucked:hover::after,
+.deh-controls.is-tucked:focus-within::after {
+	display: none;
 }
 
 .deh-ctl {
@@ -1058,6 +1141,56 @@ code {
 	align-items: center;
 	gap: 10px;
 	min-width: 0;
+}
+
+/* The hours slider reads as a day: its band says which stretch is dark and which light,
+   and dims a phase the chips have turned off. The window slider keeps the plain layout. */
+.deh-range-wrap {
+	flex: 1 1 260px;
+	min-width: 220px;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	/* An end mark's label is centred on the mark and so hangs past the track; the inset keeps
+	   it in its own column instead of running into the next slider's first label. */
+	padding: 0 18px;
+}
+
+.deh-range-top {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	font-size: 12.5px;
+	color: var(--ink-2);
+	font-variant-numeric: tabular-nums;
+}
+
+.deh-range {
+	position: relative;
+}
+
+/* The track is 6px tall, so the band takes the next free strip below it; the mark labels
+   are pushed clear of it rather than the band being squeezed against them. */
+.deh-band {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(var(--slider-pad) + 8px);
+	height: 3px;
+	border-radius: 2px;
+	pointer-events: none;
+}
+
+.deh-controls .mantine-RangeSlider-markLabel {
+	margin-top: 6px;
+}
+
+/* Mantine anchors the mark labels to the track and hangs them out of the slider's box, so
+   they spill past the bar's border unless the bar reserves the room itself: 30px under the
+   track for the labels, and a matching strip above the track, which is what puts the track
+   on the bar's centre line with the chips and the selects. */
+.deh-controls .mantine-RangeSlider-root {
+	padding: var(--slider-pad) 0 33px;
 }
 
 .deh-ctl-label {
@@ -1473,7 +1606,6 @@ code {
 .deh-builder {
 	display: grid;
 	grid-template-columns: 236px minmax(0, 1fr) 236px;
-	align-items: start;
 	gap: 14px;
 }
 
@@ -1612,7 +1744,6 @@ code {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 	gap: 8px;
-	margin-bottom: 12px;
 }
 
 .deh-shelf {
@@ -1674,12 +1805,18 @@ code {
 .deh-canvas {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 12px;
 	min-width: 0;
+}
+
+/* The alerts slot is an always-present div; empty it would still earn a column gap. */
+.deh-canvas > :empty {
+	display: none;
 }
 
 .deh-graph-card {
 	display: flex;
+	flex: 1;
 	flex-direction: column;
 	min-height: 440px;
 	padding: 8px;
@@ -1781,4 +1918,167 @@ code {
 		grid-column: auto;
 		grid-row: auto;
 	}
+}
+
+/* ------------------------------------------------------------- habitat map */
+/* A definite height, like the fixed height a plot card gives its dcc.Graph. With `flex: 1`
+   the height stayed indefinite, so the svg below resolved against the card's WIDTH and then
+   stretched the grid row to match - the map grew with the window. */
+.deh-hab {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: var(--h, 300px);
+	padding: 6px 14px 0;
+}
+
+/* Sized off the card's height, never the window's width: `width: 100%` let the map grow
+   with the viewport, while a plot card keeps one fixed height and only reflows when narrow. */
+.deh-hab svg {
+	display: block;
+	width: auto;
+	height: 100%;
+	max-width: 100%;
+	overflow: visible;
+}
+
+.deh-hab-tube {
+	fill: none;
+	stroke: var(--line-strong);
+	stroke-width: 26;
+	stroke-linecap: round;
+}
+
+.deh-hab-tube-in {
+	fill: none;
+	stroke: var(--sunken);
+	stroke-width: 22;
+	stroke-linecap: round;
+}
+
+.deh-hab-tunnel {
+	fill: var(--ink-3);
+	font: 600 11px var(--mono);
+	text-anchor: middle;
+}
+
+.deh-hab-cage rect {
+	fill: var(--surface);
+	stroke: var(--line-strong);
+	stroke-width: 1.5;
+}
+
+.deh-hab-cage.social rect {
+	fill: var(--accent-soft);
+	stroke: var(--accent);
+}
+
+.deh-hab-cage.nonsocial rect {
+	fill: var(--sunken);
+}
+
+/* No family: SVG text inherits the body font the Mantine theme sets. */
+.deh-hab-name {
+	fill: var(--ink);
+	font-weight: 600;
+	font-size: 14px;
+	text-anchor: middle;
+}
+
+.deh-hab-type {
+	fill: var(--ink-3);
+	font: 11px var(--mono);
+	text-anchor: middle;
+}
+
+.deh-hab-ant circle {
+	fill: var(--surface);
+	stroke: var(--accent);
+	stroke-width: 1.5;
+}
+
+.deh-hab-ant text {
+	fill: var(--accent-text);
+	font: 600 11px var(--mono);
+	text-anchor: middle;
+	dominant-baseline: central;
+}
+
+.deh-hab-ant.warn circle {
+	fill: var(--warn-soft);
+	stroke: var(--warn);
+	stroke-width: 2.5;
+}
+
+.deh-hab-ant.warn text {
+	fill: var(--warn);
+}
+
+.deh-hab-ant.bad circle {
+	fill: var(--bad-soft);
+	stroke: var(--bad);
+	stroke-width: 2.5;
+}
+
+.deh-hab-ant.bad text {
+	fill: var(--bad);
+}
+
+.deh-hab-legend {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 14px;
+	padding: 8px 16px 0;
+	color: var(--ink-3);
+	font-size: 12px;
+}
+
+.deh-hab-legend span {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.deh-hab-key {
+	flex: none;
+	width: 15px;
+	height: 12px;
+	border: 1.5px solid var(--line-strong);
+	border-radius: 4px;
+	background: var(--surface);
+}
+
+.deh-hab-key.social {
+	border-color: var(--accent);
+	background: var(--accent-soft);
+}
+
+.deh-hab-key.nonsocial {
+	background: var(--sunken);
+}
+
+.deh-hab-key.tunnel {
+	width: 20px;
+	height: 9px;
+	border-radius: 999px;
+	background: var(--sunken);
+}
+
+.deh-hab-key.ant {
+	width: 13px;
+	height: 13px;
+	border-color: var(--accent);
+	border-radius: 50%;
+}
+
+/* After .ant, so an antenna key in a band wins on equal specificity. */
+.deh-hab-key.warn {
+	border-color: var(--warn);
+	background: var(--warn-soft);
+}
+
+.deh-hab-key.bad {
+	border-color: var(--bad);
+	background: var(--bad-soft);
 }

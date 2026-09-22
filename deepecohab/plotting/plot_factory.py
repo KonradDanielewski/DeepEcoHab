@@ -8,9 +8,10 @@ import plotly.graph_objects as go
 import polars as pl
 from plotly.subplots import make_subplots
 
+from deepecohab.core.data_model import Layout
 from deepecohab.plotting.animals import ColorMapping, collapse_legend
 from deepecohab.plotting.prepare import Heatmap
-from deepecohab.plotting.theme import AURORA, sample_palette
+from deepecohab.plotting.theme import AURORA, COLORBAR, PHASE_BAND, sample_palette
 
 
 def _tick_labels(names: list[str]) -> list[str]:
@@ -18,40 +19,126 @@ def _tick_labels(names: list[str]) -> list[str]:
 	return [name.capitalize().replace("_", " ") for name in names]
 
 
+def _band_segment(
+	figure: go.Figure,
+	phase: str,
+	x0: float,
+	x1: float,
+	*,
+	xref: str = "x",
+	y: tuple[float, float] = (1.01, 1.035),
+) -> None:
+	"""One stretch of the phase band, in the light theme's colour for ``phase``."""
+	colors = PHASE_BAND["light"]
+
+	figure.add_shape(
+		type="rect",
+		name=f"phase-band-{phase}",
+		xref=xref,
+		yref="paper",
+		x0=x0,
+		x1=x1,
+		y0=y[0],
+		y1=y[1],
+		fillcolor=colors["dark_phase"] if phase == "dark_phase" else colors["light_phase"],
+		line_width=0,
+		layer="above",
+	)
+
+
+def _phase_band(
+	figure: go.Figure,
+	phases: dict[str, float],
+	switch: float,
+	span: tuple[float, float],
+	*,
+	xref: str = "x",
+	y: tuple[float, float] = (1.01, 1.035),
+) -> None:
+	"""Draw the phases as a thin two-colour band along an hour axis.
+
+	The same band the control bar's hours slider carries under its track, so a phase
+	reads the same whether you are choosing hours or looking at a plot - which is what
+	the "DARK" / "LIGHT" captions it replaces cost a caption's worth of space to say.
+
+	A shape holds a literal colour, so these are drawn in the light theme's pair and
+	repainted by :func:`~deepecohab.plotting.theme.apply` for the other one.
+
+	Args:
+		phases: phase onsets in hours since the first phase's onset.
+		switch: where the second phase starts, in the x axis's own units. Clamped into
+			``span``, so a narrowed hours window leaves whichever phase it kept.
+		span: first and last x, so the band runs the full width of the panel.
+		xref: which x axis to place it on, for a figure with more than one.
+		y: the band's edges in paper coordinates. Above the panel by default; a faceted
+			figure passes a pair below it, where its shared axis is.
+	"""
+	order = sorted(phases, key=lambda name: phases[name])
+	edges = [span[0], min(max(switch, span[0]), span[1]), span[1]] if len(order) > 1 else list(span)
+
+	for name, x0, x1 in zip(order, edges[:-1], edges[1:], strict=True):
+		_band_segment(figure, name, x0, x1, xref=xref, y=y)
+
+
 def _phase_markers(figure: go.Figure, phases: dict[str, float]) -> None:
 	"""Mark the phase switch on an hour axis that begins at the first phase's onset.
 
 	A single thin line, styled by the active template's shape defaults so it reads
-	on either ground without competing with the Phase-coloured traces.
+	on either ground without competing with the Phase-coloured traces, and the phase
+	band above the panel naming which side is which.
 	"""
 	switch = max(phases.values())
+	hours = [hour for trace in figure.data for hour in (trace.x if trace.x is not None else ())]
 
 	figure.add_vline(x=switch, line_width=1.5)
+	# From the data rather than the full day: an hours window narrows these axes.
+	if hours:
+		_phase_band(figure, phases, switch, (min(hours) - 0.5, max(hours) + 0.5))
+
 	figure.update_layout(xaxis={"dtick": 1})
 
 
-#: Where a span's label sits, as an (x-anchor, y, y-anchor) triple - the annotation
-#: equivalent of the shape-label textposition it replaces.
-_CORNERS: tuple[tuple[float, str], ...] = ((1.0, "top"), (0.0, "bottom"), (0.5, "middle"))
+#: Where a span's label sits inside its box.
+_CORNERS: tuple[str, ...] = ("top left", "bottom left", "middle left")
 
 
-def _event_spans(figure: go.Figure, spans: pl.DataFrame, facets: list[str] | None = None) -> None:
+def _pin_bin_axis(figure: go.Figure, bins: pl.Series) -> None:
+	"""Hold a binned x axis to its bins, half a bin either side.
+
+	Autorange counts what :func:`_event_spans` draws: a span reaches half a bin past the
+	outermost bin, so the axis would run past the data on its own. Pinning the range
+	first is also what the bin columns want - a band drawn on the edge bin would
+	otherwise push the axis out the same way.
+	"""
+	figure.update_xaxes(range=[(bins - 0.5).min(), (bins + 0.5).max()])
+
+
+def _event_spans(
+	figure: go.Figure,
+	spans: pl.DataFrame,
+	facets: list[str] | None = None,
+	*,
+	outline: bool = False,
+) -> None:
 	"""Shade where each event falls on a time axis, coloured and labelled by event.
 
 	An event's colour comes from its place among the recording's events, so it is the
 	same on every plot. On a faceted figure - one panel per cage - a span with a position
 	is drawn only on that cage's panel; without panels it is labelled with its cages
 	instead. The faceted figures are heatmaps, where a fill would tint the colour scale,
-	so there the spans are outlined.
+	so there the spans are outlined - as they are wherever ``outline`` asks for it, which
+	is any plot whose traces would otherwise paint over a span drawn behind them.
 
-	The span itself is a shape, behind the data; its label is a separate annotation
-	named ``event-label``, which plotly always draws in front of traces, at the same
-	corner a shape label would have used.
+	The span itself is a shape; its label rides a second, invisible shape named
+	``event-label``. A shape's label is clipped to the plot area - an annotation's text
+	is not, so a long label ran out over the legend - and this twin is always drawn
+	above the data, where a filled span itself has to stay behind it.
 	"""
 	if spans.is_empty():
 		return
 
 	palette = px.colors.qualitative.Pastel
+	outline = outline or facets is not None
 
 	if facets is None:
 		# With no panel per cage, bouts of one event in different cages share a span.
@@ -69,49 +156,39 @@ def _event_spans(figure: go.Figure, spans: pl.DataFrame, facets: list[str] | Non
 	for span in spans.with_columns(index=pl.col("event").to_physical()).iter_rows(named=True):
 		index = span["index"]
 		color = palette[index % len(palette)]
-		# Overlapping events would stack their labels, so each event takes its own corner.
-		y, yanchor = _CORNERS[index % len(_CORNERS)]
 
-		if facets is None:
-			text = f"{span['event']} ({span['position']})" if span["position"] else span["event"]
+		text = span["event"]
+		if facets is None and span["position"]:
+			text = f"{text} ({span['position']})"
+
+		if outline:
+			font = {"size": 10, "color": color}
+			shape_style = {"line_color": color, "line_width": 2, "layer": "above"}
+		else:
 			font = {"size": 10}
 			shape_style = {
 				"fillcolor": color.replace("rgb", "rgba").replace(")", ", 0.25)"),
 				"line_width": 0,
 				"layer": "below",
 			}
-		else:
-			text = span["event"]
-			font = {"size": 10, "color": color}
-			shape_style = {"line_color": color, "line_width": 2, "layer": "above"}
+		# Overlapping events would stack their labels, so each event takes its own corner.
+		label = {"text": text, "textposition": _CORNERS[index % len(_CORNERS)], "font": font}
 
 		for xaxis, yaxis, facet in panels:
 			if facet is not None and span["position"] not in (None, facet):
 				continue
 
-			figure.add_shape(
-				type="rect",
-				name="event-span",
-				xref=xaxis,
-				yref=f"{yaxis} domain",
-				x0=span["x0"],
-				x1=span["x1"],
-				y0=0,
-				y1=1,
-				**shape_style,
-			)
-			figure.add_annotation(
-				name="event-label",
-				x=span["x0"],
-				y=y,
-				xref=xaxis,
-				yref=f"{yaxis} domain",
-				xanchor="left",
-				yanchor=yanchor,
-				text=text,
-				showarrow=False,
-				font=font,
-			)
+			box = {
+				"type": "rect",
+				"xref": xaxis,
+				"yref": f"{yaxis} domain",
+				"x0": span["x0"],
+				"x1": span["x1"],
+				"y0": 0,
+				"y1": 1,
+			}
+			figure.add_shape(name="event-span", **box, **shape_style)
+			figure.add_shape(name="event-label", **box, line_width=0, layer="above", label=label)
 
 
 def _faceted_heatmap(
@@ -127,23 +204,24 @@ def _faceted_heatmap(
 	"""Draw one heatmap panel per facet, in reading order.
 
 	Stacked one per row by default, sharing the x axis - the panels are then a day or
-	an hour against animals, so lining their columns up matters. ``grid`` instead packs
-	the panels into a roughly square grid, for panels - like a pairwise matrix - with no
-	axis to share across facets. Every facet has the same labels, so only the outer
-	panels carry tick labels.
+	an hour against animals, so lining their columns up matters. ``grid`` instead lays the
+	panels out in a row, for panels - like a pairwise matrix - with no axis to share across
+	facets; a row of four cages fits a full-width card without the dead space a square
+	panel leaves when its card is taller than it is wide. Every facet has the same labels,
+	so only the outer panels carry tick labels.
 
 	A single shared colour axis keeps the panels comparable, which is also why these
 	figures offer one scope - cages or tunnels - at a time (§ Cage / tunnel scope).
 	"""
 	n = len(heatmap.facets)
-	cols = math.ceil(math.sqrt(n)) if grid else 1
+	cols = n if grid else 1
 	rows = math.ceil(n / cols)
 	figure = make_subplots(
 		rows=rows,
 		cols=cols,
 		shared_xaxes=not grid,
 		vertical_spacing=min(0.12, 1 / max(rows - 1, 1)),
-		horizontal_spacing=0.1,
+		horizontal_spacing=0.06,
 		subplot_titles=[f"<b>{name.capitalize().replace('_', ' ')}</b>" for name in heatmap.facets],
 	)
 
@@ -194,6 +272,10 @@ def _faceted_heatmap(
 		# and toward the colour bar rather than leaving a gap before it.
 		figure.update_xaxes(constrain="domain", constraintoward="right")
 		figure.update_yaxes(constrain="domain", constraintoward="top")
+		# The shrink leaves the bottom of the plotting area to the tick labels of the panel
+		# the shared bar is pushed up against, so it stops short of them rather than running
+		# the full height the theme's bar would (§ COLORBAR).
+		figure.update_coloraxes(colorbar={"thickness": 0.009})
 
 	return figure
 
@@ -418,6 +500,7 @@ def plot_mean_line_per_hour(
 	figure.update_layout(title=title, legend={"title": mapping.legend_title, "tracegroupgap": 0})
 	figure.update_yaxes(title=y_axes_label)
 	figure.update_xaxes(title="<b>Hour since phase onset</b>")
+	_pin_bin_axis(figure, frame["hour"])
 	_phase_markers(figure, phases)
 	_event_spans(figure, spans)
 
@@ -515,6 +598,7 @@ def plot_ranking_stability(
 		)
 
 	collapse_legend(figure, mapping)
+	_pin_bin_axis(figure, frame[granularity])
 	_event_spans(figure, spans)
 
 	return figure
@@ -993,5 +1077,182 @@ def plot_timeline(
 		colorway=list(colors.values()),
 	)
 	_event_spans(figure, spans)
+
+	return figure
+
+
+def plot_actogram(heatmap: Heatmap, cells: pl.DataFrame, phases: dict[str, float]) -> go.Figure:
+	"""Plots cohort visits as a day-by-hour raster, phase-banded and event-marked."""
+	hours = [int(hour) for hour in heatmap.x]
+	figure = go.Figure(
+		go.Heatmap(
+			z=heatmap.values[0],
+			x=hours,
+			y=heatmap.y,
+			colorscale=AURORA,
+			xgap=1,
+			ygap=2,
+			hovertemplate="%{y}, hour %{x}<br>%{z} visits<extra></extra>",
+			colorbar={**COLORBAR, "title": {"text": heatmap.label, "side": "right"}},
+		)
+	)
+
+	switch = max(phases.values())
+	figure.add_vline(x=switch - 0.5, line_width=1.5)
+	_phase_band(figure, phases, switch - 0.5, (hours[0] - 0.5, hours[-1] + 0.5))
+
+	palette = px.colors.qualitative.Pastel
+	rows = {label: index for index, label in enumerate(heatmap.y)}
+	for cell in cells.iter_rows(named=True):
+		row = rows.get(f"Day {cell['day']}")
+		if row is None or cell["hour"] not in hours:
+			continue
+
+		figure.add_shape(
+			type="rect",
+			name="event-span",
+			x0=cell["hour"] - 0.5,
+			x1=cell["hour"] + 0.5,
+			y0=row - 0.5,
+			y1=row + 0.5,
+			line={"width": 1.5, "color": palette[cell["index"] % len(palette)]},
+			fillcolor="rgba(0,0,0,0)",
+			layer="above",
+		)
+
+	figure.update_layout(
+		title="<b>Recording pulse</b>",
+		# Hour 0 is the phase onset, not an origin, so it takes no zero line of its own.
+		xaxis={
+			"title": {"text": "<b>Hour since phase onset</b>"},
+			# A cell is drawn centred on its hour, so a tick at the hour itself lands
+			# mid-cell; these sit on the left edge, where the hour begins.
+			"tickvals": [hour - 0.5 for hour in hours[::2]],
+			"ticktext": [str(hour) for hour in hours[::2]],
+			"showgrid": False,
+			"zeroline": False,
+		},
+		# Day 1 at the top, the way a recording is read.
+		yaxis={"autorange": "reversed", "showgrid": False},
+	)
+
+	return figure
+
+
+def plot_occupancy_ribbon(
+	frame: pl.DataFrame,
+	order: list[str],
+	colors: dict[str, str],
+	granularity: str,
+	spans: pl.DataFrame,
+) -> go.Figure:
+	"""Plots the share of cohort time each place held, stacked to 100% per window unit."""
+	figure = go.Figure()
+
+	for place in order:
+		rows = frame.filter(pl.col("place") == place).sort(granularity)
+		if rows.is_empty():
+			continue
+
+		label = place.capitalize().replace("_", " ")
+		trace = go.Scatter(
+			x=rows[granularity].to_list(),
+			y=rows["pct"].to_list(),
+			name=label,
+			mode="lines",
+			stackgroup="one",
+			line={"width": 0.5, "color": colors[place], "shape": "spline", "smoothing": 0.8},
+			fillcolor=colors[place],
+			hovertemplate=f"{label}<br>%{{y:.1f}}% of cohort time<extra></extra>",
+		)
+		if place == Layout.UNDEFINED:
+			# Hatched, not another flat band: this is animal-time with no place at all,
+			# and it should not read as a fifth cage.
+			trace.update(fillpattern={"shape": "/", "size": 6, "solidity": 0.3})
+		figure.add_trace(trace)
+
+	if granularity == "phase_count":
+		# A phase bin is one phase, so the band names each column rather than marking a
+		# single switch - the same two colours the hours slider and the pulse carry.
+		bins = frame.select(granularity, "phase").unique().sort(granularity)
+		for row in bins.iter_rows(named=True):
+			_band_segment(figure, row["phase"], row[granularity] - 0.5, row[granularity] + 0.5)
+
+	_pin_bin_axis(figure, frame[granularity])
+
+	# The bands stack to 100%, so a span behind them would only show through the
+	# translucent tunnel and undefined ones at the top.
+	_event_spans(figure, spans, outline=True)
+	label = "Phase" if granularity == "phase_count" else "Day"
+	figure.update_layout(
+		title="<b>Habitat occupancy</b>",
+		xaxis={"title": {"text": f"<b>{label}</b>"}, "dtick": 1, "showgrid": False},
+		yaxis={"title": {"text": "<b>Share of cohort time [%]</b>"}, "range": [0, 100]},
+		hovermode="x unified",
+	)
+
+	return figure
+
+
+def plot_phenotype_map(frame: pl.DataFrame) -> go.Figure:
+	"""Plots one marker per animal: locomotion, sociality, chases won and rating."""
+	won = frame["won"].to_list()
+	figure = go.Figure(
+		go.Scatter(
+			x=frame["visits"].to_list(),
+			y=frame["gregariousness"].to_list(),
+			mode="markers+text",
+			text=frame["subject_name"].to_list(),
+			textposition="top center",
+			textfont={"size": 10},
+			# The topmost animal's label sits above the axis, so let it draw there.
+			cliponaxis=False,
+			customdata=frame.select("subject_name", "won", "ordinal").to_numpy(),
+			marker={
+				"size": won,
+				"sizemode": "area",
+				# The biggest marker lands at 44px across whatever the cohort's range.
+				"sizeref": 2 * max([*won, 1]) / 44**2,
+				"sizemin": 6,
+				"color": frame["ordinal"].to_list(),
+				"colorscale": AURORA,
+				"line": {"width": 1, "color": "rgba(0,0,0,0.25)"},
+				"colorbar": {**COLORBAR, "title": {"text": "<b>Dominance</b>", "side": "right"}},
+			},
+			hovertemplate=(
+				"<b>%{customdata[0]}</b><br>%{x} visits<br>"
+				"%{y:.0%} of cage time with company<br>"
+				"%{customdata[1]} chases won · rating %{customdata[2]:.1f}<extra></extra>"
+			),
+		)
+	)
+
+	# Who tops the hierarchy is the one thing to read off this card without hovering, and
+	# where they sit against the cohort is what makes their position mean something.
+	top = frame.sort("ordinal", nulls_last=True).row(-1, named=True)
+	if top["gregariousness"] is not None:
+		figure.add_annotation(
+			x=top["visits"],
+			y=top["gregariousness"],
+			ax=-64,
+			ay=44,
+			text=(
+				"top of the hierarchy:<br>"
+				f"{'most' if top['visits'] >= frame['visits'].median() else 'least'} active, "
+				f"{'more' if top['gregariousness'] >= frame['gregariousness'].median() else 'less'}"
+				" social than median"
+			),
+			showarrow=True,
+			arrowhead=0,
+			arrowwidth=1,
+			font={"size": 10},
+			opacity=0.8,
+		)
+
+	figure.update_layout(
+		title="<b>Cohort phenotype map</b>",
+		xaxis={"title": {"text": "<b>Visits (locomotion)</b>"}},
+		yaxis={"title": {"text": "<b>Time in company [%]</b>"}, "tickformat": ".0%"},
+	)
 
 	return figure

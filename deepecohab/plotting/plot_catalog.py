@@ -4,11 +4,11 @@ from typing import Literal
 import plotly.graph_objects as go
 import polars as pl
 
+from deepecohab.core.data_model import Layout
 from deepecohab.plotting import durations, plot_factory, prepare
 from deepecohab.plotting.animals import (
 	available_attributes,
 	mean_by_group,
-	order_by_attribute,
 	resolve_colors,
 )
 from deepecohab.plotting.context import (
@@ -24,12 +24,10 @@ from deepecohab.plotting.theme import sample_palette
 
 PHASES = ("light_phase", "dark_phase")
 BY_COHORT = {"color_by": available_attributes}
-ORDERED_BY_COHORT = {"order_by": available_attributes}
 #: ``Timeline.phases`` need not carry both keys, so a plot's phase_type choices are
 #: resolved from the cohort's own phases rather than assumed to always be the pair.
 PHASE_TYPE = {"phase_type": lambda context: list(context.phases)}
 BY_COHORT_AND_PHASE = {**BY_COHORT, **PHASE_TYPE}
-ORDERED_BY_COHORT_AND_PHASE = {**ORDERED_BY_COHORT, **PHASE_TYPE}
 
 #: The hourly-line builder each aggregation draws with.
 LINE_PER_HOUR = {
@@ -179,7 +177,6 @@ def cage_preference(
 	"cage-preference-evolution",
 	title="Position preference over time",
 	requires=("activity_df", "animals"),
-	dynamic_choices=ORDERED_BY_COHORT,
 )
 def cage_preference_evolution(
 	context: PlotContext,
@@ -188,7 +185,6 @@ def cage_preference_evolution(
 	granularity: Granularity = "day",
 	agg: Literal["sum", "mean"] = "sum",
 	scope: FacetScope = "cages",
-	order_by: str = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
@@ -201,7 +197,7 @@ def cage_preference_evolution(
 		granularity,
 		granularity,
 		context.scope_positions(scope),
-		order_by_attribute(context, order_by),
+		context.animal_ids,
 		unit,
 		hours_range,
 	)
@@ -217,7 +213,6 @@ def cage_preference_evolution(
 	"time-per-cage-heatmap",
 	title="Time per position by hour",
 	requires=("activity_df", "animals"),
-	dynamic_choices=ORDERED_BY_COHORT,
 )
 def time_per_cage(
 	context: PlotContext,
@@ -226,7 +221,6 @@ def time_per_cage(
 	granularity: Granularity = "day",
 	agg: Literal["sum", "mean"] = "sum",
 	scope: FacetScope = "cages",
-	order_by: str = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
@@ -243,7 +237,7 @@ def time_per_cage(
 		granularity,
 		"hour",
 		context.scope_positions(scope),
-		order_by_attribute(context, order_by),
+		context.animal_ids,
 		unit,
 		hours_range,
 	)
@@ -402,7 +396,7 @@ def polar_metrics(
 	"chasings-heatmap",
 	title="Chasings matrix",
 	requires=("chasings_df", "animals"),
-	dynamic_choices=ORDERED_BY_COHORT_AND_PHASE,
+	dynamic_choices=PHASE_TYPE,
 )
 def chasings_heatmap(
 	context: PlotContext,
@@ -411,7 +405,6 @@ def chasings_heatmap(
 	granularity: Granularity = "day",
 	phase_type: Sequence[str] = PHASES,
 	agg: Literal["sum", "mean"] = "sum",
-	order_by: str = "animal_id",
 	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Chaser-versus-chased matrix of agonistic interactions.
@@ -419,7 +412,7 @@ def chasings_heatmap(
 	Columns are chasers and rows are chased.
 	"""
 	window = _window(context, days_range, granularity)
-	animals = order_by_attribute(context, order_by)
+	animals = context.animal_ids
 	matrix = prepare.prep_directed_heatmap(
 		context,
 		window,
@@ -443,7 +436,7 @@ def chasings_heatmap(
 	"tube-test-heatmap",
 	title="Tube-test matrix",
 	requires=("tube_test_df",),
-	dynamic_choices=ORDERED_BY_COHORT_AND_PHASE,
+	dynamic_choices=PHASE_TYPE,
 )
 def tube_test_heatmap(
 	context: PlotContext,
@@ -452,12 +445,11 @@ def tube_test_heatmap(
 	granularity: Granularity = "day",
 	phase_type: Sequence[str] = PHASES,
 	agg: Literal["sum", "mean"] = "sum",
-	order_by: str = "animal_id",
 	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
 	"""Winner-versus-loser matrix of spontaneous tube-test outcomes."""
 	window = _window(context, days_range, granularity)
-	animals = order_by_attribute(context, order_by)
+	animals = context.animal_ids
 	matrix = prepare.prep_directed_heatmap(
 		context,
 		window,
@@ -481,7 +473,7 @@ def tube_test_heatmap(
 	"sociability-heatmap",
 	title="Pairwise sociability",
 	requires=("pairwise_meetings", "animals"),
-	dynamic_choices=ORDERED_BY_COHORT_AND_PHASE,
+	dynamic_choices=PHASE_TYPE,
 )
 def pairwise_sociability(
 	context: PlotContext,
@@ -492,7 +484,6 @@ def pairwise_sociability(
 	agg: Literal["sum", "mean"] = "sum",
 	metric: Literal["time_together", "pairwise_encounters"] = "time_together",
 	scope: FacetScope = "cages",
-	order_by: str = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
@@ -506,7 +497,7 @@ def pairwise_sociability(
 		metric,
 		granularity,
 		context.scope_positions(scope),
-		order_by_attribute(context, order_by),
+		context.animal_ids,
 		unit,
 		hours_range,
 	)
@@ -518,7 +509,7 @@ def pairwise_sociability(
 	"cohort-heatmap",
 	title="Within-cohort sociability",
 	requires=("incohort_sociability", "pairwise_meetings", "phase_durations", "animals"),
-	dynamic_choices=ORDERED_BY_COHORT_AND_PHASE,
+	dynamic_choices=PHASE_TYPE,
 )
 def within_cohort_sociability(
 	context: PlotContext,
@@ -528,7 +519,6 @@ def within_cohort_sociability(
 	phase_type: Sequence[str] = PHASES,
 	metric: Literal["proportion_together", "sociability"] = "proportion_together",
 	scope: Scope = "all",
-	order_by: str = "animal_id",
 ) -> go.Figure:
 	"""Mean sociability index between every pair in the cohort.
 
@@ -536,7 +526,7 @@ def within_cohort_sociability(
 	a cage-only chance expectation, so it ignores the selection.
 	"""
 	window = _window(context, days_range, granularity)
-	animals = order_by_attribute(context, order_by)
+	animals = context.animal_ids
 	matrix = prepare.prep_within_cohort_sociability(
 		context, window, phase_type, metric, granularity, animals, scope
 	)
@@ -577,11 +567,10 @@ def social_stability(
 	"quality-heatmap",
 	title="Missed passes by animal and antenna",
 	requires=("recording_quality",),
-	dynamic_choices=ORDERED_BY_COHORT,
 )
-def quality_heatmap(context: PlotContext, *, order_by: str = "animal_id") -> go.Figure:
+def quality_heatmap(context: PlotContext) -> go.Figure:
 	"""Share of each animal's passes over each antenna that went unrecorded."""
-	animals = order_by_attribute(context, order_by)
+	animals = context.animal_ids
 	matrix, antennas = prepare.prep_quality_heatmap(context, animals)
 
 	return plot_factory.plot_quality_heatmap(matrix, animals, antennas)
@@ -648,3 +637,81 @@ def network_sociability(
 		connections, None, context.animal_ids, colors, "proportion_together", layout
 	)
 	return figure.update_layout(colorway=list(mapping.colors.values()))
+
+
+@PlotRegistry.register(
+	"recording-pulse",
+	title="Recording pulse",
+	requires=("activity_df",),
+)
+def recording_pulse(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	hours_range: tuple[int, int] | None = None,
+) -> go.Figure:
+	"""Cohort visits per hour, one row per experiment day, outlined where an event ran.
+
+	Rows stay experiment days whichever granularity the window is in, since a phase
+	covers half a day: a phase window narrows which hours of those days are drawn.
+	"""
+	window = _window(context, days_range, granularity)
+	heatmap, cells = prepare.prep_actogram(context, window, granularity, hours_range)
+
+	return plot_factory.plot_actogram(heatmap, cells, context.phases)
+
+
+@PlotRegistry.register(
+	"habitat-occupancy",
+	title="Habitat occupancy",
+	requires=("activity_df",),
+)
+def habitat_occupancy(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	hours_range: tuple[int, int] | None = None,
+) -> go.Figure:
+	"""Share of the cohort's time each place held, across the window.
+
+	Position preference collapsed over time answers where the group lived; this keeps
+	the time axis, so a cohort abandoning a cage shows up as the move it was.
+	"""
+	window = _window(context, days_range, granularity)
+	frame = prepare.prep_occupancy_share(context, window, granularity, hours_range)
+	spans = prepare.prep_event_spans(context, window, granularity, granularity, hours_range)
+
+	# Cages take the palette cage-preference gives them at cages-only scope, so a cage
+	# keeps one colour across the dashboard. Tunnels and undefined are not cages and stay
+	# out of the hue budget: one neutral band for transit, a hatched one for no place.
+	colors = dict(zip(context.cages, sample_palette(len(context.cages)), strict=True))
+	colors |= {"tunnels": "rgba(123, 137, 136, 0.5)", Layout.UNDEFINED: "rgba(123, 137, 136, 0.22)"}
+	order = [*context.cages, "tunnels", Layout.UNDEFINED]
+
+	return plot_factory.plot_occupancy_ribbon(frame, order, colors, granularity, spans)
+
+
+@PlotRegistry.register(
+	"cohort-phenotype",
+	title="Cohort phenotype map",
+	requires=("activity_df", "chasings_df", "ranking", "animals"),
+)
+def cohort_phenotype(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	hours_range: tuple[int, int] | None = None,
+) -> go.Figure:
+	"""One marker per animal, carrying locomotion, sociality, chasing and rank at once.
+
+	Marker area is chases won and colour the dominance rating, so an animal that sits
+	apart from the cloud is the one to open the Social or Dominance tab for.
+	"""
+	window = _window(context, days_range, granularity)
+
+	return plot_factory.plot_phenotype_map(
+		prepare.prep_phenotype(context, window, granularity, hours_range)
+	)

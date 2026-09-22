@@ -26,7 +26,7 @@ def quality(recording: Recording, reads: list[tuple[str, int]]) -> pl.DataFrame:
 	recording.data = pl.LazyFrame(
 		{
 			"datetime": [start + dt.timedelta(seconds=10 * index) for index in range(len(reads))],
-			"antenna": [antenna for _, antenna in reads],
+			"antenna": [str(antenna) for _, antenna in reads],
 			"time_under": [dt.timedelta(seconds=1)] * len(reads),
 			"animal_id": [animal for animal, _ in reads],
 		},
@@ -38,7 +38,7 @@ def quality(recording: Recording, reads: list[tuple[str, int]]) -> pl.DataFrame:
 def cell(result: pl.DataFrame, animal: str, antenna: int) -> dict:
 	"""The one row for an animal and antenna."""
 	return result.filter(
-		(pl.col("animal_id") == animal) & (pl.col("antenna") == antenna)
+		(pl.col("animal_id") == animal) & (pl.col("antenna") == str(antenna))
 	).to_dicts()[0]
 
 
@@ -81,7 +81,7 @@ def test_missed_read_is_charged_to_the_skipped_antenna():
 
 	assert cell(result, "A", 3) == {
 		"animal_id": "A",
-		"antenna": 3,
+		"antenna": "3",
 		"detected": 0,
 		"missed": 1,
 		"miss_rate": 100.0,
@@ -116,6 +116,6 @@ def test_grid_covers_every_animal_and_antenna():
 
 	assert result.height == 3 * 4
 	assert set(result["animal_id"].cast(pl.String)) == set(recording.cohort.animal_tags)
-	assert set(result["antenna"]) == {1, 2, 3, 4}
+	assert set(result["antenna"].cast(pl.String)) == {"1", "2", "3", "4"}
 	assert result.null_count().sum_horizontal().item() == 0
 	assert result.filter(pl.col("animal_id") == "C")["miss_rate"].sum() == 0

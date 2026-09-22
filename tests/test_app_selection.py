@@ -16,8 +16,8 @@ CLIENTSIDE_JS = Path(__file__).parent.parent / "deepecohab" / "app" / "assets" /
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
 
 _HARNESS = """
-global.window = {};
-// The file wires a MutationObserver to document.body on load; node has no DOM.
+global.window = {addEventListener: () => {}};
+// The file wires a MutationObserver and a scroll listener on load; node has no DOM.
 global.document = {body: {}, querySelectorAll: () => []};
 global.MutationObserver = class {
 	observe() {}

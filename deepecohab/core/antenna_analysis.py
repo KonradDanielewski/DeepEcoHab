@@ -379,8 +379,7 @@ def calculate_pairwise_meetings(recording: Recording, params: AnalysisParams) ->
 	question for real data.
 
 	Returns:
-		``time_together`` in seconds and ``pairwise_encounters`` per pair, position and
-		hour.
+		``time_together`` and ``pairwise_encounters`` per pair, position and hour.
 	"""
 	padded = recording.load_results("padded_df")
 

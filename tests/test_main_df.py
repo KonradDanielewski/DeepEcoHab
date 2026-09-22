@@ -13,7 +13,9 @@ monkeypatched as elsewhere.
 import datetime as dt
 
 import polars as pl
+import pytest
 import strategies
+from pydantic import ValidationError
 
 from deepecohab.core import recording_pipeline
 from deepecohab.core.data_model import AnalysisParams, Layout, Recording
@@ -36,7 +38,7 @@ def recording_with(rows: list[tuple[str, int, dt.datetime]], **overrides) -> Rec
 		[
 			{
 				"datetime": moment,
-				"antenna": antenna,
+				"antenna": str(antenna),
 				"time_under": dt.timedelta(milliseconds=100),
 				"animal_id": animal,
 			}
@@ -114,7 +116,7 @@ def test_cap_row_resolves_to_where_the_animal_is_not_where_it_was():
 
 	assert last_real["position"] == "c1_c2"
 	assert carried["position"] == "cage_2"
-	assert carried["antenna"] == 2
+	assert carried["antenna"] == "2"
 
 
 def test_silence_inside_the_limit_leaves_no_undefined_tail():
@@ -340,3 +342,34 @@ def test_no_piece_starts_before_the_analysed_window(monkeypatch):
 
 	assert (pieces["datetime"] - pieces["time_spent"]).min() == start
 	assert pieces["phase_count"].null_count() == 0
+
+
+# --- the antennas the layout names -------------------------------------------
+# recording_with() attaches its frame after validation, so these go through
+# model_validate to reach the check a real config load runs.
+
+
+def loaded_with(antennas: list[str]) -> Recording:
+	"""A recording whose data reads ``antennas``, validated as a config load would."""
+	recording = strategies.analysis_recording(animal_ids=["A"], **WINDOW)
+	frame = pl.LazyFrame(
+		{
+			"datetime": [at(2023, 5, 24, 0, index) for index in range(len(antennas))],
+			"antenna": antennas,
+			"time_under": [dt.timedelta(milliseconds=100)] * len(antennas),
+			"animal_id": ["A"] * len(antennas),
+		},
+		schema=recording.data_schema,
+	)
+	return Recording.model_validate({**recording.to_config(), "data": frame})
+
+
+def test_antenna_the_layout_does_not_name_is_rejected():
+	"""Data and layout naming antennas differently would read as every position undefined."""
+	with pytest.raises(ValidationError, match="does not name"):
+		loaded_with(["1", "9"])
+
+
+def test_antenna_that_never_read_is_not_an_error():
+	"""A dead antenna is a quality finding, not a broken config."""
+	assert loaded_with(["1", "2"]).data.collect().height == 2

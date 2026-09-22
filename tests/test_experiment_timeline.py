@@ -187,7 +187,7 @@ def test_config_loaded_recording_keeps_only_registrations_inside_its_window():
 	data = pl.LazyFrame(
 		{
 			"datetime": reads,
-			"antenna": [1] * len(reads),
+			"antenna": ["1"] * len(reads),
 			"time_under": [dt.timedelta(milliseconds=100)] * len(reads),
 			"animal_id": ["A"] * len(reads),
 		},
@@ -284,3 +284,23 @@ def test_every_label_the_data_can_produce_has_a_grid_row(phases):
 	)
 
 	assert grids.assign_phase_count(labelled, recording).collect()["phase_count"].null_count() == 0
+
+
+def test_origin_inside_a_dst_gap_moves_to_the_clock_that_follows_it():
+	"""An onset the spring-forward jump skips still has to name a real instant.
+
+	Warsaw goes 02:00 -> 03:00 on 2023-03-26, so an 02:30 onset that day is a wall
+	clock nobody ever saw; left as-is it reports the pre-jump offset and polars
+	refuses to build a grid from it.
+	"""
+	gap = {"light_phase": dt.time(2, 30), "dark_phase": dt.time(20, 0)}
+	line = timeline(at(2023, 3, 26, 12, 0), at(2023, 3, 28, 12, 0), gap, "light_phase")
+
+	assert line.experiment_start == dt.datetime(2023, 3, 26, 1, 30, tzinfo=dt.UTC)
+	assert line.experiment_start.utcoffset() == dt.timedelta(hours=2)
+	assert line.local_span[0] == line.experiment_start
+
+	recording = strategies.analysis_recording(
+		tz=TZ_NAME, start="2023-03-26 12:00:00", finish="2023-03-28 12:00:00", phases=gap
+	)
+	assert grids.build_time_grid(recording).collect().height > 0

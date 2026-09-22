@@ -109,13 +109,21 @@ LABELS: dict[str, str] = {
 FORMAT_BINDS: dict[str, str] = {
 	"title": "title",
 	"xaxis": "xaxis",
+	"xmin": "xaxis",
+	"xmax": "xaxis",
 	"yaxis": "yaxis",
+	"ymin": "yaxis",
+	"ymax": "yaxis",
 	"colorbar": "colorbar",
 	"cmin": "colorbar",
 	"cmax": "colorbar",
 	"colorscale": "coloraxis",
 	"palette": "colorway",
 }
+
+#: Format's numeric bounds, each upper one paired with the lower it must stay above.
+FORMAT_PAIRS: dict[str, str] = {"xmax": "xmin", "ymax": "ymin", "cmax": "cmin"}
+FORMAT_BOUNDS: frozenset[str] = frozenset(FORMAT_PAIRS) | frozenset(FORMAT_PAIRS.values())
 
 
 @dataclass(frozen=True)
@@ -661,6 +669,11 @@ def live_format(fmt: dict[str, Any], auto: dict[str, str | None]) -> dict[str, A
 	}
 
 
+def inverted(low: float | None, high: float | None) -> bool:
+	"""Whether a pair of Format bounds crosses, which draws nothing but the form's error."""
+	return low is not None and high is not None and low >= high
+
+
 def apply_format(figure: go.Figure, fmt: dict[str, Any]) -> dict[str, str | None]:
 	"""Draw the Format overrides that still hold onto ``figure``.
 
@@ -676,20 +689,29 @@ def apply_format(figure: go.Figure, fmt: dict[str, Any]) -> dict[str, str | None
 
 	if "title" in live:
 		figure.update_layout(title_text=live["title"])
-	for key, axes in (("xaxis", figure.select_xaxes), ("yaxis", figure.select_yaxes)):
-		if key in live:
+	for letter, axes in (("x", figure.select_xaxes), ("y", figure.select_yaxes)):
+		every = list(axes())
+		if f"{letter}axis" in live:
 			# Facets title only their outer axes; an untitled axis gets it on the first.
-			every = list(axes())
 			for axis in [axis for axis in every if axis.title.text] or every[:1]:
-				axis.title.text = live[key]
+				axis.title.text = live[f"{letter}axis"]
+		low, high = live.get(f"{letter}min"), live.get(f"{letter}max")
+		if (low is not None or high is not None) and not inverted(low, high):
+			# minallowed/maxallowed hold one bound while the data still sets the other; a
+			# figure that drew its own range hands it back to autorange for them to count.
+			for axis in every:
+				axis.update(
+					autorange=True,
+					range=None,
+					autorangeoptions={"minallowed": low, "maxallowed": high},
+				)
 	if "colorbar" in live:
 		figure.update_layout(coloraxis_colorbar_title_text=live["colorbar"])
 	if scale := theme.COLORSCALES.get(live.get("colorscale")):
 		figure.update_layout(coloraxis_colorscale=scale)
 
 	cmin, cmax = live.get("cmin"), live.get("cmax")
-	inverted = cmin is not None and cmax is not None and cmin >= cmax
-	if (cmin is not None or cmax is not None) and not inverted:
+	if (cmin is not None or cmax is not None) and not inverted(cmin, cmax):
 		# With cauto off plotly fills a missing bound from the data; on, it ignores both.
 		figure.update_layout(coloraxis={"cauto": False, "cmin": cmin, "cmax": cmax})
 

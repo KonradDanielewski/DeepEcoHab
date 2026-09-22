@@ -245,7 +245,7 @@ def _drop_unshelved_bins(state: dict) -> None:
 
 def _set_format(state: dict, key: str, value, auto: dict) -> dict:
 	"""``state`` with Format ``key`` set to ``value``; empty, or the automatic text, clears it."""
-	if key in ("cmin", "cmax"):
+	if key in figure.FORMAT_BOUNDS:
 		value = value if isinstance(value, int | float) else None
 	else:
 		value = (value or "").strip() or None
@@ -674,14 +674,12 @@ def _format_props(state: dict, auto: dict) -> dict[str, dict]:
 	categories the figure colours, which a palette must have colours enough for.
 	"""
 	live = figure.live_format(state.get("format", {}), auto)
-	cmin, cmax = live.get("cmin"), live.get("cmax")
-	inverted = cmin is not None and cmax is not None and cmin >= cmax
 	needed = auto["categories"]
 	picked = PALETTES.get(live.get("palette"), [])
 	props = {}
 	for key, bind in figure.FORMAT_BINDS.items():
 		element = auto[bind]
-		if key in ("cmin", "cmax"):
+		if key in figure.FORMAT_BOUNDS:
 			placeholder = "Auto"
 		elif key in _SELECTS:
 			placeholder = "Default"
@@ -693,8 +691,9 @@ def _format_props(state: dict, auto: dict) -> dict[str, dict]:
 			"disabled": element is None,
 			"error": None,
 		}
-	if inverted:
-		props["cmax"]["error"] = "Must be above min"
+	for high, low in figure.FORMAT_PAIRS.items():
+		if figure.inverted(live.get(low), live.get(high)):
+			props[high]["error"] = "Must be above min"
 	if 0 < len(picked) < needed:
 		props["palette"]["error"] = f"{len(picked)} colours for {needed} categories"
 	props["palette"]["data"] = [
@@ -836,13 +835,12 @@ def _dashboard(
 					html.Div(
 						[
 							html.P("Fields", className="deh-rail-title"),
-							dcc.Input(
+							dmc.TextInput(
 								id="builder-search",
-								type="search",
 								placeholder="Search fields",
-								debounce=True,
-								className="deh-input",
-								style={"width": "100%", "height": "34px"},
+								leftSection=icon("search", size=16),
+								debounce=150,
+								classNames={"input": "deh-input"},
 							),
 							html.Div(
 								_palette_children(fields, state["kind"], search),
@@ -865,8 +863,10 @@ def _dashboard(
 						className="deh-canvas",
 					),
 					html.Div(
-						_filters_children(frame, fields, state),
-						id="builder-filters",
+						[
+							html.P("Filters", className="deh-rail-title"),
+							html.Div(_filters_children(frame, fields, state), id="builder-filters"),
+						],
 						className="deh-rail deh-filters",
 						**{"data-shelf": FILTERS, "data-accepts": "dimension time"},  # ty: ignore[invalid-argument-type]
 					),

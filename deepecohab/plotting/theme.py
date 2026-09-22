@@ -46,6 +46,20 @@ AURORA: list[list] = [
 
 _COLORSCALE = {"sequential": AURORA, "sequentialminus": "Plasma", "diverging": "curl"}
 
+#: One colour bar shape for every heatmap in the app, whatever built it. Both dimensions
+#: are fractions of the plot area rather than pixels, so the bar keeps its proportions
+#: when a card resizes instead of reading fat on a small plot and thin on a large one;
+#: it hangs from the top of the plot area, where the data starts.
+COLORBAR = {
+	"thicknessmode": "fraction",
+	"thickness": 0.025,
+	"lenmode": "fraction",
+	"len": 1,
+	"y": 1,
+	"yanchor": "top",
+	"title": {"side": "right"},
+}
+
 #: What a heatmap's colour scale can be switched to, house scale first. Plotly.js knows
 #: only a few scales by name, so every one is spelled out as explicit stops.
 COLORSCALES: dict[str, list] = {
@@ -86,6 +100,8 @@ _TOKENS: dict[str, dict[str, str]] = {
 		"axis": "#374444",
 		"hover_bg": "#1c2525",
 		"hover_border": "#2c3838",
+		"dark_phase": "#7d8fae",
+		"light_phase": "#9b8347",
 	},
 	"light": {
 		"ink": "#14201f",
@@ -94,7 +110,17 @@ _TOKENS: dict[str, dict[str, str]] = {
 		"axis": "#c9d2d2",
 		"hover_bg": "#ffffff",
 		"hover_border": "#dde3e3",
+		"dark_phase": "#5b6b85",
+		"light_phase": "#e2c27e",
 	},
+}
+
+#: The phase band's two colours per theme, the same ``--tick-dark`` / ``--tick-light`` the
+#: hours slider paints its band with. A shape carries a literal colour, so a figure built
+#: for one theme has to be recoloured for the other - see :func:`apply`.
+PHASE_BAND: dict[str, dict[str, str]] = {
+	name: {phase: tokens[phase] for phase in ("dark_phase", "light_phase")}
+	for name, tokens in _TOKENS.items()
 }
 
 
@@ -129,8 +155,7 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 			},
 			colorway=DEFAULT_COLORWAY,
 			colorscale=_COLORSCALE,
-			# Every heatmap in the app shares one colour bar shape, whatever built it.
-			coloraxis={"colorbar": {"thickness": 14, "title": {"side": "right"}}},
+			coloraxis={"colorbar": COLORBAR},
 		)
 	)
 
@@ -170,8 +195,26 @@ PUBLICATION_THEME = go.layout.Template(
 		shapedefaults={"line": {"color": "#000000"}},
 		colorway=DEFAULT_COLORWAY,
 		colorscale=_COLORSCALE,
+		coloraxis={"colorbar": COLORBAR},
 	)
 )
+
+
+def apply(figure: go.Figure, name: str) -> go.Figure:
+	"""Put ``figure`` in the named theme, phase bands included.
+
+	The template carries colour for everything a trace or an axis draws, but a shape holds a
+	literal colour - so the phase band :func:`~deepecohab.plotting.plot_factory._phase_band`
+	drew has to be repainted here. Anything but ``"dark"`` reads in the light colours,
+	``"publication"`` among them.
+	"""
+	figure.update_layout(template=name or "light")
+
+	for phase, color in PHASE_BAND.get(name, PHASE_BAND["light"]).items():
+		figure.update_shapes(fillcolor=color, selector={"name": f"phase-band-{phase}"})
+
+	return figure
+
 
 pio.templates["dark"] = DARK_THEME
 pio.templates["light"] = LIGHT_THEME
