@@ -248,17 +248,8 @@ def fit_for_export(
 			}
 		)
 
-	# Event labels are drawn in front of the data; the toggle drops them entirely.
-	for note in annotations:
-		if not str(note.get("name") or "").startswith("event-label"):
-			continue
-		if show_events:
-			note["font"] = {**note.get("font", {}), "size": tick}
-			width_chars = max(12, int((width * _EVENT_LABEL_FRACTION) / (_CHAR * tick)))
-			note["text"] = _wrap_text(_plain_text(note.get("text")), width_chars)
-		else:
-			note["visible"] = False
-
+	# Event labels ride a shape, clipped to the plot area; the toggle drops them entirely.
+	label_chars = max(12, int((width * _EVENT_LABEL_FRACTION) / (_CHAR * tick)))
 	for shape in layout.get("shapes") or []:
 		line = shape.get("line")
 		if line and line.get("width"):
@@ -267,6 +258,7 @@ def fit_for_export(
 		if label and label.get("text"):
 			if show_events:
 				label["font"] = {**label.get("font", {}), "size": tick}
+				label["text"] = _wrap_text(_plain_text(label["text"]), label_chars)
 			else:
 				label["text"] = ""
 
@@ -313,6 +305,8 @@ def fit_for_export(
 		bar = layout[key].get("colorbar") or {}
 		layout[key]["colorbar"] = {
 			**bar,
+			# Print wants a physical thickness, not the theme's fraction of the plot.
+			"thicknessmode": "pixels",
 			"thickness": max(6, base * _COLORBAR_THICKNESS),
 			"outlinewidth": 0,
 			"tickfont": {"size": tick},

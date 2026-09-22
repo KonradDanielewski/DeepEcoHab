@@ -28,8 +28,8 @@ class ColorMapping:
 		colors: one colour per category.
 		category_by_animal: the category each cohort tag belongs to.
 		legend_title: heading for the colour legend.
-		animal_order: cohort tags grouped into contiguous blocks by attribute value,
-			then by tag - the axis/trace order for a per-animal plot.
+		animal_order: cohort tags in cohort order - the axis/trace order for a
+			per-animal plot, which an attribute never reshuffles.
 		group_mean: whether traces average their animals into one line per group,
 			set by :func:`resolve_colors` only when ``color_by`` is an attribute.
 	"""
@@ -136,7 +136,7 @@ def resolve_colors(
 		colors=dict(zip(categories, colors, strict=True)),
 		category_by_animal=category_by_animal,
 		legend_title=f"<b>{title.replace('_', ' ').capitalize()}</b>",
-		animal_order=order_by_attribute(context, color_by),
+		animal_order=list(context.animal_ids),
 		group_mean=group_mean and color_by != "animal_id",
 	)
 
@@ -218,26 +218,3 @@ def collapse_legend(figure: go.Figure, mapping: ColorMapping) -> None:
 
 		trace.showlegend = category not in seen
 		seen.add(category)
-
-
-def order_by_attribute(context: PlotContext, color_by: str) -> list[str]:
-	"""Cohort tags grouped into contiguous blocks by attribute value.
-
-	Matrix plots colour by their metric, so an attribute reorders their axes
-	instead of recolouring them.
-
-	Args:
-		color_by: the attribute to group by; ``animal_id`` keeps cohort order.
-
-	Returns:
-		Every cohort tag, ordered by attribute value then by tag.
-	"""
-	if color_by == "animal_id":
-		return list(context.animal_ids)
-
-	return (
-		context.animals.sort(color_by, "animal_id")
-		.get_column("animal_id")
-		.cast(pl.String)
-		.to_list()
-	)

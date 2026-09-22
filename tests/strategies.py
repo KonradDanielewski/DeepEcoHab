@@ -388,7 +388,7 @@ def analysis_recording(
 		data=pl.LazyFrame(
 			schema={
 				"datetime": pl.Datetime("us", time_zone=tz),
-				"antenna": pl.Int8,
+				"antenna": pl.Categorical(),
 				"time_under": pl.Duration("us"),
 				"animal_id": pl.Enum(sorted(animal_ids)),
 			}
@@ -538,7 +538,7 @@ def main_df_frame(rows: list[dict], recording: Recording) -> pl.LazyFrame:
 			"animal_id": pl.Series(
 				[r["animal_id"] for r in rows], dtype=pl.Enum(recording.cohort.animal_tags)
 			),
-			"antenna": pl.Series([r.get("antenna", 0) for r in rows], dtype=pl.Int8),
+			"antenna": pl.Series([str(r.get("antenna", 0)) for r in rows], dtype=pl.Categorical),
 			"position": pl.Series([r["position"] for r in rows], dtype=pl.Categorical),
 			"datetime": pl.Series("datetime", [r["datetime"] for r in rows]),
 			"time_spent": seconds([float(r["time_spent"]) for r in rows]),

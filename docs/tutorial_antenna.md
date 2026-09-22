@@ -108,9 +108,10 @@ its tunnel name.
 
 **Events** are optional: things done during the recording, such as presenting a stimulus or
 injecting the cohort. Each has a `name`, a `description` and one or more `bouts`, each bout
-running from `start` up to `end`. A bout with a `position` happened in that cage or tunnel; a
-bout without one applies to the whole habitat. For example, a novel object placed in cage 1
-on two mornings, and an injection given to the whole cohort:
+running from `start` up to `end`. A bout with a `position` happened in those cages or tunnels
+- it takes a list, so one bout can name several - and a bout without one applies to the whole
+habitat. For example, a novel object placed in cage 1 on two mornings, and an injection given
+to the whole cohort:
 
 ```json
 "events": [
@@ -118,8 +119,8 @@ on two mornings, and an injection given to the whole cohort:
     "name": "novel_object",
     "description": "novel object placed in cage 1",
     "bouts": [
-      {"start": "2023-05-18T10:00:00+02:00", "end": "2023-05-18T10:30:00+02:00", "position": "cage_1"},
-      {"start": "2023-05-19T10:00:00+02:00", "end": "2023-05-19T11:30:00+02:00", "position": "cage_1"}
+      {"start": "2023-05-18T10:00:00+02:00", "end": "2023-05-18T10:30:00+02:00", "position": ["cage_1"]},
+      {"start": "2023-05-19T10:00:00+02:00", "end": "2023-05-19T11:30:00+02:00", "position": ["cage_1"]}
     ]
   },
   {
@@ -242,6 +243,7 @@ Existing tables are not rebuilt when parameters change: pass `overwrite=True`, w
 |---|---|---|
 | `minimum_time` | `2` | seconds two animals must be together continuously for a meeting to count |
 | `minimum_time_alone` | `10` | seconds an animal must be alone continuously for it to count as time alone |
+| `extrapolation_limit` | `43200` | seconds an animal's last known position is carried on past its last registration; see [Activity and time alone](#activity-and-time-alone) |
 | `chasing_time_window` | `(0.1, 1.2)` | shortest and longest chasing event, in seconds |
 | `prev_ranking` | `None` | starting ratings carried over from an earlier recording; see [Chasings and ranking](#chasings-and-ranking) |
 
@@ -265,8 +267,7 @@ DataFrameRegistry.list_available()
 
 ### Calendar columns
 
-Every table except `animals` and `recording_quality` places its rows on the recording's
-calendar with four columns:
+Most tables place their rows on the recording's calendar with four columns:
 
 - `day` - the experiment day, from 1. A day is 24 hours from the experiment start, not a
   calendar date.
@@ -279,9 +280,15 @@ calendar with four columns:
 Because days and hours count from a phase onset, the same day and hour mark the same point of
 the experiment in every recording.
 
+Not every table carries all four. `animals` and `recording_quality` describe the recording as a
+whole and carry none of them. `incohort_sociability` is measured per phase occurrence, so it has
+no `hour`, and `phase_durations` describes the phases themselves and carries only `phase` and
+`phase_count`.
+
 Tables described as *per hour* below hold a row for every hour, animal (or pair) and
 position, with `0` where nothing happened. Positions are cage and tunnel names plus
-`undefined`, which marks a pair of reads the layout does not allow. `main_df`, `padded_df`,
+`undefined`, which marks a pair of reads the layout does not allow, and the stretch past an
+animal's last registration that the carry-forward below does not cover. `main_df`, `padded_df`,
 `match_df` and `chasings_df` keep tunnels directional (`c1_c2`); every other table uses tunnel
 names. Time is held as polars `Duration` columns; convert with, for example,
 `pl.col("time_in_position").dt.total_seconds()`.
@@ -315,8 +322,11 @@ names. Time is held as polars `Duration` columns; convert with, for example,
   than `minimum_time_alone` are ignored, since animals travelling together arrive moments
   apart.
 
-The last position of each animal is extended to the end of the recording, so an animal that
-stops moving keeps accruing time where it was last seen.
+Each animal's last position is carried on past its final registration, so an animal that stops
+moving keeps accruing time where it was last seen. Silence is only weak evidence of staying put,
+though, so the carry stops `extrapolation_limit` seconds after that registration - 12 hours by
+default - and the rest of the window is `undefined`. An animal taken out of the habitat
+mid-recording therefore stops occupying a cage instead of sitting in one until the end.
 
 ### Chasings and ranking
 
@@ -365,7 +375,7 @@ interrupt it. Meetings no longer than `minimum_time` are dropped. Pairs are unor
 
 `incohort_sociability` compares, per phase occurrence, how much time each pair spent together
 in the cages against how much they would share by chance given each animal's own cage
-occupancy (see DOI:10.7554/eLife.19532):
+occupancy {cite:p}`puscian2016ecohab`:
 
 - `proportion_together` - time together in cages, as a fraction of the phase.
 - `sociability` - that fraction minus its chance expectation, summed over cages. Positive
@@ -438,7 +448,8 @@ starting at the 13:00 dark onset on 17 May, it holds:
 
 The second novel-object bout runs past 11:00, so it covers two hours. The injection crosses the
 13:00 dark onset, which is also where day 4 begins, so its two rows fall in different days and
-phases. A `null` position means the whole habitat. A bout ending exactly on the hour does not
+phases. A `null` position means the whole habitat; a bout naming
+several positions gets a row per position. A bout ending exactly on the hour does not
 reach into the next one.
 
 Because the table carries the calendar columns, it joins onto any per-hour table. For example,
@@ -492,7 +503,15 @@ This combines every recording's `feature_df` with its `animals` metadata, adds `
 Pass `names=[...]` to include only some recordings, and reload a saved table with
 `project.load_project_table()`.
 
-Rates by group come out the same way as for one recording:
+It also adds one column per [event](#events) name declared anywhere in the project, plus
+`"Any event"`, so an event can be compared against the rest of the recording without joining
+`event_bouts` by hand. For each row the column reads `"During"` when a bout of that event
+covered that hour, `"Same hours, other days"` when a bout covered that hour of the day on a
+different day, and `"Other hours"` otherwise. A recording that does not declare the event reads
+`null` throughout: it is left out of the comparison rather than counted as a control.
+
+Rates by group come out the same way as for one recording, and an event column groups like any
+other - swap in `"novel_object"` below to split a metric by whether the event was on:
 
 ```python
 rates = (

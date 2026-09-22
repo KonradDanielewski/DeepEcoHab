@@ -65,17 +65,17 @@ def test_wide_legend_warns():
 	assert any("legend takes" in note for note in notes)
 
 
-def test_event_label_annotation_is_wrapped_when_shown_and_hidden_otherwise():
+def test_event_label_is_wrapped_when_shown_and_dropped_otherwise():
 	long_text = "Auditory Tone Test " * 4
 	fig = go.Figure(
-		layout={"annotations": [{"name": "event-label-0", "text": long_text, "x": 1, "y": 1}]}
+		layout={"shapes": [{"name": "event-label", "type": "rect", "label": {"text": long_text}}]}
 	)
 
 	shown, _ = export.fit_for_export(fig, 174, 140, 8, show_events=True)
 	hidden, _ = export.fit_for_export(fig, 174, 140, 8, show_events=False)
 
-	assert "<br>" in shown.layout.annotations[0].text
-	assert hidden.layout.annotations[0].visible is False
+	assert "<br>" in shown.layout.shapes[0].label.text
+	assert hidden.layout.shapes[0].label.text == ""
 
 
 def test_shape_and_scatter_lines_are_capped_at_1_5px():

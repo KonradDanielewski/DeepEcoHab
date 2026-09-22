@@ -75,7 +75,7 @@ def _layout() -> dmc.MantineProvider:
 			# have not made one - what a plot's own template should follow, since the
 			# shell (defaultColorScheme="auto") can be dark while theme-store is still None.
 			dcc.Store(id="plot-theme"),
-			dcc.Store(id="nav-collapsed", storage_type="local", data=False),
+			dcc.Store(id="nav-collapsed", data=False),
 			dcc.Store(id="project-paths", storage_type="local", data=[]),
 			# Above Dash's debug bar (z-index 10000), which sits where toasts appear.
 			dmc.NotificationContainer(id="notifications", zIndex=10001),
@@ -131,7 +131,7 @@ def _navbar() -> list:
 	pages = [
 		_nav_item(
 			page["name"],
-			icon(page["icon"], size=20),
+			icon(page["icon"], size=25),
 			page["path"],
 			id={"type": "nav-link", "index": page["path"]},
 			href=page["relative_path"],
@@ -141,8 +141,8 @@ def _navbar() -> list:
 	collapse = _nav_item(
 		"Collapse",
 		[
-			icon("layout-sidebar-left-collapse", size=20, class_name="deh-when-expanded"),
-			icon("layout-sidebar-left-expand", size=20, class_name="deh-when-collapsed"),
+			icon("layout-sidebar-left-collapse", size=25, class_name="deh-when-expanded"),
+			icon("layout-sidebar-left-expand", size=25, class_name="deh-when-collapsed"),
 		],
 		"collapse",
 		tooltip="Expand sidebar",
@@ -154,7 +154,7 @@ def _navbar() -> list:
 	)
 	return [
 		html.Div(
-			[icon("brand", size=26, color="var(--accent)"), brand_text], className="deh-brand"
+			[icon("brand", size=35, color="var(--accent)"), brand_text], className="deh-brand"
 		),
 		html.Div("Workspace", className="deh-nav-section"),
 		*pages,
@@ -252,6 +252,16 @@ def _register_callbacks(app: Dash) -> None:
 	)
 	def _close_export(_clicks):
 		return False
+
+	# Also keyed on `opened`: the modal mounts its children when it opens, so the stage
+	# this measures is not in the DOM yet when the figure that opened the dialog arrives.
+	app.clientside_callback(
+		ClientsideFunction("deh", "fitPreview"),
+		Output("export-preview", "style"),
+		Input("export-preview", "figure"),
+		Input("export-dialog", "opened"),
+		prevent_initial_call=True,
+	)
 
 	@app.callback(
 		Output("export-preview", "figure"),

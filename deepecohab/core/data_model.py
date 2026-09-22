@@ -29,6 +29,8 @@ from pydantic import (
 )
 from tqdm.auto import tqdm
 
+from deepecohab.core import topology
+
 CALENDAR_COLUMNS: Final = ("phase", "day", "phase_count", "hour")
 """The columns placing a row on the recording's calendar; every analysis table is keyed by them."""
 
@@ -44,6 +46,16 @@ def _elapsed(earlier: dt.datetime, later: dt.datetime) -> dt.timedelta:
 	instances are cached, so a span crossing a DST transition would come out an hour off.
 	"""
 	return later.astimezone(dt.UTC) - earlier.astimezone(dt.UTC)
+
+
+def _real_wall_clock(moment: dt.datetime, zone: ZoneInfo) -> dt.datetime:
+	"""*moment* in *zone*, as a wall clock that zone actually has.
+
+	``combine(date, time, tzinfo=zone)`` and ``replace(tzinfo=zone)`` happily mint a
+	time a DST jump forward skipped, and ``astimezone`` leaves it be when the zone is
+	already that one. Going through UTC pins the instant to the clock that follows it.
+	"""
+	return moment.astimezone(dt.UTC).astimezone(zone)
 
 
 class Cage(BaseModel):
@@ -231,7 +243,8 @@ class Timeline(BaseModel):
 			)
 			for offset in (-1, 0, 1)
 		]
-		return min(candidates, key=lambda moment: abs(_elapsed(start, moment)))
+		nearest = min(candidates, key=lambda moment: abs(_elapsed(start, moment)))
+		return _real_wall_clock(nearest, self.recording_timezone)
 
 	@property
 	def discarded_lead(self) -> dt.timedelta:
@@ -266,7 +279,7 @@ class Timeline(BaseModel):
 		Everything downstream takes its bounds from here, so the lead-in before
 		:attr:`experiment_start` is trimmed once, in one place.
 		"""
-		return self.experiment_start, self.end_datetime.astimezone(self.recording_timezone)
+		return self.experiment_start, _real_wall_clock(self.end_datetime, self.recording_timezone)
 
 	def _boundaries(self) -> list[dt.datetime]:
 		"""Phase switch instants strictly inside the recording, in order."""
@@ -289,15 +302,15 @@ class Timeline(BaseModel):
 class Bout(BaseModel):
 	"""One stretch of an event, from ``start`` up to but not including ``end``.
 
-	``position`` names the cage or tunnel it was applied in; a bout without one applies
-	to the whole habitat.
+	``position`` names the cages or tunnels it was applied in; a bout without one
+	applies to the whole habitat.
 	"""
 
 	model_config = ConfigDict(extra="forbid")
 
 	start: AwareDatetime
 	end: AwareDatetime
-	position: str | None = None
+	position: list[str] | None = Field(default=None, min_length=1)
 
 	@model_validator(mode="after")
 	def _check_bout(self) -> "Bout":
@@ -517,7 +530,7 @@ def recording_status(root: Path) -> dict[str, bool]:
 class Recording(BaseModel):
 	"""One recording: raw registrations, plus the metadata that gives them meaning.
 
-	``timeline``, ``cohort`` and ``layout`` are what turn an antenna number and a
+	``timeline``, ``cohort`` and ``layout`` are what turn an antenna reading and a
 	timestamp into a position, an animal and an experiment hour. Persisted as
 	``config.json`` beside ``raw/`` and ``results/``; ``data`` is excluded from that
 	snapshot and reattached from ``raw/data.parquet`` on load.
@@ -544,7 +557,7 @@ class Recording(BaseModel):
 		return pl.Schema(
 			{
 				"datetime": pl.Datetime("us", time_zone=self.timeline.recording_timezone.key),
-				"antenna": pl.Int8,
+				"antenna": pl.Categorical(),
 				"time_under": pl.Duration("us"),
 				"animal_id": pl.Enum(self.cohort.animal_tags),
 			}
@@ -666,6 +679,28 @@ class Recording(BaseModel):
 		return self
 
 	@model_validator(mode="after")
+	def _check_antennas(self, info: ValidationInfo) -> "Recording":
+		"""Every antenna the data reads has to be one this layout names.
+
+		``transforms.get_animal_position`` resolves a pair the layout does not name to
+		:attr:`Layout.UNDEFINED`, so data and layout disagreeing about how antennas are
+		named fails nothing - it quietly yields a recording whose every position is
+		undefined. The other direction is left alone: an antenna the layout names but
+		that never read is a dead antenna, which ``recording_quality`` reports.
+		"""
+		path = (info.context or {}).get("data_path", "<data>")
+		named = topology.antennas(self.layout.antenna_combinations)
+		read = self.data.select(pl.col("antenna").cast(pl.Utf8).unique()).collect()["antenna"]
+
+		if stray := sorted(set(read.drop_nulls()) - named):
+			raise ValueError(
+				f"{path}: reads antennas {stray}, which this layout does not name - its "
+				f"antennas are {sorted(named)}, so every read there would resolve to "
+				f"{Layout.UNDEFINED!r}."
+			)
+		return self
+
+	@model_validator(mode="after")
 	def _check_events(self) -> "Recording":
 		names = [event.name for event in self.events]
 		if duplicates := sorted({name for name in names if names.count(name) > 1}):
@@ -681,11 +716,12 @@ class Recording(BaseModel):
 						f"a bout of {event.name!r}, {bout.start} to {bout.end}, falls outside the "
 						f"analysed window {start} to {end}"
 					)
-				if bout.position is not None and bout.position not in positions:
-					raise ValueError(
-						f"a bout of {event.name!r} is in {bout.position!r}, which the layout does "
-						f"not have; its positions are {positions}"
-					)
+				for position in bout.position or ():
+					if position not in positions:
+						raise ValueError(
+							f"a bout of {event.name!r} is in {position!r}, which the layout does "
+							f"not have; its positions are {positions}"
+						)
 		return self
 
 

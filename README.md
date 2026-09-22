@@ -28,27 +28,51 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### Step 2 — Install DeepEcoHab
 
-Install DeepEcoHab into an environment:
-
 ```
 uv venv
 # Windows:        .venv\Scripts\activate
 # Linux / macOS:  source .venv/bin/activate
-uv pip install deepecohab
+uv pip install "deepecohab[app]"
 ```
 
-Already have an environment running `python>=3.12`? Just run `pip install deepecohab`.
+Already have an environment running `python>=3.12`? Just run `pip install "deepecohab[app]"`.
+
+### Step 3 — Start the app
+
+```
+deepecohab-app
+```
+
+The app opens in your browser. Create a project, add your recordings, run the analysis and
+build plots — no code involved. This is how we expect most people to use DeepEcoHab.
+
+### Working from code instead
+
+The app is an extra because the analysis itself does not need Dash. If you only want the
+library, for scripts or notebooks, install it on its own:
+
+```
+uv pip install deepecohab
+```
 
 We recommend [VSCode](https://code.visualstudio.com/download) with the Jupyter
 extension to run the example notebooks provided in the repository.
 
+To install from source:
+
+```
+cd location_to_clone_to
+git clone https://github.com/KonradDanielewski/DeepEcoHab.git
+cd DeepEcoHab
+pip install ".[app]"
+```
+
 ## Example data
 
-We provide 3 example datasets that reflect 3 main possibilites for an EcoHab layout.
-
-- [example_notebook](./examples/example_notebook.ipynb) for a vanilla 4 cage, 8 antenna setup.
-- [example_notebook_custom_layout](./examples/example_notebook_custom_layout.ipynb) for a custom layout that can be user defined in the `config.toml` of the created project.
-- [example_notebook_field](./examples/example_notebook_field.ipynb) for a field EcoHab layout.
+[`examples/data`](./examples/data) ships six real recordings, each a metadata JSON beside its
+registrations parquet. [`example_notebook.ipynb`](./examples/example_notebook.ipynb)
+runs them end to end: create a project, add every recording, tune the analysis parameters, run
+the pipeline and aggregate a project table.
 
 ## Data structure:
 
@@ -61,3 +85,42 @@ To get the list of available keys call `deepecohab.core.data_model.DataFrameRegi
 1. Full web-app style GUI, deployable via a docker container.
 2. Group analysis - combined analysis of multiple cohort, comparing different groups of cohorts.
 3. Pose estimation based analysis of animal interactions and more detailed social structure analysis.
+
+## DeepEcoHab team
+
+DeepEcoHab is developed at the Nencki Institute of Experimental Biology in Warsaw:
+
+- **Konrad Danielewski** ([@KonradDanielewski](https://github.com/KonradDanielewski)) - lead developer and maintainer
+- **Ula Włodkowska** ([@uwlodkowska](https://github.com/uwlodkowska))
+- **Marcin Lipiec** - principal investigator
+
+With contributions from [@Winiarsky](https://github.com/Winiarsky) and
+[@Brosnan-neuro](https://github.com/Brosnan-neuro).
+
+Found a bug or missing a feature? Open an issue
+[here](https://github.com/KonradDanielewski/DeepEcoHab/issues).
+
+## Citations
+
+DeepEcoHab has no paper of its own yet. If you use it in published work, please cite the
+package together with the paper introducing the Eco-HAB system:
+
+```bibtex
+@software{deepecohab,
+  title     = {{DeepEcoHab}: fast and intuitive data analysis platform for {EcoHab} experiments},
+  author    = {Danielewski, Konrad and W{\l}odkowska, Ula and Lipiec, Marcin},
+  year      = {2026},
+  publisher = {GitHub},
+  url       = {https://github.com/KonradDanielewski/DeepEcoHab}
+}
+
+@article{puscian2016ecohab,
+  title   = {Eco-{HAB} as a fully automated and ecologically relevant assessment of social impairments in mouse models of autism},
+  author  = {Pu{\'s}cian, Alicja and {\L}{\k e}ski, Szymon and Kasprowicz, Grzegorz and Winiarski, Maciej and Borowska, Joanna and Nikolaev, Tomasz and Boguszewski, Pawe{\l} M. and Lipp, Hans-Peter and Knapska, Ewelina},
+  journal = {eLife},
+  volume  = {5},
+  pages   = {e19532},
+  year    = {2016},
+  doi     = {10.7554/eLife.19532}
+}
+```

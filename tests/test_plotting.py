@@ -309,12 +309,9 @@ def test_unknown_colour_column_is_rejected(context):
 		animals_module.resolve_colors(context, "colour")
 
 
-def test_ordering_groups_animals_by_attribute(context):
-	"""Matrix axes are grouped by attribute rather than recoloured."""
-	order = animals_module.order_by_attribute(context, "sex")
-
-	assert sorted(order) == sorted(ANIMALS)
-	assert order[:2] == ["0035C", "0035D"]  # F before M, then by tag
+def test_ordering_stays_in_cohort_order(context):
+	"""Colouring by an attribute recolours the plot; it never reorders the animals."""
+	assert animals_module.resolve_colors(context, "sex").order == list(context.animal_ids)
 
 
 def test_legend_collapses_to_one_entry_per_group(context):
@@ -600,6 +597,24 @@ def test_faceted_heatmap_stacks_one_panel_per_row_in_order():
 	]
 
 
+def test_faceted_grid_heatmap_lays_panels_out_in_one_row():
+	"""Pair matrices are square, so a wrapped grid left dead space under every row."""
+	heatmap = Heatmap(
+		values=np.arange(4 * 2 * 2).reshape(4, 2, 2),
+		text=None,
+		label="Time together",
+		x=["a", "b"],
+		y=["a", "b"],
+		facets=["cage_1", "cage_2", "cage_3", "cage_4"],
+	)
+
+	figure = plot_factory._faceted_heatmap(heatmap, "T", "", "", ("X", "Y"), square=True, grid=True)
+
+	assert [trace.xaxis for trace in figure.data] == ["x", "x2", "x3", "x4"]
+	domains = {figure.layout[trace.yaxis.replace("y", "yaxis")].domain for trace in figure.data}
+	assert len(domains) == 1
+
+
 def test_positioned_event_is_drawn_only_on_its_cages_panel():
 	heatmap = Heatmap(
 		values=np.zeros((2, 1, 24)),
@@ -622,9 +637,9 @@ def test_positioned_event_is_drawn_only_on_its_cages_panel():
 	figure = plot_factory.plot_time_spent_per_cage(heatmap, "hourly", bouts)
 	panels = {trace.xaxis: facet for facet, trace in zip(heatmap.facets, figure.data, strict=True)}
 	drawn = sorted(
-		(note.text, panels[note.xref])
-		for note in figure.layout.annotations
-		if note.name == "event-label"
+		(shape.label.text, panels[shape.xref])
+		for shape in figure.layout.shapes
+		if shape.name == "event-label"
 	)
 
 	assert drawn == [("injection", "cage_1"), ("injection", "cage_2"), ("social", "cage_1")]
@@ -646,7 +661,7 @@ def test_one_events_cages_share_a_span_on_a_plot_without_panels(context):
 
 	figure = plot_factory.plot_ranking_stability(ranks, mapping, "day", bouts)
 
-	labels = [note.text for note in figure.layout.annotations if note.name == "event-label"]
+	labels = [shape.label.text for shape in figure.layout.shapes if shape.name == "event-label"]
 	assert labels == ["social (cage_1, cage_3)"]
 
 

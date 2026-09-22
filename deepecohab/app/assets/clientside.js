@@ -35,7 +35,11 @@ function _plotTitle(name, titles, titleIds) {
  * animals.collapse_legend); a palette swaps exactly those, so a weight-scaled edge keeps its. */
 const _FORMAT_BINDS = {
 	xaxis: "xaxis",
+	xmin: "xaxis",
+	xmax: "xaxis",
 	yaxis: "yaxis",
+	ymin: "yaxis",
+	ymax: "yaxis",
 	colorbar: "colorbar",
 	cmin: "colorbar",
 	cmax: "colorbar",
@@ -43,6 +47,7 @@ const _FORMAT_BINDS = {
 	palette: "colorway",
 };
 const _FORMAT_SELECTS = ["colorscale", "palette"];
+const _FORMAT_BOUNDS = ["xmin", "xmax", "ymin", "ymax", "cmin", "cmax"];
 
 function _titleText(title) {
 	return (title && typeof title === "object" ? title.text : title) || "";
@@ -67,11 +72,15 @@ function _formatBase(layout) {
 	const stash = (layout.meta || {}).dehFormat;
 	if (stash) return stash;
 	const axes = {};
+	const ranges = {};
 	Object.keys(layout)
 		.filter((key) => /^[xy]axis\d*$/.test(key) && layout[key].visible !== false)
 		.sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))
-		.forEach((key) => (axes[key] = _titleText(layout[key].title)));
-	return {axes: axes, coloraxis: layout.coloraxis || null, colorway: layout.colorway || null};
+		.forEach((key) => {
+			axes[key] = _titleText(layout[key].title);
+			ranges[key] = {range: layout[key].range ?? null, autorange: layout[key].autorange ?? null};
+		});
+	return {axes: axes, ranges: ranges, coloraxis: layout.coloraxis || null, colorway: layout.colorway || null};
 }
 
 /* Each element's automatic text: "" when drawn untitled, null when the figure has none. */
@@ -107,6 +116,27 @@ function _colorRange(live, base) {
 	const cmax = live.cmax ?? axis.cmax;
 	// With cauto off plotly fills a missing bound from the data.
 	return cmin != null && cmax != null && cmin >= cmax ? "inverted" : {cauto: false, cmin: cmin, cmax: cmax};
+}
+
+/* The autorange bounds the live x/y overrides draw; null when there are none, "inverted"
+ * when unusable. minallowed/maxallowed hold one bound while the data still sets the other. */
+function _axisRange(live, letter) {
+	const min = live[letter + "min"];
+	const max = live[letter + "max"];
+	if (min === undefined && max === undefined) return null;
+	return min != null && max != null && min >= max ? "inverted" : {minallowed: min ?? null, maxallowed: max ?? null};
+}
+
+/* ``axis`` under ``bounds``, or handed back the range the server drew. A figure that drew
+ * its own range has to hand it back to autorange for the bounds to count. */
+function _withRange(axis, bounds, drawn) {
+	const next = Object.assign({}, axis);
+	delete next.autorangeoptions;
+	delete next.autorange;
+	delete next.range;
+	if (bounds) Object.assign(next, {autorange: true, range: null, autorangeoptions: bounds});
+	else Object.entries(drawn || {}).forEach(([key, value]) => value !== null && (next[key] = value));
+	return JSON.stringify(next) === JSON.stringify(axis) ? axis : next;
 }
 
 /* "r,g,b" and the alpha of an rgb()/rgba() colour, or null for anything else. */
@@ -166,9 +196,11 @@ function _formatFigure(fig, fmt, choices) {
 		// Facets title only their outer axes; an untitled axis gets it on the first.
 		const titled = keys.filter((key) => base.axes[key]);
 		const targets = letter + "axis" in live ? (titled.length ? titled : keys.slice(0, 1)) : [];
+		const range = _axisRange(live, letter);
 		keys.forEach((key) => {
 			const text = targets.includes(key) ? _like(base.axes[key], live[letter + "axis"]) : base.axes[key];
-			if (_titleText(layout[key].title) !== text) layout[key] = _withTitle(layout[key], text);
+			const titledAxis = _titleText(layout[key].title) === text ? layout[key] : _withTitle(layout[key], text);
+			layout[key] = _withRange(titledAxis, range === "inverted" ? null : range, (base.ranges || {})[key]);
 		});
 	});
 	if (base.coloraxis) {
@@ -200,8 +232,11 @@ function _formErrors(fmt, layout, palettes) {
 	const live = _liveFormat(fmt, _autoTitles(base));
 	const chosen = (palettes || {})[live.palette];
 	const needed = (base.colorway || []).length;
+	const crossed = (range) => (range === "inverted" ? "Must be above min" : null);
 	return {
-		cmax: _colorRange(live, base) === "inverted" ? "Must be above min" : null,
+		cmax: crossed(_colorRange(live, base)),
+		xmax: crossed(_axisRange(live, "x")),
+		ymax: crossed(_axisRange(live, "y")),
 		palette: chosen && chosen.length < needed ? `${chosen.length} colours for ${needed} categories` : null,
 	};
 }
@@ -210,6 +245,36 @@ function _flagErrors(fmt, layout, palettes) {
 	const dc = window.dash_clientside;
 	Object.entries(_formErrors(fmt, layout, palettes)).forEach(([key, error]) =>
 		dc.set_props({type: "rec-fmt", key: key}, {error: error})
+	);
+}
+
+// The hours slider's band and label, repainted as the handles move - the twin of
+// recording.py's _hours_band / _hours_text, which paint the first one server-side.
+function _clockAt(context, hour) {
+	const base = (context.onsets || {})[context.start_from] || "00:00";
+	const mins = (Number(base.slice(0, 2)) * 60 + Number(base.slice(3, 5)) + hour * 60 + 1440) % 1440;
+	return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
+}
+
+function _shade(phase, selected) {
+	const token = phase === "dark_phase" ? "--tick-dark" : "--tick-light";
+	return "color-mix(in srgb, var(" + token + ") " + (selected ? 100 : 22) + "%, transparent)";
+}
+
+function _hoursBand(context, phases) {
+	const onsets = context.onsets || {};
+	const start = context.start_from;
+	const other = Object.keys(onsets).find((name) => name !== start);
+	const on = (name) => (phases || []).indexOf(name) >= 0;
+	if (!other) return _shade(start, on(start));
+
+	const mins = (name) => Number(onsets[name].slice(0, 2)) * 60 + Number(onsets[name].slice(3, 5));
+	const first = (((mins(other) - mins(start)) % 1440) + 1440) % 1440 / 60;
+	// Hour h sits at h / 23 of the track, so the split lands under the other onset's tick.
+	const split = Math.max(0, Math.min(100, (100 * first) / 23));
+	return (
+		"linear-gradient(90deg, " + _shade(start, on(start)) + " 0 " + split + "%, " +
+		_shade(other, on(other)) + " " + split + "% 100%)"
 	);
 }
 
@@ -238,6 +303,22 @@ new MutationObserver(() => {
 		_centreSquare(gd);
 	});
 }).observe(document.body, {childList: true, subtree: true});
+
+/* The recording controls bar sticks under the header; once its head row has scrolled off
+ * the top it tucks away behind the header (see .is-tucked), leaving a strip that hovering
+ * pulls back down. No callback behind it: the class follows the scroll alone, and the bar
+ * is looked up each time because switching recordings rebuilds it. */
+let _tuckPending = false;
+window.addEventListener("scroll", function () {
+	if (_tuckPending) return;
+	_tuckPending = true;
+	requestAnimationFrame(function () {
+		_tuckPending = false;
+		const bar = document.querySelector(".deh-controls");
+		const head = bar && bar.previousElementSibling;
+		if (head) bar.classList.toggle("is-tucked", head.getBoundingClientRect().bottom < 0);
+	});
+}, {passive: true});
 
 
 window.dash_clientside.deh = {
@@ -302,7 +383,8 @@ window.dash_clientside.deh = {
 
 	/* --- recording -------------------------------------------------------- */
 
-	filterControls: function (hours, phases, colorBy, groupMean, controls) {
+	filterControls: function (hours, phases, colorBy, groupMean, controls, context) {
+		const dc = window.dash_clientside;
 		const disabled = colorBy === "animal_id" || colorBy === "subject_name";
 		const merged = Object.assign({}, controls || {}, {
 			hours: hours,
@@ -310,6 +392,18 @@ window.dash_clientside.deh = {
 			color_by: colorBy,
 			group_mean: Boolean(groupMean) && !disabled,
 		});
+		// set_props rather than Outputs: nothing else writes these, and the band is a
+		// readout of the two sliders above it, not a control of its own.
+		if (context && context.onsets) {
+			const whole = hours[0] === 0 && hours[1] === 23;
+			dc.set_props("rec-hours-band", {style: {background: _hoursBand(context, phases)}});
+			dc.set_props("rec-hours-label", {
+				children: "Hours " + _clockAt(context, hours[0]) + " → " + _clockAt(context, hours[1] + 1),
+			});
+			dc.set_props("rec-hours-hint", {
+				children: whole ? "whole day" : hours[1] - hours[0] + 1 + " of 24 h",
+			});
+		}
 		return [merged, disabled];
 	},
 
@@ -375,6 +469,13 @@ window.dash_clientside.deh = {
 		for (let v = 1; v <= bound; v += 1) {
 			if ((v - 1) % step === 0 || v === bound) marks.push({value: v, label: String(v)});
 		}
+		// set_props, like the hours readout: the label is a readout of the slider, not a control.
+		dc.set_props("rec-window-label", {
+			children: (granularity === "day" ? "Days " : "Phases ") + value[0] + " → " + value[1],
+		});
+		dc.set_props("rec-window-hint", {
+			children: value[0] === 1 && value[1] === bound ? "all " + bound : value[1] - value[0] + 1 + " of " + bound,
+		});
 		const merged = Object.assign({}, controls || {}, {granularity: granularity, window: value});
 		return [1, bound, marks, value, merged];
 	},
@@ -449,7 +550,7 @@ window.dash_clientside.deh = {
 			ctx.triggered.forEach((trigger) => {
 				const key = JSON.parse(trigger.prop_id.slice(0, trigger.prop_id.lastIndexOf("."))).key;
 				let value = typeof trigger.value === "string" ? trigger.value.trim() : trigger.value;
-				if ((key === "cmin" || key === "cmax") && typeof value !== "number") value = null;
+				if (_FORMAT_BOUNDS.includes(key) && typeof value !== "number") value = null;
 				if (value === "" || value === undefined || value === _plain(auto[key])) value = null;
 				if (value === (live[key] ?? null)) return;
 				if (value === null) delete fmt[key];
@@ -476,6 +577,27 @@ window.dash_clientside.deh = {
 
 	/* --- shared ----------------------------------------------------------- */
 
+	// The export preview is the figure kaleido will render, at its real pixel size, which
+	// past ~113mm is wider than the dialog's preview column. Rather than re-fit it smaller
+	// - the warnings beside it are measured at the real size - it keeps that size and is
+	// scaled down to fit the stage, so the shape on screen is the shape on paper.
+	fitPreview: function (figure) {
+		const dc = window.dash_clientside;
+		const stage = document.getElementById("export-stage");
+		const w = figure && figure.layout && figure.layout.width;
+		const h = figure && figure.layout && figure.layout.height;
+		if (!stage || !w || !h || !stage.clientWidth) return dc.no_update;
+
+		const scale = Math.min(1, stage.clientWidth / w, stage.clientHeight / h);
+		return {
+			width: w + "px",
+			height: h + "px",
+			transform: "translate(-50%, -50%) scale(" + scale + ")",
+			transformOrigin: "center",
+		};
+	},
+
+
 	// Buttons a callback re-renders fire their pattern-matched callbacks again with no click
 	// behind them. Routed through here, only a real click reaches the server, as {id, at}
 	// in a store; `at` makes a repeat click on the same button a new value.
@@ -484,6 +606,31 @@ window.dash_clientside.deh = {
 		const trigger = dc.callback_context.triggered[0];
 		if (!trigger || !trigger.value) return dc.no_update;
 		return {id: dc.callback_context.triggered_id, at: Date.now()};
+	},
+
+	// Dash carries no SVG components, so the habitat map arrives as markup on a data attribute
+	// and is painted in here. Repainting is idempotent and cheap: this fires on every context
+	// change, and the Diagnostics panel stays mounted behind the other tabs. The second pass is
+	// for the run where the new card has not committed to the DOM yet.
+	paintHabitat: function () {
+		const paint = () => document.querySelectorAll("[data-hab]").forEach((el) => {
+			if (el.dataset.hab === el.dataset.habPainted) return;
+			el.innerHTML = el.dataset.hab;
+			el.dataset.habPainted = el.dataset.hab;
+		});
+		paint();
+		requestAnimationFrame(paint);
+	},
+
+	// The header's counters jump to the tab that explains them. Written with set_props rather
+	// than an Output: the tab value already drives switchTab, and a second writer of it turns
+	// the app's dependency graph circular. A re-rendered button fires with no click behind it.
+	tabJump: function () {
+		const dc = window.dash_clientside;
+		const trigger = dc.callback_context.triggered[0];
+		if (!trigger || !trigger.value) return;
+		const tab = {"rec-habitat-jump": "diagnostics", "rec-quality-jump": "diagnostics"}[dc.callback_context.triggered_id];
+		if (tab) dc.set_props("rec-tabs", {value: tab});
 	},
 
 	/* --- builder ---------------------------------------------------------- */

@@ -45,8 +45,8 @@ def test_different_events_may_overlap():
 	recording = strategies.analysis_recording(
 		events=[
 			event("C21 injection", Bout(start=at(1, 13, 0, 30), end=at(1, 13, 10, 30))),
-			event("social", Bout(start=at(1, 13, 30), end=at(1, 14), position="cage_1")),
-			event("non-social", Bout(start=at(1, 13, 30), end=at(1, 14), position="cage_3")),
+			event("social", Bout(start=at(1, 13, 30), end=at(1, 14), position=["cage_1"])),
+			event("non-social", Bout(start=at(1, 13, 30), end=at(1, 14), position=["cage_3"])),
 		]
 	)
 
@@ -66,7 +66,13 @@ def test_bout_must_end_after_it_starts(end):
 def test_misspelt_bout_field_is_rejected():
 	"""A typo must fail rather than silently drop the bout's position."""
 	with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-		Bout.model_validate({"start": at(1, 13), "end": at(1, 14), "postion": "cage_1"})
+		Bout.model_validate({"start": at(1, 13), "end": at(1, 14), "postion": ["cage_1"]})
+
+
+def test_bout_needs_a_position_if_it_names_any():
+	"""An empty list is ambiguous: a whole-habitat bout leaves ``position`` out."""
+	with pytest.raises(ValidationError):
+		Bout(start=at(1, 13), end=at(1, 14), position=[])
 
 
 def test_event_needs_a_bout():
@@ -106,12 +112,12 @@ def test_bouts_of_one_event_may_abut():
 			[event("x", Bout(start=at(3, 22), end=at(4, 0)))], "outside", id="after the window"
 		),
 		pytest.param(
-			[event("x", Bout(start=at(1, 1), end=at(1, 2), position="cage_9"))],
+			[event("x", Bout(start=at(1, 1), end=at(1, 2), position=["cage_9"]))],
 			"layout does not have",
 			id="unknown position",
 		),
 		pytest.param(
-			[event("x", Bout(start=at(1, 1), end=at(1, 2), position="undefined"))],
+			[event("x", Bout(start=at(1, 1), end=at(1, 2), position=["undefined"]))],
 			"layout does not have",
 			id="undefined sentinel",
 		),
@@ -133,7 +139,7 @@ def test_config_without_events_still_loads():
 
 def test_events_survive_a_config_round_trip():
 	recording = strategies.analysis_recording(
-		events=[event("social", Bout(start=at(1, 13), end=at(1, 14), position="cage_1"))]
+		events=[event("social", Bout(start=at(1, 13), end=at(1, 14), position=["cage_1"]))]
 	)
 	restored = Recording.model_validate({**recording.to_config(), "data": recording.data})
 
@@ -155,6 +161,14 @@ def test_short_bout_takes_one_cell_and_keeps_its_bounds():
 		at(1, 13, 0, 30),
 		at(1, 13, 10, 30),
 	)
+
+
+def test_bout_in_several_positions_gets_a_row_each():
+	recording = strategies.analysis_recording(
+		events=[event("x", Bout(start=at(1, 13, 30), end=at(1, 14), position=["cage_1", "cage_3"]))]
+	)
+
+	assert cells(recording)["position"].to_list() == ["cage_1", "cage_3"]
 
 
 def test_bout_ending_on_the_hour_stays_out_of_the_next():

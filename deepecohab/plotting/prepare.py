@@ -878,3 +878,184 @@ def prep_quality_by_antenna(context: PlotContext) -> pl.DataFrame:
 		.sort("antenna")
 		.collect(engine="in-memory")
 	)
+
+
+def prep_actogram(
+	context: PlotContext,
+	days_range: tuple[int, int],
+	granularity: Granularity,
+	hours_range: tuple[int, int] | None = None,
+) -> tuple[Heatmap, pl.DataFrame]:
+	"""Cohort visits on a day-by-hour-of-day grid, and the cells an event covers.
+
+	Rows are experiment days whatever the window's granularity: a phase is half a day,
+	so a phase axis here would leave every other row empty. A phase window narrows which
+	hours of those days are kept instead.
+
+	An hour nothing was recorded in stays null rather than zero - a day the recording
+	stopped part way through then reads as blank cells, not as a quiet stretch.
+
+	Returns:
+		The grid as a single-facet :class:`Heatmap`, and one row per ``(event, day,
+		hour)`` cell an event bout touches - empty for a recording analysed before
+		events existed.
+	"""
+	frame = (
+		context.table("activity_df")
+		.lazy()
+		.filter(
+			window_filter(days_range, granularity, hours_range),
+			pl.col("position").cast(pl.String) != Layout.UNDEFINED,
+		)
+		.group_by("day", "hour")
+		.agg(pl.sum("visits_to_position").alias("visits"))
+		.collect(engine="in-memory")
+	)
+	days = sorted(frame["day"].unique().to_list())
+	hours = sorted(frame["hour"].unique().to_list()) or list(range(24))
+	grid = {(row["day"], row["hour"]): row["visits"] for row in frame.iter_rows(named=True)}
+	values = np.array(
+		[[[grid.get((day, hour), np.nan) for hour in hours] for day in days]], dtype=float
+	)
+
+	schema = {"event": pl.String, "index": pl.Int64, "day": pl.Int64, "hour": pl.Int64}
+	cells = pl.DataFrame(schema=schema)
+	if "event_bouts" in context:
+		cells = (
+			context.table("event_bouts")
+			.filter(window_filter(days_range, granularity, hours_range))
+			.select(
+				pl.col("event").cast(pl.String),
+				# An Enum's physical code is the event's place among the recording's
+				# events, which is how _event_spans picks its colour too.
+				pl.col("event").to_physical().cast(pl.Int64).alias("index"),
+				pl.col("day", "hour").cast(pl.Int64),
+			)
+			.unique()
+		)
+
+	return (
+		Heatmap(
+			values=values,
+			text=None,
+			label="<b>Visits</b>",
+			x=hours,
+			y=[f"Day {day}" for day in days],
+			facets=["visits"],
+		),
+		cells,
+	)
+
+
+def prep_occupancy_share(
+	context: PlotContext,
+	days_range: tuple[int, int],
+	granularity: Granularity,
+	hours_range: tuple[int, int] | None = None,
+) -> pl.DataFrame:
+	"""Share of the cohort's time each place held, per window unit.
+
+	Tunnels collapse into one ``tunnels`` band - transit, not habitat, and a tunnel holds
+	a fraction of a percent on its own. ``undefined`` keeps a band of its own: it is not a
+	place, but the share of the record that could not be placed belongs on the same axis
+	as the places.
+
+	Returns:
+		``granularity``, ``place``, ``phase`` and ``pct``, summing to 100 per window unit.
+		``phase`` names the bin's phase on the phase axis, and is arbitrary on the day one.
+	"""
+	place = (
+		pl.when(pl.col("position").cast(pl.String).is_in(context.tunnels))
+		.then(pl.lit("tunnels"))
+		.otherwise(pl.col("position").cast(pl.String))
+		.alias("place")
+	)
+
+	return (
+		context.table("activity_df")
+		.lazy()
+		.filter(window_filter(days_range, granularity, hours_range))
+		.with_columns(place)
+		.group_by(granularity, "place")
+		# One row per place per bin, so the stack has one point per x. A phase_count bin
+		# is one phase by construction, so first() names it; a day holds both and the
+		# caller only reads this column on the phase axis.
+		.agg(
+			pl.col("phase").first(),
+			pl.col("time_in_position").sum().dt.total_seconds().alias("seconds"),
+		)
+		.with_columns(
+			(100 * pl.col("seconds") / pl.col("seconds").sum().over(granularity)).alias("pct")
+		)
+		.sort(granularity)
+		.collect(engine="in-memory")
+	)
+
+
+def prep_phenotype(
+	context: PlotContext,
+	days_range: tuple[int, int],
+	granularity: Granularity,
+	hours_range: tuple[int, int] | None = None,
+) -> pl.DataFrame:
+	"""One row per animal: locomotion, sociality, chases won and dominance rating.
+
+	Sociality is ``1 - time_alone / time_in_position`` over the cages - a ratio of the
+	summed durations, never the mean of the per-hour ratios, which would weight a minute
+	in a cage the same as an hour. It is null for an animal with no cage time at all.
+
+	Returns:
+		``animal_id``, ``subject_name``, ``visits``, ``gregariousness``, ``won`` and
+		``ordinal``, ordered by rating.
+	"""
+	tag = pl.col("animal_id").cast(pl.String)
+	activity = (
+		context.table("activity_df")
+		.lazy()
+		.filter(window_filter(days_range, granularity, hours_range))
+		.with_columns(tag, pl.col("position").cast(pl.String))
+	)
+	in_cage, alone = pl.col("in_cage"), pl.col("alone")
+
+	social = (
+		activity.filter(pl.col("position").is_in(context.cages))
+		.group_by("animal_id")
+		.agg(
+			pl.col("time_in_position").sum().dt.total_seconds().alias("in_cage"),
+			pl.col("time_alone").sum().dt.total_seconds().alias("alone"),
+		)
+		.with_columns(
+			pl.when(in_cage > 0).then(1 - alone / in_cage).alias("gregariousness"),
+		)
+	)
+	visits = (
+		activity.filter(pl.col("position") != Layout.UNDEFINED)
+		.group_by("animal_id")
+		.agg(pl.sum("visits_to_position").alias("visits"))
+	)
+	won = (
+		context.table("chasings_df")
+		.lazy()
+		.filter(window_filter(days_range, granularity, hours_range))
+		.group_by("chaser")
+		.agg(pl.sum("chasings").alias("won"))
+		.select(pl.col("chaser").cast(pl.String).alias("animal_id"), "won")
+	)
+	rating = (
+		context.table("ranking")
+		.lazy()
+		.sort("datetime")
+		.group_by("animal_id")
+		.last()
+		.select(tag, "ordinal")
+	)
+
+	return (
+		social.join(visits, on="animal_id", how="left")
+		.join(won, on="animal_id", how="left")
+		.join(rating, on="animal_id", how="left")
+		.join(context.animals.lazy().select(tag, "subject_name"), on="animal_id", how="left")
+		.with_columns(pl.col("visits", "won").fill_null(0))
+		.sort("ordinal", nulls_last=True)
+		.collect(engine="in-memory")
+	)

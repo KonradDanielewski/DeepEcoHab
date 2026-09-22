@@ -25,7 +25,10 @@ pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="needs node
 _PRELUDE = """
 // The renderer defines these two; the asset file only adds its own namespace.
 const PREVENT = {description: "Throw to prevent updating all Outputs."};
-global.window = {dash_clientside: {PreventUpdate: PREVENT, no_update: {}}};
+global.window = {
+	dash_clientside: {PreventUpdate: PREVENT, no_update: {}, set_props: () => {}},
+	addEventListener: () => {},
+};
 // The heatmap centring watches the page, which node does not have.
 global.document = {body: {}};
 global.MutationObserver = class { observe() {} };
@@ -292,6 +295,15 @@ const titles = (layout) => Object.fromEntries(
 		.map((key) => [key, (layout[key].title || {}).text || ""])
 );
 const bar = ({coloraxis: c}) => [c.cauto, c.cmin, c.cmax, c.colorbar.title.text, c.colorscale];
+// Flattened rather than compared whole: plotly.py writes autorangeoptions' two keys the
+// other way round, and an unset bound it leaves out entirely.
+const ranges = (layout) => Object.fromEntries(
+	Object.keys(layout).filter((key) => /^[xy]axis\\d*$/.test(key)).map((key) => {
+		const axis = layout[key], opts = axis.autorangeoptions || {};
+		const bounds = [opts.minallowed ?? null, opts.maxallowed ?? null];
+		return [key, [axis.autorange ?? null, axis.range ?? null, ...bounds]];
+	})
+);
 const edit = (key, value, store, fig = wanted.figure, choices = wanted.colors) => {
 	window.dash_clientside.callback_context = {
 		triggered_id: {type: "rec-fmt", key},
@@ -304,11 +316,23 @@ const edit = (key, value, store, fig = wanted.figure, choices = wanted.colors) =
 const formatted = apply(wanted.figure, wanted.fmt);
 eq(titles(formatted.layout), titles(wanted.expected.layout), "axis titles match apply_format");
 eq(bar(formatted.layout), bar(wanted.expected.layout), "colour axis matches apply_format");
+eq(ranges(formatted.layout), ranges(wanted.expected.layout), "axis ranges match apply_format");
 eq(apply(formatted, wanted.fmt), null, "re-applying the same format sets nothing");
 
 const cleared = apply(formatted, {});
 eq(titles(cleared.layout), titles(wanted.figure.layout), "clearing restores the server's titles");
 eq(bar(cleared.layout), bar(wanted.figure.layout), "clearing restores the server's colour axis");
+eq(ranges(cleared.layout), ranges(wanted.figure.layout), "clearing restores the server's ranges");
+
+// a plot that drew its own range gives it up while a bound holds, and takes it back after
+const drawn = {data: [], layout: {xaxis: {title: {text: "Hour"}, range: [-0.5, 23.5]}}};
+const bounded = apply(drawn, {xmin: {on: "Hour", value: 2}});
+eq(
+	ranges(bounded.layout).xaxis,
+	[true, null, 2, null],
+	"a bound hands the server's range back to autorange"
+);
+eq(apply(bounded, {}).layout.xaxis.range, [-0.5, 23.5], "clearing gives the server's range back");
 
 eq(
 	apply(wanted.figure, {xaxis: {on: "another title", value: "X"}}),
@@ -356,6 +380,9 @@ const flagged = (key) => sets.find(([id]) => id.key === key)[1].error;
 sets.length = 0;
 edit("cmax", 0.5, {p: {cmin: {on, value: 1}}});
 eq(flagged("cmax"), "Must be above min", "an inverted range is flagged on the form");
+sets.length = 0;
+edit("xmax", 0.5, {p: {xmin: {on: wanted.auto.xaxis, value: 1}}});
+eq(flagged("xmax"), "Must be above min", "an inverted x range is flagged too");
 
 // --- a palette swaps the colours the colorway declares, and only those -----------------
 const A = "rgb(10, 20, 30)", B = "rgb(40, 50, 60)", EDGE = "rgb(1, 2, 3)";
@@ -469,6 +496,9 @@ def test_format_matches_builder(tmp_path):
 			("xaxis", "X"),
 			("yaxis", "Y"),
 			("colorbar", "N"),
+			("xmin", 1),
+			("xmax", 4),
+			("ymin", 0.5),
 			("cmin", 1),
 			("cmax", 3),
 			("colorscale", "Viridis"),

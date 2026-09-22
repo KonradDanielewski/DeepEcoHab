@@ -162,9 +162,9 @@ def build_event_bouts(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 	bout covers with a filter. A bout ending on the hour does not reach into the next.
 
 	Returns:
-		One row per bout and calendar cell, with the bout's ``event``, ``position``
-		(null for the whole habitat), ``start`` and ``end``. Empty when the recording
-		declares no events.
+		One row per bout, position and calendar cell, with the bout's ``event``,
+		``position`` (null for the whole habitat), ``start`` and ``end``. Empty when the
+		recording declares no events.
 	"""
 	bouts = pl.LazyFrame(
 		[
@@ -174,14 +174,15 @@ def build_event_bouts(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 		],
 		schema={
 			"event": pl.Enum([event.name for event in recording.events]),
-			"position": pl.String,
+			"position": pl.List(pl.String),
 			"start": pl.Datetime("us", time_zone=recording.timeline.recording_timezone.key),
 			"end": pl.Datetime("us", time_zone=recording.timeline.recording_timezone.key),
 		},
 	)
 
 	return (
-		bouts.with_columns(
+		bouts.explode("position", empty_as_null=True)
+		.with_columns(
 			pl.datetime_ranges(
 				pl.col("start").dt.truncate("1m"),
 				(pl.col("end") - pl.duration(microseconds=1)).dt.truncate("1m"),
@@ -198,7 +199,7 @@ def build_event_bouts(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 		.unique()
 		.pipe(grids.assign_phase_count, recording)
 		.select("event", "position", "start", "end", *CALENDAR_COLUMNS)
-		.sort("start", "event", "day", "hour", "phase_count")
+		.sort("start", "event", "position", "day", "hour", "phase_count", nulls_last=False)
 	)
 
 
@@ -261,11 +262,12 @@ def event_status(recording: Recording, event_names: Sequence[str]) -> pl.LazyFra
 def _routes_frame(routes: dict[tuple[str, str], list[str]]) -> pl.LazyFrame:
 	"""``topology.unique_routes`` as a frame joinable on the step it describes."""
 	return pl.LazyFrame(
-		[
-			(int(source), int(target), [int(antenna) for antenna in route])
-			for (source, target), route in routes.items()
-		],
-		schema={"previous_antenna": pl.Int8, "antenna": pl.Int8, "crossed": pl.List(pl.Int8)},
+		[(source, target, route) for (source, target), route in routes.items()],
+		schema={
+			"previous_antenna": pl.Categorical(),
+			"antenna": pl.Categorical(),
+			"crossed": pl.List(pl.Categorical()),
+		},
 		orient="row",
 	)
 
@@ -307,9 +309,9 @@ def build_recording_quality(recording: Recording, params: AnalysisParams) -> pl.
 		.len("missed")
 	)
 
-	antennas = sorted(int(antenna) for antenna in topology.antennas(antenna_combinations))
+	antennas = sorted(topology.antennas(antenna_combinations))
 	grid = grids.build_animal_grid(recording, "animal_id").join(
-		pl.LazyFrame({"antenna": antennas}, schema={"antenna": pl.Int8}), how="cross"
+		pl.LazyFrame({"antenna": antennas}, schema={"antenna": pl.Categorical()}), how="cross"
 	)
 
 	return (

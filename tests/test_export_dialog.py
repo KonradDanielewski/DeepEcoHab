@@ -59,16 +59,16 @@ def test_title_only_drawn_when_toggled_on():
 	assert on["figure"].layout.title.text == "My plot"
 
 
-def test_has_events_is_false_without_event_label_annotations():
+def test_has_events_is_false_without_event_labels():
 	fig = go.Figure(go.Scatter(x=[1], y=[1])).to_dict()
 
 	assert export_preview(fig, "T", _form())["has_events"] is False
 
 
-def test_has_events_is_true_with_an_event_label_annotation():
+def test_has_events_is_true_with_an_event_label():
 	fig = go.Figure(
 		go.Scatter(x=[1], y=[1]),
-		layout={"annotations": [{"name": "event-label-0", "text": "Tone", "x": 1, "y": 1}]},
+		layout={"shapes": [{"name": "event-label", "type": "rect", "label": {"text": "Tone"}}]},
 	).to_dict()
 
 	assert export_preview(fig, "T", _form())["has_events"] is True

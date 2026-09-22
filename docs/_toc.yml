@@ -4,6 +4,6 @@
 format: jb-book
 root: intro
 chapters:
-- file: get_started
+- file: getting_started
 - file: tutorial_antenna
 - file: plotting

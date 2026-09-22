@@ -49,7 +49,6 @@ Most plots share these options; the [plot list](#available-plots) says which eac
 | `phase_type` | a list of `"light_phase"`, `"dark_phase"` | both | which phases to include |
 | `agg` | `"sum"`, `"mean"` | `"sum"` | total the window, or average it; bar plots then show the spread across days or phases, and line plots a standard-error band |
 | `color_by` | `"animal_id"` or a cohort attribute | `"animal_id"` | colour each animal by its tag, or by its group |
-| `order_by` | `"animal_id"` or a cohort attribute | `"animal_id"` | for matrices: group the animals into blocks by attribute |
 | `scope` | `"cages"`, `"tunnels"`, `"all"` | `"cages"` | which positions to include |
 | `unit` | `"auto"`, `"seconds"`, `"minutes"`, `"hours"`, `"days"` | `"auto"` | the unit durations are shown in; `"auto"` picks the largest one the data reaches |
 
@@ -57,7 +56,7 @@ Most plots share these options; the [plot list](#available-plots) says which eac
 [the analysis tables](./tutorial_antenna.md#calendar-columns): day 1 hour 0 is the onset of
 the `start_from` phase.
 
-**Colour and order by group.** `color_by` and `order_by` accept `animal_id` and any of
+**Colour by group.** `color_by` accepts `animal_id` and any of
 `subject_name`, `sex`, `genotype`, `treatment`, `mouse_line` and `genetic_background` that
 takes more than one value in the cohort. An animal keeps its colour in every plot, whatever
 the selection. To list the attributes available for a recording:
@@ -85,8 +84,8 @@ To list them in code: `deh.PlotRegistry.list_available()`.
 | `activity-bar` | visits to each position, or time spent there, per animal | `metric` (`"time"`, `"visits"`), `days_range`, `granularity`, `phase_type`, `agg`, `color_by`, `unit` |
 | `time-alone-bar` | time each animal spent with no other animal present, per position | `days_range`, `granularity`, `phase_type`, `agg`, `scope`, `color_by`, `unit` |
 | `cage-preference` | how the cohort's time is distributed across positions | `days_range`, `granularity`, `phase_type`, `scope`, `unit` |
-| `cage-preference-evolution` | time per animal in each cage or tunnel, across days or phases | `days_range`, `granularity`, `agg`, `scope`, `order_by`, `unit` |
-| `time-per-cage-heatmap` | time per animal in each cage or tunnel, across the 24 hours of the experiment day | `days_range`, `granularity`, `agg`, `scope`, `order_by`, `unit` |
+| `cage-preference-evolution` | time per animal in each cage or tunnel, across days or phases | `days_range`, `granularity`, `agg`, `scope`, `unit` |
+| `time-per-cage-heatmap` | time per animal in each cage or tunnel, across the 24 hours of the experiment day | `days_range`, `granularity`, `agg`, `scope`, `unit` |
 | `activity-line` | antenna reads per hour of the day: the circadian rhythm | `days_range`, `granularity`, `agg`, `color_by` |
 
 ### Social hierarchy
@@ -94,18 +93,18 @@ To list them in code: `deh.PlotRegistry.list_available()`.
 | plot | shows | options |
 |---|---|---|
 | `chasings-line` | chasings per hour of the day | `days_range`, `granularity`, `agg`, `color_by` |
-| `chasings-heatmap` | chaser-versus-chased matrix; columns are chasers, rows are chased | `days_range`, `granularity`, `phase_type`, `agg`, `order_by` |
+| `chasings-heatmap` | chaser-versus-chased matrix; columns are chasers, rows are chased | `days_range`, `granularity`, `phase_type`, `agg` |
 | `ranking-line` | each animal's ranking (`ordinal`) over time, or with `mode="stability"` its rank order in each day or phase | `mode` (`"intime"`, `"stability"`), `days_range`, `granularity`, `color_by` |
 | `ranking-distribution-line` | the probability density of each animal's rating on the last day or phase of the window | `days_range`, `granularity`, `color_by` |
 | `network-dominance` | directed network of chasings, with node size showing ranking | `layout` (`"spring"`, `"circular"`), `days_range`, `granularity`, `color_by` |
-| `tube-test-heatmap` | winner-versus-loser matrix of tube-test outcomes; needs the [tube test](./tutorial_antenna.md#tube-test) saved first | `days_range`, `granularity`, `phase_type`, `agg`, `order_by` |
+| `tube-test-heatmap` | winner-versus-loser matrix of tube-test outcomes; needs the [tube test](./tutorial_antenna.md#tube-test) saved first | `days_range`, `granularity`, `phase_type`, `agg` |
 
 ### Sociability
 
 | plot | shows | options |
 |---|---|---|
-| `sociability-heatmap` | time together, or number of meetings, for every pair, one panel per cage or tunnel | `metric` (`"time_together"`, `"pairwise_encounters"`), `days_range`, `granularity`, `phase_type`, `agg`, `scope`, `order_by`, `unit` |
-| `cohort-heatmap` | in-cohort sociability, or the proportion of time together, for every pair | `metric` (`"sociability"`, `"proportion_together"`), `days_range`, `granularity`, `phase_type`, `scope`, `order_by` |
+| `sociability-heatmap` | time together, or number of meetings, for every pair, one panel per cage or tunnel | `metric` (`"time_together"`, `"pairwise_encounters"`), `days_range`, `granularity`, `phase_type`, `agg`, `scope`, `unit` |
+| `cohort-heatmap` | in-cohort sociability, or the proportion of time together, for every pair | `metric` (`"sociability"`, `"proportion_together"`), `days_range`, `granularity`, `phase_type`, `scope` |
 | `social-stability` | each pair's typical proportion of time together against how steady it stays across days or phases | `days_range`, `granularity`, `phase_type`, `scope`, `color_by` |
 | `network-sociability` | undirected network weighted by the proportion of time each pair spends together | `layout` (`"spring"`, `"circular"`), `days_range`, `granularity`, `scope`, `color_by` |
 

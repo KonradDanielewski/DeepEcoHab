@@ -21,8 +21,9 @@ from dash.exceptions import PreventUpdate
 
 from deepecohab.app import components, services
 from deepecohab.app.components import icon, notify
+from deepecohab.core import topology
 from deepecohab.core.data_model import DataFrameRegistry
-from deepecohab.plotting import PlotContext, PlotRegistry, available_attributes
+from deepecohab.plotting import PlotContext, PlotRegistry, available_attributes, theme as plot_theme
 from deepecohab.plotting.animals import resolve_colors
 from deepecohab.plotting.theme import COLORSCALES, PALETTES
 
@@ -39,32 +40,40 @@ _GLOBAL_OPTIONS = {
 	"granularity",
 	"phase_type",
 	"color_by",
-	"order_by",
 	"hours_range",
 	"group_mean",
 }
 _OPTION_LABELS = {"agg": "Aggregate"}
+#: Height of the Position-unknown table, matching the heatmap it shares a grid row with.
+_MISSING_TABLE_H = 430
 #: (id, label, cells); a cell is (plot, column span of 12, height px[, grid rows]).
-#: "cohort" and "quality-summary" are computed cards, not registered plots.
-#: 548px is a half-width (span 6) card's rendered width at the common 1440px desktop
+#: "cohort", "overview-summary" and "quality-summary" are computed cards, not registered
+#: plots. 548px is a half-width (span 6) card's rendered width at the common 1440px desktop
 #: viewport this app is designed around, so a plot with that height there reads square.
+#: Diagnostics comes first, and is what a recording opens on: whether the acquisition can be
+#: trusted is the question to settle before reading anything the analysis says.
 _SECTIONS = [
+	(
+		"diagnostics",
+		"Diagnostics",
+		[
+			("quality-summary", 12, 0),
+			("habitat", 5, 500),
+			("quality-antenna", 7, 500),
+			("quality-heatmap", 5, 430),
+			("quality-missing", 7, _MISSING_TABLE_H),
+		],
+	),
 	(
 		"overview",
 		"Overview",
 		[
-			("metrics-polar-line", 7, 500),
-			("cohort", 5, 500),
-		],
-	),
-	(
-		"quality",
-		"Quality",
-		[
-			("quality-summary", 12, 0),
-			("quality-antenna", 7, 430),
-			("quality-heatmap", 5, 430),
-			("quality-missing", 12, 0),
+			("overview-summary", 12, 0),
+			("metrics-polar-line", 6, 500),
+			("cohort", 6, 500),
+			("recording-pulse", 12, 380),
+			("habitat-occupancy", 7, 360),
+			("cohort-phenotype", 5, 360),
 		],
 	),
 	(
@@ -83,11 +92,11 @@ _SECTIONS = [
 		"social",
 		"Social",
 		[
-			("sociability-heatmap", 6, 880, 2),
-			("network-sociability", 6, 384),
-			("cohort-heatmap", 6, 384),
-			("time-alone-bar", 8, 384),
-			("social-stability", 4, 384),
+			("sociability-heatmap", 12, 340),
+			("cohort-heatmap", 5, 380),
+			("time-alone-bar", 7, 380),
+			("network-sociability", 6, 424),
+			("social-stability", 6, 424),
 		],
 	),
 	(
@@ -97,8 +106,8 @@ _SECTIONS = [
 			("ranking-line", 12, 360),
 			("ranking-distribution-line", 6, 360),
 			("chasings-line", 6, 360),
-			("network-dominance", 6, 548),
-			("chasings-heatmap", 6, 548),
+			("network-dominance", 6, 424),
+			("chasings-heatmap", 6, 424),
 		],
 	),
 ]
@@ -203,8 +212,14 @@ def _meta_strip(summary: dict) -> list:
 			]
 		),
 		html.Span([icon("users", size=15), f"{summary['n_mice']} mice"]),
-		html.Span(
-			[icon("grid-dots", size=15), f"{summary['cages']} cages · {summary['tunnels']} tunnels"]
+		html.Button(
+			[
+				icon("grid-dots", size=15),
+				f"{summary['cages']} cages · {summary['tunnels']} tunnels",
+			],
+			id="rec-habitat-jump",
+			className="deh-btn deh-btn-ghost sm",
+			title="Show the habitat map",
 		),
 		html.Span(
 			[icon("bolt", size=15), f"{len(summary['events'])} events"],
@@ -249,6 +264,54 @@ def _clock(summary: dict, hour: int) -> str:
 
 def _hours_marks(summary: dict) -> list[dmc.RangeSlider.Marks]:
 	return [{"value": hour, "label": _clock(summary, hour)} for hour in (0, 6, 12, 18, 23)]
+
+
+def _shade(phase: str, selected: bool) -> str:
+	"""One phase's colour for the hours band, dimmed when the chips have turned it off."""
+	token = "--tick-dark" if phase == "dark_phase" else "--tick-light"
+	return f"color-mix(in srgb, var({token}) {100 if selected else 22}%, transparent)"
+
+
+def _hours_band(summary: dict, phases: list[str]) -> tuple[str, str]:
+	"""The hours slider's band as a CSS gradient, and the hover text naming its stretches.
+
+	``hour`` counts from the ``start_from`` onset, so each phase is one unbroken stretch
+	and the band never has to wrap around midnight. The slider puts hour ``h`` at ``h / 23``
+	of the track, so the split sits under the tick whose clock label is the other onset.
+	"""
+	onsets, start = summary["onsets"], summary["start_from"]
+	other = next((name for name in onsets if name != start), None)
+	if other is None:
+		return _shade(start, start in phases), _human(start)
+
+	minutes = {name: int(at[:2]) * 60 + int(at[3:5]) for name, at in onsets.items()}
+	first = ((minutes[other] - minutes[start]) % 1440) / 60
+	split = min(max(100 * first / 23, 0), 100)
+	edge = round(first)
+
+	return (
+		f"linear-gradient(90deg, {_shade(start, start in phases)} 0 {split}%, "
+		f"{_shade(other, other in phases)} {split}% 100%)",
+		f"{_human(start)} {_clock(summary, 0)}-{_clock(summary, edge)} · "
+		f"{_human(other)} {_clock(summary, edge)}-{_clock(summary, 24)}",
+	)
+
+
+def _window_text(bound: int, granularity: str, window: list[int]) -> tuple[str, str]:
+	"""The label above the window slider, and the hint on its right."""
+	lo, hi = window
+	unit = "Days" if granularity == "day" else "Phases"
+	span = f"all {bound}" if [lo, hi] == [1, bound] else f"{hi - lo + 1} of {bound}"
+
+	return f"{unit} {lo} → {hi}", span
+
+
+def _hours_text(summary: dict, hours: list[int]) -> tuple[str, str]:
+	"""The label above the hours slider, and the hint on its right."""
+	lo, hi = hours
+	span = "whole day" if [lo, hi] == [0, 23] else f"{hi - lo + 1} of 24 h"
+
+	return f"Hours {_clock(summary, lo)} → {_clock(summary, hi + 1)}", span
 
 
 def _cohort_widgets(context: PlotContext, color_by: str) -> tuple[list, html.Div]:
@@ -398,6 +461,40 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 		),
 		html.Footer(_reads(spec.requires), className="deh-card-foot"),
 	]
+
+
+def _overview_summary_children(context: PlotContext) -> list:
+	header = html.Div(
+		html.Div(
+			[
+				html.H3("Recording at a glance"),
+				html.P(
+					"What this recording amounts to: how long it ran, how many detections, "
+					"and where the cohort spent its time."
+				),
+			],
+			className="deh-card-titles",
+		),
+		className="deh-card-head",
+	)
+	tiles = services.overview_tiles(context)
+	body = html.Div(
+		[
+			html.Div(
+				[
+					html.Span(tile["label"], className="deh-tile-label"),
+					html.Span(tile["value"], className="deh-tile-value"),
+					html.Span(tile["note"], className="deh-sub"),
+				],
+				className="deh-tile",
+			)
+			for tile in tiles
+		],
+		className="deh-tiles",
+	)
+	reads = [table for table in ("main_df", "activity_df", "chasings_df") if table in context]
+
+	return [header, body, html.Footer(_reads(tuple(reads)), className="deh-card-foot")]
 
 
 def _quality_summary_children(context: PlotContext) -> list:
@@ -551,8 +648,71 @@ def _quality_missing_children(context: PlotContext, color_by: str) -> list:
 	)
 	return [
 		header,
-		html.Div(table, className="deh-cohort-table"),
+		# Capped to the heatmap beside it, and scrolled past that, rather than letting a
+		# large cohort set the height of the whole grid row.
+		html.Div(table, className="deh-cohort-table", style={"maxHeight": f"{_MISSING_TABLE_H}px"}),
 		html.Footer(_reads(needed), className="deh-card-foot"),
+	]
+
+
+def _habitat_card_children(context: PlotContext, height: int) -> list:
+	layout = context.recording.layout if context.recording else None
+	header = html.Div(
+		html.Div(
+			[
+				html.H3("Habitat"),
+				html.P(
+					[
+						f"{len(layout.cages)} cages, {len(layout.tunnels)} tunnels and "
+						f"{len(topology.antennas(layout.antenna_combinations))} antennas, as ",
+						html.Code("config.json"),
+						" lays them out. Antennas are tinted by missed passes.",
+					]
+					if layout
+					else "The habitat this recording was made in."
+				),
+			],
+			className="deh-card-titles",
+		),
+		className="deh-card-head",
+	)
+	if layout is None:
+		body = html.Div(
+			[icon("database", size=22), html.Div(html.B("Needs a recording config"))],
+			className="deh-missing-body",
+		)
+		return [header, body]
+
+	# The map is drawn from the layout alone, so this card is the one that renders for a
+	# recording whose pipeline has never run; the antennas just draw plain until there is a
+	# quality table to band them by.
+	antenna_miss = None
+	foot: list = _reads(("layout",))
+	if "recording_quality" in context:
+		quality = services.quality_summary(context)
+		antenna_miss = quality["antenna_miss"]
+		worst = quality["worst_antenna"]
+		foot = _reads(("layout", "recording_quality"))
+		# One span, not three children: the footer is a flex row, so each child of its own
+		# would be gapped away from the comma after the antenna, and this reads as one line
+		# whether or not the row wraps.
+		foot.append(
+			html.Span(
+				[
+					"worst: antenna ",
+					html.B(str(worst["antenna"])),
+					f", {worst['miss']:.2f}% of its passes missed",
+				]
+			)
+		)
+
+	name = context.recording.name if context.recording else "this recording"
+	return [
+		header,
+		*components.habitat_map(
+			layout, f"Habitat of {name}", antenna_miss=antenna_miss, height=height
+		),
+		html.Footer(foot, className="deh-card-foot"),
 	]
 
 
@@ -564,6 +724,10 @@ def _card(cell: tuple, context: PlotContext, color_by: str, tab: str) -> html.Ar
 		# card is right from its first paint.
 		children = _cohort_card_children(context, color_by)
 		return _card_frame(children, span, rows, card_id="cohort-card")
+	if name == "habitat":
+		return _card_frame(_habitat_card_children(context, height), span, rows)
+	if name == "overview-summary":
+		return _card_frame(_overview_summary_children(context), span, rows)
 	if name == "quality-summary":
 		return _card_frame(_quality_summary_children(context), span, rows)
 	if name == "quality-missing":
@@ -577,6 +741,9 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 	attrs = available_attributes(context) if "animals" in context else ["animal_id"]
 	color_by = controls["color_by"] if controls["color_by"] in attrs else "animal_id"
 	cohort_children, cohort_pop = _cohort_widgets(context, color_by)
+	gradient, band_title = _hours_band(summary, controls["phases"])
+	label, hint = _hours_text(summary, controls["hours"])
+	window_label, window_hint = _window_text(bound, controls["granularity"], controls["window"])
 
 	return html.Div(
 		[
@@ -596,30 +763,59 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 				className="deh-ctl",
 			),
 			html.Div(
-				dmc.RangeSlider(
-					id="rec-window",
-					min=1,
-					max=bound,
-					step=1,
-					value=controls["window"],
-					marks=_window_marks(1, bound),
-					minRange=0,
-					size="sm",
-				),
-				style={"flex": "1 1 260px", "minWidth": "220px"},
+				[
+					html.Div(
+						[
+							html.Span(window_label, id="rec-window-label"),
+							html.Span(window_hint, id="rec-window-hint", className="deh-sub"),
+						],
+						className="deh-range-top",
+					),
+					dmc.RangeSlider(
+						id="rec-window",
+						min=1,
+						max=bound,
+						step=1,
+						value=controls["window"],
+						marks=_window_marks(1, bound),
+						minRange=0,
+						size="sm",
+					),
+				],
+				className="deh-range-wrap",
 			),
 			html.Div(
-				dmc.RangeSlider(
-					id="rec-hours",
-					min=0,
-					max=23,
-					step=1,
-					value=controls["hours"],
-					marks=_hours_marks(summary),
-					minRange=0,
-					size="sm",
-				),
-				style={"flex": "1 1 260px", "minWidth": "220px"},
+				[
+					html.Div(
+						[
+							html.Span(label, id="rec-hours-label"),
+							html.Span(hint, id="rec-hours-hint", className="deh-sub"),
+						],
+						className="deh-range-top",
+					),
+					html.Div(
+						[
+							html.Div(
+								id="rec-hours-band",
+								className="deh-band",
+								style={"background": gradient},
+								title=band_title,
+							),
+							dmc.RangeSlider(
+								id="rec-hours",
+								min=0,
+								max=23,
+								step=1,
+								value=controls["hours"],
+								marks=_hours_marks(summary),
+								minRange=0,
+								size="sm",
+							),
+						],
+						className="deh-range",
+					),
+				],
+				className="deh-range-wrap",
 			),
 			html.Div(
 				[
@@ -778,8 +974,8 @@ def _resolve(pathname, search, paths, current):
 	params = parse_qs((search or "").lstrip("?"))
 	pid = (params.get("project") or [None])[0]
 	requested = (params.get("recording") or [None])[0]
-	tab = (params.get("tab") or ["overview"])[0]
-	tab = tab if tab in _TAB_IDS else "overview"
+	tab = (params.get("tab") or [_SECTIONS[0][0]])[0]
+	tab = tab if tab in _TAB_IDS else _SECTIONS[0][0]
 
 	if not pid:
 		return (
@@ -830,7 +1026,14 @@ def _resolve(pathname, search, paths, current):
 	}
 	body = _dashboard(pid, names, name, summary, context, controls, tab)
 	# days/phases ride along so the window slider can re-axis itself clientside.
-	context_data = {**identity, "days": summary["days"], "phases": summary["phases"]}
+	context_data = {
+		**identity,
+		"days": summary["days"],
+		"phases": summary["phases"],
+		# The hours band and its label are repainted clientside as the slider moves.
+		"onsets": summary["onsets"],
+		"start_from": summary["start_from"],
+	}
 	return body, context_data, controls
 
 
@@ -884,6 +1087,20 @@ clientside_callback(
 
 
 clientside_callback(
+	ClientsideFunction("deh", "paintHabitat"),
+	Input("rec-context", "data"),
+)
+
+
+clientside_callback(
+	ClientsideFunction("deh", "tabJump"),
+	Input("rec-habitat-jump", "n_clicks"),
+	Input("rec-quality-jump", "n_clicks"),
+	prevent_initial_call=True,
+)
+
+
+clientside_callback(
 	ClientsideFunction("deh", "windowControl"),
 	Output("rec-window", "min"),
 	Output("rec-window", "max"),
@@ -907,6 +1124,7 @@ clientside_callback(
 	Input("rec-animals-by", "value"),
 	Input("rec-group-mean", "checked"),
 	State("rec-controls", "data"),
+	State("rec-context", "data"),
 	prevent_initial_call=True,
 )
 
@@ -1065,7 +1283,6 @@ def _update_plot(request, events_on):
 		granularity=controls["granularity"],
 		phase_type=controls["phases"],
 		color_by=controls["color_by"],
-		order_by=controls["color_by"],
 		group_mean=controls.get("group_mean", False),
 		# None for the untouched full day, matching every builder's own default: some
 		# prepare.* steps aggregate away the hour column before applying this filter and
@@ -1076,13 +1293,17 @@ def _update_plot(request, events_on):
 
 	figure = PlotRegistry.build(name, context, **values)
 	# The card header already carries the title; the figure's own would double it up.
-	# Plotly still reserves top margin for it, so that's trimmed back too.
-	figure.update_layout(title=None, margin={"t": 30}, template=theme or "light")
+	# Plotly still reserves top margin for it, so that's trimmed back too - which is also
+	# where the phase band sits, so it keeps a little more room than the title needed.
+	figure.update_layout(title=None, margin={"t": 30})
+	# Not a bare template=: a shape carries a literal colour, so the phase band has to be
+	# repainted for the theme rather than inheriting it.
+	plot_theme.apply(figure, theme or "light")
 	if not events_on:
 		# A newly mounted or rebuilt card starts respecting the toggle without being an
 		# Input of its own; deh.toggleEvents keeps an already-loaded figure in sync.
 		figure.update_shapes(visible=False, selector={"name": "event-span"})
-		figure.update_annotations(visible=False, selector={"name": "event-label"})
+		figure.update_shapes(visible=False, selector={"name": "event-label"})
 
 	badges = []
 	if "hours_range" not in accepted and list(controls["hours"]) != [0, 23]:
