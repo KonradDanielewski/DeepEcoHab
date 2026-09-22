@@ -45,6 +45,7 @@ dependencies = [
     app = [
         "dash[diskcache]>=4",
         "dash-mantine-components>=2.8.0",
+        "pyshortcuts",
     ]
 
     test = [
@@ -62,6 +63,7 @@ dependencies = [
 
     [project.scripts]
     deepecohab-app = "deepecohab.app.__main__:main"
+    deepecohab-shortcut = "deepecohab.app.shortcut:main"
 
     [project.urls]
     Homepage = "https://github.com/KonradDanielewski/DeepEcoHab"

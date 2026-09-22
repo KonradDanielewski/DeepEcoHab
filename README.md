@@ -8,6 +8,18 @@ DeepEcoHab is an analytics platform built for preprocessing, analysis and visual
 
 Our backend is built on [Polars](https://pola.rs/) - Extremely fast Query Engine for DataFrames, written in Rust and visualization utilizes [Plotly](https://plotly.com/), providing interactive, high quality and responsive plots of experiments regardless of their length.
 
+## Quick start
+
+Two steps get you from nothing to a running dashboard:
+
+```
+uv tool install "deepecohab[app]"   # install as a standalone app
+deepecohab-shortcut                 # create a desktop icon
+```
+
+Then double-click the **DeepEcoHab** icon on your desktop. See
+[Installation](#installation) for `uv` setup and other platforms.
+
 ## Installation
 
 We keep DeepEcoHab lean to ensure easy integration and fast installation. In the
@@ -28,23 +40,32 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### Step 2 — Install DeepEcoHab
 
-```
-uv venv
-# Windows:        .venv\Scripts\activate
-# Linux / macOS:  source .venv/bin/activate
-uv pip install "deepecohab[app]"
-```
-
-Already have an environment running `python>=3.12`? Just run `pip install "deepecohab[app]"`.
-
-### Step 3 — Start the app
+For most users the simplest path is to install DeepEcoHab as a standalone
+application. This puts the `deepecohab-app` and `deepecohab-shortcut` commands
+on your PATH in an isolated environment — no virtual environment to create or
+activate:
 
 ```
-deepecohab-app
+uv tool install "deepecohab[app]"
 ```
 
-The app opens in your browser. Create a project, add your recordings, run the analysis and
-build plots — no code involved. This is how we expect most people to use DeepEcoHab.
+That's it. Run `deepecohab-app` to launch the dashboard, which opens automatically
+in your browser.
+
+> If the commands aren't found afterwards, run `uv tool update-shell` and reopen
+> your terminal.
+
+### Desktop shortcut (Windows)
+
+After `uv tool install "deepecohab[app]"`, create a clickable desktop icon with:
+
+```
+deepecohab-shortcut
+```
+
+This places a **DeepEcoHab** shortcut on your desktop. Double-clicking it starts
+the dashboard and opens it in your browser — no terminal required. This is the
+recommended way to launch DeepEcoHab for most users.
 
 ### Working from code instead
 
