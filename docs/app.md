@@ -13,7 +13,17 @@ has a short video; the screenshots and steps underneath cover the same ground at
 ## Start the app
 
 Install DeepEcoHab with the `app` extra, as described in
-[Getting started](./getting_started.md#installation), then run:
+[Getting started](./getting_started.md#installation). Most users just want a desktop icon to
+click — create one once with:
+
+```
+deepecohab-shortcut
+```
+
+Double-click the **DeepEcoHab** icon whenever you want to work; it starts the app and opens it
+in your browser. That's the whole workflow — no terminal needed again.
+
+Prefer a terminal, or need the options below? Start it directly instead:
 
 ```
 deepecohab-app
