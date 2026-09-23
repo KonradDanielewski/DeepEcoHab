@@ -9,6 +9,10 @@ DeepEcoHab is an analytics platform built for preprocessing, analysis and visual
 
 Our backend is built on [Polars](https://pola.rs/) - Extremely fast Query Engine for DataFrames, written in Rust and visualization utilizes [Plotly](https://plotly.com/), providing interactive, high quality and responsive plots of experiments regardless of their length.
 
+📖 **[Read the full documentation](https://konraddanielewski.github.io/DeepEcoHab/)** — installation, the app walkthrough with screenshots and videos, the analysis tables and every plot.
+
+![The DeepEcoHab recording dashboard](./docs/images/readme-dashboard.png)
+
 ## Quick start
 
 Two steps get you from nothing to a running dashboard:

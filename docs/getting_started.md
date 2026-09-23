@@ -48,13 +48,22 @@ Already have an environment running `python>=3.12`? Just run `pip install "deepe
 
 ### Step 3 — Start the app
 
+Most people never need a terminal after this. Create a desktop shortcut once:
+
+```
+deepecohab-shortcut
+```
+
+Then double-click the **DeepEcoHab** icon whenever you want to work — it starts the app and
+opens it in your browser. No shortcut? Start it directly instead:
+
 ```
 deepecohab-app
 ```
 
-The app opens in your browser. Create a project, add your recordings, run the analysis and
-build plots — no code involved. This is how we expect most people to use DeepEcoHab.
-[Using the app](./app.md) walks through it step by step, with screenshots and short videos.
+Create a project, add your recordings, run the analysis and build plots — no code involved.
+This is how we expect most people to use DeepEcoHab. [Using the app](./app.md) walks through
+it step by step, with screenshots and short videos.
 
 ### Working from code instead
 
