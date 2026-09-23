@@ -2,7 +2,7 @@
  * the drop event. Dash's directory traversal awaits each entry before retrieving
  * the next one, which can lose the remaining files in an ordinary multi-file drop.
  * Folder drops and the file picker continue through Dash's normal handler.
- * TODO: Will be fixed in Dash 4.5.0
+ * TODO(KonradDanielewski): delete this file once Dash 4.5.0 ships plotly/dash#3916.
  */
 (function () {
     "use strict";

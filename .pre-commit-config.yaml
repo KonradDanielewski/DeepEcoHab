@@ -15,3 +15,9 @@ repos:
         types: [python]
         pass_filenames: false
         require_serial: true
+
+      - id: todo-owner-issue
+        name: TODO/FIXME/XXX/HACK/BUG need (owner) and an issue
+        language: pygrep
+        entry: '(#|//|\*)\s*(TODO|FIXME|XXX|HACK|BUG)\b(?!\([\w-]+\): .*(#|issues/)\d+)'
+        types_or: [python, javascript, css]

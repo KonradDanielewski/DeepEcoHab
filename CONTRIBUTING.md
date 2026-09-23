@@ -26,6 +26,23 @@ uv run --locked --extra test pytest -m "not e2e"   # fast suite
 uv run --locked --extra test pytest -m e2e         # full pipeline on example data
 ```
 
+## TODO / FIXME / XXX / HACK / BUG comments
+
+Every such comment names its owner (GitHub handle) and the issue that tracks it, on the
+same line. Open an issue first if none exists; upstream issues (`owner/repo#N`) count too:
+
+```python
+# TODO(KonradDanielewski): drop the legacy loader #42
+# FIXME(ula-w): off by one on DST days https://github.com/KonradDanielewski/DeepEcoHab/issues/57
+```
+
+```js
+// HACK(KonradDanielewski): delete once Dash ships plotly/dash#3916
+```
+
+`NOTE` is not a tracked tag: write the explanation as a plain comment. The
+`todo-owner-issue` pre-commit hook enforces this in Python, JS and CSS, locally and in CI.
+
 ## Updating dev tooling
 
 There is intentionally no scheduled bot for this — refresh the tooling by hand
