@@ -60,6 +60,10 @@ dependencies = [
         "tzlocal",
     ]
 
+    docs = [
+        "jupyter-book<2",
+    ]
+
     dev = [
         "deepecohab[app,notebook,test]",
         "ruff>=0.15.17",

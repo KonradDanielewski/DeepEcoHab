@@ -157,7 +157,7 @@ PLOTS: tuple[PlotType, ...] = (
 	PlotType("bar", "Bar", px.bar, ("x", "y"), {"barmode": "group"}),
 	PlotType("area", "Area", px.area, ("x", "y")),
 	PlotType("box", "Box", px.box, ("y",), {"points": "all"}),
-	PlotType("violin", "Violin", px.violin, ("y",), {"box": True, "points": "all"}),
+	PlotType("violin", "Violin", px.violin, ("y",), {"box": False, "points": "all"}),
 	PlotType("strip", "Strip", px.strip, ("y",)),
 	PlotType("histogram", "Histogram", px.histogram, ("x",)),
 	PlotType("ecdf", "ECDF", px.ecdf, ("x",)),

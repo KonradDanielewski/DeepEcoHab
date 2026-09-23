@@ -3,16 +3,16 @@
 DeepEcoHab is a package for analysis of data acquired in the EcoHab system - a semi-naturalistic cage design for long-term recording of a group of up to 12 mice.
 The package provides four modules:
 
-### 1. Antenna analysis
+## 1. Antenna analysis
 `deepecohab.core` - a set of optimized, fast functions to analyze your experiments purely on information obtained from animals crossing the antennas: time spent in cages and tunnels, number of visits, time alone, chasings and dominance ranking, pairwise meetings, in-cohort sociability, a per-antenna report of how much of the movement the hardware caught, and a feature table that compares animals across recordings. Provides an approximate picture of the social structure and social hierarchy type.
 
-### 2. Auxiliary analyses
+## 2. Auxiliary analyses
 `deepecohab.auxiliary_analysis` - analyses kept outside the routine pipeline, which you run yourself when you need them, such as the spontaneous tube test.
 
-### 3. Plotting
+## 3. Plotting
 `deepecohab.plotting` - interactive Plotly figures of the most important results, built straight from an analysed recording.
 
-### 4. Web app
+## 4. Web app
 `deepecohab.app` - a browser GUI over the same pipeline: create a project, add recordings, run the analysis, build plots and export them without writing any code. It ships with the `app` extra and is started with `deepecohab-app`.
 
 Analysis of pose estimation data is planned.
@@ -54,6 +54,7 @@ deepecohab-app
 
 The app opens in your browser. Create a project, add your recordings, run the analysis and
 build plots — no code involved. This is how we expect most people to use DeepEcoHab.
+[Using the app](./app.md) walks through it step by step, with screenshots and short videos.
 
 ### Working from code instead
 
