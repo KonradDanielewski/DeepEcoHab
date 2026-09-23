@@ -337,6 +337,7 @@ dependencies = [
     { name = "polars" },
     { name = "pydantic" },
     { name = "tqdm" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 
 [package.optional-dependencies]
@@ -382,6 +383,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.17" },
     { name = "tqdm" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.50" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
     { name = "tzlocal", marker = "extra == 'test'" },
 ]
 provides-extras = ["app", "test", "dev"]
