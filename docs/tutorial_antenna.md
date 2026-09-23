@@ -246,7 +246,7 @@ Existing tables are not rebuilt when parameters change: pass `overwrite=True`, w
 | `minimum_time_alone` | `10` | seconds an animal must be alone continuously for it to count as time alone |
 | `extrapolation_limit` | `43200` | seconds an animal's last known position is carried on past its last registration; see [Activity and time alone](#activity-and-time-alone) |
 | `chasing_time_window` | `(0.1, 1.2)` | shortest and longest chasing event, in seconds |
-| `prev_ranking` | `None` | starting ratings carried over from an earlier recording; see [Chasings and ranking](#chasings-and-ranking) |
+| `use_prev_ranking` | `True` | start the ranking from the previous ranking stored with the recording; see [Chasings and ranking](#chasings-and-ranking) |
 
 ## Load results
 
@@ -348,20 +348,17 @@ highest ordinal at that point as `dominant`, the lowest as `subordinate` and the
 To continue ranking the same animals from where an earlier recording left off:
 
 ```python
-from deepecohab.core.antenna_analysis import get_prev_ranking
+project["week_2"].set_prev_ranking(project["week_1"].load_results("ranking"))
 
-previous = get_prev_ranking(project["week_1"].load_results("ranking"))
-
-project.run_analysis(
-    deh.AnalysisParams(prev_ranking=previous),
-    names=["week_2"],
-    targets=["ranking"],
-    overwrite=True,
-)
+project.run_analysis(names=["week_2"], targets=["ranking"], overwrite=True)
 ```
 
-Parameters apply to every recording a run covers, hence `names`. A previous ranking holding
-animals missing from the cohort is rejected.
+Each animal's last rating is stored as `prev_ranking.parquet` in the recording's folder, and
+every later build of its ranking starts from it; `AnalysisParams(use_prev_ranking=False)`
+builds one from scratch instead, and `set_prev_ranking(None)` removes it. A previous ranking
+holding animals missing from the cohort is rejected. In the app, drop the earlier
+`ranking.parquet`, renamed after the recording it seeds, into Parameters; with Overwrite on, a
+switch picks whether the rebuild uses it.
 
 ### Pairwise meetings and in-cohort sociability
 

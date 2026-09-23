@@ -357,16 +357,15 @@ class AnalysisParams(BaseModel):
 			carried on past its last registration. Silence beyond this is not evidence of
 			staying put, so the rest of the window becomes ``Layout.UNDEFINED``.
 		chasing_time_window: min and max length, in seconds, of a chasing event.
-		prev_ranking: starting ratings from an earlier recording of the same animals.
+		use_prev_ranking: start the ranking from the ratings stored with the recording by
+			:meth:`Recording.set_prev_ranking`, when it has any, instead of from scratch.
 	"""
-
-	model_config = ConfigDict(arbitrary_types_allowed=True)
 
 	minimum_time: float = 2
 	minimum_time_alone: float = 10.0
 	extrapolation_limit: float = 43200.0
 	chasing_time_window: tuple[float, float] = (0.1, 1.2)
-	prev_ranking: pl.DataFrame | pl.LazyFrame | None = None
+	use_prev_ranking: bool = True
 
 
 class StepProgress(NamedTuple):
@@ -538,6 +537,8 @@ class Recording(BaseModel):
 
 	model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
+	PREV_RANKING: ClassVar[str] = "prev_ranking.parquet"
+
 	name: str
 	project_name: str
 	recording_location: str
@@ -652,6 +653,42 @@ class Recording(BaseModel):
 		(self.root / "config.json").write_text(
 			json.dumps(self.to_config(), indent=2), encoding="utf-8"
 		)
+
+	@property
+	def prev_ranking(self) -> pl.DataFrame | None:
+		"""The ratings this recording's ranking starts from; ``None`` when it starts fresh."""
+		path = self.root / self.PREV_RANKING
+		return pl.read_parquet(path) if path.is_file() else None
+
+	def set_prev_ranking(self, ranking: pl.DataFrame | pl.LazyFrame | None) -> None:
+		"""Store the ratings this recording's ranking starts from, or remove them with ``None``.
+
+		Every later build of the ranking starts from them, unless
+		``AnalysisParams.use_prev_ranking`` is off.
+
+		Args:
+			ranking: an earlier recording's ranking of the same animals. The full trajectory
+				is fine; each animal's last rating is kept.
+
+		Raises:
+			ValueError: ``ranking`` lacks a rating column, or holds animals that are not in
+				this cohort.
+		"""
+		# Deferred: antenna_analysis imports this module.
+		from deepecohab.core.antenna_analysis import get_prev_ranking
+
+		path = self.root / self.PREV_RANKING
+		if ranking is None:
+			path.unlink(missing_ok=True)
+			return
+
+		ratings = get_prev_ranking(ranking).collect()
+		if foreign := set(ratings["animal_id"]) - set(self.cohort.animal_tags):
+			raise ValueError(
+				f"{sorted(foreign)} are not in the cohort of {self.name!r}; a previous ranking "
+				"must come from a recording of the same animals."
+			)
+		ratings.write_parquet(path)
 
 	@classmethod
 	def from_config(cls, config: dict[str, Any], data_path: Path) -> "Recording":

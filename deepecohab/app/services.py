@@ -438,6 +438,7 @@ def run_analysis(
 	selection: list[list[str]],
 	params: dict | None,
 	overwrite: bool,
+	use_prev_ranking: bool,
 	failed: dict[str, dict[str, str]],
 ) -> tuple:
 	"""The Run analysis background callback: the selected recordings, project by project.
@@ -447,14 +448,14 @@ def run_analysis(
 	steps in flight still land. Recordings left incomplete by a project that raised are
 	marked failed.
 
+	The stored previous rankings are only optional when overwriting: that switch is hidden
+	otherwise, so a ranking built for the first time always starts from them.
+
 	Returns:
 		The failed-recordings store and the selection, cleared after a clean run. The outcome
 		goes out as a notification.
 	"""
-	params = dict(params or {})
-	prev_ranking = params.get("prev_ranking")
-	if prev_ranking is not None:
-		params["prev_ranking"] = pl.DataFrame(prev_ranking)
+	params = {**(params or {}), "use_prev_ranking": use_prev_ranking or not overwrite}
 
 	order = DataFrameRegistry.step_order()
 	todo: dict[str, list[str]] = {}

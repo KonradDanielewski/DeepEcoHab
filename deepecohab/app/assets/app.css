@@ -777,7 +777,8 @@ code {
 
 .deh-actionbar[hidden],
 .deh-actionbar:not(.is-running) .deh-when-running,
-.deh-actionbar.is-running .deh-when-idle {
+.deh-actionbar.is-running .deh-when-idle,
+.deh-actionbar:not(:has(#overwrite:checked)) .deh-when-overwrite {
 	display: none;
 }
 
