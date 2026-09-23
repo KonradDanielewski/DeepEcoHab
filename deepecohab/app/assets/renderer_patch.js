@@ -6,9 +6,8 @@
  * newly mounted component made inserting N components cost about N x (mounted components):
  * expanding a 52-recording project took 30 s, the app's first paint 7 s.
  *
- * ponytail: patches renderer internals (window.dash_stores, the action type, layoutHashes);
- * delete this file once the installed Dash includes #3929.
- * TODO: Will be fixed in Dash 4.5.0
+ * ponytail: patches renderer internals (window.dash_stores, the action type, layoutHashes).
+ * TODO(KonradDanielewski): delete this file once Dash 4.5.0 ships plotly/dash#3929.
  */
 
 (function () {

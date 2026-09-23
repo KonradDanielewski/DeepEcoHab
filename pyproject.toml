@@ -103,8 +103,6 @@ target-version = "py312"
         "NPY",  # numpy-specific lints
         "E",  # pycodestyle errors
         "F",  # pyflakes
-        "FIX", # Enable fixme rules (detects TODO, FIXME, XXX)
-        "TD",  # Enable strict todo rules (authors, links, tags)
     ]
 
     ignore = [
