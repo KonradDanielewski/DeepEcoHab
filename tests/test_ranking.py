@@ -51,8 +51,13 @@ def make_match_df(rows: list[tuple[str, str, dt.datetime]], recording) -> pl.Laz
 	)
 
 
-def run_ranking(monkeypatch, matches, animal_ids, prev_ranking=None) -> pl.DataFrame:
-	"""Call the pure ranking body with match_df injected in place of _get_data."""
+def run_ranking(
+	monkeypatch, matches, animal_ids, prev_ranking=None, root=None, **params
+) -> pl.DataFrame:
+	"""Call the pure ranking body with match_df injected in place of _get_data.
+
+	``prev_ranking`` is stored with the recording first, which needs a ``root`` folder.
+	"""
 	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: match_df)
 	# The window spans the match datetimes below, so phase_count resolves off the grid.
 	recording = strategies.analysis_recording(
@@ -61,12 +66,16 @@ def run_ranking(monkeypatch, matches, animal_ids, prev_ranking=None) -> pl.DataF
 		start="2023-05-24 00:00:00",
 		finish="2023-05-26 23:00:00",
 		phases=PHASE_CFG,
+		root=root,
 	)
 	match_df = make_match_df(matches, recording)
 	monkeypatch.setattr(Recording, "load_results", lambda self, key, eager=False: match_df)
 
-	kwargs = {} if prev_ranking is None else {"prev_ranking": prev_ranking}
-	return antenna_analysis.calculate_ranking(recording, AnalysisParams(**kwargs)).collect()
+	if prev_ranking is not None:
+		recording.set_prev_ranking(prev_ranking)
+	# A recording without a folder has no stored previous ranking to look for.
+	params.setdefault("use_prev_ranking", root is not None)
+	return antenna_analysis.calculate_ranking(recording, AnalysisParams(**params)).collect()
 
 
 def final_block(result: pl.DataFrame) -> dict[str, float]:
@@ -176,7 +185,7 @@ def test_social_rank_pair_has_no_middle(monkeypatch):
 
 
 @pytest.mark.parametrize("as_lazy", [True, False], ids=["lazyframe", "dataframe"])
-def test_prev_ranking_seeds_starting_ratings(monkeypatch, as_lazy):
+def test_prev_ranking_seeds_starting_ratings(monkeypatch, tmp_path, as_lazy):
 	"""prev_ranking resumes an animal from its prior mu/sigma instead of the default.
 
 	C never plays, so its emitted ordinal must equal the ordinal of the seeded
@@ -190,13 +199,26 @@ def test_prev_ranking_seeds_starting_ratings(monkeypatch, as_lazy):
 	prev_ranking = prev.lazy() if as_lazy else prev
 
 	matches = [("B", "A", at(2023, 5, 24, 12, i, 0)) for i in range(3)]
-	result = run_ranking(monkeypatch, matches, ["A", "B", "C"], prev_ranking=prev_ranking)
+	result = run_ranking(monkeypatch, matches, ["A", "B", "C"], prev_ranking, tmp_path)
 
 	c_rows = result.filter(pl.col("animal_id") == "C")
 	assert (c_rows["ordinal"] == expected_ordinal(mu=40.0, sigma=2.0)).all()
 
 
-def test_prev_ranking_defaults_animals_not_listed(monkeypatch):
+def test_use_prev_ranking_off_starts_fresh(monkeypatch, tmp_path):
+	"""With use_prev_ranking off, a stored previous ranking is kept but not used."""
+	prev = pl.DataFrame({"animal_id": ["C"], "mu": [40.0], "sigma": [2.0]})
+	matches = [("B", "A", at(2023, 5, 24, 12, 0, 0))]
+
+	result = run_ranking(
+		monkeypatch, matches, ["A", "B", "C"], prev, tmp_path, use_prev_ranking=False
+	)
+
+	assert result.filter(animal_id="C")["ordinal"].item() == expected_ordinal()
+	assert (tmp_path / Recording.PREV_RANKING).is_file()
+
+
+def test_prev_ranking_defaults_animals_not_listed(monkeypatch, tmp_path):
 	"""Animals absent from prev_ranking still start from the model default."""
 	prev = pl.DataFrame(
 		{"animal_id": ["C"], "mu": [40.0], "sigma": [2.0]},
@@ -205,7 +227,7 @@ def test_prev_ranking_defaults_animals_not_listed(monkeypatch):
 	# A and B are not in prev_ranking; with no matches between... use a B/A match
 	# but check a third uninvolved default animal D.
 	matches = [("B", "A", at(2023, 5, 24, 12, 0, 0))]
-	result = run_ranking(monkeypatch, matches, ["A", "B", "C", "D"], prev_ranking=prev)
+	result = run_ranking(monkeypatch, matches, ["A", "B", "C", "D"], prev, tmp_path)
 
 	d_rows = result.filter(pl.col("animal_id") == "D")
 	assert (d_rows["ordinal"] == expected_ordinal()).all()
@@ -239,9 +261,11 @@ def test_get_prev_ranking_takes_latest_rating(monkeypatch):
 		assert round(seeded.ordinal(), 3) == ordinal
 
 
-def test_prev_ranking_from_a_full_trajectory_uses_the_chronologically_last_row(monkeypatch):
-	"""prev_ranking need not be pre-collapsed - calculate_ranking runs it through
-	get_prev_ranking itself, which sorts by datetime before taking each animal's last
+def test_prev_ranking_from_a_full_trajectory_uses_the_chronologically_last_row(
+	monkeypatch, tmp_path
+):
+	"""prev_ranking need not be pre-collapsed - set_prev_ranking runs it through
+	get_prev_ranking, which sorts by datetime before taking each animal's last
 	rating. An unsorted multi-row trajectory must still seed the chronologically LAST
 	mu/sigma, not whatever row happens to land last in the frame.
 	"""
@@ -255,13 +279,13 @@ def test_prev_ranking_from_a_full_trajectory_uses_the_chronologically_last_row(m
 	phase2 = [
 		("B", "C", at(2023, 5, 25, 12, 0, 0))
 	]  # A stays uninvolved, so its seed shows through
-	result = run_ranking(monkeypatch, phase2, ["A", "B", "C"], prev_ranking=shuffled)
+	result = run_ranking(monkeypatch, phase2, ["A", "B", "C"], shuffled, tmp_path)
 
 	a_rows = result.filter(pl.col("animal_id") == "A")
 	assert (a_rows["ordinal"] == final1["A"]).all()
 
 
-def test_round_trip_continues_from_prev(monkeypatch):
+def test_round_trip_continues_from_prev(monkeypatch, tmp_path):
 	"""get_prev_ranking output fed back as prev_ranking carries ratings forward.
 
 	Phase 1 lets A dominate B; phase 2 only has a C/D match, so A and B are
@@ -273,7 +297,7 @@ def test_round_trip_continues_from_prev(monkeypatch):
 
 	prev = antenna_analysis.get_prev_ranking(r1)  # LazyFrame
 	phase2 = [("D", "C", at(2023, 5, 25, 12, 0, 0))]
-	r2 = run_ranking(monkeypatch, phase2, ["A", "B", "C", "D"], prev_ranking=prev)
+	r2 = run_ranking(monkeypatch, phase2, ["A", "B", "C", "D"], prev, tmp_path)
 	final2 = final_block(r2)
 
 	assert final2["A"] == final1["A"]
@@ -311,7 +335,7 @@ def test_empty_match_df_emits_empty_schema(monkeypatch):
 # --- guards and determinism -------------------------------------------------
 
 
-def test_prev_ranking_from_another_cohort_raises(monkeypatch):
+def test_prev_ranking_from_another_cohort_raises(monkeypatch, tmp_path):
 	"""Seeding from a recording of different animals is a mistake, not a merge.
 
 	Their ratings would be silently discarded while the current cohort started from
@@ -322,10 +346,16 @@ def test_prev_ranking_from_another_cohort_raises(monkeypatch):
 		schema={"animal_id": pl.Utf8, "mu": pl.Float64, "sigma": pl.Float64},
 	)
 
-	with pytest.raises(ValueError, match="not in the current cohort"):
+	with pytest.raises(ValueError, match="not in the cohort"):
 		run_ranking(
-			monkeypatch, [("B", "A", at(2023, 5, 24, 12, 0, 0))], ["A", "B"], prev_ranking=prev
+			monkeypatch, [("B", "A", at(2023, 5, 24, 12, 0, 0))], ["A", "B"], prev, tmp_path
 		)
+
+
+def test_get_prev_ranking_without_ratings_raises():
+	"""A table without the rating columns is refused up front, naming what is missing."""
+	with pytest.raises(ValueError, match="missing mu, sigma"):
+		antenna_analysis.get_prev_ranking(pl.DataFrame({"animal_id": ["A"]}))
 
 
 def test_tied_ordinals_share_the_same_rank_label(monkeypatch):

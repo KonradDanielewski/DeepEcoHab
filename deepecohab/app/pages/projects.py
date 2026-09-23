@@ -25,10 +25,9 @@ from dash import (
 )
 from dash.exceptions import PreventUpdate
 
-from deepecohab import AnalysisParams, Project
+from deepecohab import AnalysisParams, Project, Recording
 from deepecohab.app import components, services
 from deepecohab.app.components import icon, notify
-from deepecohab.core.antenna_analysis import get_prev_ranking
 
 dash.register_page(__name__, path="/", name="Projects", order=0, icon="folders")
 
@@ -74,7 +73,6 @@ layout = html.Div(
 				"chasing_time_window": list(_DEFAULTS.chasing_time_window),
 			},
 		),
-		dcc.Store(id="params-ranking"),
 		dcc.Store(id="run-progress"),
 		dcc.Store(id="run-active", data=False),
 		dcc.Store(id="run-failed", data={}),
@@ -128,6 +126,13 @@ layout = html.Div(
 					label="Overwrite existing tables",
 					size="sm",
 					className="deh-switch deh-when-idle",
+				),
+				dmc.Switch(
+					id="use-prev-ranking",
+					checked=True,
+					label="Use stored previous rankings",
+					size="sm",
+					className="deh-switch deh-when-idle deh-when-overwrite",
 				),
 				html.Span(className="deh-grow"),
 				html.Button(
@@ -187,28 +192,26 @@ layout = html.Div(
 						),
 						_field(
 							"Previous ranking",
-							"prev_ranking",
+							Recording.PREV_RANKING,
 							html.Div(
 								[
 									dcc.Upload(
 										id="params-ranking-upload",
+										multiple=True,
 										accept=".parquet,.csv",
 										className="deh-drop",
 										className_active="deh-drop is-over",
 										children=[
 											icon("upload", size=20),
-											html.B("Drop a ranking table, or click to pick one"),
+											html.B("Drop ranking tables, or click to pick them"),
 											html.Span(
 												[
-													html.Code("animal_id"),
-													", ",
-													html.Code("mu"),
-													" and ",
-													html.Code("sigma"),
-													" columns; a ",
-													html.Code("datetime"),
-													" column, if present, narrows it to "
-													"each animal's last rating.",
+													"An earlier ",
+													html.Code("ranking.parquet"),
+													" renamed ",
+													html.Code("<recording>.parquet"),
+													" is stored with that recording, as each "
+													"animal's last rating.",
 												]
 											),
 										],
@@ -222,16 +225,15 @@ layout = html.Div(
 												icon("x", size=13),
 												id="params-ranking-clear",
 												className="deh-icon-btn sm",
-												title="Clear",
+												title="Remove the stored rankings of the selection",
 											),
 										],
 										className="deh-unit-input",
 									),
 								]
 							),
-							"Seeds the dominance ranking from an earlier recording of the same "
-							"animals, instead of starting fresh. Applies to every recording in the "
-							"next run.",
+							"Starts a recording's dominance ranking from an earlier recording of "
+							"the same animals, instead of from scratch, whenever it is built.",
 						),
 					],
 					className="deh-dialog-body",
@@ -1204,39 +1206,52 @@ def _remove_recording(event, _cancel, _delist, _delete, target, selection):
 
 @callback(
 	Output("params-ranking-status", "children"),
-	Output("params-ranking", "data"),
 	Output("params-ranking-upload", "contents"),
+	Input("params-open", "n_clicks"),
 	Input("params-ranking-upload", "contents"),
 	Input("params-ranking-clear", "n_clicks"),
-	Input("params-reset", "n_clicks"),
 	State("params-ranking-upload", "filename"),
+	State("selection", "data"),
 	prevent_initial_call=True,
 )
-def _upload_prev_ranking(contents, _clear, _reset, filename):
-	if ctx.triggered_id in ("params-ranking-clear", "params-reset"):
-		return None, None, no_update
-	if not contents:  # our own reset of the drop zone comes back through this Input
-		return no_update, no_update, no_update
+def _prev_rankings(_open, contents, _clear, filenames, selection):
+	uploaded = ctx.triggered_id == "params-ranking-upload"
+	if uploaded and not contents:  # our own reset of the drop zone comes back through this Input
+		return no_update, no_update
 
-	raw = base64.b64decode(contents.split(",", 1)[1])
-	try:
-		frame = (
-			pl.read_csv(io.BytesIO(raw), schema_overrides={"animal_id": pl.String})
-			if filename.lower().endswith(".csv")
-			else pl.read_parquet(io.BytesIO(raw))
-		)
-	except Exception as exc:
-		notify("bad", f"Could not read {filename}: {exc}")
-		return None, None, None
+	recordings = [services.load_project(location)[name] for location, name in selection]
+	if ctx.triggered_id == "params-ranking-clear":
+		for recording in recordings:
+			recording.set_prev_ranking(None)
+	elif uploaded:
+		problems = []
+		for filename, blob in zip(filenames, contents, strict=True):
+			stem = Path(filename).stem
+			targets = [recording for recording in recordings if recording.name == stem]
+			if not targets:
+				problems.append(f"{filename}: no selected recording is named {stem}.")
+				continue
 
-	missing = [column for column in ("animal_id", "mu", "sigma") if column not in frame.columns]
-	if missing:
-		notify("warn", f"{filename} is missing {', '.join(missing)}.")
-		return None, None, None
+			raw = base64.b64decode(blob.split(",", 1)[1])
+			try:
+				frame = (
+					pl.read_csv(io.BytesIO(raw), schema_overrides={"animal_id": pl.String})
+					if filename.lower().endswith(".csv")
+					else pl.read_parquet(io.BytesIO(raw))
+				)
+				for recording in targets:
+					recording.set_prev_ranking(frame)
+			except Exception as exc:
+				problems.append(f"{filename}: {exc}")
+		if problems:
+			notify("warn", " ".join(problems))
 
-	rows = get_prev_ranking(frame).collect().to_dicts()
-	status = html.Span([html.Code(filename), f" · {len(rows)} animals"])
-	return status, {"name": filename, "rows": rows}, None
+	status = []
+	for recording in recordings:
+		if (ratings := recording.prev_ranking) is not None:
+			status += [html.Code(recording.name), f" · {ratings.height} animals", html.Br()]
+	status = html.Span(status[:-1] or "None stored for the selection")
+	return status, None if uploaded else no_update
 
 
 @callback(
@@ -1249,10 +1264,9 @@ def _upload_prev_ranking(contents, _clear, _reset, filename):
 	State("params-minimum-time", "value"),
 	State("params-minimum-alone", "value"),
 	State("params-chasing", "value"),
-	State("params-ranking", "data"),
 	prevent_initial_call=True,
 )
-def _apply_params(_open, _apply, minimum_time, minimum_time_alone, chasing_time_window, ranking):
+def _apply_params(_open, _apply, minimum_time, minimum_time_alone, chasing_time_window):
 	if ctx.triggered_id == "params-open":
 		return True, no_update, None, None
 
@@ -1268,8 +1282,6 @@ def _apply_params(_open, _apply, minimum_time, minimum_time_alone, chasing_time_
 		"minimum_time_alone": minimum_time_alone,
 		"chasing_time_window": chasing_time_window,
 	}
-	if ranking:
-		params["prev_ranking"] = ranking["rows"]
 	notify("info", "Parameters apply to the next run.")
 	return False, params, None, None
 
@@ -1292,6 +1304,7 @@ callback(
 	State("selection", "data"),
 	State("analysis-params", "data"),
 	State("overwrite", "checked"),
+	State("use-prev-ranking", "checked"),
 	State("run-failed", "data"),
 	background=True,
 	progress=Output("run-progress", "data"),

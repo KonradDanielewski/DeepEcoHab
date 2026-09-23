@@ -270,8 +270,9 @@ def calculate_ranking(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 
 	Each chasing event is a one-on-one match the winner won. Replaying them in order
 	updates every animal's skill rating after each match, so the result is the full
-	rating trajectory rather than only the final standings. ``params.prev_ranking``
-	continues from an earlier recording of the same animals instead of from scratch.
+	rating trajectory rather than only the final standings. Ratings stored with
+	:meth:`Recording.set_prev_ranking` continue from an earlier recording of the same
+	animals instead of from scratch, unless ``params.use_prev_ranking`` is off.
 
 	Returns:
 		One row per animal after each match, with ``mu``, ``sigma``, ``ordinal``, the
@@ -283,17 +284,8 @@ def calculate_ranking(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 	model = PlackettLuce(limit_sigma=True, balance=True)
 	ranking = {player: model.rating() for player in animal_tags}
 
-	previous_ranking = params.prev_ranking
+	previous_ranking = recording.prev_ranking if params.use_prev_ranking else None
 	if previous_ranking is not None:
-		previous_ranking = get_prev_ranking(previous_ranking).collect()
-
-		foreign_animals = set(previous_ranking.get_column("animal_id").to_list()) - set(animal_tags)
-		if foreign_animals:
-			raise ValueError(
-				"prev_ranking contains animals that are not in the current cohort: "
-				f"{sorted(foreign_animals)}. It must come from a recording of the same animals."
-			)
-
 		for name, mu, sigma in previous_ranking.select("animal_id", "mu", "sigma").iter_rows():
 			ranking[name] = model.rating(mu=mu, sigma=sigma)
 
@@ -350,14 +342,18 @@ def get_prev_ranking(ranking: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
 
 	:func:`calculate_ranking` emits one row per animal after every match; this keeps
 	only the last ``mu``/``sigma`` per animal, which is what
-	``AnalysisParams.prev_ranking`` expects. Feed it back to continue ranking the same
-	animals from where a previous recording left off. ``ranking`` may already be
-	collapsed to this shape - sorting only runs when a ``datetime`` column is there to
-	sort by, so :func:`calculate_ranking` can run every ``prev_ranking`` through this
-	unconditionally.
+	:meth:`Recording.set_prev_ranking` stores to continue ranking the same animals from
+	where a previous recording left off. ``ranking`` may already be collapsed to this
+	shape - sorting only runs when a ``datetime`` column is there to sort by.
+
+	Raises:
+		ValueError: ``ranking`` lacks ``animal_id``, ``mu`` or ``sigma``.
 	"""
 	ranking = ranking.lazy()
-	if "datetime" in ranking.collect_schema().names():
+	columns = ranking.collect_schema().names()
+	if missing := [column for column in ("animal_id", "mu", "sigma") if column not in columns]:
+		raise ValueError(f"The ranking is missing {', '.join(missing)}.")
+	if "datetime" in columns:
 		ranking = ranking.sort("datetime")
 
 	return ranking.group_by("animal_id", maintain_order=True).agg(pl.last("mu"), pl.last("sigma"))

@@ -245,7 +245,9 @@ def test_absent_animal_ranking_stays_frozen(events, absent):
 	assume(events)  # need at least one match to drive the ranking
 
 	match_df = strategies.match_df_frame(events, RECORDING)
-	ranking = run(antenna_analysis.calculate_ranking, lambda recording, key: match_df)
+	ranking = run(
+		antenna_analysis.calculate_ranking, lambda recording, key: match_df, use_prev_ranking=False
+	)
 
 	rows = ranking.filter(pl.col("animal_id") == absent)
 	assert rows.height == len(events)  # present in the trajectory after every match
