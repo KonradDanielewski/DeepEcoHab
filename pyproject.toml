@@ -37,6 +37,7 @@ dependencies = [
     "plotly",
     "polars",
     "pydantic",
+    "scipy",
     "tqdm",
     "tzdata; sys_platform == 'win32'",
 ]
