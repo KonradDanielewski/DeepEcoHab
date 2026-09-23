@@ -16,6 +16,9 @@ dist/
 # Jupyter
 .ipynb_checkpoints/
 
+# Jupyter Book build output
+docs/_build/
+
 # OS
 .DS_Store
 Thumbs.db
