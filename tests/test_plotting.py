@@ -127,19 +127,17 @@ def test_unit_of_an_empty_column_falls_back_to_seconds():
 )
 def test_hover_text_is_trimmed_to_the_units_resolution(value, unit, expected):
 	"""Hover text keeps the precision the axis implies, and never denies a value."""
-	frame = _frame([value])
-	_frame_out, rendered = durations.to_display(frame, "t", unit)
+	frame, _label = durations.to_display(_frame([value]), "t", unit)
 
-	assert frame.select(rendered.text).item() == expected
+	assert frame["t_text"].item() == expected
 
 
 def test_value_and_label_agree_on_the_unit():
 	"""The number plotted and the unit in the axis title come from one call."""
-	frame = _frame([dt.timedelta(hours=3)])
-	_frame_out, rendered = durations.to_display(frame, "t", "hours")
+	frame, label = durations.to_display(_frame([dt.timedelta(hours=3)]), "t", "hours")
 
-	assert rendered.label == "<b>Time [h]</b>"
-	assert frame.select(rendered.value).item() == pytest.approx(3.0)
+	assert label == "<b>Time [h]</b>"
+	assert frame["t"].item() == pytest.approx(3.0)
 
 
 def test_to_display_replaces_the_duration_and_adds_its_text():

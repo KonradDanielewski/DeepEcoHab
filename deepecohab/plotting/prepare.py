@@ -647,13 +647,13 @@ def prep_time_per_position(
 		.collect(engine="in-memory")
 	)
 
-	frame, rendered = durations.to_display(frame, "time_in_position", unit, "Time spent")
+	frame, label = durations.to_display(frame, "time_in_position", unit, "Time spent")
 	shape = ("position", "animal_id", x)
 
 	return Heatmap(
 		values=_facet_matrices(frame, *shape, "time_in_position", positions, animals, x_values),
 		text=_facet_matrices(frame, *shape, "time_in_position_text", positions, animals, x_values),
-		label=rendered.label,
+		label=label,
 		x=x_values,
 		y=animals,
 		facets=positions,
@@ -668,7 +668,7 @@ def prep_cage_preference(
 	positions: list[str],
 	unit: durations.Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
-) -> tuple[pl.DataFrame, durations.DurationDisplay]:
+) -> tuple[pl.DataFrame, str]:
 	"""Time spent per position, per animal and window unit."""
 	frame = (
 		context.table("activity_df")
@@ -738,12 +738,12 @@ def prep_pairwise_sociability(
 			facets=positions,
 		)
 
-	frame, rendered = durations.to_display(frame, agg, unit, "Time together")
+	frame, label = durations.to_display(frame, agg, unit, "Time together")
 
 	return Heatmap(
 		values=_facet_matrices(frame, *shape, agg, positions, animals, animals),
 		text=_facet_matrices(frame, *shape, f"{agg}_text", positions, animals, animals),
-		label=rendered.label,
+		label=label,
 		x=animals,
 		y=animals,
 		facets=positions,

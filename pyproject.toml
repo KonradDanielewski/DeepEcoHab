@@ -31,7 +31,6 @@ classifiers = [
 
 dependencies = [
     "kaleido",
-    "nbformat",
     "networkx",
     "numpy",
     "openskill",
@@ -49,6 +48,12 @@ dependencies = [
         "pyshortcuts",
     ]
 
+    notebook = [
+        "ipykernel",
+        "ipywidgets",
+        "nbformat",
+    ]
+
     test = [
         "pytest",
         "hypothesis",
@@ -56,7 +61,7 @@ dependencies = [
     ]
 
     dev = [
-        "deepecohab[app,test]",
+        "deepecohab[app,notebook,test]",
         "ruff>=0.15.17",
         "ty>=0.0.50",
         "pre-commit",

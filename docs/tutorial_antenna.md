@@ -49,7 +49,6 @@ file lists more animals, cages, tunnels or antenna pairs.
       "start_from": "dark_phase"
     },
     "cohort": {
-      "n_mice": 10,
       "animals": [
         {
           "tag": "1850E61A04",
@@ -76,8 +75,6 @@ file lists more animals, cages, tunnels or antenna pairs.
           "tunnel_no": 1,
           "start_cell_id": "C1",
           "end_cell_id": "C2",
-          "dead_end": false,
-          "antenna_count": 2,
           "antennas": ["1", "2"]
         },
         ...

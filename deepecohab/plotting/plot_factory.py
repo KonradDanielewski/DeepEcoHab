@@ -397,6 +397,13 @@ def plot_time_alone(
 	)
 
 
+#: Title, y-axis title and hover label of the hourly line plots, per input.
+_LINE_LABELS: dict[str, tuple[str, str, str]] = {
+	"activity": ("<b>Activity over time</b>", "<b>Antenna detections</b>", "Detections"),
+	"chasings": ("<b>Chasing over time</b>", "<b># of chasing events</b>", "Events"),
+}
+
+
 def plot_sum_line_per_hour(
 	frame: pl.DataFrame,
 	mapping: ColorMapping,
@@ -405,13 +412,7 @@ def plot_sum_line_per_hour(
 	spans: pl.DataFrame,
 ) -> go.Figure:
 	"""Plots hourly totals for activity or chasings."""
-	match input_type:
-		case "activity":
-			title = "<b>Activity over time</b>"
-			y_axes_label = "<b>Antenna detections</b>"
-		case "chasings":
-			title = "<b>Chasing over time</b>"
-			y_axes_label = "<b># of chasing events</b>"
+	title, y_axes_label, _hover_label = _LINE_LABELS[input_type]
 
 	figure = px.line(
 		frame,
@@ -443,15 +444,7 @@ def plot_mean_line_per_hour(
 	spans: pl.DataFrame,
 ) -> go.Figure:
 	"""Plots hourly means for activity or chasings with SEM shading."""
-	match input_type:
-		case "activity":
-			title = "<b>Activity over time</b>"
-			y_axes_label = "<b>Antenna detections</b>"
-			hover_label = "Detections"
-		case "chasings":
-			title = "<b>Chasing over time</b>"
-			y_axes_label = "<b># of chasing events</b>"
-			hover_label = "Events"
+	title, y_axes_label, hover_label = _LINE_LABELS[input_type]
 
 	figure = go.Figure()
 

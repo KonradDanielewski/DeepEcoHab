@@ -283,12 +283,12 @@ def test_project_table_aggregates_every_recording(project):
 @pytest.mark.parametrize("plot_name", PLOTS)
 def test_plot_builds_for_every_option_value(context, plot_name):
 	"""Every registered plot builds on real tables, for each value of each option."""
-	assert isinstance(context.plot(plot_name), go.Figure)
+	assert isinstance(deh.plot(plot_name, context), go.Figure)
 
 	for option in PlotRegistry.spec(plot_name).options_for(context):
 		for choice in option.choices:
 			# A multi-select option takes a list; a single-select takes the value.
 			value = [choice] if isinstance(option.default, (list, tuple)) else choice
-			figure = context.plot(plot_name, **{option.name: value})
+			figure = deh.plot(plot_name, context, **{option.name: value})
 
 			assert isinstance(figure, go.Figure), f"{plot_name}[{option.name}={choice}]"

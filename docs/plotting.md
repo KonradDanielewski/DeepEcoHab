@@ -29,8 +29,8 @@ has read in memory instead of loading them again for every figure:
 ```python
 context = deh.PlotContext.from_recording(recording)
 
-context.plot("chasings-heatmap", days_range=(2, 4))
-context.plot("ranking-line", mode="stability")
+deh.plot("chasings-heatmap", context, days_range=(2, 4))
+deh.plot("ranking-line", context, mode="stability")
 ```
 
 Each plot reads specific analysis tables. If one has not been built, the plot raises a

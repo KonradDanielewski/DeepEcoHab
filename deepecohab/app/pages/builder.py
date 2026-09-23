@@ -606,7 +606,7 @@ def _presets_children(
 	counts = None
 	for preset in presets_mod.BUILTINS:
 		if preset.needs_event:
-			choices = services.event_names(project)
+			choices = project.event_names()
 			if not choices:
 				continue
 			counts = counts or services.event_recording_counts(project)
