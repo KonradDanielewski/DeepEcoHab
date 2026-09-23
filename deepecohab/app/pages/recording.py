@@ -25,6 +25,7 @@ from deepecohab.core import topology
 from deepecohab.core.data_model import DataFrameRegistry
 from deepecohab.plotting import PlotContext, PlotRegistry, available_attributes, theme as plot_theme
 from deepecohab.plotting.animals import resolve_colors
+from deepecohab.plotting.plot_catalog import PHASES
 from deepecohab.plotting.theme import COLORSCALES, PALETTES
 
 PATH = "/recording"
@@ -33,7 +34,6 @@ dash.register_page(
 	__name__, path=PATH, name="Recording dashboard", order=1, icon="layout-dashboard"
 )
 
-PHASES = ("light_phase", "dark_phase")
 #: Driven by the control bar rather than a per-card control.
 _GLOBAL_OPTIONS = {
 	"days_range",

@@ -95,10 +95,10 @@ def activity(
 	frame = prepare.prep_activity(context, window, phase_type, granularity, agg, hours_range)
 	mapping = resolve_colors(context, color_by, group_mean=group_mean)
 	frame = mean_by_group(frame, mapping, ["visits", "time"])
-	frame, rendered = durations.to_display(frame, "time", unit, "Time spent")
+	frame, label = durations.to_display(frame, "time", unit, "Time spent")
 
 	return plot_factory.plot_activity(
-		frame, context.positions, mapping, metric, agg, granularity, rendered.label
+		frame, context.positions, mapping, metric, agg, granularity, label
 	)
 
 
@@ -133,10 +133,10 @@ def time_alone(
 	)
 	mapping = resolve_colors(context, color_by, group_mean=group_mean)
 	frame = mean_by_group(frame, mapping, ["time_alone"])
-	frame, rendered = durations.to_display(frame, "time_alone", unit, "Time alone")
+	frame, label = durations.to_display(frame, "time_alone", unit, "Time alone")
 
 	return plot_factory.plot_time_alone(
-		frame, positions, mapping, agg, granularity, rendered.label, SCOPE_NOUN[scope]
+		frame, positions, mapping, agg, granularity, label, SCOPE_NOUN[scope]
 	)
 
 
@@ -159,7 +159,7 @@ def cage_preference(
 	"""Distribution of time the cohort spends in each position."""
 	window = _window(context, days_range, granularity)
 	positions = context.scope_positions(scope)
-	frame, rendered = prepare.prep_cage_preference(
+	frame, label = prepare.prep_cage_preference(
 		context, window, phase_type, granularity, positions, unit, hours_range
 	)
 
@@ -168,7 +168,7 @@ def cage_preference(
 		positions,
 		sample_palette(len(positions)),
 		granularity,
-		rendered.label,
+		label,
 		SCOPE_NOUN[scope],
 	)
 

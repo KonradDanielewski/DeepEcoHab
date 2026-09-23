@@ -12,7 +12,6 @@ from deepecohab.plotting.animals import (
 	available_attributes as available_attributes,
 )
 from deepecohab.plotting.context import PlotContext as PlotContext
-from deepecohab.plotting.durations import DurationDisplay as DurationDisplay
 from deepecohab.plotting.export import (
 	export_figure as export_figure,
 	fit_for_export as fit_for_export,
@@ -27,11 +26,6 @@ if TYPE_CHECKING:
 	from deepecohab.core.data_model import Recording
 
 
-def _as_context(target: "Recording | PlotContext") -> PlotContext:
-	"""Accept either a recording or an already-built context."""
-	return target if isinstance(target, PlotContext) else PlotContext.from_recording(target)
-
-
 def plot(name: str, target: "Recording | PlotContext", **options: Any) -> go.Figure:
 	"""Build one plot from a recording or a context.
 
@@ -42,4 +36,5 @@ def plot(name: str, target: "Recording | PlotContext", **options: Any) -> go.Fig
 		name: registry key, as listed by :meth:`PlotRegistry.list_available`.
 		**options: overrides for the plot's keyword arguments.
 	"""
-	return PlotRegistry.build(name, _as_context(target), **options)
+	context = target if isinstance(target, PlotContext) else PlotContext.from_recording(target)
+	return PlotRegistry.build(name, context, **options)

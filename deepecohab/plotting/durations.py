@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Literal
 
 import polars as pl
@@ -11,23 +10,6 @@ _UNITS: dict[Unit, tuple[float, str]] = {
 	"minutes": (60.0, "min"),
 	"seconds": (1.0, "s"),
 }
-
-
-@dataclass(frozen=True)
-class DurationDisplay:
-	"""A duration column rendered as a plottable number plus readable hover text.
-
-	Attributes:
-		unit: the unit ``value`` is expressed in.
-		label: axis title, including the unit.
-		value: the column to plot, as a float in ``unit``.
-		text: the same duration as ``"3h 7m 4s"``, for hover.
-	"""
-
-	unit: Unit
-	label: str
-	value: pl.Expr
-	text: pl.Expr
 
 
 def _pick_unit(frame: pl.DataFrame, column: str) -> Unit:
@@ -70,7 +52,7 @@ def to_display(
 	column: str,
 	unit: Unit | Literal["auto"] = "auto",
 	label: str = "Time",
-) -> tuple[pl.DataFrame, DurationDisplay]:
+) -> tuple[pl.DataFrame, str]:
 	"""Replace a duration column with its numeric form and add its hover text.
 
 	Args:
@@ -80,21 +62,15 @@ def to_display(
 		label: axis title stem; the unit is appended.
 
 	Returns:
-		The frame with ``column`` numeric and a ``<column>_text`` sibling, and the
-		display describing them.
+		The frame with ``column`` as a float in the chosen unit and a ``<column>_text``
+		sibling reading ``"3h 7m 4s"``, and the axis title including the unit.
 	"""
 	chosen: Unit = _pick_unit(frame, column) if unit == "auto" else unit
 	seconds, suffix = _UNITS[chosen]
 	duration = pl.col(column)
-	rendered = DurationDisplay(
-		unit=chosen,
-		label=f"<b>{label} [{suffix}]</b>",
-		value=duration.dt.total_seconds(fractional=True) / seconds,
-		text=_text(duration, chosen),
-	)
 	frame = frame.with_columns(
-		rendered.value.alias(column),
-		rendered.text.alias(f"{column}_text"),
+		(duration.dt.total_seconds(fractional=True) / seconds).alias(column),
+		_text(duration, chosen).alias(f"{column}_text"),
 	)
 
-	return frame, rendered
+	return frame, f"<b>{label} [{suffix}]</b>"

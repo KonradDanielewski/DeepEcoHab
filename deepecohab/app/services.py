@@ -363,7 +363,7 @@ def missing_time(context: PlotContext) -> dict:
 		)
 		.sort("share", descending=True)
 	)
-	frame, _rendered = durations.to_display(frame, "time_in_position", "auto", "Time unknown")
+	frame, _label = durations.to_display(frame, "time_in_position", "auto", "Time unknown")
 
 	return {
 		"rows": frame.select("animal_id", "time_in_position_text", "share").to_dicts(),
@@ -372,15 +372,9 @@ def missing_time(context: PlotContext) -> dict:
 	}
 
 
-def event_names(project: Project) -> list[str]:
-	"""Every event name the project declares anywhere, plus "Any event"."""
-	names = sorted({event.name for recording in project.recordings for event in recording.events})
-	return [*names, "Any event"] if names else []
-
-
 def event_recording_counts(project: Project) -> dict[str, int]:
 	"""How many recordings declare each event, "Any event" counting recordings with any."""
-	counts = dict.fromkeys(event_names(project), 0)
+	counts = dict.fromkeys(project.event_names(), 0)
 	for recording in project.recordings:
 		declared = {event.name for event in recording.events}
 		for name in declared:
@@ -397,8 +391,7 @@ def builder_frame(location: str) -> tuple[pl.LazyFrame, list[builder_catalog.Fie
 		FileNotFoundError: the project table has not been generated yet.
 	"""
 	project = load_project(location)
-	frame = builder_catalog.project_frame(project)
-	return builder_catalog.prepare(frame, event_names(project))
+	return builder_catalog.prepare(project.load_project_table(), project.event_names())
 
 
 def load_saved_presets(location: str) -> list[dict]:

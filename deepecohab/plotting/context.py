@@ -1,12 +1,10 @@
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Final, Literal, get_args
+from typing import TYPE_CHECKING, Final, Literal, get_args
 
-import plotly.graph_objects as go
 import polars as pl
 
 from deepecohab.core.data_model import Layout
-from deepecohab.plotting.registry import PlotRegistry
 
 if TYPE_CHECKING:
 	from deepecohab.core.data_model import Recording
@@ -140,7 +138,3 @@ class PlotContext:
 			)
 
 		return self.phase_range if granularity == "phase_count" else self.days_range
-
-	def plot(self, name: str, **options: Any) -> go.Figure:
-		"""Build the registered plot ``name`` against this context, overriding any option."""
-		return PlotRegistry.build(name, self, **options)

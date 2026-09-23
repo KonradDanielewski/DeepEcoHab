@@ -4,8 +4,6 @@ from typing import Literal
 
 import polars as pl
 
-from deepecohab import Project
-
 Kind = Literal["dimension", "time", "measure"]
 
 #: Columns that carry no grouping or measuring value, so they never become chips.
@@ -42,9 +40,6 @@ GROUPS: dict[str, str] = {
 	"date_of_birth": "Animal",
 }
 
-#: Scanned project tables, keyed by parquet path and stamped with its mtime.
-_FRAMES: dict[str, tuple[int, pl.LazyFrame]] = {}
-
 
 @dataclass(frozen=True)
 class Field:
@@ -68,31 +63,6 @@ class Field:
 	def discrete(self) -> bool:
 		"""Whether dropping this field adds a key to the group-by."""
 		return self.agg is None
-
-
-def project_frame(project: Project, *, refresh: bool = False) -> pl.LazyFrame:
-	"""Scan the project table, reusing the scan while the file behind it is unchanged.
-
-	A cached scan of a table that has since been regenerated - or deleted - would keep
-	serving a stale plan, so the mtime is part of the key rather than the path alone.
-
-	Args:
-		refresh: rescan even when the cached stamp still matches.
-
-	Raises:
-		FileNotFoundError: the table has not been generated yet.
-
-	Returns:
-		A lazy scan of ``project_table.parquet``.
-	"""
-	path = project.project_location / project.PROJECT_TABLE
-	key = str(path)
-	stamp = path.stat().st_mtime_ns if path.is_file() else 0
-
-	if refresh or stamp == 0 or _FRAMES.get(key, (0, None))[0] != stamp:
-		_FRAMES[key] = (stamp, project.load_project_table())
-
-	return _FRAMES[key][1]
 
 
 def metric_names(frame: pl.LazyFrame) -> list[str]:

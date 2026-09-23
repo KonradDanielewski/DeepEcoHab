@@ -20,7 +20,6 @@ from pydantic import (
 	ConfigDict,
 	Field,
 	PastDate,
-	PositiveInt,
 	PrivateAttr,
 	ValidationInfo,
 	computed_field,
@@ -74,8 +73,6 @@ class Tunnel(BaseModel):
 	tunnel_no: int
 	start_cell_id: str
 	end_cell_id: str
-	dead_end: bool
-	antenna_count: int
 	antennas: list[str]
 
 
@@ -166,8 +163,13 @@ class Cohort(BaseModel):
 	assignment and pair enumeration downstream is built from.
 	"""
 
-	n_mice: PositiveInt
-	animals: list[Animal]
+	animals: list[Animal] = Field(min_length=1)
+
+	@computed_field
+	@property
+	def n_mice(self) -> int:
+		"""How many animals the cohort holds."""
+		return len(self.animals)
 
 	@property
 	def animal_tags(self) -> list[str]:
@@ -368,14 +370,6 @@ class AnalysisParams(BaseModel):
 	use_prev_ranking: bool = True
 
 
-class StepProgress(NamedTuple):
-	"""One finished pipeline step within a recording."""
-
-	step: str
-	step_index: int
-	step_total: int
-
-
 class Progress(NamedTuple):
 	"""One finished pipeline step, tagged with the recording it came from."""
 
@@ -388,16 +382,12 @@ class DataFrameRegistry:
 	"""The analysis pipeline: which tables exist, what each needs, and how to build them.
 
 	Steps register at import time via :meth:`register`, so the graph belongs to the
-	class; an instance is that graph bound to one recording. The registry works out
-	the run order and builds each table, so every step is a plain
-	``(recording, params) -> LazyFrame``.
+	class. The registry works out the run order and builds each table, so every step
+	is a plain ``(recording, params) -> LazyFrame``.
 	"""
 
 	_builders: ClassVar[dict[str, Callable[["Recording", AnalysisParams], pl.LazyFrame]]] = {}
 	_requires: ClassVar[dict[str, list[str]]] = {}
-
-	def __init__(self, recording: "Recording") -> None:
-		self._recording = recording
 
 	@classmethod
 	def register(cls, name: str, requires: Sequence[str] = ()) -> Callable:
@@ -470,41 +460,38 @@ class DataFrameRegistry:
 				f"Cycle detected among analysis steps: {sorted(set(cycle.args[1]))}"
 			) from None
 
+	@classmethod
 	def run(
-		self,
+		cls,
+		recording: "Recording",
 		params: AnalysisParams | None = None,
 		targets: list[str] | None = None,
 		*,
 		overwrite: bool = False,
-	) -> Iterator[StepProgress]:
-		"""Build every step in dependency order, yielding progress as each one lands.
+	) -> Iterator[str]:
+		"""Build every step of one recording in dependency order, yielding each as it lands.
+
+		A step whose parquet is already there is skipped, but still yielded.
 
 		Args:
+			recording: the recording whose tables are built.
 			params: tuning knobs; defaults are used when omitted.
 			targets: run only these steps and their dependencies.
 			overwrite: rebuild steps whose parquet already exists.
 
 		Yields:
-			One :class:`StepProgress` per finished step.
+			The name of each finished step.
 		"""
-		order = self.step_order(targets)
 		params = params or AnalysisParams()
 
-		for index, name in enumerate(order, start=1):
-			self._build(name, params, overwrite=overwrite)
-			yield StepProgress(name, index, len(order))
-
-	def _build(self, name: str, params: AnalysisParams, *, overwrite: bool) -> None:
-		"""Compute one step and sink it, unless its parquet is already there."""
-		path = self._recording.results_path / f"{name}.parquet"
-
-		if path.is_file() and not overwrite:
-			return
-
-		path.parent.mkdir(parents=True, exist_ok=True)
-		self._builders[name](self._recording, params).sink_parquet(
-			path, compression="lz4", engine="streaming"
-		)
+		for name in cls.step_order(targets):
+			path = recording.results_path / f"{name}.parquet"
+			if overwrite or not path.is_file():
+				path.parent.mkdir(parents=True, exist_ok=True)
+				cls._builders[name](recording, params).sink_parquet(
+					path, compression="lz4", engine="streaming"
+				)
+			yield name
 
 
 def recording_status(root: Path) -> dict[str, bool]:
@@ -550,7 +537,6 @@ class Recording(BaseModel):
 	data: pl.LazyFrame = Field(exclude=True, repr=False)
 
 	_root: Path | None = PrivateAttr(default=None)
-	_registry: DataFrameRegistry | None = PrivateAttr(default=None)
 
 	@property
 	def data_schema(self) -> pl.Schema:
@@ -585,13 +571,6 @@ class Recording(BaseModel):
 		"""Where this recording's analysis tables are written."""
 		return self.root / "results"
 
-	@property
-	def registry(self) -> DataFrameRegistry:
-		"""The analysis DAG, bound to this recording."""
-		if self._registry is None:
-			self._registry = DataFrameRegistry(self)
-		return self._registry
-
 	@overload
 	def load_results(self, key: str, *, eager: Literal[False] = False) -> pl.LazyFrame: ...
 	@overload
@@ -620,16 +599,6 @@ class Recording(BaseModel):
 			)
 
 		return pl.read_parquet(path) if eager else pl.scan_parquet(path)
-
-	def _analyze_recording(
-		self,
-		params: AnalysisParams | None = None,
-		targets: list[str] | None = None,
-		*,
-		overwrite: bool = False,
-	) -> Iterator[StepProgress]:
-		"""Run this recording's pipeline, yielding progress as each step lands."""
-		yield from self.registry.run(params, targets, overwrite=overwrite)
 
 	def to_config(self) -> dict[str, Any]:
 		"""JSON-ready snapshot of the metadata; the frame itself is not included."""
@@ -1021,8 +990,7 @@ class Project(BaseModel):
 		if not recordings:
 			raise ValueError(f"Project {self.project_name!r} has no recordings to aggregate.")
 
-		all_events = sorted({event.name for recording in recordings for event in recording.events})
-		event_columns = [*all_events, "Any event"] if all_events else []
+		event_columns = self.event_names(names)
 
 		frames = []
 		for recording in recordings:
@@ -1110,10 +1078,13 @@ class Project(BaseModel):
 
 		def analyse(recording: Recording) -> None:
 			# Lazy: each next() builds one step, so the check runs before every build.
-			steps = recording._analyze_recording(params, targets, overwrite=overwrite)
+			steps = enumerate(
+				DataFrameRegistry.run(recording, params, targets, overwrite=overwrite), start=1
+			)
 			try:
 				while not cancel.is_set() and (step := next(steps, None)) is not None:
-					events.put(Progress(recording.name, step.step, step.step_index))
+					index, name = step
+					events.put(Progress(recording.name, name, index))
 			finally:
 				events.put(None)  # this recording is done, however it ended
 
@@ -1136,6 +1107,15 @@ class Project(BaseModel):
 					# Callers show one line of this and drop the rest; the log keeps all of it.
 					self.log.exception("analysis failed")
 					raise
+
+	def event_names(self, names: Iterable[str] | None = None) -> list[str]:
+		"""Every event name the recordings declare, plus "Any event"; empty when they declare none.
+
+		Args:
+			names: look only at these recordings; ``None`` covers the whole project.
+		"""
+		declared = {event.name for recording in self._select(names) for event in recording.events}
+		return [*sorted(declared), "Any event"] if declared else []
 
 	def _select(self, names: Iterable[str] | None) -> list[Recording]:
 		"""The recordings a run covers; the one place that decides which of them run."""

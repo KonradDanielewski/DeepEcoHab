@@ -314,8 +314,6 @@ def make_layout(antenna_combinations: dict[str, str], tunnels_map: dict[str, str
 				tunnel_no=index,
 				start_cell_id=f"C{index}",
 				end_cell_id=f"C{index + 1}",
-				dead_end=False,
-				antenna_count=2,
 				antennas=[],
 			)
 			for index, name in enumerate(tunnel_names, start=1)
@@ -328,7 +326,6 @@ def make_layout(antenna_combinations: dict[str, str], tunnels_map: dict[str, str
 def make_cohort(animal_ids: list[str]) -> Cohort:
 	"""A Cohort of the given tags, with placeholder animal metadata."""
 	return Cohort(
-		n_mice=len(animal_ids),
 		animals=[
 			Animal(
 				tag=tag,

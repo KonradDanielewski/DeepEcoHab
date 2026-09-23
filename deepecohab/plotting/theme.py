@@ -163,6 +163,17 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 DARK_THEME = _template(_TOKENS["dark"])
 LIGHT_THEME = _template(_TOKENS["light"])
 
+_PUBLICATION_AXIS = {
+	"showgrid": False,
+	"linecolor": "#000000",
+	"linewidth": 1,
+	"zerolinecolor": "#000000",
+	"tickcolor": "#000000",
+	"ticks": "outside",
+	"tickfont": {"color": "#000000"},
+	"title": {"font": {"color": "#000000"}},
+}
+
 #: For print or a journal figure: white ground, black axes, no grid. Unlike ``dark`` and
 #: ``light`` it is never the process default - callers ask for it by name at export time.
 PUBLICATION_THEME = go.layout.Template(
@@ -170,26 +181,8 @@ PUBLICATION_THEME = go.layout.Template(
 		paper_bgcolor="#ffffff",
 		plot_bgcolor="#ffffff",
 		font={"family": "Arial, sans-serif", "size": 13, "color": "#000000"},
-		xaxis={
-			"showgrid": False,
-			"linecolor": "#000000",
-			"linewidth": 1,
-			"zerolinecolor": "#000000",
-			"tickcolor": "#000000",
-			"ticks": "outside",
-			"tickfont": {"color": "#000000"},
-			"title": {"font": {"color": "#000000"}},
-		},
-		yaxis={
-			"showgrid": False,
-			"linecolor": "#000000",
-			"linewidth": 1,
-			"zerolinecolor": "#000000",
-			"tickcolor": "#000000",
-			"ticks": "outside",
-			"tickfont": {"color": "#000000"},
-			"title": {"font": {"color": "#000000"}},
-		},
+		xaxis=_PUBLICATION_AXIS,
+		yaxis=_PUBLICATION_AXIS,
 		legend={"bgcolor": "rgba(0,0,0,0)", "font": {"color": "#000000"}},
 		hoverlabel={"bgcolor": "#ffffff", "bordercolor": "#000000", "font": {"color": "#000000"}},
 		shapedefaults={"line": {"color": "#000000"}},

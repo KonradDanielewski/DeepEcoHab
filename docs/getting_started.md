@@ -58,10 +58,11 @@ build plots — no code involved. This is how we expect most people to use DeepE
 ### Working from code instead
 
 The app is an extra because the analysis itself does not need Dash. If you only want the
-library, for scripts or notebooks, install it on its own:
+library, install it with the notebook extra, which adds the Jupyter kernel and what
+`figure.show()` needs inside a notebook (plain scripts can drop `[notebook]`):
 
 ```
-uv pip install deepecohab
+uv pip install "deepecohab[notebook]"
 ```
 
 We recommend [VSCode](https://code.visualstudio.com/download) with the Jupyter

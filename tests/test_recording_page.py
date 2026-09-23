@@ -75,8 +75,6 @@ def _layout(cages: list[tuple], tunnels: list[tuple]) -> Layout:
 				"tunnel_no": no,
 				"start_cell_id": start,
 				"end_cell_id": end,
-				"dead_end": False,
-				"antenna_count": len(antennas),
 				"antennas": antennas,
 			}
 			for no, start, end, antennas in tunnels
@@ -129,8 +127,6 @@ def test_a_cage_off_the_ring_is_pushed_out_past_its_neighbour():
 			tunnel_no=5,
 			start_cell_id="C4",
 			end_cell_id="C5",
-			dead_end=False,
-			antenna_count=2,
 			antennas=["9", "10"],
 		),
 	)
