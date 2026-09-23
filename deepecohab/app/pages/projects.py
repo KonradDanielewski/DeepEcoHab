@@ -310,8 +310,9 @@ layout = html.Div(
 						dmc.TextInput(
 							id="create-path",
 							label="Folder",
-							description="Created if missing. Leave empty to use the folder shown.",
-							placeholder=str(_PROJECTS_HOME / "<project name>"),
+							description="The project gets its own folder, named after it, in here. "
+							"Leave empty to use the folder shown.",
+							placeholder=str(_PROJECTS_HOME),
 							autoComplete="off",
 							inputWrapperOrder=["label", "input", "description", "error"],
 							className="deh-field",
@@ -1028,7 +1029,7 @@ def _create_project(_open, _cancel, _submit, name, experimenter, folder, descrip
 		experimenter_error = None if experimenter else "Enter who runs the experiment."
 		return no_update, *unchanged, name_error, experimenter_error, None
 
-	location = Path((folder or "").strip().strip('"') or _PROJECTS_HOME / name).expanduser()
+	location = Path((folder or "").strip().strip('"') or _PROJECTS_HOME).expanduser()
 	try:
 		project = Project.create(name, experimenter, location, (description or "").strip())
 	except FileExistsError:

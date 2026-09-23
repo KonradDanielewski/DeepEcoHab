@@ -142,13 +142,14 @@ key. It no longer exists and is rejected: delete it.
 
 ## Create a project
 
-A project is a directory holding any number of recordings.
+A project is a directory holding any number of recordings. It is created in a folder named
+after the project inside `location`.
 
 ```python
 project = deh.Project.create(
-    project_name="Tsc2",
+    project_name="tsc2",
     experimenter="Jane Doe",
-    location="path/to/projects/tsc2",
+    location="path/to/projects",
     description="Vglut2 HET vs WT, females",
 )
 ```

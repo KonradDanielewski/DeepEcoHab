@@ -8,6 +8,7 @@
  *
  * ponytail: patches renderer internals (window.dash_stores, the action type, layoutHashes);
  * delete this file once the installed Dash includes #3929.
+ * TODO: Will be fixed in Dash 4.5.0
  */
 
 (function () {

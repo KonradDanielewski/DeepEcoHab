@@ -1999,7 +1999,7 @@ code {
 
 .deh-hab-ant text {
 	fill: var(--accent-text);
-	font: 600 11px var(--mono);
+	font: 600 7px var(--mono);
 	text-anchor: middle;
 	dominant-baseline: central;
 }
