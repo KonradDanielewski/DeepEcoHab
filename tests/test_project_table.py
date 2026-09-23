@@ -394,7 +394,7 @@ def test_update_notes_persists_to_config_json(tmp_path):
 	project.add_recording(metadata_path, data_path)
 	project["noted"].update_notes("checked the water bottles twice a day")
 
-	reloaded = Project.load(tmp_path / "project")
+	reloaded = Project.load(project.project_location)
 	assert reloaded["noted"].notes == "checked the water bottles twice a day"
 
 
@@ -410,7 +410,7 @@ def test_update_notes_through_the_app_leaves_a_line_in_the_project_log(tmp_path)
 		project_name="notes", experimenter="tester", location=tmp_path / "project"
 	)
 	project.add_recording(metadata_path, data_path)
-	services.update_notes(str(tmp_path / "project"), "noted", "water bottles checked", tag="A")
+	services.update_notes(str(project.project_location), "noted", "water bottles checked", tag="A")
 
 	log = (project.project_location / Project.LOGFILE).read_text(encoding="utf-8")
 	assert "noted: notes updated for animal A" in log
@@ -430,7 +430,7 @@ def test_update_notes_with_a_tag_persists_to_one_animal(tmp_path):
 	project.add_recording(metadata_path, data_path)
 	project["noted"].update_notes("skittish since the cage change", tag="A")
 
-	reloaded = Project.load(tmp_path / "project")
+	reloaded = Project.load(project.project_location)
 	by_tag = {animal.tag: animal for animal in reloaded["noted"].cohort.animals}
 	assert by_tag["A"].notes == "skittish since the cage change"
 	assert by_tag["B"].notes == ""

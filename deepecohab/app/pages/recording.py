@@ -84,8 +84,8 @@ _SECTIONS = [
 			("activity-line", 8, 340),
 			("cage-preference", 4, 340),
 			("activity-bar", 12, 320),
-			("time-per-cage-heatmap", 7, 660),
-			("cage-preference-evolution", 5, 660),
+			("cage-preference-evolution", 7, 660),
+			("time-per-cage-heatmap", 5, 660),
 		],
 	),
 	(
@@ -207,8 +207,10 @@ def _meta_strip(summary: dict) -> list:
 		html.Span(
 			[
 				icon("clock", size=15),
-				f"{summary['days']} days · {summary['phases']} phases, "
-				f"from {_human(summary['start_from'])}",
+				(
+					f"{summary['days']} days · {summary['phases']} phases, "
+					f"from {_human(summary['start_from'])}"
+				),
 			]
 		),
 		html.Span([icon("users", size=15), f"{summary['n_mice']} mice"]),
@@ -290,10 +292,14 @@ def _hours_band(summary: dict, phases: list[str]) -> tuple[str, str]:
 	edge = round(first)
 
 	return (
-		f"linear-gradient(90deg, {_shade(start, start in phases)} 0 {split}%, "
-		f"{_shade(other, other in phases)} {split}% 100%)",
-		f"{_human(start)} {_clock(summary, 0)}-{_clock(summary, edge)} · "
-		f"{_human(other)} {_clock(summary, edge)}-{_clock(summary, 24)}",
+		(
+			f"linear-gradient(90deg, {_shade(start, start in phases)} 0 {split}%, "
+			f"{_shade(other, other in phases)} {split}% 100%)"
+		),
+		(
+			f"{_human(start)} {_clock(summary, 0)}-{_clock(summary, edge)} · "
+			f"{_human(other)} {_clock(summary, edge)}-{_clock(summary, 24)}"
+		),
 	)
 
 
@@ -663,7 +669,7 @@ def _habitat_card_children(context: PlotContext, height: int) -> list:
 				html.H3("Habitat"),
 				html.P(
 					[
-						f"{len(layout.cages)} cages, {len(layout.tunnels)} tunnels and "
+						f"{len(layout.cages)} cages, {len(layout.tunnels)} tunnels and ",
 						f"{len(topology.antennas(layout.antenna_combinations))} antennas, as ",
 						html.Code("config.json"),
 						" lays them out. Antennas are tinted by missed passes.",

@@ -69,8 +69,8 @@
           "cell_id": "C1",
           "cage_type": "standard",
           "antennas": [
-            "1COM2",
-            "8COM2"
+            "1-2",
+            "8-2"
           ]
         },
         {
@@ -78,8 +78,8 @@
           "cell_id": "C2",
           "cage_type": "standard",
           "antennas": [
-            "2COM2",
-            "3COM2"
+            "2-2",
+            "3-2"
           ]
         },
         {
@@ -87,8 +87,8 @@
           "cell_id": "C3",
           "cage_type": "standard",
           "antennas": [
-            "4COM2",
-            "5COM2"
+            "4-2",
+            "5-2"
           ]
         },
         {
@@ -96,8 +96,8 @@
           "cell_id": "C4",
           "cage_type": "standard",
           "antennas": [
-            "6COM2",
-            "7COM2"
+            "6-2",
+            "7-2"
           ]
         }
       ],
@@ -110,8 +110,8 @@
           "dead_end": false,
           "antenna_count": 2,
           "antennas": [
-            "1COM2",
-            "2COM2"
+            "1-2",
+            "2-2"
           ]
         },
         {
@@ -122,8 +122,8 @@
           "dead_end": false,
           "antenna_count": 2,
           "antennas": [
-            "3COM2",
-            "4COM2"
+            "3-2",
+            "4-2"
           ]
         },
         {
@@ -134,8 +134,8 @@
           "dead_end": false,
           "antenna_count": 2,
           "antennas": [
-            "5COM2",
-            "6COM2"
+            "5-2",
+            "6-2"
           ]
         },
         {
@@ -146,86 +146,36 @@
           "dead_end": false,
           "antenna_count": 2,
           "antennas": [
-            "8COM2",
-            "7COM2"
+            "8-2",
+            "7-2"
           ]
         }
       ],
-      "antenna_combinations_interpolated": {
-        "1COM2_1COM2": "cage_1",
-        "1COM2_2COM2": "c1_c2",
-        "1COM2_3COM2": "cage_2",
-        "1COM2_4COM2": "cage_2",
-        "1COM2_7COM2": "cage_1",
-        "1COM2_8COM2": "cage_1",
-        "2COM2_1COM2": "c2_c1",
-        "2COM2_2COM2": "cage_2",
-        "2COM2_3COM2": "cage_2",
-        "2COM2_4COM2": "cage_2",
-        "2COM2_7COM2": "cage_1",
-        "2COM2_8COM2": "cage_1",
-        "3COM2_1COM2": "cage_2",
-        "3COM2_2COM2": "cage_2",
-        "3COM2_3COM2": "cage_2",
-        "3COM2_4COM2": "c2_c3",
-        "3COM2_5COM2": "cage_3",
-        "3COM2_6COM2": "cage_3",
-        "4COM2_1COM2": "cage_2",
-        "4COM2_2COM2": "cage_2",
-        "4COM2_3COM2": "c3_c2",
-        "4COM2_4COM2": "cage_3",
-        "4COM2_5COM2": "cage_3",
-        "4COM2_6COM2": "cage_3",
-        "5COM2_3COM2": "cage_3",
-        "5COM2_4COM2": "cage_3",
-        "5COM2_5COM2": "cage_3",
-        "5COM2_6COM2": "c3_c4",
-        "5COM2_7COM2": "cage_4",
-        "5COM2_8COM2": "cage_4",
-        "6COM2_3COM2": "cage_3",
-        "6COM2_4COM2": "cage_3",
-        "6COM2_5COM2": "c4_c3",
-        "6COM2_6COM2": "cage_4",
-        "6COM2_7COM2": "cage_4",
-        "6COM2_8COM2": "cage_4",
-        "7COM2_1COM2": "cage_1",
-        "7COM2_2COM2": "cage_1",
-        "7COM2_5COM2": "cage_4",
-        "7COM2_6COM2": "cage_4",
-        "7COM2_7COM2": "cage_4",
-        "7COM2_8COM2": "c4_c1",
-        "8COM2_1COM2": "cage_1",
-        "8COM2_2COM2": "cage_1",
-        "8COM2_5COM2": "cage_4",
-        "8COM2_6COM2": "cage_4",
-        "8COM2_7COM2": "c1_c4",
-        "8COM2_8COM2": "cage_1"
-      },
       "antenna_combinations": {
-        "1COM2_1COM2": "cage_1",
-        "1COM2_2COM2": "c1_c2",
-        "1COM2_8COM2": "cage_1",
-        "2COM2_1COM2": "c2_c1",
-        "2COM2_2COM2": "cage_2",
-        "2COM2_3COM2": "cage_2",
-        "3COM2_2COM2": "cage_2",
-        "3COM2_3COM2": "cage_2",
-        "3COM2_4COM2": "c2_c3",
-        "4COM2_3COM2": "c3_c2",
-        "4COM2_4COM2": "cage_3",
-        "4COM2_5COM2": "cage_3",
-        "5COM2_4COM2": "cage_3",
-        "5COM2_5COM2": "cage_3",
-        "5COM2_6COM2": "c3_c4",
-        "6COM2_5COM2": "c4_c3",
-        "6COM2_6COM2": "cage_4",
-        "6COM2_7COM2": "cage_4",
-        "7COM2_6COM2": "cage_4",
-        "7COM2_7COM2": "cage_4",
-        "7COM2_8COM2": "c4_c1",
-        "8COM2_1COM2": "cage_1",
-        "8COM2_7COM2": "c1_c4",
-        "8COM2_8COM2": "cage_1"
+        "1-2_1-2": "cage_1",
+        "1-2_2-2": "c1_c2",
+        "1-2_8-2": "cage_1",
+        "2-2_1-2": "c2_c1",
+        "2-2_2-2": "cage_2",
+        "2-2_3-2": "cage_2",
+        "3-2_2-2": "cage_2",
+        "3-2_3-2": "cage_2",
+        "3-2_4-2": "c2_c3",
+        "4-2_3-2": "c3_c2",
+        "4-2_4-2": "cage_3",
+        "4-2_5-2": "cage_3",
+        "5-2_4-2": "cage_3",
+        "5-2_5-2": "cage_3",
+        "5-2_6-2": "c3_c4",
+        "6-2_5-2": "c4_c3",
+        "6-2_6-2": "cage_4",
+        "6-2_7-2": "cage_4",
+        "7-2_6-2": "cage_4",
+        "7-2_7-2": "cage_4",
+        "7-2_8-2": "c4_c1",
+        "8-2_1-2": "cage_1",
+        "8-2_7-2": "c1_c4",
+        "8-2_8-2": "cage_1"
       },
       "tunnels_map": {
         "c1_c2": "tunnel_1",
@@ -388,3 +338,4 @@
     }
   }
 }
+

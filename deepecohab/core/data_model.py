@@ -776,8 +776,8 @@ class Project(BaseModel):
 		location: Path,
 		description: str = "",
 	) -> "Project":
-		"""Creates the project at specified location and writes its manifest."""
-		location = Path(location).expanduser().resolve()
+		"""Creates the project in a project_name folder inside location and writes its manifest."""
+		location = (Path(location).expanduser() / project_name).resolve()
 		location.mkdir(parents=True, exist_ok=True)
 		if (location / cls.MANIFEST).exists():
 			raise FileExistsError(
