@@ -152,7 +152,7 @@ class PlotType:
 
 
 PLOTS: tuple[PlotType, ...] = (
-	PlotType("line", "Line", px.line, ("x", "y"), {"markers": True}),
+	PlotType("line", "Line", px.line, ("x", "y")),
 	PlotType("scatter", "Scatter", px.scatter, ("x", "y")),
 	PlotType("bar", "Bar", px.bar, ("x", "y"), {"barmode": "group"}),
 	PlotType("area", "Area", px.area, ("x", "y")),
