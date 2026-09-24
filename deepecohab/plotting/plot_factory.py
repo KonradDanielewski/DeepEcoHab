@@ -435,7 +435,6 @@ def plot_sum_line_per_hour(
 		color=mapping.trace_column,
 		color_discrete_map=mapping.trace_colors,
 		category_orders={mapping.trace_column: mapping.order},
-		line_shape="spline",
 		title=title,
 	)
 

@@ -115,6 +115,9 @@ PHASE_BAND: dict[str, dict[str, str]] = {
 	for name, tokens in _TOKENS.items()
 }
 
+#: Trace defaults every theme shares: a bare line is a smooth curve with no markers.
+_DATA = {"scatter": [{"mode": "lines", "line": {"shape": "spline"}}]}
+
 
 def _template(tokens: dict[str, str]) -> go.layout.Template:
 	"""Build a card-surface template from one theme's tokens."""
@@ -127,6 +130,7 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 		"title": {"font": {"color": tokens["ink2"]}},
 	}
 	return go.layout.Template(
+		data=_DATA,
 		layout=go.Layout(
 			paper_bgcolor="rgba(0,0,0,0)",
 			plot_bgcolor="rgba(0,0,0,0)",
@@ -148,7 +152,7 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 			colorway=DEFAULT_COLORWAY,
 			colorscale=_COLORSCALE,
 			coloraxis={"colorbar": COLORBAR},
-		)
+		),
 	)
 
 
@@ -167,6 +171,7 @@ _PUBLICATION_AXIS = {
 }
 
 PUBLICATION_THEME = go.layout.Template(
+	data=_DATA,
 	layout=go.Layout(
 		paper_bgcolor="#ffffff",
 		plot_bgcolor="#ffffff",
@@ -189,7 +194,7 @@ PUBLICATION_THEME = go.layout.Template(
 				"title": {"side": "right", "font": {"color": "black"}},
 			}
 		},
-	)
+	),
 )
 
 
