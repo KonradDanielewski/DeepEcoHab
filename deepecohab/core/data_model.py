@@ -547,6 +547,9 @@ class Recording(BaseModel):
 				"antenna": pl.Categorical(),
 				"time_under": pl.Duration("us"),
 				"animal_id": pl.Enum(self.cohort.animal_tags),
+				"internal_board_timestamp": pl.Datetime(
+					"us", time_zone=self.timeline.recording_timezone.key
+				),
 			}
 		)
 

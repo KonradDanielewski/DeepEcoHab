@@ -737,7 +737,7 @@ def _graph_head(title_children: list, reset_disabled: bool) -> html.Div:
 				className="deh-btn deh-btn-ghost sm",
 			),
 			html.Button(
-				icon("adjustments-horizontal", size=15),
+				icon("format", size=15),
 				id="builder-format",
 				className="deh-icon-btn sm",
 				title="Format this plot",

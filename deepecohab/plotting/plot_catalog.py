@@ -81,6 +81,7 @@ def activity(
 	phase_type: Sequence[str] = PHASES,
 	metric: Literal["visits", "time"] = "time",
 	agg: Literal["sum", "mean"] = "sum",
+	scope: Scope = "all",
 	color_by: str = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
@@ -89,16 +90,20 @@ def activity(
 	"""Visits to each position, or time spent there.
 
 	Quantifies behaviour either by the number of visits to specific locations or
-	the total time spent in those locations.
+	the total time spent in those locations. ``"all"`` keeps the undefined position,
+	so the time no antenna could place stays visible.
 	"""
 	window = _window(context, days_range, granularity)
-	frame = prepare.prep_activity(context, window, phase_type, granularity, agg, hours_range)
+	positions = context.positions if scope == "all" else context.scope_positions(scope)
+	frame = prepare.prep_activity(
+		context, window, phase_type, granularity, agg, positions, hours_range
+	)
 	mapping = resolve_colors(context, color_by, group_mean=group_mean)
 	frame = mean_by_group(frame, mapping, ["visits", "time"])
 	frame, label = durations.to_display(frame, "time", unit, "Time spent")
 
 	return plot_factory.plot_activity(
-		frame, context.positions, mapping, metric, agg, granularity, label
+		frame, positions, mapping, metric, agg, granularity, label, SCOPE_NOUN[scope]
 	)
 
 
@@ -291,21 +296,22 @@ def chasings_line(
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
 	agg: Literal["sum", "mean"] = "sum",
+	scope: Literal["chaser", "chased"] = "chaser",
 	color_by: str = "animal_id",
 	hours_range: tuple[int, int] | None = None,
 	group_mean: bool = False,
 ) -> go.Figure:
 	"""Chasing frequency per hour, showing the diurnal rhythm of aggression.
 
-	For the mean, a shaded band shows the standard error across the selected
-	window units.
+	Counts each animal's chasings as the chaser, or as the chased. For the mean, a
+	shaded band shows the standard error across the selected window units.
 	"""
 	window = _window(context, days_range, granularity)
 	frame = prepare.prep_hourly_line(
-		context, window, granularity, "chasings_df", "chaser", pl.sum("chasings"), hours_range
+		context, window, granularity, "chasings_df", scope, pl.sum("chasings"), hours_range
 	)
 	spans = prepare.prep_event_spans(context, window, granularity, "hour", hours_range)
-	mapping = resolve_colors(context, color_by, animal_column="chaser", group_mean=group_mean)
+	mapping = resolve_colors(context, color_by, animal_column=scope, group_mean=group_mean)
 	frame = mean_by_group(frame, mapping, ["total", "mean"])
 
 	return LINE_PER_HOUR[agg](frame, mapping, "chasings", context.phases, spans)
@@ -355,7 +361,7 @@ def ranking_distribution(
 	granularity: Granularity = "day",
 	color_by: str = "animal_id",
 ) -> go.Figure:
-	"""Probability density of each animal's ranking on the latest day in range."""
+	"""Probability density of each animal's ranking after the last match in range."""
 	window = _window(context, days_range, granularity)
 	frame = prepare.prep_ranking_distribution(context, window, granularity)
 	mapping = resolve_colors(context, color_by)
@@ -697,6 +703,7 @@ def habitat_occupancy(
 	"cohort-phenotype",
 	title="Cohort phenotype map",
 	requires=("activity_df", "chasings_df", "ranking", "animals"),
+	dynamic_choices=BY_COHORT,
 )
 def cohort_phenotype(
 	context: PlotContext,
@@ -704,6 +711,7 @@ def cohort_phenotype(
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
 	hours_range: tuple[int, int] | None = None,
+	color_by: str = "animal_id",
 ) -> go.Figure:
 	"""One marker per animal, carrying locomotion, sociality, chasing and rank at once.
 
@@ -711,7 +719,9 @@ def cohort_phenotype(
 	apart from the cloud is the one to open the Social or Dominance tab for.
 	"""
 	window = _window(context, days_range, granularity)
-
+	# Colour is the rating, so the animals-by choice only decides the name on each marker.
+	label = "subject_name" if color_by == "subject_name" else "animal_id"
+	mapping = resolve_colors(context, color_by)
 	return plot_factory.plot_phenotype_map(
-		prepare.prep_phenotype(context, window, granularity, hours_range)
+		prepare.prep_phenotype(context, window, granularity, hours_range), mapping, label
 	)

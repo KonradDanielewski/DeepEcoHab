@@ -136,18 +136,19 @@ eq(
 prevents(() => deh.windowControl("day", [2, 3], null, null), "windowControl without a context");
 
 // --- filterControls: a dict merge, plus the group-mean disable rule -------------------
+// The slider hands over hour boundaries [6, 19]; the controls keep the bins 6..18.
 eq(
-	deh.filterControls([6, 18], null, "sex", true, {window: [1, 5]}),
+	deh.filterControls([6, 19], null, "sex", true, {window: [1, 5]}),
 	[{window: [1, 5], hours: [6, 18], phases: [], color_by: "sex", group_mean: true}, false],
 	"filterControls merges into the controls it was given and enables group mean"
 );
 eq(
-	deh.filterControls([6, 18], null, "animal_id", true, {window: [1, 5]}),
+	deh.filterControls([6, 19], null, "animal_id", true, {window: [1, 5]}),
 	[{window: [1, 5], hours: [6, 18], phases: [], color_by: "animal_id", group_mean: false}, true],
 	"filterControls forces group mean off and disables the switch when colouring by animal"
 );
 eq(
-	deh.filterControls([6, 18], null, "subject_name", true, {window: [1, 5]}),
+	deh.filterControls([6, 19], null, "subject_name", true, {window: [1, 5]}),
 	[
 		{window: [1, 5], hours: [6, 18], phases: [], color_by: "subject_name", group_mean: false},
 		true,

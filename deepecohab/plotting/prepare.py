@@ -221,8 +221,11 @@ def prep_ranking_distribution(
 	days_range: tuple[int, int],
 	granularity: Granularity,
 ) -> pl.DataFrame:
-	"""Fit a normal probability density over each animal's latest ranking."""
-	diff = (pl.col(granularity) - days_range[-1]).abs()
+	"""Fit a normal probability density over each animal's last ranking in the window.
+
+	The ranking table is in replay order, so an animal's last row is its rating after the
+	window's final match - the same whichever granularity the window is given in.
+	"""
 	pdf_expression = (1 / (pl.col("sigma") * math.sqrt(2 * math.pi))) * (
 		-0.5 * ((pl.col("ranking") - pl.col("mu")) / pl.col("sigma")) ** 2
 	).exp()
@@ -230,7 +233,7 @@ def prep_ranking_distribution(
 	return (
 		context.table("ranking")
 		.lazy()
-		.filter(diff == diff.min())
+		.filter(window_filter(days_range, granularity))
 		.group_by("animal_id")
 		.agg(pl.last("mu"), pl.last("sigma"))
 		.join(pl.LazyFrame({"ranking": np.arange(-10, 50, 0.1)}), how="cross")
@@ -250,18 +253,16 @@ def prep_polar(
 ) -> pl.DataFrame:
 	"""Z-score every feature metric onto one comparable polar scale."""
 	n_bins = _bins(days_range)
-	# The hour filter has to apply before the day-level aggregation below, which sums
-	# away the hour column entirely - window_filter can't reach it afterwards.
-	hour_filter = (
-		pl.col("hour").is_between(hours_range[0], hours_range[1])
-		if hours_range is not None
-		else pl.lit(True)
-	)
 
 	return (
 		context.table("feature_df")
 		.lazy()
-		.filter(hour_filter)
+		# The whole selection narrows the rows before the z-score, so animals are
+		# compared with each other within it.
+		.filter(
+			pl.col("phase").is_in(list(phase_type)),
+			window_filter(days_range, granularity, hours_range),
+		)
 		.group_by("animal_id", "metric", "phase", "day", "phase_count")
 		.agg(pl.sum("value"), pl.sum("exposure"))
 		.with_columns(
@@ -276,10 +277,6 @@ def prep_polar(
 			.otherwise((pl.col("rate") - pl.col("rate").mean()) / pl.col("rate").std())
 			.over("metric")
 			.alias("z-score")
-		)
-		.filter(
-			pl.col("phase").is_in(list(phase_type)),
-			window_filter(days_range, granularity),
 		)
 		.group_by("animal_id", "metric", granularity)
 		.agg(pl.mean("z-score"))
@@ -510,6 +507,7 @@ def prep_activity(
 	phase_type: Sequence[str],
 	granularity: Granularity,
 	agg: Aggregation,
+	positions: list[str],
 	hours_range: tuple[int, int] | None = None,
 ) -> pl.DataFrame:
 	"""Visits and time spent per position and animal, ``time`` a raw Duration.
@@ -527,6 +525,7 @@ def prep_activity(
 		.filter(
 			pl.col("phase").is_in(list(phase_type)),
 			window_filter(days_range, granularity, hours_range),
+			pl.col("position").is_in(positions),
 		)
 		.group_by(granularity, "animal_id", "position")
 		.agg(

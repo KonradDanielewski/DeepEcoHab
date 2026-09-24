@@ -81,8 +81,8 @@ _SECTIONS = [
 		"Activity",
 		[
 			("recording-timeline", 12, 340),
-			("activity-line", 8, 340),
-			("cage-preference", 4, 340),
+			("activity-line", 8, 360),
+			("cage-preference", 4, 360),
 			("activity-bar", 12, 320),
 			("cage-preference-evolution", 7, 660),
 			("time-per-cage-heatmap", 5, 660),
@@ -104,8 +104,8 @@ _SECTIONS = [
 		"Dominance",
 		[
 			("ranking-line", 12, 360),
-			("ranking-distribution-line", 6, 360),
-			("chasings-line", 6, 360),
+			("chasings-line", 8, 360),
+			("ranking-distribution-line", 4, 360),
 			("network-dominance", 6, 424),
 			("chasings-heatmap", 6, 424),
 		],
@@ -264,10 +264,6 @@ def _clock(summary: dict, hour: int) -> str:
 	return f"{total // 60:02d}:{total % 60:02d}"
 
 
-def _hours_marks(summary: dict) -> list[dmc.RangeSlider.Marks]:
-	return [{"value": hour, "label": _clock(summary, hour)} for hour in (0, 6, 12, 18, 23)]
-
-
 def _shade(phase: str, selected: bool) -> str:
 	"""One phase's colour for the hours band, dimmed when the chips have turned it off."""
 	token = "--tick-dark" if phase == "dark_phase" else "--tick-light"
@@ -278,8 +274,8 @@ def _hours_band(summary: dict, phases: list[str]) -> tuple[str, str]:
 	"""The hours slider's band as a CSS gradient, and the hover text naming its stretches.
 
 	``hour`` counts from the ``start_from`` onset, so each phase is one unbroken stretch
-	and the band never has to wrap around midnight. The slider puts hour ``h`` at ``h / 23``
-	of the track, so the split sits under the tick whose clock label is the other onset.
+	and the band never has to wrap around midnight. The slider runs over hour boundaries,
+	``h`` at ``h / 24`` of the track, so the split sits under the other onset's tick.
 	"""
 	onsets, start = summary["onsets"], summary["start_from"]
 	other = next((name for name in onsets if name != start), None)
@@ -288,7 +284,7 @@ def _hours_band(summary: dict, phases: list[str]) -> tuple[str, str]:
 
 	minutes = {name: int(at[:2]) * 60 + int(at[3:5]) for name, at in onsets.items()}
 	first = ((minutes[other] - minutes[start]) % 1440) / 60
-	split = min(max(100 * first / 23, 0), 100)
+	split = 100 * first / 24
 	edge = round(first)
 
 	return (
@@ -312,12 +308,12 @@ def _window_text(bound: int, granularity: str, window: list[int]) -> tuple[str, 
 	return f"{unit} {lo} → {hi}", span
 
 
-def _hours_text(summary: dict, hours: list[int]) -> tuple[str, str]:
+def _hours_text(hours: list[int]) -> tuple[str, str]:
 	"""The label above the hours slider, and the hint on its right."""
 	lo, hi = hours
 	span = "whole day" if [lo, hi] == [0, 23] else f"{hi - lo + 1} of 24 h"
 
-	return f"Hours {_clock(summary, lo)} → {_clock(summary, hi + 1)}", span
+	return f"Hours {lo} → {hi + 1}", span
 
 
 def _cohort_widgets(context: PlotContext, color_by: str) -> tuple[list, html.Div]:
@@ -407,7 +403,7 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 			html.Div(
 				[
 					html.Button(
-						icon("adjustments-horizontal", size=15),
+						icon("format", size=15),
 						id={"type": "card-format", "plot": name},
 						className="deh-icon-btn sm",
 						title=f"Format {spec.title}",
@@ -464,6 +460,7 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 			),
 			custom_spinner=icon("loader-2", size=28, class_name="deh-spin"),
 			delay_show=200,
+			parent_className="deh-plot-wrap",
 		),
 		html.Footer(_reads(spec.requires), className="deh-card-foot"),
 	]
@@ -578,12 +575,7 @@ def _quality_summary_children(context: PlotContext) -> list:
 		],
 		className="deh-tiles",
 	)
-	note = html.P(
-		"Proposed bands, to confirm on more recordings: under 1% good, 1-2.5% check, 2.5% and "
-		"over poor.",
-		className="deh-q-note",
-	)
-	return [header, body, note]
+	return [header, body]
 
 
 def _quality_missing_children(context: PlotContext, color_by: str) -> list:
@@ -725,20 +717,19 @@ def _habitat_card_children(context: PlotContext, height: int) -> list:
 def _card(cell: tuple, context: PlotContext, color_by: str, tab: str) -> html.Article:
 	name, span, height, *rest = cell
 	rows = rest[0] if rest else 1
-	if name == "cohort":
-		# Baked in now rather than left for a reactive callback to fill on mount, so the
-		# card is right from its first paint.
-		children = _cohort_card_children(context, color_by)
-		return _card_frame(children, span, rows, card_id="cohort-card")
-	if name == "habitat":
-		return _card_frame(_habitat_card_children(context, height), span, rows)
-	if name == "overview-summary":
-		return _card_frame(_overview_summary_children(context), span, rows)
-	if name == "quality-summary":
-		return _card_frame(_quality_summary_children(context), span, rows)
-	if name == "quality-missing":
-		children = _quality_missing_children(context, color_by)
-		return _card_frame(children, span, rows, card_id="quality-missing-card")
+	match name:
+		case "cohort":
+			children = _cohort_card_children(context, color_by)
+			return _card_frame(children, span, rows, card_id="cohort-card")
+		case "habitat":
+			return _card_frame(_habitat_card_children(context, height), span, rows)
+		case "overview-summary":
+			return _card_frame(_overview_summary_children(context), span, rows)
+		case "quality-summary":
+			return _card_frame(_quality_summary_children(context), span, rows)
+		case "quality-missing":
+			children = _quality_missing_children(context, color_by)
+			return _card_frame(children, span, rows, card_id="quality-missing-card")
 	return _card_frame(_plot_card(name, context, height, tab), span, rows)
 
 
@@ -748,7 +739,7 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 	color_by = controls["color_by"] if controls["color_by"] in attrs else "animal_id"
 	cohort_children, cohort_pop = _cohort_widgets(context, color_by)
 	gradient, band_title = _hours_band(summary, controls["phases"])
-	label, hint = _hours_text(summary, controls["hours"])
+	label, hint = _hours_text(controls["hours"])
 	window_label, window_hint = _window_text(bound, controls["granularity"], controls["window"])
 
 	return html.Div(
@@ -807,14 +798,18 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 								style={"background": gradient},
 								title=band_title,
 							),
+							# Hours since the phase onset, as on the plots' hour axis, over
+							# boundaries rather than bins so 0 → 12 reads as the first 12 h;
+							# controls["hours"] stays in bins.
 							dmc.RangeSlider(
 								id="rec-hours",
 								min=0,
-								max=23,
+								max=24,
 								step=1,
-								value=controls["hours"],
-								marks=_hours_marks(summary),
-								minRange=0,
+								value=[controls["hours"][0], controls["hours"][1] + 1],
+								marks=[{"value": h, "label": str(h)} for h in (0, 6, 12, 18, 24)],
+								minRange=1,
+								label=None,
 								size="sm",
 							),
 						],
@@ -866,7 +861,7 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 			dmc.Switch(
 				id="rec-events",
 				label="Events",
-				checked=True,
+				checked=False,
 				disabled=not summary["events"],
 				size="xs",
 			),

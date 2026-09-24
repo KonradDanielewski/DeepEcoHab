@@ -116,7 +116,7 @@ layout = html.Div(
 				html.Div(id="actionbar-message", className="deh-ab-msg"),
 				html.Div(html.I(id="actionbar-meter"), className="deh-meter deh-when-running"),
 				html.Button(
-					[icon("adjustments-horizontal", size=16), "Parameters"],
+					[icon("format", size=16), "Parameters"],
 					id="params-open",
 					className="deh-btn deh-when-idle",
 				),

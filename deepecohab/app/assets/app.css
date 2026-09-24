@@ -1354,6 +1354,16 @@ code {
 	margin: 4px 8px 6px;
 }
 
+/* Plots sit on the footer rather than under the header, so a card without an options row
+   lines its plot up with a neighbour that has one. */
+.deh-plot-wrap {
+	margin-top: auto;
+}
+
+.deh-plot-wrap + .deh-card-foot {
+	margin-top: 0;
+}
+
 .deh-card-badge {
 	display: flex;
 	align-items: center;

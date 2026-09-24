@@ -250,12 +250,6 @@ function _flagErrors(fmt, layout, palettes) {
 
 // The hours slider's band and label, repainted as the handles move - the twin of
 // recording.py's _hours_band / _hours_text, which paint the first one server-side.
-function _clockAt(context, hour) {
-	const base = (context.onsets || {})[context.start_from] || "00:00";
-	const mins = (Number(base.slice(0, 2)) * 60 + Number(base.slice(3, 5)) + hour * 60 + 1440) % 1440;
-	return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
-}
-
 function _shade(phase, selected) {
 	const token = phase === "dark_phase" ? "--tick-dark" : "--tick-light";
 	return "color-mix(in srgb, var(" + token + ") " + (selected ? 100 : 22) + "%, transparent)";
@@ -270,8 +264,8 @@ function _hoursBand(context, phases) {
 
 	const mins = (name) => Number(onsets[name].slice(0, 2)) * 60 + Number(onsets[name].slice(3, 5));
 	const first = (((mins(other) - mins(start)) % 1440) + 1440) % 1440 / 60;
-	// Hour h sits at h / 23 of the track, so the split lands under the other onset's tick.
-	const split = Math.max(0, Math.min(100, (100 * first) / 23));
+	// Boundary h sits at h / 24 of the track, so the split lands under the other onset's tick.
+	const split = (100 * first) / 24;
 	return (
 		"linear-gradient(90deg, " + _shade(start, on(start)) + " 0 " + split + "%, " +
 		_shade(other, on(other)) + " " + split + "% 100%)"
@@ -295,12 +289,51 @@ function _centreSquare(gd) {
 	slide(gd.querySelector(".g-gtitle"), shift);
 }
 
+/* Plotly has no corner radius for boxes, so each redraw rewrites the IQR rectangle of every
+ * box path ("M x,y H|V .. H|V .. H|V .. Z", orientation-agnostic) with rounded corners to
+ * match barcornerradius. Median and whiskers are separate open subpaths and stay square;
+ * notched boxes don't match and are left alone. Static image exports keep square boxes. */
+const _BOX_RADIUS = 10;
+const _NUM = "(-?[\\d.]+(?:e[-+]?\\d+)?)";
+const _BOX_RECT = new RegExp(`M${_NUM},${_NUM}([HV])${_NUM}([HV])${_NUM}([HV])${_NUM}Z`);
+
+function _roundBoxRect(_match, x, y, ...steps) {
+	const corners = [[+x, +y]];
+	for (let i = 0; i < 6; i += 2) {
+		const [px, py] = corners[corners.length - 1];
+		corners.push(steps[i] === "H" ? [+steps[i + 1], py] : [px, +steps[i + 1]]);
+	}
+	const [[x0, y0], , [x2, y2]] = corners;
+	const r = Math.min(_BOX_RADIUS, Math.abs(x2 - x0) / 2, Math.abs(y2 - y0) / 2);
+	const toward = ([ax, ay], [bx, by]) => {
+		const len = Math.hypot(bx - ax, by - ay) || 1;
+		return `${ax + ((bx - ax) * r) / len},${ay + ((by - ay) * r) / len}`;
+	};
+	return corners.map((corner, i) => {
+		const prev = corners[(i + 3) % 4];
+		const next = corners[(i + 1) % 4];
+		return `${i ? "L" : "M"}${toward(corner, prev)}Q${corner.join(",")} ${toward(corner, next)}`;
+	}).join("") + "Z";
+}
+
+function _roundBoxes(gd) {
+	gd.querySelectorAll("path.box").forEach((path) => {
+		const d = path.getAttribute("d");
+		const rounded = d && d.replace(_BOX_RECT, _roundBoxRect);
+		if (rounded !== d) path.setAttribute("d", rounded);
+	});
+}
+
 new MutationObserver(() => {
 	document.querySelectorAll(".js-plotly-plot").forEach((gd) => {
-		if (gd._dehCentre || !gd.on) return;
-		gd._dehCentre = true;
-		gd.on("plotly_afterplot", () => _centreSquare(gd));
+		if (gd._dehAfterplot || !gd.on) return;
+		gd._dehAfterplot = true;
+		gd.on("plotly_afterplot", () => {
+			_centreSquare(gd);
+			_roundBoxes(gd);
+		});
 		_centreSquare(gd);
+		_roundBoxes(gd);
 	});
 }).observe(document.body, {childList: true, subtree: true});
 
@@ -383,11 +416,12 @@ window.dash_clientside.deh = {
 
 	/* --- recording -------------------------------------------------------- */
 
-	filterControls: function (hours, phases, colorBy, groupMean, controls, context) {
+	// The hours slider runs over hour boundaries; the controls keep the hour bins between them.
+	filterControls: function (bounds, phases, colorBy, groupMean, controls, context) {
 		const dc = window.dash_clientside;
 		const disabled = colorBy === "animal_id" || colorBy === "subject_name";
 		const merged = Object.assign({}, controls || {}, {
-			hours: hours,
+			hours: [bounds[0], bounds[1] - 1],
 			phases: phases || [],
 			color_by: colorBy,
 			group_mean: Boolean(groupMean) && !disabled,
@@ -395,13 +429,13 @@ window.dash_clientside.deh = {
 		// set_props rather than Outputs: nothing else writes these, and the band is a
 		// readout of the two sliders above it, not a control of its own.
 		if (context && context.onsets) {
-			const whole = hours[0] === 0 && hours[1] === 23;
+			const whole = bounds[0] === 0 && bounds[1] === 24;
 			dc.set_props("rec-hours-band", {style: {background: _hoursBand(context, phases)}});
 			dc.set_props("rec-hours-label", {
-				children: "Hours " + _clockAt(context, hours[0]) + " → " + _clockAt(context, hours[1] + 1),
+				children: "Hours " + bounds[0] + " → " + bounds[1],
 			});
 			dc.set_props("rec-hours-hint", {
-				children: whole ? "whole day" : hours[1] - hours[0] + 1 + " of 24 h",
+				children: whole ? "whole day" : bounds[1] - bounds[0] + " of 24 h",
 			});
 		}
 		return [merged, disabled];

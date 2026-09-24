@@ -58,6 +58,7 @@ def icon(name: str, size: int = 18, class_name: str = "", **style) -> html.Span:
 	mask = f"url({dash.get_asset_url(f'icons/{name}.svg')}) center / contain no-repeat"
 	return html.Span(
 		className=f"deh-ic {class_name}".strip(),
+		title=name.capitalize(),
 		style={"width": size, "height": size, "WebkitMask": mask, "mask": mask, **style},
 	)
 
