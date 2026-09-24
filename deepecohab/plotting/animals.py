@@ -135,7 +135,7 @@ def resolve_colors(
 		categories=categories,
 		colors=dict(zip(categories, colors, strict=True)),
 		category_by_animal=category_by_animal,
-		legend_title=f"<b>{title.replace('_', ' ').capitalize()}</b>",
+		legend_title=f"<b>{title.replace('_', ' ').capitalize().replace('id', 'ID')}</b>",
 		animal_order=list(context.animal_ids),
 		group_mean=group_mean and color_by != "animal_id",
 	)

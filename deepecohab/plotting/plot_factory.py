@@ -242,8 +242,21 @@ def _faceted_heatmap(
 			row=row + 1,
 			col=col + 1,
 		)
-		figure.update_xaxes(showticklabels=index + cols >= n, row=row + 1, col=col + 1)
-		figure.update_yaxes(showticklabels=col == 0, row=row + 1, col=col + 1)
+		show_x = index + cols >= n
+		show_y = col == 0
+
+		figure.update_xaxes(
+			showticklabels=show_x,
+			ticks="outside" if show_x else "",
+			row=row + 1,
+			col=col + 1,
+		)
+		figure.update_yaxes(
+			showticklabels=show_y,
+			ticks="outside" if show_y else "",
+			row=row + 1,
+			col=col + 1,
+		)
 
 	figure.update_xaxes(automargin=True)
 	figure.update_xaxes(title_text=x_title, row=rows, col=1)
@@ -345,6 +358,7 @@ def plot_activity(
 	agg: Literal["sum", "mean"],
 	granularity: str,
 	value_label: str,
+	place: str = "position",
 ) -> go.Figure:
 	"""Plots bar or box graph of cage and tunnel visits or time spent."""
 	hover = {mapping.trace_column: True, "position": True, metric: True}
@@ -360,7 +374,7 @@ def plot_activity(
 		title="<b>Visits to each position</b>"
 		if metric == "visits"
 		else "<b>Time spent in each position</b>",
-		x_title="<b>Position</b>",
+		x_title=f"<b>{place.capitalize()}</b>",
 		y_title="<b>Number of visits</b>" if metric == "visits" else value_label,
 		hover=hover,
 		agg=agg,
@@ -561,7 +575,7 @@ def plot_ranking_stability(
 		layout={
 			"title_x": 0.5,
 			"title": f"<b>{cadence} dominance rank trajectories</b>",
-			"legend_title_text": mapping.legend_title,
+			"legend": {"title": mapping.legend_title, "tracegroupgap": 1},
 			"yaxis": {
 				"title": "<b>Rank</b>",
 				"autorange": "reversed",
@@ -999,7 +1013,7 @@ def plot_cage_preference(
 	)
 
 	figure.update_traces(boxmean=True)
-	figure.update_layout(colorway=colors)
+	figure.update_layout(colorway=colors, legend={"title": "<b>Position</b>"})
 	figure.update_yaxes(title_text=value_label)
 	figure.update_xaxes(
 		title_text=f"<b>{place.capitalize()}s</b>",
@@ -1013,34 +1027,24 @@ def plot_cage_preference(
 def plot_timeline(
 	frame: pl.DataFrame, animals: list[str], positions: list[str], spans: pl.DataFrame
 ) -> go.Figure:
-	"""Plots each animal's position over time as a compact Gantt-style strip.
-
-	A multi-day recording carries tens of thousands of visits, well past what an SVG
-	bar chart (``px.timeline``) renders smoothly - so each position and animal gets one
-	WebGL line trace instead of one bar per visit, its visits drawn as NaN-separated
-	segments at that position's colour.
-
-	Both axes are numeric so plotly ships them as compact typed arrays rather than a
-	hundred thousand date strings: times are wall-clock epoch milliseconds on a date axis
-	(plotly drops a date string's zone too, so they read the same), animals are their row
-	index, named by the tick labels and, in the hover, by the trace's ``meta``.
-	"""
+	"""Plot animal positions over time as a compact Gantt-style timeline."""
 	colors = dict(zip(positions, sample_palette(len(positions)), strict=True))
 	row_dtype = np.min_scalar_type(len(animals))
+
 	visits = frame.with_columns(pl.col("start", "end").dt.replace_time_zone(None).dt.epoch("ms"))
 	groups = visits.partition_by("position", "animal_id", as_dict=True)
 	figure = go.Figure()
 
 	for position in positions:
-		legend = True
+		first_animal = True  # Only show legend for the first animal of each position
 		for row, animal in enumerate(animals):
-			rows = groups.get((position, animal))
-			if rows is None:
+			if (rows := groups.get((position, animal))) is None:
 				continue
 
 			x = np.full(3 * rows.height, np.nan)
 			x[0::3] = rows["start"].to_numpy()
 			x[1::3] = rows["end"].to_numpy()
+
 			figure.add_trace(
 				go.Scattergl(
 					x=x,
@@ -1049,12 +1053,12 @@ def plot_timeline(
 					line={"width": 10, "color": colors[position]},
 					name=position,
 					legendgroup=position,
-					showlegend=legend,
+					showlegend=first_animal,  # Only show legend for the first animal
 					meta=animal,
 					hovertemplate=f"{position}<br>Animal: %{{meta}}<br>%{{x}}<extra></extra>",
 				)
 			)
-			legend = False
+			first_animal = False
 
 	figure.update_yaxes(
 		title=None,
@@ -1066,11 +1070,11 @@ def plot_timeline(
 	figure.update_xaxes(title="<b>Timeline</b>", type="date")
 	figure.update_layout(
 		title="<b>Position timeline</b>",
-		legend={"title": "Position"},
+		legend={"title": "<b>Position</b>", "tracegroupgap": 1},
 		colorway=list(colors.values()),
 	)
-	_event_spans(figure, spans)
 
+	_event_spans(figure, spans)
 	return figure
 
 
@@ -1187,54 +1191,54 @@ def plot_occupancy_ribbon(
 	return figure
 
 
-def plot_phenotype_map(frame: pl.DataFrame) -> go.Figure:
+def plot_phenotype_map(
+	frame: pl.DataFrame, mapping: ColorMapping, label: str = "animal_id"
+) -> go.Figure:
 	"""Plots one marker per animal: locomotion, sociality, chases won and rating."""
-	won = frame["won"].to_list()
-	figure = go.Figure(
-		go.Scatter(
-			x=frame["visits"].to_list(),
-			y=frame["gregariousness"].to_list(),
-			mode="markers+text",
-			text=frame["subject_name"].to_list(),
-			textposition="top center",
-			textfont={"size": 10},
-			# The topmost animal's label sits above the axis, so let it draw there.
-			cliponaxis=False,
-			customdata=frame.select("subject_name", "won", "ordinal").to_numpy(),
-			marker={
-				"size": won,
-				"sizemode": "area",
-				# The biggest marker lands at 44px across whatever the cohort's range.
-				"sizeref": 2 * max([*won, 1]) / 44**2,
-				"sizemin": 6,
-				"color": frame["ordinal"].to_list(),
-				"colorscale": AURORA,
-				"line": {"width": 1, "color": "rgba(0,0,0,0.25)"},
-				"colorbar": {**COLORBAR, "title": {"text": "<b>Dominance</b>", "side": "right"}},
-			},
-			hovertemplate=(
-				"<b>%{customdata[0]}</b><br>%{x} visits<br>"
-				"%{y:.0%} of cage time with company<br>"
-				"%{customdata[1]} chases won · rating %{customdata[2]:.1f}<extra></extra>"
-			),
-		)
+	fig = px.scatter(
+		frame,
+		x="visits",
+		y="gregariousness",
+		size="won",
+		size_max=30,
+		color=mapping.trace_column,
+		color_discrete_map=mapping.trace_colors,
+		category_orders={mapping.trace_column: mapping.order},
+		text=label,
+		custom_data=[label, "won", "ordinal"],
+		labels={
+			"visits": "<b>Visits (locomotion)</b>",
+			"gregariousness": "<b>Time in company [%]</b>",
+			"ordinal": "<b>Dominance</b>",
+		},
+		title="<b>Cohort phenotype map</b>",
 	)
 
-	# Who tops the hierarchy is the one thing to read off this card without hovering, and
-	# where they sit against the cohort is what makes their position mean something.
+	# Apply fine-grained trace styling
+	fig.update_traces(
+		textposition="top center",
+		textfont_size=10,
+		cliponaxis=False,
+		marker_line={"width": 1, "color": "rgba(0,0,0,0.25)"},
+		hovertemplate=(
+			"<b>%{customdata[0]}</b><br>%{x} visits<br>"
+			"%{y:.0%} of cage time with company<br>"
+			"%{customdata[1]} chases won · rating %{customdata[2]:.1f}<extra></extra>"
+		),
+	)
+
+	# Dynamic annotation for top animal
 	top = frame.sort("ordinal", nulls_last=True).row(-1, named=True)
 	if top["gregariousness"] is not None:
-		figure.add_annotation(
+		active_str = "more" if top["visits"] >= frame["visits"].median() else "least"
+		social_str = "more" if top["gregariousness"] >= frame["gregariousness"].median() else "less"
+
+		fig.add_annotation(
 			x=top["visits"],
 			y=top["gregariousness"],
 			ax=-64,
 			ay=44,
-			text=(
-				"top of the hierarchy:<br>"
-				f"{'most' if top['visits'] >= frame['visits'].median() else 'least'} active, "
-				f"{'more' if top['gregariousness'] >= frame['gregariousness'].median() else 'less'}"
-				" social than median"
-			),
+			text=(f"top of the hierarchy:<br>{active_str} active, {social_str} social than median"),
 			showarrow=True,
 			arrowhead=0,
 			arrowwidth=1,
@@ -1242,10 +1246,9 @@ def plot_phenotype_map(frame: pl.DataFrame) -> go.Figure:
 			opacity=0.8,
 		)
 
-	figure.update_layout(
-		title="<b>Cohort phenotype map</b>",
-		xaxis={"title": {"text": "<b>Visits (locomotion)</b>"}},
-		yaxis={"title": {"text": "<b>Time in company [%]</b>"}, "tickformat": ".0%"},
-	)
+	# Formatting adjustments
+	collapse_legend(fig, mapping)
+	fig.update_coloraxes(colorbar=COLORBAR)
+	fig.update_layout(yaxis_tickformat=".0%", legend={"title": mapping.legend_title})
 
-	return figure
+	return fig

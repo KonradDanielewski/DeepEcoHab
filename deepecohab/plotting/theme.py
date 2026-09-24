@@ -25,17 +25,17 @@ FONT = "Geist, Segoe UI, system-ui, sans-serif"
 
 #: House sequential scale for heatmaps, teal through gold, replacing plain Viridis.
 _AURORA_STOPS: list[str] = [
-	"rgba(22, 191, 168, 0.7)",  # teal
-	"rgba(30, 155, 224, 0.7)",  # cyan-blue
-	"rgba(58, 111, 232, 0.7)",  # blue
-	"rgba(107, 83, 222, 0.7)",  # indigo
-	"rgba(154, 76, 214, 0.7)",  # violet
-	"rgba(197, 63, 192, 0.7)",  # magenta
-	"rgba(232, 67, 147, 0.7)",  # pink
-	"rgba(246, 92, 106, 0.7)",  # rose
-	"rgba(250, 126, 78, 0.7)",  # orange-red
-	"rgba(252, 160, 44, 0.7)",  # orange
-	"rgba(255, 210, 63, 0.7)",  # gold
+	"rgba(22, 191, 168, 0.8)",  # teal
+	"rgba(30, 155, 224, 0.8)",  # cyan-blue
+	"rgba(58, 111, 232, 0.8)",  # blue
+	"rgba(107, 83, 222, 0.8)",  # indigo
+	"rgba(154, 76, 214, 0.8)",  # violet
+	"rgba(197, 63, 192, 0.8)",  # magenta
+	"rgba(232, 67, 147, 0.8)",  # pink
+	"rgba(246, 92, 106, 0.8)",  # rose
+	"rgba(250, 126, 78, 0.8)",  # orange-red
+	"rgba(252, 160, 44, 0.8)",  # orange
+	"rgba(255, 210, 63, 0.8)",  # gold
 ]
 AURORA: list[list] = [
 	[position, color]
@@ -46,22 +46,16 @@ AURORA: list[list] = [
 
 _COLORSCALE = {"sequential": AURORA, "sequentialminus": "Plasma", "diverging": "curl"}
 
-#: One colour bar shape for every heatmap in the app, whatever built it. Both dimensions
-#: are fractions of the plot area rather than pixels, so the bar keeps its proportions
-#: when a card resizes instead of reading fat on a small plot and thin on a large one;
-#: it hangs from the top of the plot area, where the data starts.
 COLORBAR = {
 	"thicknessmode": "fraction",
-	"thickness": 0.025,
+	"thickness": 0.03,
 	"lenmode": "fraction",
 	"len": 1,
 	"y": 1,
 	"yanchor": "top",
-	"title": {"side": "right"},
+	"title": {"side": "right"},  # to fix font color not applied from theme token
 }
 
-#: What a heatmap's colour scale can be switched to, house scale first. Plotly.js knows
-#: only a few scales by name, so every one is spelled out as explicit stops.
 COLORSCALES: dict[str, list] = {
 	"Aurora": AURORA,
 	**{
@@ -70,8 +64,6 @@ COLORSCALES: dict[str, list] = {
 	},
 }
 
-#: What a plot's categories can be recoloured with, which replaces the figure's
-#: ``colorway`` colour for colour. As rgb() so the browser can match a shaded rgba() too.
 PALETTES: dict[str, list[str]] = {
 	name: px.colors.convert_colors_to_same_type(getattr(px.colors.qualitative, name), "rgb")[0]
 	for name in (
@@ -127,7 +119,7 @@ PHASE_BAND: dict[str, dict[str, str]] = {
 def _template(tokens: dict[str, str]) -> go.layout.Template:
 	"""Build a card-surface template from one theme's tokens."""
 	axis = {
-		"gridcolor": tokens["grid"],
+		"gridcolor": "rgba(0,0,0,0)",  # tokens["grid"], decide whether to keep the grid or no
 		"linecolor": tokens["axis"],
 		"zerolinecolor": tokens["axis"],
 		"tickcolor": tokens["axis"],
@@ -145,7 +137,7 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 			polar={
 				"bgcolor": "rgba(0,0,0,0)",
 				"angularaxis": {"gridcolor": tokens["grid"], "linecolor": tokens["axis"]},
-				"radialaxis": {"gridcolor": tokens["grid"], "linecolor": tokens["axis"]},
+				"radialaxis": {"gridcolor": "rgba(0,0,0,0)", "linecolor": tokens["axis"]},
 			},
 			legend={"bgcolor": "rgba(0,0,0,0)", "font": {"color": tokens["ink2"]}},
 			hoverlabel={
@@ -174,8 +166,6 @@ _PUBLICATION_AXIS = {
 	"title": {"font": {"color": "#000000"}},
 }
 
-#: For print or a journal figure: white ground, black axes, no grid. Unlike ``dark`` and
-#: ``light`` it is never the process default - callers ask for it by name at export time.
 PUBLICATION_THEME = go.layout.Template(
 	layout=go.Layout(
 		paper_bgcolor="#ffffff",
@@ -188,7 +178,17 @@ PUBLICATION_THEME = go.layout.Template(
 		shapedefaults={"line": {"color": "#000000"}},
 		colorway=DEFAULT_COLORWAY,
 		colorscale=_COLORSCALE,
-		coloraxis={"colorbar": COLORBAR},
+		coloraxis={
+			"colorbar": {
+				"thicknessmode": "fraction",
+				"thickness": 0.025,
+				"lenmode": "fraction",
+				"len": 1,
+				"y": 1,
+				"yanchor": "top",
+				"title": {"side": "right", "font": {"color": "black"}},
+			}
+		},
 	)
 )
 

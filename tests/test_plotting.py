@@ -201,6 +201,34 @@ def test_scope_never_selects_the_undefined_sentinel(context, scope, expected):
 	assert context.scope_positions(scope) == expected
 
 
+@pytest.mark.parametrize(
+	("scope", "expected"),
+	[
+		("cages", {"cage_1"}),
+		("tunnels", {"tunnel_1"}),
+		("all", {"cage_1", "tunnel_1", "undefined"}),
+	],
+)
+def test_activity_scope_keeps_undefined_only_at_all(context, scope, expected):
+	"""Activity shows where time went unplaced, so ``all`` keeps the sentinel."""
+	positions = ["cage_1", "tunnel_1", "undefined"]
+	activity_df = pl.DataFrame(
+		{
+			"phase": ["light_phase"] * 3,
+			"day": [1] * 3,
+			"animal_id": [ANIMALS[0]] * 3,
+			"position": pl.Series(positions, dtype=pl.Categorical),
+			"visits_to_position": [1] * 3,
+			"time_in_position": pl.Series([dt.timedelta(seconds=10)] * 3, dtype=pl.Duration("us")),
+		}
+	)
+	scoped = replace(context, _loaded={**context._loaded, "activity_df": activity_df})
+
+	figure = PlotRegistry.build("activity-bar", scoped, scope=scope)
+
+	assert {x for trace in figure.data for x in trace.x} == expected
+
+
 def test_unknown_scope_is_rejected(context):
 	"""A typo names a scope that would silently select nothing."""
 	with pytest.raises(ValueError, match="scope must be one of"):
@@ -478,6 +506,33 @@ def test_hours_range_narrows_the_hourly_scaffold(context):
 
 	assert full["hour"].unique().sort().to_list() == list(range(24))
 	assert narrowed["hour"].unique().sort().to_list() == [3, 4, 5, 6]
+
+
+def test_polar_z_scores_within_the_selection_however_it_is_narrowed(context):
+	"""Phase, hours and days all narrow the rows the z-scores are centred on."""
+	rows = [
+		(animal, day, hour, "dark_phase" if hour >= 12 else "light_phase", 2 * day - (hour < 12))
+		for animal in ANIMALS[:2]
+		for day in (1, 2)
+		for hour in range(24)
+	]
+	frame = pl.DataFrame(
+		rows, schema=["animal_id", "day", "hour", "phase", "phase_count"], orient="row"
+	).with_columns(
+		metric=pl.lit("activity"),
+		value=pl.col("hour").cast(pl.Float64)
+		* pl.col("day")
+		* (1 + (pl.col("animal_id") == "0035B")),
+		exposure=pl.lit(1.0),
+	)
+	with_table = replace(context, _loaded={"feature_df": frame})
+	phases = ["light_phase", "dark_phase"]
+
+	by_phase = prepare.prep_polar(with_table, (1, 1), ["dark_phase"], "day")
+	by_hours = prepare.prep_polar(with_table, (1, 1), phases, "day", hours_range=(12, 23))
+
+	assert by_phase.equals(by_hours)
+	assert by_phase["mean"].sum() == pytest.approx(0)
 
 
 # --- events ------------------------------------------------------------------
@@ -782,6 +837,28 @@ def test_quality_by_antenna_pools_counts_rather_than_averaging_rates():
 	assert frame.sort("antenna")["miss_rate"].to_list() == pytest.approx(
 		[1 / 1001 * 100, 1 / 3 * 100]
 	)
+
+
+def test_ranking_distribution_is_the_same_for_a_window_in_days_or_phases(context):
+	"""The window only picks which matches count, so its unit must not change the fit."""
+	# One row per animal after each match, in replay order; phase 2 has no matches.
+	ranking = pl.DataFrame(
+		{
+			"animal_id": ["0035A", "0035B"] * 3,
+			"mu": [26.0, 24.0, 28.0, 22.0, 30.0, 20.0],
+			"sigma": [8.0] * 6,
+			"day": [1, 1, 2, 2, 2, 2],
+			"phase_count": [1, 1, 3, 3, 4, 4],
+		}
+	)
+	context = replace(context, _loaded={"ranking": ranking})
+
+	def fit(days_range, granularity):
+		return prepare.prep_ranking_distribution(context, days_range, granularity)
+
+	assert fit((1, 2), "day").equals(fit((1, 4), "phase_count"))
+	# The nearest phase with matches after the window must not stand in for its empty end.
+	assert fit((1, 1), "day").equals(fit((1, 2), "phase_count"))
 
 
 # --- network graphs ----------------------------------------------------------

@@ -75,7 +75,7 @@ def _layout() -> dmc.MantineProvider:
 			# have not made one - what a plot's own template should follow, since the
 			# shell (defaultColorScheme="auto") can be dark while theme-store is still None.
 			dcc.Store(id="plot-theme"),
-			dcc.Store(id="nav-collapsed", data=False),
+			dcc.Store(id="nav-collapsed", storage_type="local", data=False),
 			dcc.Store(id="project-paths", storage_type="local", data=[]),
 			# Above Dash's debug bar (z-index 10000), which sits where toasts appear.
 			dmc.NotificationContainer(id="notifications", zIndex=10001),

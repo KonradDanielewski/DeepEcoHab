@@ -38,13 +38,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Step 2 — Install DeepEcoHab
 
 ```
-uv venv
-# Windows:        .venv\Scripts\activate
-# Linux / macOS:  source .venv/bin/activate
-uv pip install "deepecohab[app]"
+uv tool install deepecohab[app]
 ```
-
-Already have an environment running `python>=3.12`? Just run `pip install "deepecohab[app]"`.
 
 ### Step 3 — Start the app
 
@@ -149,7 +144,7 @@ package {cite}`deepecohab` together with the paper introducing the Eco-HAB syste
 ```bibtex
 @software{deepecohab,
   title     = {{DeepEcoHab}: fast and intuitive data analysis platform for {EcoHab} experiments},
-  author    = {Danielewski, Konrad and W{\l}odkowska, Ula},
+  author    = {Danielewski, Konrad and Wlodkowska, Ula},
   year      = {2026},
   publisher = {GitHub},
   url       = {https://github.com/KonradDanielewski/DeepEcoHab}
