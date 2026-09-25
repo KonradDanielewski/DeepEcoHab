@@ -84,8 +84,7 @@ _SECTIONS = [
 			("activity-line", 8, 360),
 			("cage-preference", 4, 360),
 			("activity-bar", 12, 320),
-			("cage-preference-evolution", 7, 660),
-			("time-per-cage-heatmap", 5, 660),
+			("cage-preference-evolution", 12, 660),
 		],
 	),
 	(
@@ -552,14 +551,15 @@ def _quality_summary_children(context: PlotContext) -> list:
 	if "activity_df" in context and "phase_durations" in context:
 		missing = services.missing_time(context)
 		worst = missing["rows"][0]
-		tiles.append(
+		tiles.insert(
+			1,
 			(
 				"Position unknown",
 				f"{missing['mean_share']:.2f}%",
 				html.Span(
 					f"Worst: {worst['animal_id']} {worst['share']:.2f}%", className="deh-sub"
 				),
-			)
+			),
 		)
 	body = html.Div(
 		[

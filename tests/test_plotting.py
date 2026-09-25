@@ -256,7 +256,6 @@ def test_proportion_together_counts_only_the_scoped_positions(context):
 		("cohort-heatmap", ("all", "cages", "tunnels"), "all"),
 		("social-stability", ("all", "cages", "tunnels"), "all"),
 		("network-sociability", ("all", "cages", "tunnels"), "all"),
-		("time-per-cage-heatmap", ("cages", "tunnels"), "cages"),
 		("cage-preference-evolution", ("cages", "tunnels"), "cages"),
 		("sociability-heatmap", ("cages", "tunnels"), "cages"),
 	],
