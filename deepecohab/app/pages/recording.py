@@ -41,6 +41,7 @@ _GLOBAL_OPTIONS = {
 	"granularity": "granularity",
 	"phase_type": "phases",
 	"color_by": "color_by",
+	"label_by": "label_by",
 	"hours_range": "hours",
 	"group_mean": "group_mean",
 }
@@ -977,6 +978,22 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 			),
 			html.Div(
 				[
+					html.Span("Label", className="deh-ctl-label"),
+					dmc.SegmentedControl(
+						id="rec-label-by",
+						data=[
+							{"value": "animal_id", "label": "Tag"},
+							{"value": "subject_name", "label": "Name"},
+						],
+						value=controls["label_by"],
+						disabled="animals" not in context,
+						size="xs",
+					),
+				],
+				className="deh-ctl",
+			),
+			html.Div(
+				[
 					html.Span("Animals by", className="deh-ctl-label"),
 					dmc.Select(
 						id="rec-animals-by",
@@ -993,7 +1010,7 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 				id="rec-group-mean",
 				label="Group mean",
 				checked=controls.get("group_mean", False),
-				disabled=color_by in ("animal_id", "subject_name"),
+				disabled=color_by == "animal_id",
 				size="xs",
 			),
 			dmc.Switch(
@@ -1161,6 +1178,7 @@ def _resolve(pathname, search, paths, current):
 		"hours": [0, 23],
 		"phases": list(PHASES),
 		"color_by": "animal_id",
+		"label_by": "animal_id",
 		"group_mean": False,
 	}
 	body = _dashboard(pid, names, name, summary, context, controls, tab)
@@ -1262,6 +1280,7 @@ clientside_callback(
 	Input("rec-hours", "value"),
 	Input("rec-phases", "value"),
 	Input("rec-animals-by", "value"),
+	Input("rec-label-by", "value"),
 	Input("rec-group-mean", "checked"),
 	State("rec-controls", "data"),
 	State("rec-context", "data"),

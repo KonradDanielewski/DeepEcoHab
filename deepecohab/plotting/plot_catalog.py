@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Literal
 
 import plotly.graph_objects as go
@@ -7,6 +8,7 @@ import polars as pl
 from deepecohab.core.data_model import Layout
 from deepecohab.plotting import durations, plot_factory, prepare
 from deepecohab.plotting.animals import (
+	animal_labels,
 	available_attributes,
 	mean_by_group,
 	resolve_colors,
@@ -15,6 +17,7 @@ from deepecohab.plotting.context import (
 	SCOPE_NOUN,
 	FacetScope,
 	Granularity,
+	LabelBy,
 	PlotContext,
 	Scope,
 )
@@ -61,15 +64,17 @@ def recording_timeline(
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
 	hours_range: tuple[int, int] | None = None,
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Every animal's position over time, as a compact Gantt-style strip."""
 	window = _window(context, days_range, granularity)
 	frame = prepare.prep_timeline(context, window, granularity, hours_range)
 	spans = prepare.prep_event_spans(context, window, granularity, "datetime", hours_range)
 
-	return plot_factory.plot_timeline(
-		frame, sorted(context.animal_ids), context.scope_positions("all"), spans
+	figure = plot_factory.plot_timeline(
+		frame, context.animal_ids, context.scope_positions("all"), spans
 	)
+	return figure.update_yaxes(ticktext=animal_labels(context, label_by))
 
 
 @PlotRegistry.register(
@@ -94,6 +99,7 @@ def activity(
 	agg: Literal["sum", "mean"] = "sum",
 	scope: Scope = "all",
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
 	group_mean: bool = False,
@@ -109,7 +115,7 @@ def activity(
 	frame = prepare.prep_activity(
 		context, window, phase_type, granularity, agg, positions, hours_range
 	)
-	mapping = resolve_colors(context, color_by, group_mean=group_mean)
+	mapping = resolve_colors(context, color_by, group_mean=group_mean, label_by=label_by)
 	frame = mean_by_group(frame, mapping, ["visits", "time"])
 	frame, label = durations.to_display(frame, "time", unit, "Time spent")
 
@@ -138,6 +144,7 @@ def time_alone(
 	agg: Literal["sum", "mean"] = "sum",
 	scope: Scope = "all",
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 	unit: Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
 	group_mean: bool = False,
@@ -152,7 +159,7 @@ def time_alone(
 	frame = prepare.prep_time_alone(
 		context, window, phase_type, granularity, agg, positions, hours_range
 	)
-	mapping = resolve_colors(context, color_by, group_mean=group_mean)
+	mapping = resolve_colors(context, color_by, group_mean=group_mean, label_by=label_by)
 	frame = mean_by_group(frame, mapping, ["time_alone"])
 	frame, label = durations.to_display(frame, "time_alone", unit, "Time alone")
 
@@ -220,6 +227,7 @@ def cage_preference_evolution(
 	scope: FacetScope = "cages",
 	unit: Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Time spent in each cage, or each tunnel, across the window or the hours of the day.
 
@@ -239,6 +247,7 @@ def cage_preference_evolution(
 		unit,
 		hours_range,
 	)
+	heatmap = replace(heatmap, y=animal_labels(context, label_by))
 
 	spans = prepare.prep_event_spans(context, window, granularity, x, hours_range)
 	kind = "daily" if timescale == "days" else "hourly"
@@ -268,6 +277,7 @@ def activity_line(
 	timescale: Literal["days", "hours"] = "hours",
 	agg: Literal["sum", "mean"] = "sum",
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 	hours_range: tuple[int, int] | None = None,
 	group_mean: bool = False,
 ) -> go.Figure:
@@ -284,7 +294,7 @@ def activity_line(
 		context, window, granularity, x, "main_df", "animal_id", pl.len(), hours_range
 	)
 	spans = prepare.prep_event_spans(context, window, granularity, x, hours_range)
-	mapping = resolve_colors(context, color_by, group_mean=group_mean)
+	mapping = resolve_colors(context, color_by, group_mean=group_mean, label_by=label_by)
 	frame = mean_by_group(frame, mapping, ["total", "mean"])
 
 	return LINE_BY_AGG[agg](frame, mapping, "activity", x, context.phases, spans)
@@ -310,6 +320,7 @@ def chasings_line(
 	agg: Literal["sum", "mean"] = "sum",
 	scope: Literal["chaser", "chased"] = "chaser",
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 	hours_range: tuple[int, int] | None = None,
 	group_mean: bool = False,
 ) -> go.Figure:
@@ -325,7 +336,9 @@ def chasings_line(
 		context, window, granularity, x, "chasings_df", scope, pl.sum("chasings"), hours_range
 	)
 	spans = prepare.prep_event_spans(context, window, granularity, x, hours_range)
-	mapping = resolve_colors(context, color_by, animal_column=scope, group_mean=group_mean)
+	mapping = resolve_colors(
+		context, color_by, animal_column=scope, group_mean=group_mean, label_by=label_by
+	)
 	frame = mean_by_group(frame, mapping, ["total", "mean"])
 
 	return LINE_BY_AGG[agg](frame, mapping, "chasings", x, context.phases, spans)
@@ -350,10 +363,11 @@ def ranking_over_time(
 	granularity: Granularity = "day",
 	mode: Literal["intime", "stability"] = "intime",
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Ranking over time, or its day-to-day stability."""
 	window = _window(context, days_range, granularity)
-	mapping = resolve_colors(context, color_by)
+	mapping = resolve_colors(context, color_by, label_by=label_by)
 
 	match mode:
 		case "intime":
@@ -386,11 +400,12 @@ def ranking_distribution(
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Probability density of each animal's ranking after the last match in range."""
 	window = _window(context, days_range, granularity)
 	frame = prepare.prep_ranking_distribution(context, window, granularity)
-	mapping = resolve_colors(context, color_by)
+	mapping = resolve_colors(context, color_by, label_by=label_by)
 
 	return plot_factory.plot_ranking_distribution(frame, mapping)
 
@@ -414,6 +429,7 @@ def polar_metrics(
 	granularity: Granularity = "day",
 	phase_type: Sequence[str] = PHASES,
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 	hours_range: tuple[int, int] | None = None,
 	group_mean: bool = False,
 ) -> go.Figure:
@@ -424,7 +440,7 @@ def polar_metrics(
 	"""
 	window = _window(context, days_range, granularity)
 	frame = prepare.prep_polar(context, window, phase_type, granularity, hours_range)
-	mapping = resolve_colors(context, color_by, group_mean=group_mean)
+	mapping = resolve_colors(context, color_by, group_mean=group_mean, label_by=label_by)
 	frame = mean_by_group(frame, mapping, ["mean"])
 
 	return plot_factory.plot_metrics_polar(frame, mapping)
@@ -450,6 +466,7 @@ def chasings_heatmap(
 	phase_type: Sequence[str] = PHASES,
 	agg: Literal["sum", "mean"] = "sum",
 	hours_range: tuple[int, int] | None = None,
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Chaser-versus-chased matrix of agonistic interactions.
 
@@ -472,7 +489,10 @@ def chasings_heatmap(
 	)
 
 	return plot_factory.plot_heatmap(
-		matrix, animals, "<b>Chasings</b>", ("Chaser", "Chased", "Number")
+		matrix,
+		animal_labels(context, label_by),
+		"<b>Chasings</b>",
+		("Chaser", "Chased", "Number"),
 	)
 
 
@@ -485,7 +505,7 @@ def chasings_heatmap(
 		"(row) pair; sum totals them, mean averages per day or phase. Compare mirrored cells to "
 		"see who dominates."
 	),
-	requires=("tube_test_df",),
+	requires=("tube_test_df", "animals"),
 	dynamic_choices=PHASE_TYPE,
 )
 def tube_test_heatmap(
@@ -496,6 +516,7 @@ def tube_test_heatmap(
 	phase_type: Sequence[str] = PHASES,
 	agg: Literal["sum", "mean"] = "sum",
 	hours_range: tuple[int, int] | None = None,
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Winner-versus-loser matrix of spontaneous tube-test outcomes."""
 	window = _window(context, days_range, granularity)
@@ -515,7 +536,10 @@ def tube_test_heatmap(
 	)
 
 	return plot_factory.plot_heatmap(
-		matrix, animals, "<b>Spontaneous tube-test</b>", ("Winner", "Loser", "Number")
+		matrix,
+		animal_labels(context, label_by),
+		"<b>Spontaneous tube-test</b>",
+		("Winner", "Loser", "Number"),
 	)
 
 
@@ -541,6 +565,7 @@ def pairwise_sociability(
 	scope: FacetScope = "cages",
 	unit: Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""How often pairs meet, or how long they spend together, per cage or per tunnel."""
 	window = _window(context, days_range, granularity)
@@ -557,7 +582,9 @@ def pairwise_sociability(
 		hours_range,
 	)
 
-	return plot_factory.plot_sociability_heatmap(heatmap, metric)
+	labels = animal_labels(context, label_by)
+
+	return plot_factory.plot_sociability_heatmap(replace(heatmap, x=labels, y=labels), metric)
 
 
 @PlotRegistry.register(
@@ -580,6 +607,7 @@ def within_cohort_sociability(
 	phase_type: Sequence[str] = PHASES,
 	metric: Literal["proportion_together", "sociability"] = "proportion_together",
 	scope: Scope = "all",
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Mean sociability index between every pair in the cohort.
 
@@ -598,7 +626,9 @@ def within_cohort_sociability(
 		else "<b>Within-cohort sociability</b>"
 	)
 
-	return plot_factory.plot_heatmap(matrix, animals, title, ("X", "Y", "Sociability"))
+	return plot_factory.plot_heatmap(
+		matrix, animal_labels(context, label_by), title, ("X", "Y", "Sociability")
+	)
 
 
 @PlotRegistry.register(
@@ -621,11 +651,12 @@ def social_stability(
 	phase_type: Sequence[str] = PHASES,
 	scope: Scope = "all",
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Stability of every pair's relationship against how much time they share."""
 	window = _window(context, days_range, granularity)
 	frame = prepare.prep_social_stability(context, window, phase_type, granularity, scope)
-	mapping = resolve_colors(context, color_by)
+	mapping = resolve_colors(context, color_by, label_by=label_by)
 
 	return plot_factory.plot_social_stability(frame, mapping)
 
@@ -639,14 +670,13 @@ def social_stability(
 		"passes per antenna that went unrecorded, a lower bound. Bright columns flag weak "
 		"antennas; bright rows, weak tags."
 	),
-	requires=("recording_quality",),
+	requires=("recording_quality", "animals"),
 )
-def quality_heatmap(context: PlotContext) -> go.Figure:
+def quality_heatmap(context: PlotContext, *, label_by: LabelBy = "animal_id") -> go.Figure:
 	"""Share of each animal's passes over each antenna that went unrecorded."""
-	animals = context.animal_ids
-	matrix, antennas = prepare.prep_quality_heatmap(context, animals)
+	matrix, antennas = prepare.prep_quality_heatmap(context, context.animal_ids)
 
-	return plot_factory.plot_quality_heatmap(matrix, animals, antennas)
+	return plot_factory.plot_quality_heatmap(matrix, animal_labels(context, label_by), antennas)
 
 
 @PlotRegistry.register(
@@ -685,6 +715,7 @@ def network_dominance(
 	layout: Literal["spring", "circular"] = "spring",
 	edge_cutoff: float = 0,
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Directed network of chasing, with node size showing ranking.
 
@@ -693,11 +724,18 @@ def network_dominance(
 	"""
 	window = _window(context, days_range, granularity)
 	connections, nodes = prepare.prep_network_dominance(context, window, granularity)
-	mapping = resolve_colors(context, color_by)
+	mapping = resolve_colors(context, color_by, label_by=label_by)
 	colors = [mapping.by_animal[animal] for animal in context.animal_ids]
 
 	figure = plot_factory.plot_network_graph(
-		connections, nodes, context.animal_ids, colors, "chasings", layout, edge_cutoff
+		connections,
+		nodes,
+		context.animal_ids,
+		colors,
+		"chasings",
+		layout,
+		edge_cutoff,
+		animal_labels(context, label_by),
 	)
 	return figure.update_layout(colorway=list(mapping.colors.values()))
 
@@ -723,6 +761,7 @@ def network_sociability(
 	edge_cutoff: float = 0,
 	scope: Scope = "all",
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""Undirected network weighted by the time each pair spends together.
 
@@ -730,7 +769,7 @@ def network_sociability(
 	"""
 	window = _window(context, days_range, granularity)
 	connections = prepare.prep_network_sociability(context, window, granularity, scope)
-	mapping = resolve_colors(context, color_by)
+	mapping = resolve_colors(context, color_by, label_by=label_by)
 	colors = [mapping.by_animal[animal] for animal in context.animal_ids]
 
 	figure = plot_factory.plot_network_graph(
@@ -741,6 +780,7 @@ def network_sociability(
 		"proportion_together",
 		layout,
 		edge_cutoff,
+		animal_labels(context, label_by),
 	)
 	return figure.update_layout(colorway=list(mapping.colors.values()))
 
@@ -828,6 +868,7 @@ def cohort_phenotype(
 	granularity: Granularity = "day",
 	hours_range: tuple[int, int] | None = None,
 	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
 	"""One marker per animal, carrying locomotion, sociality, chasing and rank at once.
 
@@ -835,9 +876,7 @@ def cohort_phenotype(
 	the one to open the Social or Dominance tab for.
 	"""
 	window = _window(context, days_range, granularity)
-	# Markers are named by subject when coloured by subject, by tag otherwise.
-	label = "subject_name" if color_by == "subject_name" else "animal_id"
-	mapping = resolve_colors(context, color_by)
+	mapping = resolve_colors(context, color_by, label_by=label_by)
 	return plot_factory.plot_phenotype_map(
-		prepare.prep_phenotype(context, window, granularity, hours_range), mapping, label
+		prepare.prep_phenotype(context, window, granularity, hours_range), mapping, label_by
 	)

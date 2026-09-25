@@ -451,13 +451,14 @@ window.dash_clientside.deh = {
 	/* --- recording -------------------------------------------------------- */
 
 	// The hours slider runs over hour boundaries; the controls keep the hour bins between them.
-	filterControls: function (bounds, phases, colorBy, groupMean, controls, context) {
+	filterControls: function (bounds, phases, colorBy, labelBy, groupMean, controls, context) {
 		const dc = window.dash_clientside;
-		const disabled = colorBy === "animal_id" || colorBy === "subject_name";
+		const disabled = colorBy === "animal_id";
 		const merged = Object.assign({}, controls || {}, {
 			hours: [bounds[0], bounds[1] - 1],
 			phases: phases || [],
 			color_by: colorBy,
+			label_by: labelBy,
 			group_mean: Boolean(groupMean) && !disabled,
 		});
 		// set_props rather than Outputs: nothing else writes these, and the band is a

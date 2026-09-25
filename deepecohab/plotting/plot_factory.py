@@ -587,6 +587,7 @@ def plot_mean_line(
 		if trace_rows.is_empty():
 			continue
 		color = mapping.trace_colors[trace_value]
+		category = mapping.category_by_animal.get(trace_value, trace_value)
 
 		bins = trace_rows[x].to_list()
 		y = trace_rows["mean"].to_list()
@@ -617,7 +618,7 @@ def plot_mean_line(
 				name=trace_value,
 				line={"shape": "spline"},
 				hovertemplate=(
-					f"{mapping.legend_title}: {trace_value}<br>{x_label}: %{{x}}<br>"
+					f"{mapping.legend_title}: {category}<br>{x_label}: %{{x}}<br>"
 					f"{hover_label}: %{{y:.1f}}<extra></extra>"
 				),
 			)
@@ -951,6 +952,7 @@ def _node_trace(
 	pos: dict[str, np.ndarray],
 	colors: list[str],
 	animals: list[str],
+	labels: list[str],
 	include_ranking: bool,
 ) -> go.Scatter:
 	"""One trace holding every node, sized by the ranking its position carries.
@@ -959,6 +961,7 @@ def _node_trace(
 		pos: node positions, as ``(x, y, ranking)`` per node.
 		colors: one colour per animal, aligned with ``animals``.
 		animals: the nodes to draw, in the order the colours are given.
+		labels: what each node is called, aligned with ``animals``.
 		include_ranking: whether the hover text names the ranking as well as the animal.
 	"""
 	sizes = [pos[node][2] if pos[node][2] > 0 else 0.1 for node in animals]
@@ -966,10 +969,10 @@ def _node_trace(
 	return go.Scatter(
 		x=[pos[node][0] for node in animals],
 		y=[pos[node][1] for node in animals],
-		text=[f"<b>{node}</b>" for node in animals],
+		text=[f"<b>{label}</b>" for label in labels],
 		hovertext=[
-			f"Mouse ID: {node}<br>Ranking: {size}" if include_ranking else f"Mouse ID: {node}"
-			for node, size in zip(animals, sizes, strict=True)
+			f"Mouse ID: {label}<br>Ranking: {size}" if include_ranking else f"Mouse ID: {label}"
+			for label, size in zip(labels, sizes, strict=True)
 		],
 		hoverinfo="text",
 		mode="markers+text",
@@ -987,6 +990,7 @@ def plot_network_graph(
 	graph_type: Literal["chasings", "proportion_together"],
 	layout: Literal["spring", "circular"] = "spring",
 	edge_cutoff: float = 0,
+	labels: list[str] | None = None,
 ) -> go.Figure:
 	"""Plots network graph of social structure.
 
@@ -995,6 +999,7 @@ def plot_network_graph(
 		nodes: ranking table, required for a chasings graph and ignored otherwise.
 		animals: every cohort animal, in the order they ring a circular layout.
 		colors: one colour per animal, aligned with ``animals``.
+		labels: node names aligned with ``animals``, defaulting to the tags themselves.
 		graph_type: which relationship the edges carry.
 		layout: ``"spring"`` places nodes by edge weight, ``"circular"`` rings them
 			evenly so node positions stay comparable between plots.
@@ -1035,7 +1040,7 @@ def plot_network_graph(
 		pos[animal] = np.append(pos[animal], ordinals[animal])
 
 	edge_trace = _edge_traces(graph, pos, edge_weight=edge_weight)
-	node_trace = _node_trace(pos, colors, animals, include_ranking)
+	node_trace = _node_trace(pos, colors, animals, labels or animals, include_ranking)
 
 	figure = go.Figure(
 		data=[*edge_trace, node_trace],

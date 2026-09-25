@@ -22,6 +22,9 @@ hours where tunnel dwell runs to seconds - so mixing the two renders the tunnel 
 uniform dark. Those plots offer one kind at a time instead.
 """
 
+LabelBy = Literal["animal_id", "subject_name"]
+"""What an animal is called on an axis, a node or a legend: its tag or its subject name."""
+
 SCOPE_NOUN: Final[dict[str, str]] = {"cages": "cage", "tunnels": "tunnel", "all": "position"}
 """The word a scope goes by in a title or an axis label."""
 
