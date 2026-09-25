@@ -193,34 +193,78 @@ eq(sets.length, 0, "a figure already showing its events is left alone");
 // --- plotRequest: only the showing tab asks, and only for inputs it was not drawn with -
 const NO = window.dash_clientside.no_update;
 const metric = (value) => [{id: {plot: "bar", option: "metric"}, value}];
-const request = (tab, stores, options = metric("time")) => {
+const full = {
+	window: [1, 2],
+	granularity: "day",
+	hours: [0, 23],
+	phases: ["light_phase", "dark_phase"],
+	group_mean: false,
+};
+const context = {recording: "r", days: 2, phases: 4};
+const request = (tab, stores, options = metric("time"), controls = full, badges = []) => {
 	window.dash_clientside.callback_context = {
 		inputs_list: [null, null, null, null, options],
 		states_list: [
 			Object.entries(stores).map(([plot, value]) => ({id: {type: "plot-req", plot}, value})),
+			badges,
 		],
 	};
 	sets.length = 0;
-	deh.plotRequest({recording: "r"}, {window: [1, 2]}, tab, "dark");
+	deh.plotRequest(context, controls, tab, "dark");
 	return Object.fromEntries(sets.map(([id, props]) => [id.plot, props.data]));
 };
+const uses = ["window", "granularity"];
 const drawn = {
 	tab: "activity",
-	context: {recording: "r"},
-	controls: {window: [1, 2]},
+	uses,
+	context,
+	controls: {window: [1, 2], granularity: "day"},
 	theme: "dark",
 	opts: {metric: "time"},
 };
 eq(
-	request("activity", {bar: {tab: "activity"}, line: {tab: "social"}, pie: {tab: "activity"}}),
+	request("activity", {
+		bar: {tab: "activity", uses},
+		line: {tab: "social", uses},
+		pie: {tab: "activity", uses},
+	}),
 	{bar: drawn, pie: Object.assign({}, drawn, {opts: {}})},
-	"only the showing tab's cards ask, each with its own options"
+	"only the showing tab's cards ask, each with its own options and only the controls it takes"
 );
 eq(request("activity", {bar: drawn}), {}, "the inputs a card was drawn with ask for nothing");
+eq(
+	request("activity", {bar: drawn}, metric("time"), {...full, hours: [2, 5], phases: []}),
+	{},
+	"a control the card ignores asks for nothing"
+);
 eq(
 	request("activity", {bar: drawn}, metric("visits")).bar.opts,
 	{metric: "visits"},
 	"a changed card option asks again"
+);
+
+// --- plotRequest badges: shown while a control the card ignores is narrowed -----------
+const badge = (control, value) => ({id: {type: "badge", plot: "bar", control}, value});
+const shown = (controls, badges) => {
+	request("activity", {}, [], controls, badges);
+	return Object.fromEntries(sets.map(([id, props]) => [id.control, props.hidden]));
+};
+const all = ["window", "hours", "phases", "group_mean"].map((control) => badge(control, true));
+eq(shown(full, all), {}, "every control at full extent leaves the badges hidden");
+eq(
+	shown({...full, window: [2, 2], hours: [0, 11], phases: ["dark_phase"], group_mean: true}, all),
+	{window: false, hours: false, phases: false, group_mean: false},
+	"each narrowed control shows its badge"
+);
+eq(
+	shown(Object.assign({}, full, {granularity: "phase_count", window: [1, 4]}), all),
+	{},
+	"a window over every phase is the whole recording"
+);
+eq(
+	shown(full, all.map((b) => Object.assign({}, b, {value: false}))),
+	{window: true, hours: true, phases: true, group_mean: true},
+	"a widened control hides its badge again"
 );
 sets.length = 0;
 deh.plotRequest(null, null, "activity", "dark");

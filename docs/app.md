@@ -325,8 +325,10 @@ The control bar.
 The cohort, as coloured on every plot.
 ```
 
-A plot that cannot follow one of the controls says so with a badge. **Whole day** means
-the plot has no hourly breakdown, so it ignores the Hours window. **Per animal** means the
+A plot that cannot follow one of the controls says so with a badge, and is not redrawn when
+that control changes. **Whole recording** means the plot ignores the Window. **Whole day**
+means the plot has no hourly breakdown, so it ignores the Hours window. **Both phases** means
+the plot does not split by phase, so it ignores the Phases filter. **Per animal** means the
 plot shows one line per animal whatever Group mean says.
 
 ### The tabs
