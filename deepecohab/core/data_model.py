@@ -293,7 +293,7 @@ class Timeline(BaseModel):
 	@property
 	def phase_range(self) -> tuple[int, int]:
 		"""Range of phases present in the recording."""
-		return (1, len(self._boundaries()) + 1)
+		return (1, len(self.phase_boundaries()) + 1)
 
 	@property
 	def local_span(self) -> tuple[dt.datetime, dt.datetime]:
@@ -304,7 +304,7 @@ class Timeline(BaseModel):
 		"""
 		return self.experiment_start, _real_wall_clock(self.end_datetime, self.recording_timezone)
 
-	def _boundaries(self) -> list[dt.datetime]:
+	def phase_boundaries(self) -> list[dt.datetime]:
 		"""Phase switch instants strictly inside the recording, in order."""
 		start, end = self.local_span
 		candidates = (

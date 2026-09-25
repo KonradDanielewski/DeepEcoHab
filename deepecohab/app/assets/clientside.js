@@ -712,6 +712,7 @@ window.dash_clientside.deh = {
 			"rec-habitat-jump": ["diagnostics"],
 			"rec-quality-jump": ["diagnostics"],
 			"rec-mice-jump": ["overview", "cohort-card"],
+			"rec-events-jump": ["overview", "events-card"],
 		}[dc.callback_context.triggered_id] || [];
 		if (!tab) return;
 		dc.set_props("rec-tabs", {value: tab});

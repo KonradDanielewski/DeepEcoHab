@@ -4,13 +4,14 @@ import contextlib
 import math
 
 import pytest
+import strategies
 from dash import Dash
 from dash._callback_context import context_value
 from dash._utils import AttributeDict
 from dash.exceptions import PreventUpdate
 
 from deepecohab.app import components, services
-from deepecohab.core.data_model import Cage, Layout, Tunnel
+from deepecohab.core.data_model import Bout, Cage, Event, Layout, Tunnel
 
 # The page module calls dash.register_page at import time, which needs an app to register
 # against; pages_folder="" keeps this one from re-importing the whole pages package.
@@ -210,3 +211,33 @@ def test_the_map_carries_its_svg_for_the_painter():
 	assert len(legend.children) == 5
 	_, banded = components.habitat_map(_square(), "Habitat of rec_b", antenna_miss={"1": 3.0})
 	assert len(banded.children) == 7
+
+
+def test_events_card_places_each_bout_on_the_recording_clock():
+	"""Day and phase count from the experiment start, as the window slider does.
+
+	The fixture runs 71 h from 24 May 00:00 UTC, light from 00:00 and dark from 12:00.
+	"""
+	at = strategies.at
+	stimulus = Bout(start=at(2023, 5, 25, 13), end=at(2023, 5, 25, 15, 30), position=["cage_1"])
+	swap = Bout(start=at(2023, 5, 24, 23), end=at(2023, 5, 25, 1))
+	events = [
+		Event(name="stimulus", description="", bouts=[stimulus]),
+		Event(name="swap", description="", bouts=[swap]),
+	]
+	_, strip, table, _ = recording._events_card_children(
+		strategies.analysis_recording(events=events)
+	)
+
+	rows = [
+		[cell.children for cell in row.children]
+		for body in table.children.children[1:]
+		for row in body.children[1:]
+	]
+	assert rows == [
+		["Day 2 · dark", "25 May 13:00", "15:30", "2h 30m", "cage 1"],
+		["Day 1 · dark", "24 May 23:00", "25 May 01:00", "2h", "Whole habitat"],
+	]
+	bar = strip.children[1].children[0]
+	assert bar.style["left"] == f"{100 * 37 / 71:.3f}%"
+	assert bar.style["width"] == f"{100 * 2.5 / 71:.3f}%"
