@@ -284,6 +284,27 @@ def test_an_hour_spread_over_positions_reads_the_same_in_every_mode(frame, field
 	assert parts["value"].to_list() == pytest.approx(whole["value"].to_list())
 
 
+@pytest.mark.parametrize("mode", list(figure.MEASURE_MODES))
+def test_hover_lists_fields_without_changing_what_is_drawn(frame, mode):
+	split = _by_position(frame)
+	fields = catalog.prepare(split)[1]
+	state = {
+		"kind": "line",
+		"measure_as": mode,
+		"channels": {"x": ["genotype"], "y": ["value"]},
+		"filters": {"metric": ["activity"]},
+	}
+	bare = figure.build_frame(split, state, fields).sort("genotype")
+	state["channels"][figure.HOVER] = ["position", "animal_id", "hour", "n_mice"]
+	hovered = figure.build_frame(split, state, fields).sort("genotype")
+
+	assert hovered["value"].to_list() == pytest.approx(bare["value"].to_list())
+	assert hovered.select("position", "animal_id", "hour").rows() == [
+		("cage_1, cage_2", "B", "1"),
+		("cage_1, cage_2", "A", "0"),
+	]
+
+
 def test_position_type_filter_keeps_only_those_positions(frame):
 	split = _by_position(frame)
 	fields = catalog.prepare(split)[1]
