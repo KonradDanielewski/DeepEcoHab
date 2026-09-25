@@ -433,14 +433,14 @@ def export_preview(fig: dict[str, Any], title: str, form: dict[str, Any]) -> dic
 		show_events,
 	)
 
-	csv_text = plot_export.figure_data_csv(fig)
+	has_csv = bool(plot_export.figure_data_csv(fig))
 	dims = f"{form['width_mm']:g} x {form['height_mm']:g} mm · {form['pt']:g} pt"
 	if form["format"] == "png":
 		px = round(form["width_mm"] / 25.4 * form["dpi"])
 		py = round(form["height_mm"] / 25.4 * form["dpi"])
 		dims += f" · {form['dpi']:g} dpi = {px} x {py} px"
 
-	payload_params = {**form, "title": title, "csv": form["csv"] and csv_text is not None}
+	payload_params = {**form, "title": title, "csv": form["csv"] and has_csv}
 	return {
 		"figure": fitted,
 		"warnings": [
@@ -449,7 +449,7 @@ def export_preview(fig: dict[str, Any], title: str, form: dict[str, Any]) -> dic
 		],
 		"dims": dims,
 		"has_events": has_events,
-		"has_csv": csv_text is not None,
+		"has_csv": has_csv,
 		"payload_figure": json.dumps(fig),
 		"payload_params": json.dumps(payload_params),
 	}

@@ -203,8 +203,8 @@ def export_plot():
 		)
 		image_bytes = image_path.read_bytes()
 
-	csv_text = figure_data_csv(figure) if form.get("csv") else None
-	if csv_text is None:
+	tables = figure_data_csv(figure) if form.get("csv") else []
+	if not tables:
 		return send_file(
 			io.BytesIO(image_bytes), as_attachment=True, download_name=f"{filename}.{fmt}"
 		)
@@ -212,7 +212,8 @@ def export_plot():
 	buffer = io.BytesIO()
 	with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
 		zf.writestr(f"{filename}.{fmt}", image_bytes)
-		zf.writestr(f"{filename}.csv", csv_text)
+		for index, text in enumerate(tables, 1):
+			zf.writestr(f"{filename}_{index}.csv" if len(tables) > 1 else f"{filename}.csv", text)
 	buffer.seek(0)
 	return send_file(
 		buffer, as_attachment=True, download_name=f"{filename}.zip", mimetype="application/zip"

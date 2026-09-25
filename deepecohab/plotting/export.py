@@ -571,8 +571,8 @@ def _axis_values(values: list[Any], axis: dict[str, Any]) -> list[Any]:
 	return values
 
 
-def figure_data_csv(figure: dict[str, Any]) -> str | None:
-	"""The data actually drawn in ``figure``, as one long CSV, or ``None`` if there is none.
+def figure_data_csv(figure: dict[str, Any]) -> list[str]:
+	"""The data actually drawn in ``figure``, as one long CSV per subplot.
 
 	Generic across chart types rather than reading from a plot-specific table, so the
 	export dialog's "plotted data" checkbox needs no per-plot backend hook: every trace
@@ -582,8 +582,13 @@ def figure_data_csv(figure: dict[str, Any]) -> str | None:
 
 	Args:
 		figure: a plotly figure, as the dict a ``dcc.Graph`` carries.
+
+	Returns:
+		One CSV per subplot that holds data, in drawing order; empty if none does. Subplots
+		never share a table: their columns need not agree - a line's ``y`` is a value where
+		the horizontal bar beside it has a label.
 	"""
-	rows: list[dict[str, Any]] = []
+	subplots: dict[tuple[str, str], list[dict[str, Any]]] = {}
 	layout = figure.get("layout", {})
 
 	def axis(trace: dict[str, Any], letter: str) -> dict[str, Any]:
@@ -591,6 +596,7 @@ def figure_data_csv(figure: dict[str, Any]) -> str | None:
 		return layout.get(f"{letter}axis{ref[1:]}", {})
 
 	for trace in figure.get("data", []):
+		rows = subplots.setdefault((trace.get("xaxis") or "x", trace.get("yaxis") or "y"), [])
 		name = trace.get("name") or trace.get("type", "trace")
 		x, y = _plotly_array(trace.get("x")), _plotly_array(trace.get("y"))
 		z = _plotly_array(trace.get("z"))
@@ -620,4 +626,8 @@ def figure_data_csv(figure: dict[str, Any]) -> str | None:
 					row["text"] = texts[index]
 				rows.append(row)
 
-	return pl.DataFrame(rows).write_csv() if rows else None
+	return [
+		pl.DataFrame(rows, infer_schema_length=None).write_csv()
+		for rows in subplots.values()
+		if rows
+	]

@@ -202,6 +202,20 @@ def test_export_bundles_csv_when_requested(client):
 		assert {"plot.svg", "plot.csv"} <= set(zf.namelist())
 
 
+def test_export_numbers_one_csv_per_subplot(client):
+	test_client, _ = client
+	fig = go.Figure(go.Scatter(x=[1, 2], y=[3, 4]))
+	fig.add_trace(go.Bar(x=[7], y=["A"], orientation="h", xaxis="x2", yaxis="y2"))
+
+	resp = test_client.post(
+		"/export",
+		data={"figure": fig.to_json(), "params": json.dumps(_export_params(csv=True))},
+	)
+
+	with zipfile.ZipFile(io.BytesIO(resp.data)) as zf:
+		assert set(zf.namelist()) == {"plot.svg", "plot_1.csv", "plot_2.csv"}
+
+
 def test_export_malformed_request_is_a_400(client):
 	test_client, _ = client
 
