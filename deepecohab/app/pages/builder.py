@@ -349,7 +349,7 @@ def _chip(
 		icon(KIND_ICON[field.kind], size=15, color="var(--kind)"),
 		dmc.Menu(
 			[
-				dmc.MenuTarget(html.Span(field.label, className="deh-fchip-label")),
+				dmc.MenuTarget(html.Span(field.label.capitalize(), className="deh-fchip-label")),
 				dmc.MenuDropdown(
 					[
 						dmc.MenuLabel(f"Send {field.label} to"),
@@ -370,7 +370,7 @@ def _chip(
 		body,
 		className="deh-fchip",
 		draggable="true",
-		title=f"{field.group} · {field.kind}",
+		title=f"{field.label.capitalize()} — {field.group} · {field.kind}",
 		**{"data-field": field.name, "data-kind": field.kind, "data-from": source},  # ty: ignore[invalid-argument-type]
 	)
 

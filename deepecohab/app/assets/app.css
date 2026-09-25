@@ -1808,9 +1808,13 @@ code {
 }
 
 .deh-chips {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 4px;
+}
+
+.deh-chips .deh-fchip {
+	height: 28px;
 }
 
 .deh-fchip {
@@ -1848,7 +1852,14 @@ code {
 	opacity: 0.4;
 }
 
+/* Mantine's menu target wraps the label in a fit-content div; let it shrink so the label can ellipsize. */
+.deh-fchip > [aria-haspopup] {
+	flex: 1;
+	min-width: 0;
+}
+
 .deh-fchip-label {
+	display: block;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	cursor: pointer;
