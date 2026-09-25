@@ -1002,8 +1002,9 @@ def plot_network_graph(
 			include_ranking = False
 			ordinals = dict.fromkeys(animals, 30)
 
-	weight = pl.col(edge_weight)
-	connections = connections.filter(weight >= weight.max() * edge_cutoff / 100)
+	connections = connections.filter(
+		pl.col(edge_weight) >= pl.col(edge_weight).max() * edge_cutoff / 100
+	)
 	graph = nx.from_pandas_edgelist(connections, create_using=graph_class, edge_attr=edge_weight)
 	graph.add_nodes_from(animals)
 
@@ -1209,7 +1210,7 @@ def plot_actogram(heatmap: Heatmap, cells: pl.DataFrame, phases: dict[str, float
 			x=hours,
 			y=heatmap.y,
 			colorscale=AURORA,
-			xgap=1,
+			xgap=2,
 			ygap=2,
 			hovertemplate="%{y}, hour %{x}<br>%{z} visits<extra></extra>",
 			colorbar={**COLORBAR, "title": {"text": heatmap.label, "side": "right"}},
@@ -1241,17 +1242,13 @@ def plot_actogram(heatmap: Heatmap, cells: pl.DataFrame, phases: dict[str, float
 
 	figure.update_layout(
 		title="<b>Recording pulse</b>",
-		# Hour 0 is the phase onset, not an origin, so it takes no zero line of its own.
 		xaxis={
 			"title": {"text": "<b>Hour since phase onset</b>"},
-			# A cell is drawn centred on its hour, so a tick at the hour itself lands
-			# mid-cell; these sit on the left edge, where the hour begins.
 			"tickvals": [hour - 0.5 for hour in hours[::2]],
 			"ticktext": [str(hour) for hour in hours[::2]],
 			"showgrid": False,
 			"zeroline": False,
 		},
-		# Day 1 at the top, the way a recording is read.
 		yaxis={"autorange": "reversed", "showgrid": False},
 	)
 

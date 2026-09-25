@@ -13,6 +13,8 @@ import polars as pl
 
 PX_PER_MM = 96 / 25.4
 
+_ROUNDED_CORNERS_JS = Path(__file__).parents[1] / "app" / "assets" / "rounded_corners.js"
+
 _CHAR = 0.55
 """Average glyph width as a fraction of font size, for text-fit estimates."""
 
@@ -189,6 +191,13 @@ def fit_for_export(
 	layout: dict[str, Any] = copy.deepcopy(source.get("layout", {}))
 	notes: list[str] = []
 
+	# A trace draws its axes whether or not the layout names them; name every one, so the
+	# axis passes below reach them all.
+	for trace in figure.data:
+		if "xaxis" in trace:
+			for letter in "xy":
+				layout.setdefault(f"{letter}axis{(trace[f'{letter}axis'] or letter)[1:]}", {})
+
 	width = round(width_mm * PX_PER_MM)
 	height = round(height_mm * PX_PER_MM)
 	base = pt * 96 / 72
@@ -326,6 +335,19 @@ def fit_for_export(
 		base * _ROW_TITLE_HEIGHT if (above or titles_above) else 0
 	)
 	bottom_px = axis_bottom
+
+	# A shape in paper units above the plot - the phase band - sits in the top margin, and
+	# overhangs by a share of the plot height, so its room comes out of that height too.
+	overhang = max(
+		(
+			max(shape.get("y0", 0), shape.get("y1", 0)) - 1
+			for shape in layout.get("shapes") or []
+			if shape.get("yref") == "paper"
+		),
+		default=0,
+	)
+	if overhang > 0:
+		top_px += overhang * (height - top_px - bottom_px) / (1 + overhang)
 	plot_h = max(height - top_px - bottom_px, 1)
 
 	if entries and len(entries) * tick * _LINE_HEIGHT > plot_h:
@@ -502,9 +524,16 @@ def export_figure(
 		Warnings from :func:`fit_for_export`, so a caller can surface them alongside
 		the file it wrote.
 	"""
+	import kaleido
+
 	fitted, notes = fit_for_export(figure, width_mm, height_mm, pt, title, show_legend, show_events)
 	scale = dpi / 96 if format == "png" else 1
-	fitted.write_image(str(path), format=format, scale=scale)
+	# Rounded boxes and tiles are drawn by the app's script, not by plotly, so kaleido's page
+	# loads it too - which figure.write_image has no way to ask for.
+	page = kaleido.PageGenerator(others=[(_ROUNDED_CORNERS_JS.as_uri(), "utf-8")])
+	kaleido.write_fig_sync(
+		fitted, path=path, opts={"format": format, "scale": scale}, kopts={"page_generator": page}
+	)
 
 	return notes
 
