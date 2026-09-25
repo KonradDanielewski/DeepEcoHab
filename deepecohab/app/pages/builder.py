@@ -777,14 +777,39 @@ def _graph_children(
 def _status_text(project, frame: pl.LazyFrame) -> str:
 	rows = frame.select(pl.len()).collect().item()
 	metrics = len(catalog.metric_names(frame))
-	return (
-		f"{project.project_name} · {len(project.recordings)} recordings · {rows:,} rows · "
-		f"{metrics} metrics"
+	return f"{len(project.recordings)} recordings · {rows:,} rows · {metrics} metrics"
+
+
+def _project_picker(paths: list[str] | None, pid: str | None) -> dmc.Select:
+	return dmc.Select(
+		id="builder-project-pick",
+		data=[
+			{"value": services.project_id(path), "label": services.project_name(path)}
+			for path in paths or []
+		],
+		value=pid,
+		placeholder="Pick a project",
+		size="sm",
+		w=240,
+		allowDeselect=False,
+		searchable=True,
+		leftSection=icon("folders", size=16),
+		classNames={"input": "deh-input"},
+	)
+
+
+def _bare(paths: list[str] | None, pid: str | None, message: str) -> html.Div:
+	"""A placeholder under the project picker, so another project stays one pick away."""
+	return html.Div(
+		[
+			html.Div(_project_picker(paths, pid), className="deh-b-toolbar"),
+			components.placeholder(message),
+		]
 	)
 
 
 def _dashboard(
-	project, location, frame, fields, state, last_preset, saved_local, theme, search=""
+	project, location, paths, frame, fields, state, last_preset, saved_local, theme, search=""
 ) -> html.Div:
 	fig, note_texts, auto = _graph_children(frame, fields, state, theme)
 	title_children, reset_disabled = _graph_title(state, last_preset)
@@ -811,6 +836,7 @@ def _dashboard(
 		[
 			html.Div(
 				[
+					_project_picker(paths, services.project_id(location)),
 					html.Div(_mode_children(state), id="builder-mode-row", className="deh-seg-row"),
 					html.Button(
 						[icon("eraser", size=15), "Clear shelves"],
@@ -900,19 +926,21 @@ def _resolve(pathname, search, theme, paths, current, current_state, last_preset
 	pid = (params.get("project") or [None])[0]
 
 	if not pid:
-		message = "Open a project from Projects, then use its row menu to open it here."
-		return components.placeholder(message), None, no_update, no_update
+		message = "Pick a project above, or open one from Projects."
+		return _bare(paths, None, message), None, no_update, no_update
 
 	location = services.resolve_project(paths, pid)
 	if location is None:
 		message = "This project is not in your browser's saved list. Open it from Projects."
-		return components.placeholder(message), None, no_update, no_update
+		return _bare(paths, None, message), None, no_update, no_update
 
 	table = Path(location) / Project.PROJECT_TABLE
 	# A string: nanosecond mtimes lose precision as JSON numbers in the browser.
 	opened = {
 		"location": location,
 		"stamp": str(table.stat().st_mtime_ns if table.is_file() else None),
+		# A project added on Projects since shows up in the picker on the way back.
+		"paths": paths,
 	}
 	if current_state and current == opened:
 		raise PreventUpdate
@@ -923,9 +951,9 @@ def _resolve(pathname, search, theme, paths, current, current_state, last_preset
 		frame, fields = services.builder_frame(location)
 	except FileNotFoundError as exc:
 		message = f"{exc} Generate it from this project's row menu on the Projects screen."
-		return components.placeholder(message), opened, None, no_update
+		return _bare(paths, pid, message), opened, None, no_update
 	except Exception as exc:
-		return components.placeholder(f"{type(exc).__name__}: {exc}"), None, no_update, no_update
+		return _bare(paths, pid, f"{type(exc).__name__}: {exc}"), None, no_update, no_update
 
 	if same_project and current_state:
 		state = current_state
@@ -933,8 +961,23 @@ def _resolve(pathname, search, theme, paths, current, current_state, last_preset
 		state = figure.seed_detail(figure.new_state(), fields)
 		last_preset = None
 
-	body = _dashboard(project, location, frame, fields, state, last_preset, saved_local, theme)
+	body = _dashboard(
+		project, location, paths, frame, fields, state, last_preset, saved_local, theme
+	)
 	return body, opened, state, last_preset
+
+
+@callback(
+	Output("url", "search", allow_duplicate=True),
+	Input("builder-project-pick", "value"),
+	State("url", "search"),
+	prevent_initial_call=True,
+)
+def _switch_project(pid, search):
+	# The picker is rebuilt with the page, which fires this once with the project it shows.
+	if not pid or pid == (parse_qs((search or "").lstrip("?")).get("project") or [None])[0]:
+		raise PreventUpdate
+	return f"?project={pid}"
 
 
 clientside_callback(

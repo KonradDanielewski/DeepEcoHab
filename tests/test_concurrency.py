@@ -7,6 +7,7 @@ reported exactly once, and a failure that neither hides nor strands the other re
 """
 
 import threading
+from pathlib import Path
 
 import pytest
 from polars.testing import assert_frame_equal
@@ -22,12 +23,13 @@ RECORDINGS = (
 
 
 @pytest.fixture(scope="module")
-def sources(tmp_path_factory) -> list[tuple]:
+def sources(tmp_path_factory) -> list[Path]:
 	"""Three recordings on disk, ready for Project.add_recordings."""
 	root = tmp_path_factory.mktemp("concurrency_sources")
 	return [
-		write_recording(root / name, make_recording(name, animals, genotype, finish), hours)
+		path
 		for name, animals, genotype, finish, hours in RECORDINGS
+		for path in write_recording(root, make_recording(name, animals, genotype, finish), hours)
 	]
 
 

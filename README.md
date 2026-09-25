@@ -96,8 +96,8 @@ pip install ".[app]"
 
 ## Example data
 
-[`examples/data`](./examples/data) ships six real recordings, each a metadata JSON beside its
-registrations parquet. [`example_notebook.ipynb`](./examples/example_notebook.ipynb)
+[`examples/data`](./examples/data) ships six real recordings, each a `<name>.config.json` beside its
+`<name>.data.parquet`. [`example_notebook.ipynb`](./examples/example_notebook.ipynb)
 runs them end to end: create a project, add every recording, tune the analysis parameters, run
 the pipeline and aggregate a project table.
 

@@ -126,29 +126,31 @@ list never moves or deletes its files.
 
 ### Add recordings
 
-Each recording is two files with the same name:
+Each recording is a set of files with the same name:
 
-- `<name>.json`, the recording's metadata: its habitat layout, light cycle, cohort and
-  events;
-- `<name>.parquet`, the antenna registrations.
+- `<name>.config.json`, the recording's metadata: its habitat layout, light cycle, cohort
+  and events;
+- `<name>.data.parquet`, the antenna registrations;
+- `<name>.diagnostic.json`, optional, the acquisition software's diagnostics.
 
 To add recordings:
 
 1. Open the project's row, with the arrow or the project's name.
 2. Click **Add recordings** under its table. The project menu has the same entry.
-3. Drop the files onto the dialog, or click it to pick them. Add both files of every recording,
+3. Drop the files onto the dialog, or click it to pick them. Add all files of every recording,
    as many recordings as you like, in one go.
 
 ```{figure} images/app/add-recordings-modal.png
 :alt: The Add recordings dialog with its drop zone
 :width: 60%
 
-Files pair up by name: `<name>.json` with `<name>.parquet`.
+Files group by name: `<name>.config.json` with `<name>.data.parquet`.
 ```
 
-The files are copied into the project, so the originals stay where they were. A file without
-its partner, or metadata that does not validate, is listed in the dialog under **Not
-added** with the reason. Every other recording is added.
+The files are copied into the project, so the originals stay where they were. A recording
+missing a required file, a file that belongs to no recording, or metadata that does not
+validate, is listed in the dialog under **Not added** with the reason. Every other recording
+is added.
 
 ```{figure} images/app/project-recordings.png
 :alt: The project's six recordings listed as not analysed
@@ -446,7 +448,9 @@ Notes on a recording.
 The plot builder charts the whole project at once. It reads the project table, so
 generate the table first: **Generate project table** in the
 [project menu](#the-project-menu). Then open the builder from the same menu with **Open in
-plot builder**.
+plot builder**, or from the sidebar: after you open a recording, the builder opens on that
+recording's project. The project picker at the start of the toolbar switches to any other
+project you have opened.
 
 <iframe style="width: 100%; aspect-ratio: 16 / 9; border: 0;" src="https://www.youtube-nocookie.com/embed/L5WByVdDSDU" title="DeepEcoHab: the plot builder" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe>
 
@@ -460,7 +464,7 @@ The plot builder, with the preset "Time alone by genotype and sex" loaded.
 
 1. How **Value** is summed up (see [Value and metrics](#value-and-metrics)).
 2. **Clear shelves** takes every field off the shelves. Filters stay.
-3. The project, and how many recordings, rows and metrics its table holds.
+3. How many recordings, rows and metrics the project table holds.
 4. Presets: ready-made plots, and the ones you saved.
 5. The plot type.
 6. The fields you can plot.

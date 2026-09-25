@@ -168,26 +168,31 @@ with deh.Project.load("path/to/projects/tsc2") as project:
 
 ## Add recordings
 
+A recording is delivered as files sharing one name, `<name>.<suffix>`:
+
+- `<name>.config.json`, the metadata: habitat layout, light cycle, cohort and events;
+- `<name>.data.parquet`, the antenna registrations;
+- `<name>.diagnostic.json`, optional, the acquisition software's diagnostics.
+
 ```python
 recording = project.add_recording(
-    metadata_path="path/to/cohort1/metadata.json",
-    data_path="path/to/cohort1/data.parquet",
+    "path/to/cohort1.config.json",
+    "path/to/cohort1.data.parquet",
+    "path/to/cohort1.diagnostic.json",  # optional
 )
 ```
 
-Several at once, as `(metadata_path, data_path)` pairs:
+Several at once, from their files in any order - they are grouped by name:
 
 ```python
-report = project.add_recordings([
-    ("path/to/cohort1/metadata.json", "path/to/cohort1/data.parquet"),
-    ("path/to/cohort2/metadata.json", "path/to/cohort2/data.parquet"),
-])
+report = project.add_recordings(Path("path/to/recordings").iterdir())
 
 report.added   # names of the recordings that went in
-report.failed  # (metadata_path, data_path, error) for each one that did not
+report.failed  # (name, error) for each recording or stray file that did not
 ```
 
-A recording that fails validation does not stop the others; a warning lists every failure.
+A recording that fails validation, or misses a required file, does not stop the others; a
+warning lists every failure.
 
 Adding copies the data into the project, so the source files are not needed afterwards:
 
@@ -198,6 +203,7 @@ tsc2/
   cohort1_2023_05_17/
     config.json           the validated metadata
     raw/data.parquet      the copied registrations
+    raw/diagnostic.json   the diagnostics, when they came with it
     results/              one parquet file per analysis table
 ```
 
