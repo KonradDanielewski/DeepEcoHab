@@ -43,7 +43,7 @@ _GLOBAL_OPTIONS = {
 	"hours_range",
 	"group_mean",
 }
-_OPTION_LABELS = {"agg": "Aggregate"}
+_OPTION_LABELS = {"agg": "Aggregate", "edge_cutoff": "Hide edges below"}
 #: Height of the Position-unknown table, matching the heatmap it shares a grid row with.
 _MISSING_TABLE_H = 430
 #: (id, label, cells); a cell is (plot, column span of 12, height px[, grid rows]).
@@ -362,6 +362,22 @@ def _cohort_widgets(context: PlotContext, color_by: str) -> tuple[list, html.Div
 def _option_control(plot: str, option) -> html.Div:
 	control_id = {"type": "card-opt", "plot": plot, "option": option.name}
 	label = _OPTION_LABELS.get(option.name, option.label)
+	if not option.choices:
+		# The only free-form option is edge_cutoff, a percentage.
+		control = dmc.NumberInput(
+			id=control_id,
+			value=option.default,
+			min=0,
+			max=100,
+			step=5,
+			suffix="%",
+			clampBehavior="strict",
+			debounce=400,
+			size="xs",
+			w=80,
+		)
+		return html.Div([html.Span(label, className="deh-opt-label"), control], className="deh-opt")
+
 	data = [{"value": str(choice), "label": _human(choice)} for choice in option.choices]
 	control = (
 		dmc.SegmentedControl(id=control_id, data=data, value=str(option.default), size="xs")
@@ -1278,7 +1294,8 @@ def _update_plot(request, events_on):
 		raise PreventUpdate
 
 	accepted = {option.name for option in spec.options}
-	values = dict(request["opts"])
+	# A cleared NumberInput sends "", which falls back to the builder's default.
+	values = {key: value for key, value in request["opts"].items() if value != ""}
 	values.update(
 		days_range=controls["window"],
 		granularity=controls["granularity"],

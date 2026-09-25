@@ -580,16 +580,21 @@ def network_dominance(
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
 	layout: Literal["spring", "circular"] = "spring",
+	edge_cutoff: float = 0,
 	color_by: str = "animal_id",
 ) -> go.Figure:
-	"""Directed network of chasing, with node size showing ranking."""
+	"""Directed network of chasing, with node size showing ranking.
+
+	``edge_cutoff`` drops edges weaker than that percentage of the strongest before the
+	layout is fitted, so the network is recomputed from what remains.
+	"""
 	window = _window(context, days_range, granularity)
 	connections, nodes = prepare.prep_network_dominance(context, window, granularity)
 	mapping = resolve_colors(context, color_by)
 	colors = [mapping.by_animal[animal] for animal in context.animal_ids]
 
 	figure = plot_factory.plot_network_graph(
-		connections, nodes, context.animal_ids, colors, "chasings", layout
+		connections, nodes, context.animal_ids, colors, "chasings", layout, edge_cutoff
 	)
 	return figure.update_layout(colorway=list(mapping.colors.values()))
 
@@ -606,17 +611,27 @@ def network_sociability(
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
 	layout: Literal["spring", "circular"] = "spring",
+	edge_cutoff: float = 0,
 	scope: Scope = "all",
 	color_by: str = "animal_id",
 ) -> go.Figure:
-	"""Undirected network weighted by the time each pair spends together."""
+	"""Undirected network weighted by the time each pair spends together.
+
+	``edge_cutoff`` works as for ``network-dominance``.
+	"""
 	window = _window(context, days_range, granularity)
 	connections = prepare.prep_network_sociability(context, window, granularity, scope)
 	mapping = resolve_colors(context, color_by)
 	colors = [mapping.by_animal[animal] for animal in context.animal_ids]
 
 	figure = plot_factory.plot_network_graph(
-		connections, None, context.animal_ids, colors, "proportion_together", layout
+		connections,
+		None,
+		context.animal_ids,
+		colors,
+		"proportion_together",
+		layout,
+		edge_cutoff,
 	)
 	return figure.update_layout(colorway=list(mapping.colors.values()))
 

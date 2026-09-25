@@ -971,6 +971,7 @@ def plot_network_graph(
 	colors: list[str],
 	graph_type: Literal["chasings", "proportion_together"],
 	layout: Literal["spring", "circular"] = "spring",
+	edge_cutoff: float = 0,
 ) -> go.Figure:
 	"""Plots network graph of social structure.
 
@@ -982,6 +983,9 @@ def plot_network_graph(
 		graph_type: which relationship the edges carry.
 		layout: ``"spring"`` places nodes by edge weight, ``"circular"`` rings them
 			evenly so node positions stay comparable between plots.
+		edge_cutoff: edges weaker than this percentage of the strongest are dropped
+			before the graph is built, so the layout and edge colours are fitted to what
+			remains rather than the full network with lines hidden.
 	"""
 	match graph_type:
 		case "chasings":
@@ -998,6 +1002,8 @@ def plot_network_graph(
 			include_ranking = False
 			ordinals = dict.fromkeys(animals, 30)
 
+	weight = pl.col(edge_weight)
+	connections = connections.filter(weight >= weight.max() * edge_cutoff / 100)
 	graph = nx.from_pandas_edgelist(connections, create_using=graph_class, edge_attr=edge_weight)
 	graph.add_nodes_from(animals)
 
