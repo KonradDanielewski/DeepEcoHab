@@ -514,6 +514,11 @@ def calculate_features(recording: Recording, params: AnalysisParams) -> pl.LazyF
 	hourly rows sum to a phase, a day or the whole recording without distorting the
 	result.
 
+	Activity, time alone, time together and encounters are held per position, each
+	exposed against the time spent there, so a rate filtered to some positions reads
+	within them and the positions still sum back to the whole. Chasings belong to no
+	position, so theirs is null.
+
 	Durations are held in hours, so a duration metric's rate is a fraction of the time
 	observed and a count metric's rate is a count per hour. Metrics that need a partner
 	are exposed per available partner, which keeps cohorts of different sizes
@@ -522,11 +527,12 @@ def calculate_features(recording: Recording, params: AnalysisParams) -> pl.LazyF
 	rather than by how many partners it had.
 
 	Returns:
-		One row per animal, hour and metric, with ``value`` and ``exposure``.
+		One row per animal, hour, metric and position, with ``value`` and ``exposure``.
 	"""
 	solo = ["activity", "time_alone"]
 	paired = ["time_together", "pairwise_encounters", "n_chasing", "n_chased"]
 	per_detection = ["n_chasing_per_detection"]
+	placed = ["activity", "time_alone", "time_together", "pairwise_encounters"]
 	keys = [*CALENDAR_COLUMNS, "animal_id"]
 
 	chasings = recording.load_results("chasings_df")
@@ -534,15 +540,14 @@ def calculate_features(recording: Recording, params: AnalysisParams) -> pl.LazyF
 
 	# padded_df tiles each animal's whole timeline, so its time summed over positions is
 	# how long that animal was observed for in the cell - the denominator for the rest.
-	observed = (
-		recording.load_results("activity_df")
-		.group_by(keys)
-		.agg(
-			pl.sum("visits_to_position").alias("activity"),
-			pl.sum("time_alone").dt.total_hours(fractional=True),
-			pl.sum("time_in_position").dt.total_hours(fractional=True).alias("observed_hours"),
-		)
+	by_position = recording.load_results("activity_df").select(
+		*keys,
+		"position",
+		pl.col("visits_to_position").alias("activity"),
+		pl.col("time_alone").dt.total_hours(fractional=True),
+		pl.col("time_in_position").dt.total_hours(fractional=True).alias("observed_hours"),
 	)
+	observed = by_position.group_by(keys).agg(pl.sum("observed_hours"))
 
 	n_detections = (
 		recording.load_results("main_df").group_by(keys).agg(pl.len().alias("n_detections"))
@@ -563,12 +568,12 @@ def calculate_features(recording: Recording, params: AnalysisParams) -> pl.LazyF
 	pairwise_meetings = (
 		pairwise_meetings.unpivot(
 			on=["animal_id", "animal_id_2"],
-			index=[*CALENDAR_COLUMNS, "time_together", "pairwise_encounters"],
+			index=[*CALENDAR_COLUMNS, "position", "time_together", "pairwise_encounters"],
 			variable_name="_drop",
 			value_name="col",
 		)
 		.drop("_drop")
-		.group_by([*CALENDAR_COLUMNS, "col"])
+		.group_by([*CALENDAR_COLUMNS, "position", "col"])
 		.agg(
 			pl.sum("time_together").dt.total_hours(fractional=True),
 			pl.sum("pairwise_encounters"),
@@ -582,20 +587,34 @@ def calculate_features(recording: Recording, params: AnalysisParams) -> pl.LazyF
 	# `index` and `on`. `solo` and `per_detection` remain, so `on` is never empty.
 	metrics = [*solo, *(paired if partners else []), *per_detection]
 
-	return (
-		pl.concat(
-			[observed, n_detections, n_chasing, n_chased, pairwise_meetings],
-			how="align",
+	# observed_hours is the time spent at the row's position, or in all of them when it
+	# has none, so the one exposure rule below serves both halves.
+	placed_rows = (
+		pl.concat([by_position, pairwise_meetings], how="align")
+		.fill_null(0)
+		.with_columns(pl.col(placed).cast(pl.Float64))
+		.unpivot(
+			on=[metric for metric in metrics if metric in placed],
+			index=[*keys, "position", "observed_hours"],
+			variable_name="metric",
+			value_name="value",
 		)
+	)
+	unplaced_rows = (
+		pl.concat([observed, n_detections, n_chasing, n_chased], how="align")
 		.fill_null(0)
 		.with_columns(pl.col("n_chasing").alias("n_chasing_per_detection"))
-		.with_columns(pl.col([*solo, *paired, *per_detection]).cast(pl.Float64))
+		.with_columns(pl.col("n_chasing", "n_chased", *per_detection).cast(pl.Float64))
 		.unpivot(
-			on=metrics,
+			on=[metric for metric in metrics if metric not in placed],
 			index=[*keys, "observed_hours", "n_detections"],
 			variable_name="metric",
 			value_name="value",
 		)
+	)
+
+	return (
+		pl.concat([placed_rows, unplaced_rows], how="diagonal")
 		.with_columns(
 			pl.when(pl.col("metric").is_in(per_detection))
 			.then(pl.col("n_detections"))
@@ -605,5 +624,5 @@ def calculate_features(recording: Recording, params: AnalysisParams) -> pl.LazyF
 			.alias("exposure")
 		)
 		.drop("observed_hours", "n_detections")
-		.sort(*keys, "metric")
+		.sort(*keys, "metric", "position")
 	)

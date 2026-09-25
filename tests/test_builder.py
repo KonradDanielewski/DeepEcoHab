@@ -254,6 +254,51 @@ def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
 			reduce(unknown)
 
 
+def _by_position(frame: pl.LazyFrame) -> pl.LazyFrame:
+	"""The fixture with every hour spread unevenly over two positions of different types."""
+	return pl.concat(
+		[
+			frame.with_columns(
+				pl.col("value", "exposure") * share,
+				pl.lit(position).alias("position"),
+				pl.lit(kind).alias("position_type"),
+			)
+			for position, kind, share in (("cage_1", "home", 0.25), ("cage_2", "stimulus", 0.75))
+		]
+	)
+
+
+@pytest.mark.parametrize("mode", list(figure.MEASURE_MODES))
+def test_an_hour_spread_over_positions_reads_the_same_in_every_mode(frame, fields, mode):
+	"""Summing the positions back is what every mode must do, the hourly mean included."""
+	state = {
+		"kind": "line",
+		"measure_as": mode,
+		"channels": {"x": ["genotype"], "y": ["value"]},
+		"filters": {"metric": ["activity"]},
+	}
+	split = _by_position(frame)
+	whole = figure.build_frame(frame, state, fields).sort("genotype")
+	parts = figure.build_frame(split, state, catalog.prepare(split)[1]).sort("genotype")
+
+	assert parts["value"].to_list() == pytest.approx(whole["value"].to_list())
+
+
+def test_position_type_filter_keeps_only_those_positions(frame):
+	split = _by_position(frame)
+	fields = catalog.prepare(split)[1]
+	state = {
+		"kind": "line",
+		"measure_as": "total",
+		"channels": {"x": ["genotype"], "y": ["value"]},
+		"filters": {"metric": ["activity"], "position_type": ["stimulus"]},
+	}
+	data = figure.build_frame(split, state, fields).sort("genotype")
+
+	assert {field.name: field.group for field in fields}["position_type"] == "Position"
+	assert dict(data.select("genotype", "value").iter_rows()) == {"HET": 2.25, "WT": 0.75}
+
+
 def _daily(frame: pl.LazyFrame, days: int) -> pl.LazyFrame:
 	"""The fixture repeated over ``days`` days, so a block has something to span."""
 	return pl.concat(

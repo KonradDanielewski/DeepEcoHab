@@ -1056,6 +1056,10 @@ class Project(BaseModel):
 		count from each recording's own experiment start, so the same day and hour mark
 		the same point of the experiment in every row.
 
+		``position_type`` names what each row's position is - its cage's ``cage_type``,
+		``"tunnel"`` or ``undefined`` - so positions compare across recordings whose
+		layouts name them differently. It is null for rows with no position.
+
 		Recordings of different lengths contribute the days they have; nothing is padded
 		or truncated to match.
 
@@ -1094,6 +1098,10 @@ class Project(BaseModel):
 					event_status(recording, event_columns), on=["day", "hour"], how="left"
 				)
 
+			layout = recording.layout
+			position_types = {cage.name: cage.cage_type for cage in layout.cages}
+			position_types |= dict.fromkeys(layout.tunnel_names, "tunnel")
+
 			frames.append(
 				frame.with_columns(
 					pl.lit(recording.name).alias("recording"),
@@ -1102,6 +1110,11 @@ class Project(BaseModel):
 					# differs gives them different categories; strings concatenate cleanly.
 					pl.col("animal_id").cast(pl.String),
 					pl.col("phase").cast(pl.String),
+					pl.col("position").cast(pl.String),
+					pl.col("position")
+					.cast(pl.String)
+					.replace(position_types)
+					.alias("position_type"),
 				).select("recording", "n_mice", pl.exclude("recording", "n_mice"))
 			)
 

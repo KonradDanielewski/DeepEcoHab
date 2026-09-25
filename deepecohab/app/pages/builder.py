@@ -36,10 +36,11 @@ dash.register_page(__name__, path=PATH, name="Plot builder", order=2, icon="drag
 PALETTE, FILTERS = "__palette__", "__filters__"
 
 KIND_ICON = {"measure": "hash", "dimension": "tag", "time": "arrows-sort"}
-GROUP_ORDER = ["Measure", "Time", "Events", "Animal", "Recording"]
+GROUP_ORDER = ["Measure", "Time", "Position", "Events", "Animal", "Recording"]
 GROUP_ICON = {
 	"Measure": "hash",
 	"Time": "clock",
+	"Position": "map-pin",
 	"Events": "bolt",
 	"Animal": "paw",
 	"Recording": "file-description",

@@ -23,8 +23,13 @@ import polars as pl
 import strategies
 from hypothesis import assume, given, settings, strategies as st
 
-from deepecohab.core import antenna_analysis, recording_pipeline, transforms
-from deepecohab.core.data_model import AnalysisParams, Recording
+from deepecohab.core import antenna_analysis, transforms
+from deepecohab.core.data_model import (
+	CALENDAR_COLUMNS,
+	AnalysisParams,
+	DataFrameRegistry,
+	Recording,
+)
 
 ANIMALS = ["A", "B", "C"]
 RECORDING = strategies.analysis_recording(animal_ids=ANIMALS)
@@ -312,6 +317,7 @@ def test_absent_animal_appears_in_features_with_finite_values(monkeypatch):
 	activity = pl.LazyFrame(
 		{
 			**base(3),
+			"position": pl.Series(["cage_1"] * 3, dtype=pl.Categorical),
 			"animal_id": pl.Series(["A", "B", "C"], dtype=AN),
 			"visits_to_position": pl.Series([10, 20, 0], dtype=pl.UInt32),
 			"time_alone": strategies.seconds([1.0, 2.0, 0.0]),
@@ -378,8 +384,8 @@ _read = st.tuples(
 )
 
 
-def activity_from_reads(reads: list[tuple]) -> pl.DataFrame:
-	"""Run the real main_df -> padded_df -> activity_df chain over raw registrations."""
+def pipeline_from_reads(reads: list[tuple], target: str) -> dict[str, pl.DataFrame]:
+	"""Every real step up to ``target`` over raw registrations, keyed by step name."""
 	start, _ = TILED.timeline.local_span
 	TILED.data = pl.DataFrame(
 		[
@@ -394,16 +400,15 @@ def activity_from_reads(reads: list[tuple]) -> pl.DataFrame:
 		schema=TILED.data_schema,
 	).lazy()
 
-	params = AnalysisParams()
+	tables: dict[str, pl.DataFrame] = {}
 	original = Recording.load_results
+	Recording.load_results = lambda self, key, eager=False: tables[key].lazy()
 	try:
-		main = recording_pipeline.build_main_df(TILED, params).collect().lazy()
-		Recording.load_results = lambda self, key, eager=False: main
-		padded = recording_pipeline.build_padded_df(TILED, params).collect().lazy()
-		Recording.load_results = lambda self, key, eager=False: padded
-		return antenna_analysis.calculate_activity(TILED, params).collect()
+		for step in DataFrameRegistry.step_order([target]):
+			tables[step] = DataFrameRegistry._builders[step](TILED, AnalysisParams()).collect()
 	finally:
 		Recording.load_results = original
+	return tables
 
 
 @settings(max_examples=30, deadline=None)
@@ -426,7 +431,7 @@ def test_every_hour_inside_an_animal_s_observed_span_is_fully_tiled(reads):
 		first_read[animal] = min(first_read.get(animal, moment), moment)
 
 	totals = (
-		activity_from_reads(reads)
+		pipeline_from_reads(reads, "activity_df")["activity_df"]
 		.group_by("animal_id", "day", "hour")
 		.agg(pl.sum("time_in_position"))
 	)
@@ -439,6 +444,101 @@ def test_every_hour_inside_an_animal_s_observed_span_is_fully_tiled(reads):
 		if bin_start < first_read[row["animal_id"]] or bin_end > end:
 			continue  # only hours the animal was observed for the whole of
 		assert row["time_in_position"] == dt.timedelta(hours=1), row
+
+
+# --- per-position features ---------------------------------------------------
+# Reads packed into a few hours, so animals share cages often enough to meet.
+_packed_read = st.tuples(
+	st.sampled_from(ANIMALS),
+	st.integers(min_value=0, max_value=4 * 3600),
+	st.sampled_from([1, 2, 3, 4]),
+)
+PLACED = ["activity", "time_alone", "time_together", "pairwise_encounters"]
+PAIRED_PLACED = {"time_together", "pairwise_encounters"}
+
+
+@settings(max_examples=40, deadline=None)
+@given(reads=st.lists(_packed_read, min_size=2, max_size=30))
+def test_features_per_position_are_each_position_s_share_of_the_whole(reads):
+	"""Each position's row is that position's own count, exposed against the time there.
+
+	Checked against activity_df and pairwise_meetings directly: every position of the
+	dense grid has exactly one row per placed metric, carrying the upstream value, and
+	its exposure is the time spent there - per partner for a paired metric. Summed over
+	positions that exposure is the animal's whole observed time, the denominator every
+	rate had before positions were kept. Within one position a fraction of time cannot
+	pass 1: nobody is alone, or with a partner, for longer than they were there.
+	"""
+	tables = pipeline_from_reads(reads, "feature_df")
+	features = tables["feature_df"]
+	partners = TILED.cohort.n_mice - 1
+	keys = [*CALENDAR_COLUMNS, "animal_id", "position"]
+
+	def hours(column: str) -> pl.Expr:
+		return pl.col(column).dt.total_hours(fractional=True)
+
+	together = (
+		tables["pairwise_meetings"]
+		.unpivot(
+			on=["animal_id", "animal_id_2"],
+			index=[*CALENDAR_COLUMNS, "position", "time_together", "pairwise_encounters"],
+			value_name="animal",
+		)
+		.drop("variable")
+		.rename({"animal": "animal_id"})
+		.group_by(keys)
+		.agg(hours("time_together").sum(), pl.sum("pairwise_encounters").cast(pl.Float64))
+	)
+	expected = (
+		tables["activity_df"]
+		.select(
+			*keys,
+			pl.col("visits_to_position").cast(pl.Float64).alias("activity"),
+			hours("time_alone"),
+			hours("time_in_position").alias("hours_there"),
+		)
+		.join(together, on=keys, how="left")
+		.with_columns(pl.col("time_together", "pairwise_encounters").fill_null(0.0))
+		.unpivot(on=PLACED, index=[*keys, "hours_there"], variable_name="metric")
+		.with_columns(
+			pl.when(pl.col("metric").is_in(PAIRED_PLACED))
+			.then(pl.col("hours_there") * partners)
+			.otherwise(pl.col("hours_there"))
+			.alias("expected_exposure")
+		)
+	)
+
+	placed = features.filter(pl.col("position").is_not_null())
+	joined = placed.join(expected, on=[*keys, "metric"], how="full", coalesce=True)
+
+	assert placed.height == expected.height == joined.height
+	assert set(placed["metric"]) == set(PLACED)
+	for got, want in (("value", "value_right"), ("exposure", "expected_exposure")):
+		assert (joined[got] - joined[want]).abs().max() < 1e-12
+
+	fractions = placed.filter(pl.col("metric").is_in(["time_alone", "time_together"]))
+	assert (fractions["value"] <= fractions["exposure"] + 1e-12).all()
+
+	observed = (
+		tables["activity_df"]
+		.group_by(*CALENDAR_COLUMNS, "animal_id")
+		.agg(hours("time_in_position").sum().alias("observed"))
+	)
+	summed = (
+		placed.group_by(*CALENDAR_COLUMNS, "animal_id", "metric")
+		.agg(pl.sum("exposure"))
+		.join(observed, on=[*CALENDAR_COLUMNS, "animal_id"])
+		.with_columns(
+			pl.when(pl.col("metric").is_in(PAIRED_PLACED))
+			.then(pl.col("observed") * partners)
+			.otherwise(pl.col("observed"))
+		)
+	)
+	assert (summed["exposure"] - summed["observed"]).abs().max() < 1e-12
+
+	unplaced = features.filter(pl.col("position").is_null())
+	assert set(unplaced["metric"]) == {"n_chasing", "n_chased", "n_chasing_per_detection"}
+	assert unplaced.select(*CALENDAR_COLUMNS, "animal_id", "metric").is_duplicated().sum() == 0
 
 
 # --- match_df against an independent oracle ----------------------------------
