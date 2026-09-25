@@ -289,51 +289,12 @@ function _centreSquare(gd) {
 	slide(gd.querySelector(".g-gtitle"), shift);
 }
 
-/* Plotly has no corner radius for boxes, so each redraw rewrites the IQR rectangle of every
- * box path ("M x,y H|V .. H|V .. H|V .. Z", orientation-agnostic) with rounded corners to
- * match barcornerradius. Median and whiskers are separate open subpaths and stay square;
- * notched boxes don't match and are left alone. Static image exports keep square boxes. */
-const _BOX_RADIUS = 10;
-const _NUM = "(-?[\\d.]+(?:e[-+]?\\d+)?)";
-const _BOX_RECT = new RegExp(`M${_NUM},${_NUM}([HV])${_NUM}([HV])${_NUM}([HV])${_NUM}Z`);
-
-function _roundBoxRect(_match, x, y, ...steps) {
-	const corners = [[+x, +y]];
-	for (let i = 0; i < 6; i += 2) {
-		const [px, py] = corners[corners.length - 1];
-		corners.push(steps[i] === "H" ? [+steps[i + 1], py] : [px, +steps[i + 1]]);
-	}
-	const [[x0, y0], , [x2, y2]] = corners;
-	const r = Math.min(_BOX_RADIUS, Math.abs(x2 - x0) / 2, Math.abs(y2 - y0) / 2);
-	const toward = ([ax, ay], [bx, by]) => {
-		const len = Math.hypot(bx - ax, by - ay) || 1;
-		return `${ax + ((bx - ax) * r) / len},${ay + ((by - ay) * r) / len}`;
-	};
-	return corners.map((corner, i) => {
-		const prev = corners[(i + 3) % 4];
-		const next = corners[(i + 1) % 4];
-		return `${i ? "L" : "M"}${toward(corner, prev)}Q${corner.join(",")} ${toward(corner, next)}`;
-	}).join("") + "Z";
-}
-
-function _roundBoxes(gd) {
-	gd.querySelectorAll("path.box").forEach((path) => {
-		const d = path.getAttribute("d");
-		const rounded = d && d.replace(_BOX_RECT, _roundBoxRect);
-		if (rounded !== d) path.setAttribute("d", rounded);
-	});
-}
-
 new MutationObserver(() => {
 	document.querySelectorAll(".js-plotly-plot").forEach((gd) => {
 		if (gd._dehAfterplot || !gd.on) return;
 		gd._dehAfterplot = true;
-		gd.on("plotly_afterplot", () => {
-			_centreSquare(gd);
-			_roundBoxes(gd);
-		});
+		gd.on("plotly_afterplot", () => _centreSquare(gd));
 		_centreSquare(gd);
-		_roundBoxes(gd);
 	});
 }).observe(document.body, {childList: true, subtree: true});
 

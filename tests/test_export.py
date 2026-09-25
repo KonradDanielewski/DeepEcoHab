@@ -2,12 +2,16 @@
 
 Rendering through kaleido was checked by hand at 85x64 and 174x140 mm while designing
 these rules (see the blueprint); what is pinned here is the geometry the Python port
-computes, since that is what a regression could silently get wrong.
+computes, since that is what a regression could silently get wrong. One test does render,
+to pin that the rounded corners the app draws in the browser reach the exported file.
 """
+
+import xml.etree.ElementTree as ET
 
 import numpy as np
 import plotly.graph_objects as go
 import pytest
+from plotly.subplots import make_subplots
 
 from deepecohab.plotting import export
 
@@ -88,6 +92,25 @@ def test_shape_and_scatter_lines_are_capped_at_1_5px():
 
 	assert fitted.data[0].line.width == 1.5
 	assert fitted.layout.shapes[0].line.width == 1.5
+
+
+def test_axes_only_a_trace_names_are_fitted_too():
+	fig = go.Figure(go.Box(y=[1, 2, 3]))
+
+	fitted, _ = export.fit_for_export(fig, 85, 64, 8)
+
+	assert fitted.layout.xaxis.automargin is True
+	assert fitted.layout.yaxis.automargin is True
+
+
+def test_shapes_above_the_plot_get_room_in_the_top_margin():
+	fig = go.Figure(go.Scatter(x=[1], y=[1]))
+	bare, _ = export.fit_for_export(fig, 85, 64, 8)
+	fig.add_shape(type="rect", xref="x", yref="paper", x0=0, x1=1, y0=1.01, y1=1.035)
+
+	banded, _ = export.fit_for_export(fig, 85, 64, 8)
+
+	assert banded.layout.margin.t > bare.layout.margin.t
 
 
 def test_forced_dtick_reverts_to_automatic_ticking():
@@ -172,3 +195,20 @@ def test_figure_data_csv_decodes_typed_array_heatmap_z_with_shape():
 	lines = export.figure_data_csv(fig).splitlines()
 
 	assert "heatmap,c2,r1,2.0" in lines
+
+
+def test_export_keeps_rounded_boxes_and_tiles(tmp_path):
+	if not export.ensure_chrome_available():
+		pytest.skip("kaleido has no Chrome to render through")
+	fig = make_subplots(rows=1, cols=2)
+	fig.add_trace(go.Box(y=[1, 2, 3, 4, 5]), row=1, col=1)
+	fig.add_trace(go.Heatmap(z=[[1, 2], [3, 4]], xgap=1, ygap=2), row=1, col=2)
+	path = tmp_path / "rounded.svg"
+
+	export.export_figure(fig, path, 85, 64, 8, "svg")
+
+	svg = ET.parse(path).getroot()
+	ns = "{http://www.w3.org/2000/svg}"
+	box = next(node for node in svg.iter(f"{ns}path") if node.get("class") == "box")
+	assert "Q" in box.get("d")
+	assert next(svg.iter(f"{ns}image")).get("clip-path", "").startswith("url(#deh-tiles-")
