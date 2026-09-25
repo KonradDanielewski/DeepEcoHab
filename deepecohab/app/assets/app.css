@@ -1736,8 +1736,18 @@ code {
 	font-size: 13.5px;
 }
 
+/* The builder reaches the bottom of the window: while its page shows, main and every wrapper
+   down to the grid become flex columns that hand their leftover height on. */
+.mantine-AppShell-main:has(> :not([hidden]) .deh-builder),
+.mantine-AppShell-main:has(> :not([hidden]) .deh-builder) :has(.deh-builder) {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+}
+
 .deh-builder {
 	display: grid;
+	flex: 1;
 	grid-template-columns: 236px minmax(0, 1fr) 236px;
 	gap: 14px;
 }
@@ -2042,6 +2052,7 @@ code {
 @container deh-main (max-width: 1180px) {
 	.deh-builder {
 		grid-template-columns: 220px minmax(0, 1fr);
+		grid-template-rows: auto 1fr;
 	}
 
 	.deh-builder .deh-palette {
@@ -2062,6 +2073,7 @@ code {
 @container deh-main (max-width: 700px) {
 	.deh-builder {
 		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: auto 1fr auto;
 	}
 
 	.deh-builder .deh-palette,
