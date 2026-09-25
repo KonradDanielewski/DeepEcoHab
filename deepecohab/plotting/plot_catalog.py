@@ -29,10 +29,10 @@ BY_COHORT = {"color_by": available_attributes}
 PHASE_TYPE = {"phase_type": lambda context: list(context.phases)}
 BY_COHORT_AND_PHASE = {**BY_COHORT, **PHASE_TYPE}
 
-#: The hourly-line builder each aggregation draws with.
-LINE_PER_HOUR = {
-	"sum": plot_factory.plot_sum_line_per_hour,
-	"mean": plot_factory.plot_mean_line_per_hour,
+#: The count-line builder each aggregation draws with.
+LINE_BY_AGG = {
+	"sum": plot_factory.plot_sum_line,
+	"mean": plot_factory.plot_mean_line,
 }
 
 
@@ -223,7 +223,7 @@ def cage_preference_evolution(
 
 @PlotRegistry.register(
 	"activity-line",
-	title="Activity per hour",
+	title="Activity over time",
 	requires=("main_df", "animals"),
 	dynamic_choices=BY_COHORT,
 )
@@ -232,30 +232,34 @@ def activity_line(
 	*,
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
+	timescale: Literal["days", "hours"] = "hours",
 	agg: Literal["sum", "mean"] = "sum",
 	color_by: str = "animal_id",
 	hours_range: tuple[int, int] | None = None,
 	group_mean: bool = False,
 ) -> go.Figure:
-	"""Antenna detections per hour, showing the circadian rhythm.
+	"""Antenna detections per hour of the day, or per day of the window.
 
-	For the mean, a shaded band shows the standard error across the selected
-	window units.
+	``"hours"`` folds the window onto the 24 hours of the experiment day, showing the
+	circadian rhythm; ``"days"`` steps through the window's days or phases, following
+	``granularity``. For the mean, a shaded band shows the standard error across the axis
+	folded away.
 	"""
 	window = _window(context, days_range, granularity)
-	frame = prepare.prep_hourly_line(
-		context, window, granularity, "main_df", "animal_id", pl.len(), hours_range
+	x = granularity if timescale == "days" else "hour"
+	frame = prepare.prep_count_line(
+		context, window, granularity, x, "main_df", "animal_id", pl.len(), hours_range
 	)
-	spans = prepare.prep_event_spans(context, window, granularity, "hour", hours_range)
+	spans = prepare.prep_event_spans(context, window, granularity, x, hours_range)
 	mapping = resolve_colors(context, color_by, group_mean=group_mean)
 	frame = mean_by_group(frame, mapping, ["total", "mean"])
 
-	return LINE_PER_HOUR[agg](frame, mapping, "activity", context.phases, spans)
+	return LINE_BY_AGG[agg](frame, mapping, "activity", x, context.phases, spans)
 
 
 @PlotRegistry.register(
 	"chasings-line",
-	title="Chasings per hour",
+	title="Chasings over time",
 	requires=("chasings_df", "animals"),
 	dynamic_choices=BY_COHORT,
 )
@@ -264,26 +268,29 @@ def chasings_line(
 	*,
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
+	timescale: Literal["days", "hours"] = "hours",
 	agg: Literal["sum", "mean"] = "sum",
 	scope: Literal["chaser", "chased"] = "chaser",
 	color_by: str = "animal_id",
 	hours_range: tuple[int, int] | None = None,
 	group_mean: bool = False,
 ) -> go.Figure:
-	"""Chasing frequency per hour, showing the diurnal rhythm of aggression.
+	"""Chasings per hour of the day, or per day of the window.
 
-	Counts each animal's chasings as the chaser, or as the chased. For the mean, a
-	shaded band shows the standard error across the selected window units.
+	Counts each animal's chasings as the chaser, or as the chased. ``timescale`` works as
+	for ``activity-line``. For the mean, a shaded band shows the standard error across the
+	axis folded away.
 	"""
 	window = _window(context, days_range, granularity)
-	frame = prepare.prep_hourly_line(
-		context, window, granularity, "chasings_df", scope, pl.sum("chasings"), hours_range
+	x = granularity if timescale == "days" else "hour"
+	frame = prepare.prep_count_line(
+		context, window, granularity, x, "chasings_df", scope, pl.sum("chasings"), hours_range
 	)
-	spans = prepare.prep_event_spans(context, window, granularity, "hour", hours_range)
+	spans = prepare.prep_event_spans(context, window, granularity, x, hours_range)
 	mapping = resolve_colors(context, color_by, animal_column=scope, group_mean=group_mean)
 	frame = mean_by_group(frame, mapping, ["total", "mean"])
 
-	return LINE_PER_HOUR[agg](frame, mapping, "chasings", context.phases, spans)
+	return LINE_BY_AGG[agg](frame, mapping, "chasings", x, context.phases, spans)
 
 
 @PlotRegistry.register(

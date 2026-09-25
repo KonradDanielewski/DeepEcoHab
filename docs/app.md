@@ -369,7 +369,8 @@ to settle before reading anything the analysis says.
 **Activity** covers where the animals went and when:
 
 - **Position timeline**: each animal's position over time, as a strip.
-- **Activity per hour**: antenna detections per hour, which shows the circadian rhythm.
+- **Activity over time**: antenna detections per hour, which shows the circadian rhythm,
+  or per day or phase.
 - **Position preference**: how the cohort's time is spread across positions.
 - **Activity per position**: visits to each position, or time spent there.
 - **Position preference over time**: time in each cage or tunnel, across days or phases.
@@ -398,7 +399,7 @@ to settle before reading anything the analysis says.
 - **Dominance ranking**: each animal's ranking over time, or its day-to-day stability.
 - **Ranking distribution**: the probability distribution of each animal's ranking on the
   last day in the window.
-- **Chasings per hour**: the daily rhythm of chasing.
+- **Chasings over time**: the daily rhythm of chasing, or chasing per day or phase.
 - **Dominance network**: who chases whom, with node size showing rank.
 - **Chasings matrix**: chaser against chased.
 

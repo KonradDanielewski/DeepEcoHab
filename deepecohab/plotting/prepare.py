@@ -447,18 +447,24 @@ def prep_directed_heatmap(
 	return _matrix(frame, on=column, index=row, values=agg, animals=animals)
 
 
-def prep_hourly_line(
+def prep_count_line(
 	context: PlotContext,
 	days_range: tuple[int, int],
 	granularity: Granularity,
+	x: Literal["hour", "day", "phase_count"],
 	table: str,
 	animal_column: str,
 	count: pl.Expr,
 	hours_range: tuple[int, int] | None = None,
 ) -> pl.DataFrame:
-	"""Hourly totals per animal, with the mean and SEM across window units.
+	"""Totals per animal along ``x``, with the mean and SEM over the axis it folds away.
+
+	Counts are taken per animal, window unit and hour, then collapsed onto ``x``: along
+	``"hour"`` each hour of the day gathers its window units, along the granularity each
+	window unit gathers its hours.
 
 	Args:
+		x: the axis to keep - ``"hour"``, or the granularity for its window units.
 		table: the table to read, such as ``main_df``.
 		animal_column: the animal column to total by, such as ``chaser``.
 		count: what the rows of one animal, hour and window unit add up to, such as
@@ -466,7 +472,6 @@ def prep_hourly_line(
 		hours_range: first and last hour to keep; the zero-fill scaffold is narrowed
 			to match, so a dropped hour is absent rather than a zero bar.
 	"""
-	n_bins = _bins(days_range)
 	hours = range(24) if hours_range is None else range(hours_range[0], hours_range[1] + 1)
 
 	join_frame = pl.LazyFrame(
@@ -486,17 +491,17 @@ def prep_hourly_line(
 		.agg(count.alias("count"))
 		.join(join_frame, on=[animal_column, "hour", granularity], how="right")
 		.fill_null(0)
-		.group_by("hour", animal_column)
+		.group_by(x, animal_column)
 		.agg(
 			pl.sum("count").alias("total"),
 			pl.mean("count").alias("mean").round(2),
-			(pl.std("count") / math.sqrt(n_bins)).alias("sem"),
+			(pl.std("count") / pl.len().sqrt()).alias("sem"),
 		)
 		.with_columns(
 			(pl.col("mean") - pl.col("sem")).alias("lower"),
 			(pl.col("mean") + pl.col("sem")).alias("upper"),
 		)
-		.sort(animal_column, "hour")
+		.sort(animal_column, x)
 		.collect(engine="in-memory")
 	)
 

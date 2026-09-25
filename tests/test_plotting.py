@@ -498,13 +498,63 @@ def test_hours_range_narrows_the_hourly_scaffold(context):
 	)
 
 	with_table = replace(context, _loaded={"t": frame})
-	full = prepare.prep_hourly_line(with_table, (1, 1), "day", "t", "animal_id", pl.len())
-	narrowed = prepare.prep_hourly_line(
-		with_table, (1, 1), "day", "t", "animal_id", pl.len(), hours_range=(3, 6)
+	full = prepare.prep_count_line(with_table, (1, 1), "day", "hour", "t", "animal_id", pl.len())
+	narrowed = prepare.prep_count_line(
+		with_table, (1, 1), "day", "hour", "t", "animal_id", pl.len(), hours_range=(3, 6)
 	)
 
 	assert full["hour"].unique().sort().to_list() == list(range(24))
 	assert narrowed["hour"].unique().sort().to_list() == [3, 4, 5, 6]
+
+
+def test_count_line_along_days_folds_the_hours_away(context):
+	"""Each day totals its hours, and its mean and SEM run over those hours."""
+	frame = pl.DataFrame(
+		{
+			"animal_id": pl.Series(["0035A"] * 3, dtype=pl.Enum(ANIMALS)),
+			"day": pl.Series([1, 1, 2], dtype=pl.Int16),
+			"hour": pl.Series([5, 5, 6], dtype=pl.Int8),
+		}
+	)
+
+	with_table = replace(context, _loaded={"t": frame})
+	line = prepare.prep_count_line(
+		with_table, (1, 2), "day", "day", "t", "animal_id", pl.len(), hours_range=(5, 6)
+	).filter(pl.col("animal_id") == "0035A")
+
+	assert line["day"].to_list() == [1, 2]
+	assert line["total"].to_list() == [2, 1]
+	assert line["mean"].to_list() == [1.0, 0.5]
+	# Hours (2, 0) and (0, 1): std sqrt(2) and sqrt(0.5), over the root of 2 hours.
+	assert line["sem"].to_list() == pytest.approx([1.0, 0.5])
+
+
+def test_line_side_panel_follows_the_legend_and_sits_on_the_zero(context):
+	"""Rows group under their legend entry, and the lowest row's bottom edge meets the line's 0."""
+	frame = pl.DataFrame(
+		{
+			"animal_id": pl.Series(ANIMALS * 2, dtype=pl.Enum(ANIMALS)),
+			"hour": [0] * 4 + [1] * 4,
+			"total": [1, 2, 3, 4, 5, 6, 7, 8],
+		}
+	)
+	no_spans = pl.DataFrame(schema={"event": pl.String, "position": pl.String})
+	# Treatment runs vehicle, drug, vehicle, drug, so the legend reads vehicle then drug.
+	mapping = animals_module.resolve_colors(context, "treatment")
+
+	figure = plot_factory.plot_sum_line(
+		frame, mapping, "activity", "hour", context.phases, no_spans
+	)
+	side = [trace for trace in figure.data if trace.xaxis == "x2"]
+
+	assert [trace.name for trace in side] == ["0035A", "0035C", "0035B", "0035D"]
+	assert [trace.x[0] for trace in side] == [6, 10, 8, 12]
+
+	(line_low, line_high), (bottom, top) = figure.layout.yaxis.range, figure.layout.yaxis2.range
+	lowest_edge = len(side) - 1 + plot_factory._SIDE_WIDTH / 2
+	assert (lowest_edge - bottom) / (top - bottom) == pytest.approx(
+		-line_low / (line_high - line_low)
+	)
 
 
 def test_polar_z_scores_within_the_selection_however_it_is_narrowed(context):

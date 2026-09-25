@@ -411,26 +411,144 @@ def plot_time_alone(
 	)
 
 
-#: Title, y-axis title and hover label of the hourly line plots, per input.
+#: Title, y-axis title and hover label of the count line plots, per input.
 _LINE_LABELS: dict[str, tuple[str, str, str]] = {
 	"activity": ("<b>Activity over time</b>", "<b>Antenna detections</b>", "Detections"),
 	"chasings": ("<b>Chasing over time</b>", "<b># of chasing events</b>", "Events"),
 }
 
+#: Hover label and axis title of each axis a count line plot can run along.
+_LINE_X: dict[str, tuple[str, str]] = {
+	"hour": ("Hour", "<b>Hour since phase onset</b>"),
+	"day": ("Day", "<b>Day</b>"),
+	"phase_count": ("Phase", "<b>Phase</b>"),
+}
 
-def plot_sum_line_per_hour(
+
+def _line_x_axis(
+	figure: go.Figure, bins: pl.Series, phases: dict[str, float], spans: pl.DataFrame
+) -> None:
+	"""Title and pin a count line's x axis, marking the phase switch on the hour axis only."""
+	figure.update_xaxes(title=_LINE_X[bins.name][1])
+	if bins.name == "hour":
+		_pin_bin_axis(figure, bins)
+		_phase_markers(figure, phases)
+	else:
+		# A category axis ticks whole steps only, widening them as the window grows. It sits
+		# a bin at its index among the categories, not its value, and so does a span.
+		figure.update_xaxes(type="category", range=[0, bins.n_unique() - 1])
+		spans = spans.with_columns(pl.col("x0", "x1") - bins.min())
+	_event_spans(figure, spans)
+
+
+#: Thickness of a side-panel bar or box, in category units.
+_SIDE_WIDTH = 0.64
+
+
+def _side_panel(
+	figure: go.Figure,
+	frame: pl.DataFrame,
+	mapping: ColorMapping,
+	agg: Literal["sum", "mean"],
+	label: str,
+) -> None:
+	"""Sum up each trace in a narrow panel right of the lines: its total, or its means' spread.
+
+	One row per trace, grouped top to bottom in legend order. Autorange happens in the
+	browser, so the line axis gets its range pinned here - the band included, 5% of headroom
+	either side - and the category range is solved from it so the lowest row's bottom edge
+	sits on the line's zero.
+	"""
+	column = mapping.trace_column
+	value = "total" if agg == "sum" else "mean"
+	drawn = ["total"] if agg == "sum" else ["mean", "lower", "upper"]
+
+	low, high = frame.select(
+		pl.min_horizontal(drawn).min().alias("low"), pl.max_horizontal(drawn).max().alias("high")
+	).row(0)
+	low, high = min(low or 0, 0), max(high or 0, 0)
+	pad = (high - low) * 0.05 or 1
+	zero_at = (pad - low) / (high - low + 2 * pad)
+
+	def category(row: str) -> str:
+		return mapping.category_by_animal.get(row, row)
+
+	legend = list(dict.fromkeys(category(row) for row in mapping.order))
+	present = set(frame[column].cast(pl.String))
+	rows = sorted(
+		(row for row in mapping.order if row in present),
+		key=lambda row: legend.index(category(row)),
+	)
+
+	for row in rows:
+		values = frame.filter(pl.col(column) == row)[value]
+		side = {
+			"xaxis": "x2",
+			"yaxis": "y2",
+			"name": row,
+			"legendgroup": category(row),
+			"showlegend": False,
+		}
+		if agg == "sum":
+			trace = go.Bar(
+				y=[row],
+				x=[values.sum()],
+				orientation="h",
+				width=_SIDE_WIDTH,
+				marker_color=mapping.trace_colors[row],
+				hovertemplate=f"{row}: %{{x:,}}<extra></extra>",
+				**side,
+			)
+		else:
+			trace = go.Box(
+				y=[row] * len(values),
+				x=values.to_list(),
+				orientation="h",
+				boxmean=True,
+				width=_SIDE_WIDTH,
+				line_color=mapping.trace_colors[row],
+				boxpoints="all",
+				jitter=0.4,
+				pointpos=0,
+				marker_size=3,
+				**side,
+			)
+		figure.add_trace(trace)
+
+	lowest_edge, top_edge = len(rows) - 1 + _SIDE_WIDTH / 2, -0.5
+	figure.update_layout(
+		xaxis_domain=[0, 0.9],
+		yaxis_range=[low - pad, high + pad],
+		xaxis2={
+			"domain": [0.91, 1],
+			"anchor": "y2",
+			"title": f"<b>{'Total' if agg == 'sum' else 'Mean'} {label.lower()}</b>",
+			"labelalias": {"0": ""},
+		},
+		yaxis2={
+			"anchor": "x2",
+			"type": "category",
+			"showticklabels": False,
+			"range": [(lowest_edge - zero_at * top_edge) / (1 - zero_at), top_edge],
+		},
+		barcornerradius=4,
+	)
+
+
+def plot_sum_line(
 	frame: pl.DataFrame,
 	mapping: ColorMapping,
 	input_type: Literal["activity", "chasings"],
+	x: Literal["hour", "day", "phase_count"],
 	phases: dict[str, float],
 	spans: pl.DataFrame,
 ) -> go.Figure:
-	"""Plots hourly totals for activity or chasings."""
-	title, y_axes_label, _hover_label = _LINE_LABELS[input_type]
+	"""Plots totals for activity or chasings, per hour of the day or per window unit."""
+	title, y_axes_label, hover_label = _LINE_LABELS[input_type]
 
 	figure = px.line(
 		frame,
-		x="hour",
+		x=x,
 		y="total",
 		color=mapping.trace_column,
 		color_discrete_map=mapping.trace_colors,
@@ -441,23 +559,24 @@ def plot_sum_line_per_hour(
 	collapse_legend(figure, mapping)
 	figure.update_layout(legend={"title": mapping.legend_title})
 	figure.update_yaxes(title=y_axes_label)
-	figure.update_xaxes(title="<b>Hour since phase onset</b>", range=[-0.5, 23.5])
 	figure.update_traces(mode="lines")
-	_phase_markers(figure, phases)
-	_event_spans(figure, spans)
+	_line_x_axis(figure, frame[x], phases, spans)
+	_side_panel(figure, frame, mapping, "sum", hover_label)
 
 	return figure
 
 
-def plot_mean_line_per_hour(
+def plot_mean_line(
 	frame: pl.DataFrame,
 	mapping: ColorMapping,
 	input_type: Literal["activity", "chasings"],
+	x: Literal["hour", "day", "phase_count"],
 	phases: dict[str, float],
 	spans: pl.DataFrame,
 ) -> go.Figure:
-	"""Plots hourly means for activity or chasings with SEM shading."""
+	"""Plots means for activity or chasings with SEM shading, per hour or per window unit."""
 	title, y_axes_label, hover_label = _LINE_LABELS[input_type]
+	x_label = _LINE_X[x][0]
 
 	figure = go.Figure()
 
@@ -467,14 +586,14 @@ def plot_mean_line_per_hour(
 			continue
 		color = mapping.trace_colors[trace_value]
 
-		x = trace_rows["hour"].to_list()
+		bins = trace_rows[x].to_list()
 		y = trace_rows["mean"].to_list()
 		bounds = trace_rows["upper"].to_list() + trace_rows["lower"].to_list()[::-1]
 		shade_color = color.replace("rgb", "rgba").replace(")", ", 0.2)")  # shaded region is SEM
 
 		figure.add_trace(
 			go.Scatter(
-				x=x + x[::-1],
+				x=bins + bins[::-1],
 				y=bounds,
 				fill="toself",
 				fillcolor=shade_color,
@@ -489,14 +608,14 @@ def plot_mean_line_per_hour(
 
 		figure.add_trace(
 			go.Scatter(
-				x=x,
+				x=bins,
 				y=y,
 				mode="lines",
 				line_color=color,
 				name=trace_value,
 				line={"shape": "spline"},
 				hovertemplate=(
-					f"{mapping.legend_title}: {trace_value}<br>Hour: %{{x}}<br>"
+					f"{mapping.legend_title}: {trace_value}<br>{x_label}: %{{x}}<br>"
 					f"{hover_label}: %{{y:.1f}}<extra></extra>"
 				),
 			)
@@ -505,10 +624,8 @@ def plot_mean_line_per_hour(
 	collapse_legend(figure, mapping)
 	figure.update_layout(title=title, legend={"title": mapping.legend_title, "tracegroupgap": 0})
 	figure.update_yaxes(title=y_axes_label)
-	figure.update_xaxes(title="<b>Hour since phase onset</b>")
-	_pin_bin_axis(figure, frame["hour"])
-	_phase_markers(figure, phases)
-	_event_spans(figure, spans)
+	_line_x_axis(figure, frame[x], phases, spans)
+	_side_panel(figure, frame, mapping, "mean", hover_label)
 
 	return figure
 

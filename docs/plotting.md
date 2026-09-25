@@ -84,13 +84,13 @@ To list them in code: `deh.PlotRegistry.list_available()`.
 | `time-alone-bar` | time each animal spent with no other animal present, per position | `days_range`, `granularity`, `phase_type`, `agg`, `scope`, `color_by`, `unit` |
 | `cage-preference` | how the cohort's time is distributed across positions | `days_range`, `granularity`, `phase_type`, `scope`, `unit` |
 | `cage-preference-evolution` | time per animal in each cage or tunnel, across days or phases, or with `timescale="hours"` across the 24 hours of the experiment day | `timescale` (`"days"`, `"hours"`), `days_range`, `granularity`, `agg`, `scope`, `unit` |
-| `activity-line` | antenna reads per hour of the day: the circadian rhythm | `days_range`, `granularity`, `agg`, `color_by` |
+| `activity-line` | antenna reads per hour of the day: the circadian rhythm, or with `timescale="days"` per day or phase | `timescale` (`"days"`, `"hours"`), `days_range`, `granularity`, `agg`, `color_by` |
 
 ### Social hierarchy
 
 | plot | shows | options |
 |---|---|---|
-| `chasings-line` | chasings per hour of the day | `days_range`, `granularity`, `agg`, `color_by` |
+| `chasings-line` | chasings per hour of the day, or with `timescale="days"` per day or phase | `timescale` (`"days"`, `"hours"`), `days_range`, `granularity`, `agg`, `color_by` |
 | `chasings-heatmap` | chaser-versus-chased matrix; columns are chasers, rows are chased | `days_range`, `granularity`, `phase_type`, `agg` |
 | `ranking-line` | each animal's ranking (`ordinal`) over time, or with `mode="stability"` its rank order in each day or phase | `mode` (`"intime"`, `"stability"`), `days_range`, `granularity`, `color_by` |
 | `ranking-distribution-line` | the probability density of each animal's rating on the last day or phase of the window | `days_range`, `granularity`, `color_by` |
