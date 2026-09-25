@@ -148,6 +148,25 @@ def test_an_eight_cage_ring_draws_as_an_octagon():
 	assert len({round(math.hypot(x, y), 6) for x, y in places.values()}) == 1
 
 
+def test_the_commonest_cage_type_draws_plain_as_the_blueprint_standard_does():
+	# Two standard cages, then nonsocial and social by name: plain, sunken, accent.
+	assert components._cage_looks(_square()) == {"standard": 0, "nonsocial": 1, "social": 2}
+
+
+def test_free_text_cage_types_each_get_a_look_until_eight():
+	# Types are whatever the config says; past eight the looks repeat.
+	cells = [(f"C{i}", f"kind {i}", [str(2 * i - 2 or 18), str(2 * i - 1)]) for i in range(1, 10)]
+	tunnels = [(i, f"C{i}", f"C{i % 9 + 1}", [str(2 * i - 1), str(2 * i)]) for i in range(1, 10)]
+	layout = _layout(cells, tunnels)
+
+	looks = components._cage_looks(layout)
+	_, legend = components.habitat_map(layout, "Habitat of rec_b")
+
+	assert len(set(looks.values())) == 8
+	assert looks["kind 9"] == looks["kind 1"]
+	assert [span.children[1] for span in legend.children[:9]] == [f"kind {i}" for i in range(1, 10)]
+
+
 def test_every_antenna_is_tinted_by_its_own_miss_rate():
 	# The bands are the header badge's: under 1% plain, 1-2.5% warn, 2.5% and over bad.
 	miss = {"1": 0.4, "2": 1.0, "3": 2.49, "4": 2.5, "5": 9.9}

@@ -1978,19 +1978,23 @@ code {
 	text-anchor: middle;
 }
 
+/* A cage type's look arrives inline from theme.CAGE_LOOKS, both themes' pairs at once, so a
+   theme switch repaints it without rebuilding the map. */
+.deh-hab-cage {
+	--fill: var(--hab-fill);
+	--stroke: var(--hab-stroke);
+}
+
+:root[data-mantine-color-scheme="dark"] .deh-hab-cage,
+:root[data-mantine-color-scheme="dark"] .deh-hab-key.cage {
+	--fill: var(--hab-fill-dark);
+	--stroke: var(--hab-stroke-dark);
+}
+
 .deh-hab-cage rect {
-	fill: var(--surface);
-	stroke: var(--line-strong);
+	fill: var(--fill);
+	stroke: var(--stroke);
 	stroke-width: 1.5;
-}
-
-.deh-hab-cage.social rect {
-	fill: var(--accent-soft);
-	stroke: var(--accent);
-}
-
-.deh-hab-cage.nonsocial rect {
-	fill: var(--sunken);
 }
 
 /* No family: SVG text inherits the body font the Mantine theme sets. */
@@ -2065,13 +2069,11 @@ code {
 	background: var(--surface);
 }
 
-.deh-hab-key.social {
-	border-color: var(--accent);
-	background: var(--accent-soft);
-}
-
-.deh-hab-key.nonsocial {
-	background: var(--sunken);
+.deh-hab-key.cage {
+	--fill: var(--hab-fill);
+	--stroke: var(--hab-stroke);
+	border-color: var(--stroke);
+	background: var(--fill);
 }
 
 .deh-hab-key.tunnel {
