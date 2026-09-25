@@ -82,6 +82,15 @@ def test_has_csv_reflects_whether_the_figure_has_tabular_data():
 	assert export_preview(pie, "T", _form())["has_csv"] is False
 
 
+def test_a_partly_typed_size_is_clamped_to_the_inputs_limits():
+	fig = go.Figure(go.Scatter(x=[1], y=[1])).to_dict()
+
+	result = export_preview(fig, "T", _form(width_mm=1.0, height_mm=1.0))
+
+	assert result["dims"].startswith("30 x 20 mm")
+	assert json.loads(result["payload_params"])["height_mm"] == 20
+
+
 def test_png_dims_caption_includes_pixel_size():
 	fig = go.Figure(go.Scatter(x=[1], y=[1])).to_dict()
 

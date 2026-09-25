@@ -8,7 +8,7 @@ from dash import ALL, ClientsideFunction, Dash, Input, Output, State, dcc, html
 from dash.exceptions import PreventUpdate
 
 from deepecohab.app import downloads, services
-from deepecohab.app.components import export_dialog, export_preview, icon
+from deepecohab.app.components import DOWNLOAD_FRAME, export_dialog, export_preview, icon
 from deepecohab.plotting.export import ensure_chrome_available
 
 #: Shade 6 is the light-theme accent, shade 4 the dark one; the rest interpolate the tokens.
@@ -79,6 +79,7 @@ def _layout() -> dmc.MantineProvider:
 			dcc.Store(id="project-paths", storage_type="local", data=[]),
 			# Above Dash's debug bar (z-index 10000), which sits where toasts appear.
 			dmc.NotificationContainer(id="notifications", zIndex=10001),
+			html.Iframe(name=DOWNLOAD_FRAME, hidden=True),
 			# Shared by every page rather than duplicated per page: every page stays mounted,
 			# so one id per component, and each page's own "open" callback drives it by id.
 			dcc.Store(id="export-source"),

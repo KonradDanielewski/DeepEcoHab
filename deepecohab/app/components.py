@@ -24,6 +24,18 @@ DIALOG_CLASSES = {
 
 EXPORT_FONT_SIZES = ["6", "7", "8", "9", "10", "12"]
 
+#: The export size inputs' (min, max) in mm, which export_preview also clamps to.
+EXPORT_WIDTH_MM = (30, 300)
+EXPORT_HEIGHT_MM = (20, 300)
+
+#: How long the export dialog's typed fields wait for typing to pause, in ms, before each
+#: change re-fits the preview on the server.
+EXPORT_DEBOUNCE_MS = 400
+
+#: Name of the hidden frame every download loads into. A ``_blank`` target would open a
+#: tab that shows blank until the file arrives; see deh's download-frame listener.
+DOWNLOAD_FRAME = "deh-download"
+
 #: A blank graph before its callback fills it in. Plotly's own default figure ``{}``
 #: renders a white paper and grid, which flashes wrong on a dark card or theme.
 EMPTY_FIGURE: dict[str, Any] = {
@@ -110,7 +122,10 @@ def download_menu(
 					dmc.MenuLabel(name),
 					*(
 						dmc.MenuItem(
-							label, leftSection=icon(icon_name, size=16), href=href, target="_blank"
+							label,
+							leftSection=icon(icon_name, size=16),
+							href=href,
+							target=DOWNLOAD_FRAME,  # ty: ignore[invalid-argument-type]
 						)
 						for icon_name, label, href in files
 					),
@@ -120,7 +135,7 @@ def download_menu(
 							html.Code(table),
 							leftSection=icon("table", size=16),
 							href=f"{base}/table/{table}.parquet",
-							target="_blank",
+							target=DOWNLOAD_FRAME,  # ty: ignore[invalid-argument-type]
 						)
 						for table in tables
 					),
@@ -295,11 +310,21 @@ def export_dialog() -> dmc.Modal:
 							html.Div(
 								[
 									dmc.NumberInput(
-										id="export-width", value=85, min=30, max=300, w=90
+										id="export-width",
+										value=85,
+										min=EXPORT_WIDTH_MM[0],
+										max=EXPORT_WIDTH_MM[1],
+										debounce=EXPORT_DEBOUNCE_MS,
+										w=90,
 									),
 									html.Span("x"),
 									dmc.NumberInput(
-										id="export-height", value=64, min=20, max=300, w=90
+										id="export-height",
+										value=64,
+										min=EXPORT_HEIGHT_MM[0],
+										max=EXPORT_HEIGHT_MM[1],
+										debounce=EXPORT_DEBOUNCE_MS,
+										w=90,
 									),
 									html.Span("mm"),
 								],
@@ -361,6 +386,7 @@ def export_dialog() -> dmc.Modal:
 						dmc.TextInput(
 							id="export-filename",
 							label="File name",
+							debounce=EXPORT_DEBOUNCE_MS,
 							classNames={"input": "deh-mono"},
 						),
 						dcc.Input(type="hidden", name="figure", id="export-field-figure"),
@@ -386,7 +412,7 @@ def export_dialog() -> dmc.Modal:
 					id="export-form",
 					method="POST",
 					action="/export",
-					target="_blank",
+					target=DOWNLOAD_FRAME,
 					className="deh-export-form",
 				),
 			],
@@ -415,6 +441,13 @@ def export_preview(fig: dict[str, Any], title: str, form: dict[str, Any]) -> dic
 		figure has events or tabular data to offer, and the JSON payload the download
 		form posts.
 	"""
+	# A pause mid-typing still sends a partial size ("1" on the way to "120"), and Plotly
+	# rejects a layout under 10 px - so clamp to the inputs' limits, as they do on blur.
+	form = {
+		**form,
+		"width_mm": min(max(form["width_mm"], EXPORT_WIDTH_MM[0]), EXPORT_WIDTH_MM[1]),
+		"height_mm": min(max(form["height_mm"], EXPORT_HEIGHT_MM[0]), EXPORT_HEIGHT_MM[1]),
+	}
 	working = go.Figure(fig)
 	if form["style"] == "publication":
 		working.update_layout(template="publication")

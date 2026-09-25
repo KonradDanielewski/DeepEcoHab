@@ -498,7 +498,7 @@ def _project_menu(project: dict) -> dmc.Menu:
 									label,
 									leftSection=icon(icon_name, size=16),
 									href=href,
-									target="_blank",
+									target=components.DOWNLOAD_FRAME,  # ty: ignore[invalid-argument-type]
 								)
 								for icon_name, label, href in _project_download_items(project["id"])
 							),

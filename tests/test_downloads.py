@@ -76,6 +76,14 @@ def test_recording_table_streams_a_registered_step(client):
 	assert resp.headers["Content-Disposition"].startswith("attachment")
 
 
+def test_download_token_comes_back_as_a_cookie_with_the_file(client):
+	test_client, pid = client
+
+	resp = test_client.get(f"/download/recording/{pid}/rec1/config.json?download_token=abc")
+
+	assert "deh-download=abc" in resp.headers["Set-Cookie"]
+
+
 def test_recording_table_404s_for_an_uncomputed_or_unknown_name(client):
 	test_client, pid = client
 

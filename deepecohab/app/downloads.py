@@ -17,6 +17,19 @@ bp = Blueprint("downloads", __name__)
 _SPOOL = 32 * 1024 * 1024  #: zips this small stay in memory; bigger ones spill to disk
 
 
+@bp.after_request
+def _echo_download_token(response):
+	"""Hand the page's ``download_token`` back as a cookie, which arrives with the file.
+
+	The hidden download frame gives the page no event when a file starts arriving, so this
+	cookie is how the spinner on the button that asked for it knows to stop (clientside.js).
+	"""
+	token = request.values.get("download_token")
+	if token:
+		response.set_cookie("deh-download", token, max_age=60)
+	return response
+
+
 def _project(pid: str) -> Project:
 	location = services.resolve_project_path(pid)
 	if location is None:

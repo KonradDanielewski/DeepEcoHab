@@ -113,6 +113,26 @@ def test_shapes_above_the_plot_get_room_in_the_top_margin():
 	assert banded.layout.margin.t > bare.layout.margin.t
 
 
+def test_polar_labels_get_margins_clear_of_the_legend_even_untitled():
+	"""Polar axes have no automargin, so an untitled export used to clip the top label."""
+	fig = go.Figure(
+		[go.Scatterpolar(r=[1, 2], theta=["Activity", "Long metric"], name="animal")],
+		layout={
+			"showlegend": True,
+			"polar": {"angularaxis": {"labelalias": {"Long metric": "Long<br>metric"}}},
+		},
+	)
+
+	fitted, _ = export.fit_for_export(fig, 85, 64, 8, title="")
+
+	tick = 8 * 96 / 72 * export._TICK_SCALE
+	margin = fitted.layout.margin
+	assert margin.l >= export.text_px("Activity", tick)
+	assert margin.t == margin.b == pytest.approx(2 * tick * export._LINE_HEIGHT)
+	assert margin.r > margin.l  # the labels' room, plus the legend's
+	assert (fitted.layout.legend.xref, fitted.layout.legend.x) == ("container", 1)
+
+
 def test_forced_dtick_reverts_to_automatic_ticking():
 	"""_phase_markers forces dtick=1 on the hour axis; export widens it back out."""
 	fig = go.Figure(go.Scatter(x=[1], y=[1]), layout={"xaxis": {"dtick": 1}})
