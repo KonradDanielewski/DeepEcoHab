@@ -1369,9 +1369,14 @@ code {
 	margin-top: 0;
 }
 
+.deh-card-badge .deh-badge[hidden] {
+	display: none;
+}
+
 .deh-card-badge {
 	display: flex;
 	align-items: center;
+	gap: 6px;
 	min-height: 34px;
 }
 

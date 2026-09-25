@@ -34,14 +34,38 @@ dash.register_page(
 	__name__, path=PATH, name="Recording dashboard", order=1, icon="layout-dashboard"
 )
 
-#: Driven by the control bar rather than a per-card control.
+#: Driven by the control bar rather than a per-card control: builder option -> rec-controls key.
 _GLOBAL_OPTIONS = {
-	"days_range",
-	"granularity",
-	"phase_type",
-	"color_by",
-	"hours_range",
-	"group_mean",
+	"days_range": "window",
+	"granularity": "granularity",
+	"phase_type": "phases",
+	"color_by": "color_by",
+	"hours_range": "hours",
+	"group_mean": "group_mean",
+}
+#: The filters a card can ignore, as (icon, label, tooltip); deh.plotRequest shows the badge
+#: while its control is narrowed.
+_BADGES = {
+	"window": (
+		"calendar",
+		"Whole recording",
+		"This card always covers the whole recording; the window does not apply to it.",
+	),
+	"hours": (
+		"clock",
+		"Whole day",
+		"This card has no hourly breakdown; the hours window does not apply to it.",
+	),
+	"phases": (
+		"moon",
+		"Both phases",
+		"This card does not split by phase; the phase filter does not apply to it.",
+	),
+	"group_mean": (
+		"users",
+		"Per animal",
+		"Group mean does not apply here; this card shows one line per animal.",
+	),
 }
 _OPTION_LABELS = {"agg": "Aggregate", "edge_cutoff": "Hide edges below"}
 #: Height of the Position-unknown table, matching the heatmap it shares a grid row with.
@@ -405,6 +429,21 @@ def _card_frame(
 
 def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 	spec = PlotRegistry.spec(name)
+	missing = [table for table in spec.requires if table not in context]
+	accepted = {option.name for option in spec.options}
+	uses = [key for option, key in _GLOBAL_OPTIONS.items() if option in accepted]
+	badges = [
+		html.Span(
+			[icon(glyph, size=14), label],
+			id={"type": "badge", "plot": name, "control": key},
+			className="deh-badge deh-badge-neutral",
+			title=tooltip,
+			hidden=True,
+		)
+		for key, (glyph, label, tooltip) in _BADGES.items()
+		# Group mean only means something to a card that colours by animal at all.
+		if key not in uses and (key != "group_mean" or "color_by" in uses)
+	]
 	header = html.Div(
 		[
 			html.Div(
@@ -414,7 +453,7 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 				],
 				className="deh-card-titles",
 			),
-			html.Span(id={"type": "badge", "plot": name}, className="deh-card-badge"),
+			html.Span(None if missing else badges, className="deh-card-badge"),
 			html.Div(
 				[
 					html.Button(
@@ -442,7 +481,6 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 		className="deh-card-head",
 	)
 
-	missing = [table for table in spec.requires if table not in context]
 	if missing:
 		body = html.Div(
 			[
@@ -464,7 +502,7 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 		html.Div([_option_control(name, option) for option in options], className="deh-card-opts")
 		if options
 		else None,
-		dcc.Store(id={"type": "plot-req", "plot": name}, data={"tab": tab}),
+		dcc.Store(id={"type": "plot-req", "plot": name}, data={"tab": tab, "uses": uses}),
 		dcc.Loading(
 			dcc.Graph(
 				id={"type": "plot", "plot": name},
@@ -1271,12 +1309,12 @@ clientside_callback(
 	Input("plot-theme", "data"),
 	Input({"type": "card-opt", "plot": ALL, "option": ALL}, "value"),
 	State({"type": "plot-req", "plot": ALL}, "data"),
+	State({"type": "badge", "plot": ALL, "control": ALL}, "hidden"),
 )
 
 
 @callback(
 	Output({"type": "plot", "plot": MATCH}, "figure"),
-	Output({"type": "badge", "plot": MATCH}, "children"),
 	Input({"type": "plot-req", "plot": MATCH}, "data"),
 	State("rec-events", "checked"),
 	# The request mounts as {tab} alone; deh.plotRequest fills it once the tab shows.
@@ -1287,27 +1325,23 @@ def _update_plot(request, events_on):
 		raise PreventUpdate
 
 	context_data, controls, theme = request["context"], request["controls"], request["theme"]
-	name = ctx.outputs_list[0]["id"]["plot"]
+	name = ctx.outputs_list["id"]["plot"]
 	context = services.plot_context(context_data["location"], context_data["recording"])
 	spec = PlotRegistry.spec(name)
 	if any(table not in context for table in spec.requires):
 		raise PreventUpdate
 
-	accepted = {option.name for option in spec.options}
 	# A cleared NumberInput sends "", which falls back to the builder's default.
 	values = {key: value for key, value in request["opts"].items() if value != ""}
+	# deh.plotRequest sends only the controls this plot takes.
 	values.update(
-		days_range=controls["window"],
-		granularity=controls["granularity"],
-		phase_type=controls["phases"],
-		color_by=controls["color_by"],
-		group_mean=controls.get("group_mean", False),
-		# None for the untouched full day, matching every builder's own default: some
-		# prepare.* steps aggregate away the hour column before applying this filter and
-		# only skip that filter when it is exactly None (e.g. prep_polar).
-		hours_range=None if list(controls["hours"]) == [0, 23] else controls["hours"],
+		(option, controls[key]) for option, key in _GLOBAL_OPTIONS.items() if key in controls
 	)
-	values = {key: value for key, value in values.items() if key in accepted}
+	# None for the untouched full day, matching every builder's own default: some prepare.*
+	# steps aggregate away the hour column before applying this filter and only skip that
+	# filter when it is exactly None (e.g. prep_polar).
+	if values.get("hours_range") == [0, 23]:
+		values["hours_range"] = None
 
 	figure = PlotRegistry.build(name, context, **values)
 	# The card header already carries the title; the figure's own would double it up.
@@ -1322,25 +1356,7 @@ def _update_plot(request, events_on):
 		# Input of its own; deh.toggleEvents keeps an already-loaded figure in sync.
 		figure.update_shapes(visible=False, selector={"name": "event-span"})
 		figure.update_shapes(visible=False, selector={"name": "event-label"})
-
-	badges = []
-	if "hours_range" not in accepted and list(controls["hours"]) != [0, 23]:
-		badges.append(
-			html.Span(
-				[icon("clock", size=14), "Whole day"],
-				className="deh-badge deh-badge-neutral",
-				title="This card has no hourly breakdown; the hours window does not apply to it.",
-			)
-		)
-	if controls.get("group_mean") and "color_by" in accepted and "group_mean" not in accepted:
-		badges.append(
-			html.Span(
-				[icon("users", size=14), "Per animal"],
-				className="deh-badge deh-badge-neutral",
-				title="Group mean does not apply here; this card shows one line per animal.",
-			)
-		)
-	return figure, badges or None
+	return figure
 
 
 # Clientside: every figure on the tab is already in the browser, so picking one is not

@@ -272,6 +272,15 @@ function _hoursBand(context, phases) {
 	);
 }
 
+// Whether a control is at its full extent, where a card that ignores it loses nothing; the
+// keys are recording.py's _BADGES.
+const _unfiltered = {
+	window: (c, context) => c.window[0] === 1 && c.window[1] === (c.granularity === "day" ? context.days : context.phases),
+	hours: (c) => c.hours[0] === 0 && c.hours[1] === 23,
+	phases: (c) => c.phases.length === 2,
+	group_mean: (c) => !c.group_mean,
+};
+
 /* Square heatmaps shrink their x axis to the cells and push them toward the colour bar
  * (plot_factory's constraintoward="right"), so a wide card leaves all its spare width left
  * of the matrix. Sliding the drawing back by half of it centres matrix and colour bar as
@@ -430,9 +439,11 @@ window.dash_clientside.deh = {
 
 	// A card is rebuilt only while its tab shows, and only for inputs it was not already
 	// drawn with: a hidden tab catches up when opened, and returning to one costs nothing.
-	// Each store starts as {tab}, the tab its card sits on. One run serves every card and sets
-	// only the stores that change: every callback run and every write re-runs the renderer's
-	// per-component checks, so one callback per card made each tab switch several times dearer.
+	// Each store starts as {tab, uses}: the tab its card sits on and the controls its plot
+	// takes, so a control it ignores never rebuilds it - it shows that control's badge instead.
+	// One run serves every card and sets only the stores and badges that change: every callback
+	// run and every write re-runs the renderer's per-component checks, so one callback per card
+	// made each tab switch several times dearer.
 	plotRequest: function (context, controls, tab, theme) {
 		const dc = window.dash_clientside;
 		if (!context || !controls) return;
@@ -443,8 +454,14 @@ window.dash_clientside.deh = {
 		dc.callback_context.states_list[0].forEach((store) => {
 			const previous = store.value || {};
 			if (previous.tab !== tab) return;
-			const request = {tab: tab, context: context, controls: controls, theme: theme, opts: opts[store.id.plot] || {}};
+			const used = {};
+			(previous.uses || []).forEach((key) => (used[key] = controls[key]));
+			const request = {tab: tab, uses: previous.uses, context: context, controls: used, theme: theme, opts: opts[store.id.plot] || {}};
 			if (JSON.stringify(request) !== JSON.stringify(previous)) dc.set_props(store.id, {data: request});
+		});
+		(dc.callback_context.states_list[1] || []).forEach((badge) => {
+			const hidden = _unfiltered[badge.id.control](controls, context);
+			if (hidden !== badge.value) dc.set_props(badge.id, {hidden: hidden});
 		});
 	},
 
