@@ -4,11 +4,10 @@ import plotly.graph_objects as go
 import polars as pl
 
 from deepecohab.plotting import theme
-from deepecohab.plotting.context import PlotContext
+from deepecohab.plotting.context import LabelBy, PlotContext
 
 COLOR_COLUMNS: tuple[str, ...] = (
 	"animal_id",
-	"subject_name",
 	"sex",
 	"genotype",
 	"treatment",
@@ -81,12 +80,24 @@ def available_attributes(context: PlotContext) -> list[str]:
 	return ["animal_id", *varying]
 
 
-def _categories(context: PlotContext, color_by: str) -> list[str]:
-	"""Every value ``color_by`` takes across the cohort, in legend order."""
-	if color_by == "animal_id":
+def animal_labels(context: PlotContext, label_by: LabelBy) -> list[str]:
+	"""What each cohort tag is called on an axis, node or legend, in ``animal_ids`` order.
+
+	A subject name two animals share gets its tag appended, since a repeated axis label
+	would merge their rows.
+	"""
+	if label_by == "animal_id":
 		return list(context.animal_ids)
 
-	return context.animals[color_by].drop_nulls().unique().sort().to_list()
+	subject = dict(
+		context.animals.select(pl.col("animal_id").cast(pl.String), "subject_name").iter_rows()
+	)
+	names = [subject[tag] for tag in context.animal_ids]
+
+	return [
+		name if names.count(name) == 1 else f"{name} ({tag})"
+		for tag, name in zip(context.animal_ids, names, strict=True)
+	]
 
 
 def resolve_colors(
@@ -95,6 +106,7 @@ def resolve_colors(
 	cmap: str = "Phase",
 	animal_column: str = "animal_id",
 	group_mean: bool = False,
+	label_by: LabelBy = "animal_id",
 ) -> ColorMapping:
 	"""Map every category of ``color_by`` to a colour.
 
@@ -109,6 +121,7 @@ def resolve_colors(
 		group_mean: average traces within each colour group, only meaningful when
 			``color_by`` is an attribute - colouring by animal keeps one trace per
 			animal regardless.
+		label_by: what each animal's category is called when colouring by animal.
 
 	Raises:
 		ValueError: ``color_by`` is not a colourable column.
@@ -116,18 +129,20 @@ def resolve_colors(
 	if color_by not in COLOR_COLUMNS:
 		raise ValueError(f"color_by must be one of {COLOR_COLUMNS}, got {color_by!r}")
 
-	categories = _categories(context, color_by)
-	colors = theme.sample_palette(len(categories), cmap)
-	title = animal_column if color_by == "animal_id" else color_by
-
 	if color_by == "animal_id":
-		category_by_animal = {tag: tag for tag in context.animal_ids}
+		categories = animal_labels(context, label_by)
+		category_by_animal = dict(zip(context.animal_ids, categories, strict=True))
+		# A role column such as ``chaser`` names the legend better than either label does.
+		title = label_by if animal_column == "animal_id" else animal_column
 	else:
+		categories = context.animals[color_by].drop_nulls().unique().sort().to_list()
 		category_by_animal = dict(
 			context.animals.select(
 				pl.col("animal_id").cast(pl.String), pl.col(color_by).cast(pl.String)
 			).iter_rows()
 		)
+		title = color_by
+	colors = theme.sample_palette(len(categories), cmap)
 
 	return ColorMapping(
 		column=animal_column if color_by == "animal_id" else color_by,

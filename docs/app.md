@@ -314,8 +314,10 @@ The control bar.
 - **Phases** switches the light and the dark phase on and off.
 - **Animals by** colours the animals by their tag, or by any cohort attribute that differs
   between them, such as genotype or sex.
+- **Label** names the animals by their **Tag** or their **Subject** name on the axes,
+  network nodes and legends, whatever colours them.
 - **Group mean** draws one line per group instead of one per animal. It is available
-  when the animals are coloured by a group, not by their tag or name.
+  when the animals are coloured by a group, not by their tag.
 - **Events** shows or hides the shading that marks each event on the plots with a time axis.
 - **Cohort** lists the animals with their colour. Click an animal to write notes about it.
 

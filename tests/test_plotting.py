@@ -352,6 +352,39 @@ def test_legend_collapses_to_one_entry_per_group(context):
 	assert list(figure.layout.colorway) == list(mapping.colors.values())
 
 
+def test_labelling_by_subject_renames_without_recolouring(context):
+	"""Label and colour are independent: an animal keeps its colour under either name."""
+	tags = animals_module.resolve_colors(context, "animal_id")
+	names = animals_module.resolve_colors(context, "animal_id", label_by="subject_name")
+	figure = go.Figure([go.Scatter(x=[0], y=[0], name=animal) for animal in ANIMALS])
+
+	animals_module.collapse_legend(figure, names)
+
+	assert names.by_animal == tags.by_animal
+	assert [trace.name for trace in figure.data] == ["m1", "m2", "m3", "m4"]
+	assert names.legend_title == "<b>Subject name</b>"
+
+
+def test_a_shared_subject_name_keeps_its_rows_apart(context):
+	"""A repeated axis label would merge two animals' heatmap rows into one."""
+	cohort = context.animals.with_columns(subject_name=pl.Series(["m1", "m1", "m3", "m4"]))
+	shared = replace(context, _loaded={**context._loaded, "animals": cohort})
+
+	assert animals_module.animal_labels(shared, "subject_name") == [
+		"m1 (0035A)",
+		"m1 (0035B)",
+		"m3",
+		"m4",
+	]
+
+
+def test_every_colour_by_plot_can_label_by_subject():
+	"""The Label control reaches every plot the Animals-by control does."""
+	for name in PlotRegistry.list_available():
+		options = {option.name for option in PlotRegistry.spec(name).options}
+		assert "color_by" not in options or "label_by" in options, name
+
+
 # --- registry ----------------------------------------------------------------
 
 
@@ -870,6 +903,24 @@ def test_quality_heatmap_pivots_miss_rate_by_animal_and_antenna(context):
 
 	assert antennas == ["1", "2"]
 	assert matrix.tolist() == [[0.0, 33.3], [16.7, 0.0]]
+
+
+def test_heatmap_rows_follow_the_label(context):
+	"""Labelling by subject renames the rows, which stay in cohort order."""
+	quality = pl.DataFrame(
+		{
+			"animal_id": ANIMALS,
+			"antenna": [1] * 4,
+			"detected": [10] * 4,
+			"missed": [0, 1, 2, 3],
+			"miss_rate": [0.0, 9.1, 16.7, 23.1],
+		}
+	)
+	with_quality = replace(context, _loaded={**context._loaded, "recording_quality": quality})
+
+	figure = PlotRegistry.build("quality-heatmap", with_quality, label_by="subject_name")
+
+	assert list(figure.data[0].y) == ["m1", "m2", "m3", "m4"]
 
 
 def test_quality_by_antenna_pools_counts_rather_than_averaging_rates():

@@ -49,6 +49,7 @@ Most plots share these options; the [plot list](#available-plots) says which eac
 | `phase_type` | a list of `"light_phase"`, `"dark_phase"` | both | which phases to include |
 | `agg` | `"sum"`, `"mean"` | `"sum"` | total the window, or average it; bar plots then show the spread across days or phases, and line plots a standard-error band |
 | `color_by` | `"animal_id"` or a cohort attribute | `"animal_id"` | colour each animal by its tag, or by its group |
+| `label_by` | `"animal_id"`, `"subject_name"` | `"animal_id"` | name each animal by its tag or its subject name on axes, network nodes and legends; every plot that shows individual animals takes it |
 | `scope` | `"cages"`, `"tunnels"`, `"all"` | `"cages"` | which positions to include |
 | `unit` | `"auto"`, `"seconds"`, `"minutes"`, `"hours"`, `"days"` | `"auto"` | the unit durations are shown in; `"auto"` picks the largest one the data reaches |
 
@@ -57,9 +58,10 @@ Most plots share these options; the [plot list](#available-plots) says which eac
 the `start_from` phase.
 
 **Colour by group.** `color_by` accepts `animal_id` and any of
-`subject_name`, `sex`, `genotype`, `treatment`, `mouse_line` and `genetic_background` that
+`sex`, `genotype`, `treatment`, `mouse_line` and `genetic_background` that
 takes more than one value in the cohort. An animal keeps its colour in every plot, whatever
-the selection. To list the attributes available for a recording:
+the selection, and whatever `label_by` names it. To list the attributes available for a
+recording:
 
 ```python
 deh.available_attributes(context)
