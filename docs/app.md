@@ -649,7 +649,8 @@ The Export dialog.
   width and height are in millimetres.
 - **Font size**, from 6 to 12 pt.
 - **Include**: the legend, the title, the event labels, and the plotted data as CSV, which
-  comes in one zip with the figure.
+  comes in one zip with the figure. A plot with several panels, such as a line plot and the
+  totals beside it, gets one CSV per panel, numbered in drawing order.
 - **File name**.
 
 The preview on the left is the file itself, scaled down to fit. The file is laid out at the

@@ -151,7 +151,7 @@ def test_too_many_short_panels_warns():
 def test_figure_data_csv_extracts_xy_traces():
 	fig = go.Figure(go.Scatter(x=[1, 2], y=[3, 4], name="A")).to_dict()
 
-	lines = export.figure_data_csv(fig).splitlines()
+	lines = export.figure_data_csv(fig)[0].splitlines()
 
 	assert lines[0] == "trace,x,y"
 	assert "A,1,3" in lines
@@ -161,16 +161,30 @@ def test_figure_data_csv_extracts_xy_traces():
 def test_figure_data_csv_flattens_heatmap_z():
 	fig = go.Figure(go.Heatmap(x=["c1", "c2"], y=["r1"], z=[[1, 2]])).to_dict()
 
-	lines = export.figure_data_csv(fig).splitlines()
+	lines = export.figure_data_csv(fig)[0].splitlines()
 
 	assert lines[0] == "trace,x,y,z"
 	assert "heatmap,c2,r1,2" in lines
 
 
+def test_figure_data_csv_writes_one_table_per_subplot():
+	"""A line beside horizontal bars: one table each, though the bars' y holds names.
+
+	Past polars' 100-row inference window, one shared table used to fail on the names.
+	"""
+	fig = go.Figure(go.Scatter(x=list(range(150)), y=[0.5] * 150, name="A"))
+	fig.add_trace(go.Bar(x=[75], y=["A"], orientation="h", name="A", xaxis="x2", yaxis="y2"))
+
+	lines, bars = (table.splitlines() for table in export.figure_data_csv(fig.to_dict()))
+
+	assert len(lines) == 151 and lines[1] == "A,0,0.5"
+	assert bars == ["trace,x,y", "A,75,A"]
+
+
 def test_figure_data_csv_returns_none_for_untabular_traces():
 	fig = go.Figure(go.Pie(labels=["a"], values=[1])).to_dict()
 
-	assert export.figure_data_csv(fig) is None
+	assert export.figure_data_csv(fig) == []
 
 
 def test_figure_data_csv_decodes_plotlys_typed_array_encoding():
@@ -180,7 +194,7 @@ def test_figure_data_csv_decodes_plotlys_typed_array_encoding():
 	).to_dict()
 	assert isinstance(fig["data"][0]["x"], dict)  # confirms the encoding actually kicked in
 
-	lines = export.figure_data_csv(fig).splitlines()
+	lines = export.figure_data_csv(fig)[0].splitlines()
 
 	assert "1" in lines[1].split(",") and "3" in lines[1].split(",")
 	assert "2" in lines[2].split(",") and "4" in lines[2].split(",")
@@ -192,7 +206,7 @@ def test_figure_data_csv_decodes_typed_array_heatmap_z_with_shape():
 	).to_dict()
 	assert isinstance(fig["data"][0]["z"], dict)
 
-	lines = export.figure_data_csv(fig).splitlines()
+	lines = export.figure_data_csv(fig)[0].splitlines()
 
 	assert "heatmap,c2,r1,2.0" in lines
 

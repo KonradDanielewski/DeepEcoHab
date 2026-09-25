@@ -824,8 +824,7 @@ def test_timeline_ships_wall_clock_numbers_and_reads_back_as_dates():
 	assert all("bdata" in trace["x"] and "bdata" in trace["y"] for trace in payload["data"])
 	assert payload["layout"]["xaxis"]["type"] == "date"
 
-	csv = export.figure_data_csv(payload)
-	assert csv is not None
+	(csv,) = export.figure_data_csv(payload)
 	assert pl.read_csv(csv.encode()).rows() == [
 		("cage_1", "2023-05-24T02:00:00.000", "0035A"),
 		("cage_1", "2023-05-24T03:00:00.000", "0035A"),
