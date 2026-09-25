@@ -1,6 +1,6 @@
 import json
 import math
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Sequence
 from html import escape
 from typing import Any
@@ -13,7 +13,7 @@ from dash import dcc, html
 
 from deepecohab.core.data_model import Layout
 from deepecohab.plotting import export as plot_export
-from deepecohab.plotting.theme import COLORSCALES, PALETTES
+from deepecohab.plotting.theme import CAGE_LOOKS, COLORSCALES, PALETTES
 
 DIALOG_CLASSES = {
 	"content": "deh-dialog",
@@ -532,6 +532,30 @@ def _habitat_band(miss: float | None) -> str:
 	return "warn" if miss < 2.5 else "bad"
 
 
+def _cage_looks(layout: Layout) -> dict[str, int]:
+	"""Which of ``CAGE_LOOKS`` each cage type the config names draws with; past eight they repeat.
+
+	The commonest type takes the plain look, as the blueprint's standard cage does, and the
+	rest follow by count, then name.
+	"""
+	counts = Counter(cage.cage_type for cage in layout.cages)
+	ranked = sorted(counts, key=lambda kind: (-counts[kind], kind))
+	return {kind: index % len(CAGE_LOOKS["light"]) for index, kind in enumerate(ranked)}
+
+
+def _look_vars(look: int) -> dict[str, str]:
+	"""One cage look as CSS variables, both themes' pairs, for app.css to pick between."""
+	(fill, stroke), (dark_fill, dark_stroke) = (
+		CAGE_LOOKS[name][look] for name in ("light", "dark")
+	)
+	return {
+		"--hab-fill": fill,
+		"--hab-stroke": stroke,
+		"--hab-fill-dark": dark_fill,
+		"--hab-stroke-dark": dark_stroke,
+	}
+
+
 def _habitat_svg(layout: Layout, label: str, antenna_miss: dict[str, float] | None) -> str:
 	"""The habitat as one SVG element, for ``deh.paintHabitat`` to paint in.
 
@@ -540,6 +564,10 @@ def _habitat_svg(layout: Layout, label: str, antenna_miss: dict[str, float] | No
 	"""
 	at = _habitat_positions(layout)
 	cages = {cage.cell_id: cage for cage in layout.cages}
+	looks = {
+		kind: "; ".join(f"{name}: {value}" for name, value in _look_vars(look).items())
+		for kind, look in _cage_looks(layout).items()
+	}
 
 	tubes, labels, antennas = [], [], []
 	for tunnel in layout.tunnels:
@@ -578,7 +606,8 @@ def _habitat_svg(layout: Layout, label: str, antenna_miss: dict[str, float] | No
 		x, y = at[cage.cell_id]
 		title = f"{cage.name} · {cage.cage_type} · antennas {', '.join(cage.antennas)}"
 		boxes.append(
-			f'<g class="deh-hab-cage {escape(cage.cage_type)}"><title>{escape(title)}</title>'
+			f'<g class="deh-hab-cage" style="{looks[cage.cage_type]}">'
+			f"<title>{escape(title)}</title>"
 			f'<rect x="{x - _HAB_W / 2:.2f}" y="{y - _HAB_H / 2:.2f}" '
 			f'width="{_HAB_W}" height="{_HAB_H}" rx="13"/>'
 			f'<text class="deh-hab-name" x="{x:.2f}" y="{y - 2:.2f}">'
@@ -598,14 +627,8 @@ def _habitat_svg(layout: Layout, label: str, antenna_miss: dict[str, float] | No
 	)
 
 
-#: Legend keys, as (extra class, label); the empty class is the plain standard cage.
-_HAB_KEYS = (
-	("social", "social"),
-	("", "standard"),
-	("nonsocial", "nonsocial"),
-	("tunnel", "tunnel"),
-	("ant", "antenna"),
-)
+#: Legend keys after the cage types, as (extra class, label).
+_HAB_KEYS = (("tunnel", "tunnel"), ("ant", "antenna"))
 
 #: Shown only when there are miss rates to band by; same cuts as the header's quality badge.
 _HAB_BAND_KEYS = (("ant warn", "1-2.5% missed"), ("ant bad", "2.5% and over"))
@@ -641,7 +664,11 @@ def habitat_map(
 		),
 		html.Div(
 			[
-				html.Span([html.I(className=f"deh-hab-key {modifier}".strip()), name])
+				html.Span([html.I(className="deh-hab-key cage", style=_look_vars(look)), kind])
+				for kind, look in _cage_looks(layout).items()
+			]
+			+ [
+				html.Span([html.I(className=f"deh-hab-key {modifier}"), name])
 				for modifier, name in _HAB_KEYS + (_HAB_BAND_KEYS if antenna_miss else ())
 			],
 			className="deh-hab-legend",

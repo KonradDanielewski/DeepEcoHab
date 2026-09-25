@@ -115,6 +115,29 @@ PHASE_BAND: dict[str, dict[str, str]] = {
 	for name, tokens in _TOKENS.items()
 }
 
+CAGE_LOOKS: dict[str, list[tuple[str, str]]] = {
+	"light": [
+		("#ffffff", "#c9d2d2"),  # --surface, --line-strong
+		("#eef1f1", "#c9d2d2"),  # --sunken, --line-strong
+		("#e0f1f3", "#1a7f91"),  # --accent-soft, --accent
+		("#e0eaf6", "#3f7cc4"),  # --k-dim at 16%
+		("#d7dada", "#6f7c7b"),  # --ink-3 at 28%
+		("#a3ccd3", "#1a7f91"),  # --accent at 40%
+		("#b2cbe7", "#3f7cc4"),  # --k-dim at 40%
+		("#b0b7b6", "#4a5857"),  # --ink-3 at 55%, --ink-2
+	],
+	"dark": [
+		("#151c1c", "#344242"),
+		("#1c2525", "#344242"),
+		("#143238", "#45b5c8"),
+		("#24323c", "#72a4e4"),
+		("#323b3a", "#7b8988"),
+		("#285961", "#45b5c8"),
+		("#3a526c", "#72a4e4"),
+		("#4d5857", "#a3b1b0"),
+	],
+}
+
 #: Trace defaults every theme shares: a bare line is a smooth curve with no markers.
 _DATA = {"scatter": [{"mode": "lines", "line": {"shape": "spline"}}]}
 
