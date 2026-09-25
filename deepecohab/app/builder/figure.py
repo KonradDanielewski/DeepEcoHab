@@ -6,6 +6,7 @@ from typing import Any
 import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
+import polars.selectors as cs
 
 from deepecohab.app.builder.catalog import EXPOSURE, METRIC, VALUE, Field, Kind, metric_names
 from deepecohab.plotting import theme
@@ -381,6 +382,14 @@ def build_frame(
 	keys = group_keys(state, catalog)
 	wanted = measures(state, catalog)
 	mode = state.get("measure_as", DEFAULT_MODE)
+
+	if mode == "mean":
+		# An hour's value is split over the positions it happened in; put it back
+		# together first, or the mean would be over positions rather than hours.
+		spread = {"position", "position_type"} - set(keys)
+		frame = frame.group_by(cs.exclude(VALUE, EXPOSURE, *spread)).agg(
+			pl.sum(VALUE), pl.sum(EXPOSURE)
+		)
 
 	# Only what is grouped is binned: a leftover block for a field since taken off every
 	# shelf would otherwise still rewrite its column.

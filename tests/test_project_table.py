@@ -17,7 +17,7 @@ import pytest
 import strategies
 
 from deepecohab.app import services
-from deepecohab.core.data_model import Bout, Event, Project, Recording
+from deepecohab.core.data_model import Bout, Event, Layout, Project, Recording
 
 TZ = "UTC"
 # Animals shuttle between neighbouring cages, which is enough to populate every table.
@@ -120,6 +120,19 @@ def test_enums_are_widened_to_strings(project):
 
 	assert table.schema["animal_id"] == pl.String
 	assert table.schema["phase"] == pl.String
+	assert table.schema["position"] == pl.String
+
+
+def test_position_type_names_what_each_position_is(project):
+	"""Cages carry their cage type, tunnels "tunnel" and unplaced time stays undefined."""
+	table = project.generate_project_table().collect()
+	layout = project.recordings[0].layout
+	types = dict(table.select("position", "position_type").unique().iter_rows())
+
+	assert {types[cage] for cage in layout.cage_names} == {"standard"}
+	assert {types[tunnel] for tunnel in layout.tunnel_names} == {"tunnel"}
+	assert types[Layout.UNDEFINED] == Layout.UNDEFINED
+	assert types[None] is None  # the chasing metrics, which belong to no position
 
 
 def test_metadata_travels_with_every_row(project):

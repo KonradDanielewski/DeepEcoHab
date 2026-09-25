@@ -1,7 +1,7 @@
 """Tests for calculate_features (per-animal metrics as value + exposure).
 
-calculate_features collapses the upstream tables to one value per animal per hour for
-seven metrics and pairs each with the opportunity it arose from, so a rate is
+calculate_features collapses the upstream tables to one value per animal, hour and
+position for seven metrics and pairs each with the opportunity it arose from, so a rate is
 sum(value)/sum(exposure) at any grouping. It reads chasings_df, pairwise_meetings,
 activity_df and main_df via Recording.load_results, which we monkeypatch with a
 key-dispatching stub; the step is called directly. Fixtures live in one light_phase
@@ -56,6 +56,7 @@ def activity_frame(rows: list[tuple[str, int, float, float]], hour: int = 0) -> 
 	return pl.LazyFrame(
 		{
 			**_base(len(rows), hour),
+			"position": pl.Series(["cage_1"] * len(rows), dtype=pl.Categorical),
 			"animal_id": pl.Series([r[0] for r in rows], dtype=ANIMAL_ENUM),
 			"visits_to_position": pl.Series([r[1] for r in rows], dtype=pl.UInt32),
 			"time_alone": strategies.seconds([float(r[2]) for r in rows]),
@@ -112,9 +113,9 @@ def quiet_hour(monkeypatch, activity, hour: int = 0) -> pl.DataFrame:
 
 
 def column_for(result: pl.DataFrame, metric: str, column: str) -> dict[str, float]:
-	"""One column of a metric's rows, keyed by animal."""
-	sub = result.filter(pl.col("metric") == metric)
-	return dict(sub.select("animal_id", column).iter_rows())
+	"""One column of a metric's rows, summed over positions and keyed by animal."""
+	sub = result.filter(pl.col("metric") == metric).group_by("animal_id").agg(pl.sum(column))
+	return dict(sub.iter_rows())
 
 
 def rate_for(result: pl.DataFrame, metric: str) -> dict[str, float]:
@@ -145,6 +146,7 @@ def test_output_is_long_with_value_and_exposure(monkeypatch):
 		"phase_count",
 		"hour",
 		"animal_id",
+		"position",
 		"metric",
 		"value",
 		"exposure",
@@ -265,14 +267,20 @@ def test_unobserved_animal_contributes_nothing(monkeypatch):
 
 
 def test_no_nulls_anywhere(monkeypatch):
-	"""Cells no upstream table mentioned are filled, not left null."""
+	"""Cells no upstream table mentioned are filled, not left null.
+
+	The one null is the position of a chasing metric, which belongs to no position.
+	"""
 	result = run_features(
 		monkeypatch,
 		chasings=chasings_frame([("A", "B", 1)]),
 		activity=activity_frame([("A", 10, 0.0, HOUR), ("B", 20, 0.0, HOUR)]),
 		pairwise=pairwise_frame([("A", "B", 5.0, 1)]),
 	)
-	assert result.null_count().sum_horizontal().item() == 0
+	unplaced = result.filter(pl.col("position").is_null())
+
+	assert result.drop("position").null_count().sum_horizontal().item() == 0
+	assert set(unplaced["metric"]) == {"n_chasing", "n_chased", "n_chasing_per_detection"}
 
 
 def test_tunnel_co_presence_reaches_the_features(monkeypatch):
@@ -319,6 +327,30 @@ def test_undefined_time_is_part_of_the_observed_exposure(monkeypatch):
 	assert column_for(result, "activity", "exposure")["A"] == 1.0
 
 
+def test_a_position_is_exposed_against_the_time_spent_there(monkeypatch):
+	"""Filtered to some positions, a rate reads within them; unfiltered, it is unchanged.
+
+	A spends a quarter hour alone in cage_1 out of the half hour it is there, and the
+	rest of the hour in cage_2 with company. Paired metrics are exposed per partner in
+	each position as well, so their positions still sum to the observed partner-hours.
+	"""
+	activity = pl.concat(
+		[
+			activity_frame([("A", 3, HOUR / 4, HOUR / 2)]),
+			activity_frame([("A", 1, 0.0, HOUR / 2)]).with_columns(
+				pl.lit("cage_2", dtype=pl.Categorical).alias("position")
+			),
+		]
+	)
+	result = quiet_hour(monkeypatch, activity).filter(pl.col("animal_id") == "A")
+	cage_1 = result.filter(pl.col("position") == "cage_1")
+
+	assert rate_for(cage_1, "time_alone")["A"] == 0.5
+	assert rate_for(result, "time_alone")["A"] == 0.25
+	assert column_for(cage_1, "time_together", "exposure")["A"] == 0.5 * PARTNERS
+	assert column_for(result, "time_together", "exposure")["A"] == 1.0 * PARTNERS
+
+
 def test_one_animal_cohort_omits_the_paired_metrics(monkeypatch):
 	"""With no partner available, a paired metric has no exposure to be read against.
 
@@ -343,6 +375,7 @@ def test_one_animal_cohort_omits_the_paired_metrics(monkeypatch):
 		"activity_df": pl.LazyFrame(
 			{
 				**one,
+				"position": pl.Series(["cage_1"], dtype=pl.Categorical),
 				"animal_id": pl.Series(["A"], dtype=animals),
 				"visits_to_position": pl.Series([4], dtype=pl.UInt32),
 				"time_alone": strategies.seconds([HOUR]),
@@ -373,4 +406,4 @@ def test_one_animal_cohort_omits_the_paired_metrics(monkeypatch):
 	assert dict(
 		result.filter(pl.col("metric") == "time_alone").select("value", "exposure").iter_rows()
 	) == {1.0: 1.0}
-	assert result.null_count().sum_horizontal().item() == 0
+	assert result.drop("position").null_count().sum_horizontal().item() == 0

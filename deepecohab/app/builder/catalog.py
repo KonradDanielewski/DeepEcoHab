@@ -27,6 +27,8 @@ GROUPS: dict[str, str] = {
 	"phase_count": "Time",
 	"hour": "Time",
 	"phase": "Time",
+	"position": "Position",
+	"position_type": "Position",
 	"recording": "Recording",
 	"n_mice": "Recording",
 	"animal_id": "Animal",
