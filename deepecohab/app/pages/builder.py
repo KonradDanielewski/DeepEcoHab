@@ -391,6 +391,7 @@ def _palette_children(fields: list[catalog.Field], kind: str, search: str) -> li
 		items = [
 			f for f in fields if f.group == group_name and (not query or query in f.label.lower())
 		]
+		items.sort(key=lambda f: f.label.lower())
 		if not items:
 			continue
 		groups.append(
