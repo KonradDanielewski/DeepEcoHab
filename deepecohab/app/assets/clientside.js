@@ -378,6 +378,12 @@ document.addEventListener("load", function (event) {
 	}]});
 }, true);
 
+/* The update toast's Cancel (see _check_update): toast content is outside Dash's layout. */
+document.addEventListener("click", function (event) {
+	if (!event.target.closest(".deh-update-cancel")) return;
+	window.dash_clientside.set_props("notifications", {hideNotifications: ["update-available"]});
+});
+
 
 window.dash_clientside.deh = {
 	/* --- shell ------------------------------------------------------------ */

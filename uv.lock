@@ -439,6 +439,7 @@ dependencies = [
 app = [
     { name = "dash", extra = ["diskcache"] },
     { name = "dash-mantine-components" },
+    { name = "packaging" },
     { name = "pyshortcuts" },
 ]
 dev = [
@@ -448,6 +449,7 @@ dev = [
     { name = "ipykernel" },
     { name = "ipywidgets" },
     { name = "nbformat" },
+    { name = "packaging" },
     { name = "pre-commit" },
     { name = "pyshortcuts" },
     { name = "pytest" },
@@ -483,6 +485,7 @@ requires-dist = [
     { name = "networkx" },
     { name = "numpy" },
     { name = "openskill" },
+    { name = "packaging", marker = "extra == 'app'" },
     { name = "plotly" },
     { name = "polars" },
     { name = "pre-commit", marker = "extra == 'dev'" },
