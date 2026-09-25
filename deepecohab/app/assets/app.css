@@ -1496,6 +1496,89 @@ code {
 	font-size: 13px;
 }
 
+/* ------------------------------------------------------------- events card */
+/* One lane per event over the whole recording, tinted by phase, with the day axis below. */
+.deh-ev-strip {
+	display: grid;
+	grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
+	align-items: center;
+	gap: 6px 12px;
+	margin: 14px 16px 4px;
+}
+
+.deh-ev-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	font-size: 13px;
+}
+
+.deh-ev-label .deh-dot {
+	flex: none;
+	margin-top: 0;
+}
+
+.deh-ev-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.deh-ev-track {
+	position: relative;
+	height: 22px;
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+/* A 20-minute bout in a week-long recording is a sliver; the floor keeps it visible. */
+.deh-ev-bar {
+	position: absolute;
+	top: 3px;
+	bottom: 3px;
+	min-width: 4px;
+	border-radius: 3px;
+	box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+}
+
+.deh-ev-axis {
+	position: relative;
+	height: 22px;
+}
+
+.deh-ev-band {
+	height: 3px;
+	border-radius: 2px;
+}
+
+.deh-ev-tick {
+	position: absolute;
+	top: 0;
+	width: 1px;
+	height: 7px;
+	background: var(--line-strong);
+}
+
+.deh-ev-day {
+	position: absolute;
+	top: 8px;
+	transform: translateX(-50%);
+	color: var(--ink-3);
+	font-size: 10.5px;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+}
+
+.deh-ev-group > td {
+	background: var(--sunken);
+}
+
+/* Bouts sit under their event's name, past the swatch. */
+.deh-ev-table tr:not(.deh-ev-group) > :first-child {
+	padding-left: 28px;
+}
+
 /* ------------------------------------------------------------- plot builder */
 .deh-alert-warn {
 	border-color: color-mix(in srgb, var(--warn) 35%, transparent);
