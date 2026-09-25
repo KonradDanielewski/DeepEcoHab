@@ -66,11 +66,10 @@ deh.available_attributes(context)
 ```
 
 **Scope.** Plots drawing one panel per position (`cage-preference-evolution`,
-`time-per-cage-heatmap`, `sociability-heatmap`) accept only `"cages"` or `"tunnels"`, since
-cage times run to hours and tunnel times to seconds and cannot share one colour scale.
+`sociability-heatmap`) accept only `"cages"` or `"tunnels"`, since cage times run to hours
+and tunnel times to seconds and cannot share one colour scale.
 
-**Events.** Plots with a time axis (`cage-preference-evolution`, `time-per-cage-heatmap`,
-`activity-line`, `chasings-line`, `ranking-line`) shade the recording's
+**Events.** Plots with a time axis (`cage-preference-evolution`, `activity-line`, `chasings-line`, `ranking-line`) shade the recording's
 [event bouts](./tutorial_antenna.md#metadata).
 
 ## Available plots
@@ -84,8 +83,7 @@ To list them in code: `deh.PlotRegistry.list_available()`.
 | `activity-bar` | visits to each position, or time spent there, per animal | `metric` (`"time"`, `"visits"`), `days_range`, `granularity`, `phase_type`, `agg`, `color_by`, `unit` |
 | `time-alone-bar` | time each animal spent with no other animal present, per position | `days_range`, `granularity`, `phase_type`, `agg`, `scope`, `color_by`, `unit` |
 | `cage-preference` | how the cohort's time is distributed across positions | `days_range`, `granularity`, `phase_type`, `scope`, `unit` |
-| `cage-preference-evolution` | time per animal in each cage or tunnel, across days or phases | `days_range`, `granularity`, `agg`, `scope`, `unit` |
-| `time-per-cage-heatmap` | time per animal in each cage or tunnel, across the 24 hours of the experiment day | `days_range`, `granularity`, `agg`, `scope`, `unit` |
+| `cage-preference-evolution` | time per animal in each cage or tunnel, across days or phases, or with `timescale="hours"` across the 24 hours of the experiment day | `timescale` (`"days"`, `"hours"`), `days_range`, `granularity`, `agg`, `scope`, `unit` |
 | `activity-line` | antenna reads per hour of the day: the circadian rhythm | `days_range`, `granularity`, `agg`, `color_by` |
 
 ### Social hierarchy

@@ -99,8 +99,8 @@ def project_summary(location: str) -> dict:
 
 	Returns:
 		The manifest fields, ``error`` (None when the project loads), ``table_rows`` (None
-		until the project table is generated) and one dict per recording. A recording's
-		window, cohort and events are there only when the project loads.
+		until the project table is generated), one dict per recording and the ``delisted``
+		names. A recording's window, cohort and events are there only when the project loads.
 	"""
 	root = Path(location)
 	steps = len(DataFrameRegistry.step_order())
@@ -130,6 +130,7 @@ def project_summary(location: str) -> dict:
 				{"name": name, "done": sum(recording_status(root / name).values()), "total": steps}
 				for name in manifest.get("data_catalog", {})
 			],
+			"delisted": list(manifest.get("delisted", {})),
 		}
 
 	return {
@@ -139,6 +140,7 @@ def project_summary(location: str) -> dict:
 		"description": project.description,
 		"error": None,
 		"recordings": [_recording_summary(recording, steps) for recording in project.recordings],
+		"delisted": list(project.delisted),
 	}
 
 

@@ -188,68 +188,37 @@ def cage_preference_evolution(
 	*,
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
+	timescale: Literal["days", "hours"] = "days",
 	agg: Literal["sum", "mean"] = "sum",
 	scope: FacetScope = "cages",
 	unit: Unit | Literal["auto"] = "auto",
 	hours_range: tuple[int, int] | None = None,
 ) -> go.Figure:
-	"""Time spent in each cage, or each tunnel, across days or phases."""
-	window = _window(context, days_range, granularity)
-	heatmap = prepare.prep_time_per_position(
-		context,
-		window,
-		agg,
-		granularity,
-		granularity,
-		context.scope_positions(scope),
-		context.animal_ids,
-		unit,
-		hours_range,
-	)
+	"""Time spent in each cage, or each tunnel, across the window or the hours of the day.
 
-	spans = prepare.prep_event_spans(context, window, granularity, granularity, hours_range)
-
-	return plot_factory.plot_time_spent_per_cage(
-		heatmap, "daily", spans, SCOPE_NOUN[scope], granularity
-	)
-
-
-@PlotRegistry.register(
-	"time-per-cage-heatmap",
-	title="Time per position by hour",
-	requires=("activity_df", "animals"),
-)
-def time_per_cage(
-	context: PlotContext,
-	*,
-	days_range: tuple[int, int] | None = None,
-	granularity: Granularity = "day",
-	agg: Literal["sum", "mean"] = "sum",
-	scope: FacetScope = "cages",
-	unit: Unit | Literal["auto"] = "auto",
-	hours_range: tuple[int, int] | None = None,
-) -> go.Figure:
-	"""Position occupancy across the 24 hours of the experiment day.
-
-	One panel per cage, or per tunnel, showing when and for how long each animal
-	occupies it.
+	``"days"`` steps through the window's days or phases, following ``granularity``;
+	``"hours"`` folds the window onto the 24 hours of the experiment day.
 	"""
 	window = _window(context, days_range, granularity)
+	x = granularity if timescale == "days" else "hour"
 	heatmap = prepare.prep_time_per_position(
 		context,
 		window,
 		agg,
 		granularity,
-		"hour",
+		x,
 		context.scope_positions(scope),
 		context.animal_ids,
 		unit,
 		hours_range,
 	)
 
-	spans = prepare.prep_event_spans(context, window, granularity, "hour", hours_range)
+	spans = prepare.prep_event_spans(context, window, granularity, x, hours_range)
+	kind = "daily" if timescale == "days" else "hourly"
 
-	return plot_factory.plot_time_spent_per_cage(heatmap, "hourly", spans, SCOPE_NOUN[scope])
+	return plot_factory.plot_time_spent_per_cage(
+		heatmap, kind, spans, SCOPE_NOUN[scope], granularity
+	)
 
 
 @PlotRegistry.register(

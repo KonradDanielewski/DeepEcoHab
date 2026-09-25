@@ -266,6 +266,38 @@ def test_removing_a_recording_drops_it_from_the_project_table(tmp_path):
 	assert set(table["recording"].unique()) == {"keep"}
 
 
+def test_a_delisted_recording_can_be_reinstated_after_a_reload(tmp_path):
+	recording = make_recording("back", ["A", "B"], "WT", "2023-05-26 00:00:00")
+	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+	project = Project.create(
+		project_name="reinstate", experimenter="tester", location=tmp_path / "project"
+	)
+	project.add_recording(metadata_path, data_path)
+	project.remove_recording("back")
+	project.close()
+
+	with Project.load(project.project_location) as reopened:
+		assert reopened.delisted == {"back": "back/config.json"}
+		reopened.reinstate_recording("back")
+
+	with Project.load(project.project_location) as reopened:
+		assert list(reopened.data_catalog) == ["back"]
+		assert reopened.delisted == {}
+
+
+def test_deleting_a_recording_leaves_nothing_to_reinstate(tmp_path):
+	recording = make_recording("gone", ["A", "B"], "WT", "2023-05-26 00:00:00")
+	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+	project = Project.create(
+		project_name="delete", experimenter="tester", location=tmp_path / "project"
+	)
+	project.add_recording(metadata_path, data_path)
+	project.remove_recording("gone", delete_files=True)
+
+	with pytest.raises(KeyError, match="No delisted recording"):
+		project.reinstate_recording("gone")
+
+
 def test_removing_the_last_recording_deletes_the_project_table(tmp_path):
 	recording = make_recording("only", ["A", "B"], "WT", "2023-05-26 00:00:00")
 	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)

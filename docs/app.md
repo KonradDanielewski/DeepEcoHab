@@ -251,7 +251,8 @@ A recording's downloads.
 ```
 
 The bin button removes a recording from the project. **Delist, keep files** takes it off the
-list and leaves its folder where it is, so adding its files again brings it back. **Delete
+list and leaves its folder where it is. **Reinstate**, under the recordings table, brings it
+back with its results; regenerate the project table afterwards to include it again. **Delete
 files** also deletes the recording's folder: its config, raw registrations and results.
 Deleting cannot be undone.
 

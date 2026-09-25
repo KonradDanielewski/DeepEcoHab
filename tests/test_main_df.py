@@ -373,3 +373,14 @@ def test_antenna_the_layout_does_not_name_is_rejected():
 def test_antenna_that_never_read_is_not_an_error():
 	"""A dead antenna is a quality finding, not a broken config."""
 	assert loaded_with(["1", "2"]).data.collect().height == 2
+
+
+def test_optional_column_is_accepted_when_present_and_typed():
+	"""internal_board_timestamp may be absent, but when present it must match its dtype."""
+	recording = loaded_with(["1"])
+	stamps = recording.data.with_columns(internal_board_timestamp=pl.col("datetime"))
+	Recording.model_validate({**recording.to_config(), "data": stamps})
+
+	untyped = stamps.with_columns(pl.col("internal_board_timestamp").cast(pl.Int64))
+	with pytest.raises(ValidationError, match="schema mismatch"):
+		Recording.model_validate({**recording.to_config(), "data": untyped})

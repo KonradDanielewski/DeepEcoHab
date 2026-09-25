@@ -15,14 +15,15 @@ metadata JSON describing the timeline, the cohort and the habitat layout.
 
 ### Antenna registrations
 
-One row per antenna read, with exactly these columns:
+One row per antenna read, with exactly these columns, in this order:
 
 | column | type | meaning |
 |---|---|---|
 | `datetime` | `Datetime("us", <recording timezone>)` | when the read happened |
-| `antenna` | `Int8` | antenna number, as the layout names it |
+| `antenna` | `Categorical` | antenna name (Antena-COM), as the layout names it (e.g. `"1-3"`) |
 | `time_under` | `Duration("us")` | how long the transponder stayed under the antenna |
 | `animal_id` | `Enum(<cohort tags, sorted>)` | the animal's RFID tag |
+| `internal_board_timestamp` *(optional)* | `Datetime("us", <recording timezone>)` | the acquisition board's own clock; not used by the analysis yet |
 
 Timestamps are microseconds in the timezone the metadata names. The schema is checked when
 the recording is added, and a mismatch is rejected with the expected and found schemas side

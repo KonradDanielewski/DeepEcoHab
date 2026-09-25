@@ -540,13 +540,21 @@ class Recording(BaseModel):
 
 	@property
 	def data_schema(self) -> pl.Schema:
-		"""Expected input data schema."""
+		"""Required input data schema; columns of `optional_data_schema` may follow it."""
 		return pl.Schema(
 			{
 				"datetime": pl.Datetime("us", time_zone=self.timeline.recording_timezone.key),
 				"antenna": pl.Categorical(),
 				"time_under": pl.Duration("us"),
 				"animal_id": pl.Enum(self.cohort.animal_tags),
+			}
+		)
+
+	@property
+	def optional_data_schema(self) -> pl.Schema:
+		"""Input columns a recording may carry, typed when present; no analysis reads them yet."""
+		return pl.Schema(
+			{
 				"internal_board_timestamp": pl.Datetime(
 					"us", time_zone=self.timeline.recording_timezone.key
 				),
@@ -679,7 +687,8 @@ class Recording(BaseModel):
 	def _check_schema(self, info: ValidationInfo) -> "Recording":
 		path = (info.context or {}).get("data_path", "<data>")
 		found = self.data.collect_schema()
-		expected = self.data_schema
+		optional = {col: dtype for col, dtype in self.optional_data_schema.items() if col in found}
+		expected = pl.Schema({**self.data_schema, **optional})
 
 		if found != expected:
 			raise ValueError(
@@ -755,7 +764,8 @@ class Project(BaseModel):
 	The project is persisted as <project_location>/project.json, which maps each
 	recording name to its config.json relative to the manifest. Each recording
 	owns <project_location>/<recording_name>/, holding config.json, raw/ and
-	results/. Data is reattached from raw/data.parquet on load.
+	results/. Data is reattached from raw/data.parquet on load. Delisted recordings
+	keep their folder and are mapped the same way under ``delisted``, unloaded.
 	"""
 
 	MANIFEST: ClassVar[str] = "project.json"
@@ -769,6 +779,7 @@ class Project(BaseModel):
 	created_at: dt.datetime
 	description: str = ""
 	data_catalog: dict[str, Recording] = Field(default_factory=dict)
+	delisted: dict[str, str] = Field(default_factory=dict)
 
 	_logger: logging.Logger | None = PrivateAttr(default=None)
 
@@ -896,7 +907,8 @@ class Project(BaseModel):
 		"""Removes recording from project.
 
 		By default a soft delete - delists from the catalog, leaving config.json
-		and the data on disk. ``delete_files`` removes them too.
+		and the data on disk for :meth:`reinstate_recording`. ``delete_files``
+		removes them too.
 		"""
 		if name not in self.data_catalog:
 			raise KeyError(f"No recording named {name!r} in project {self.project_name!r}.")
@@ -904,6 +916,8 @@ class Project(BaseModel):
 		del self.data_catalog[name]
 		if delete_files:
 			shutil.rmtree(self.project_location / name, ignore_errors=True)
+		else:
+			self.delisted[name] = f"{name}/{self.CONFIG}"
 
 		table_path = self.project_location / self.PROJECT_TABLE
 		if table_path.is_file():
@@ -919,6 +933,24 @@ class Project(BaseModel):
 			"deleted" if delete_files else "kept",
 		)
 		self._save()
+
+	def reinstate_recording(self, name: str) -> Recording:
+		"""Brings a delisted recording back from the files it left on disk.
+
+		Its results come back with it; the project table does not until it is generated again.
+		"""
+		if name not in self.delisted:
+			raise KeyError(
+				f"No delisted recording named {name!r} in project {self.project_name!r}. "
+				f"Delisted: {sorted(self.delisted)}"
+			)
+
+		recording = self._read_config(self.project_location / self.delisted[name])
+		del self.delisted[name]
+		self.data_catalog[name] = recording
+		self.log.info("reinstated recording %r", name)
+		self._save()
+		return recording
 
 	def run_analysis(
 		self,

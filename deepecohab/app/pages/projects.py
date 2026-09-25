@@ -85,6 +85,7 @@ layout = html.Div(
 		dcc.Store(id="generate-table-event"),
 		dcc.Store(id="add-recordings-event"),
 		dcc.Store(id="remove-recording-event"),
+		dcc.Store(id="reinstate-recording-event"),
 		html.Div(
 			[
 				html.Div([html.H2("Projects"), html.P(id="project-count")], className="deh-titles"),
@@ -394,7 +395,7 @@ layout = html.Div(
 				html.Div(
 					html.P(
 						"Delisting takes the recording out of the project and leaves every file "
-						"where it is, so adding it again brings it back. Deleting also removes "
+						"where it is, so Reinstate brings it back. Deleting also removes "
 						"the recording's folder — its config, raw registrations and results "
 						"— for good."
 					),
@@ -519,6 +520,36 @@ def _project_menu(project: dict) -> dmc.Menu:
 			),
 		],
 		position="bottom-end",
+		classNames={"dropdown": "deh-menu"},
+	)
+
+
+def _reinstate_menu(project: dict) -> dmc.Menu:
+	location, delisted = project["location"], project["delisted"]
+	return dmc.Menu(
+		[
+			dmc.MenuTarget(
+				html.Button(
+					[icon("arrow-back-up", size=16), f"Reinstate ({len(delisted)})"],
+					className="deh-btn deh-btn-ghost sm",
+					title="Bring back a delisted recording, with its results",
+					disabled=project["error"] is not None,
+				)
+			),
+			dmc.MenuDropdown(
+				[
+					dmc.MenuLabel("Delisted"),
+					*(
+						dmc.MenuItem(
+							html.Span(name, className="deh-mono"),
+							id={"type": "reinstate-recording", "project": location, "index": name},
+						)
+						for name in delisted
+					),
+				]
+			),
+		],
+		position="bottom-start",
 		classNames={"dropdown": "deh-menu"},
 	)
 
@@ -777,11 +808,21 @@ def _project_detail(
 			html.Tfoot(
 				html.Tr(
 					html.Td(
-						html.Button(
-							[icon("upload", size=16), "Add recordings"],
-							id={"type": "add-recordings", "place": "table", "index": location},
-							className="deh-btn sm",
-							disabled=not loadable,
+						html.Div(
+							[
+								html.Button(
+									[icon("upload", size=16), "Add recordings"],
+									id={
+										"type": "add-recordings",
+										"place": "table",
+										"index": location,
+									},
+									className="deh-btn sm",
+									disabled=not loadable,
+								),
+								*([_reinstate_menu(project)] if project["delisted"] else []),
+							],
+							className="deh-tfoot-actions",
 						),
 						colSpan=9,
 					)
@@ -1051,6 +1092,7 @@ for event_store, button in [
 	("generate-table-event", {"type": "generate-table", "index": ALL}),
 	("add-recordings-event", {"type": "add-recordings", "place": ALL, "index": ALL}),
 	("remove-recording-event", {"type": "remove-recording", "project": ALL, "index": ALL}),
+	("reinstate-recording-event", {"type": "reinstate-recording", "project": ALL, "index": ALL}),
 ]:
 	clientside_callback(
 		ClientsideFunction("deh", "clickEvent"),
@@ -1202,6 +1244,22 @@ def _remove_recording(event, _cancel, _delist, _delete, target, selection):
 	)
 	kept = [key for key in selection if key != [location, name]]
 	return False, no_update, no_update, time.time(), kept
+
+
+@callback(
+	Output("data-changed", "data", allow_duplicate=True),
+	Input("reinstate-recording-event", "data"),
+	prevent_initial_call=True,
+)
+def _reinstate_recording(event):
+	location, name = event["id"]["project"], event["id"]["index"]
+	try:
+		services.load_project(location).reinstate_recording(name)
+	except FileNotFoundError as exc:
+		notify("bad", str(exc))
+		return no_update
+	notify("good", f"Reinstated {name}")
+	return time.time()
 
 
 @callback(
