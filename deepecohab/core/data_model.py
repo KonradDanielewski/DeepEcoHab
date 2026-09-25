@@ -262,6 +262,26 @@ class Timeline(BaseModel):
 		"""
 		return max(_elapsed(self.experiment_start, self.start_datetime), dt.timedelta(0))
 
+	@property
+	def unrecorded_tail(self) -> dt.timedelta:
+		"""Time between the end of recording and the next phase onset, never captured.
+
+		The last phase is short by this much.
+		"""
+		end = _real_wall_clock(self.end_datetime, self.recording_timezone)
+		onsets = (
+			dt.datetime.combine(
+				end.date() + dt.timedelta(days=n), hhmm, tzinfo=self.recording_timezone
+			)
+			for n in range(3)
+			for hhmm in set(self.phases.values())
+		)
+		return min(
+			_elapsed(end, onset)
+			for onset in onsets
+			if self._wall_clock_exists(onset) and _elapsed(end, onset) >= dt.timedelta(0)
+		)
+
 	@computed_field
 	@property
 	def days_range(self) -> tuple[int, int]:

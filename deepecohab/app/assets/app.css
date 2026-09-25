@@ -1437,7 +1437,7 @@ code {
 
 .deh-tiles {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 	gap: 1px;
 	margin-top: 12px;
 	border-top: 1px solid var(--line);
@@ -1455,6 +1455,10 @@ code {
 	background: var(--surface);
 }
 
+.deh-tile > .deh-badge {
+	align-self: flex-start;
+}
+
 .deh-tile-label {
 	color: var(--ink-3);
 	font-size: 12.5px;
@@ -1462,7 +1466,7 @@ code {
 
 .deh-tile-value {
 	overflow-wrap: anywhere;
-	font-size: 26px;
+	font-size: 22px;
 	font-weight: 600;
 	line-height: 1.15;
 	letter-spacing: -0.02em;

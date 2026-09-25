@@ -698,15 +698,31 @@ window.dash_clientside.deh = {
 		requestAnimationFrame(paint);
 	},
 
-	// The header's counters jump to the tab that explains them. Written with set_props rather
-	// than an Output: the tab value already drives switchTab, and a second writer of it turns
-	// the app's dependency graph circular. A re-rendered button fires with no click behind it.
+	// The header's counters jump to the tab that explains them, and to its card if one is named.
+	// Written with set_props rather than an Output: the tab value already drives switchTab, and
+	// a second writer of it turns the app's dependency graph circular. A re-rendered button
+	// fires with no click behind it. The card lands just below the sticky control bar, measured
+	// where it sticks, which would otherwise cover the card's header.
 	tabJump: function () {
 		const dc = window.dash_clientside;
 		const trigger = dc.callback_context.triggered[0];
 		if (!trigger || !trigger.value) return;
-		const tab = {"rec-habitat-jump": "diagnostics", "rec-quality-jump": "diagnostics"}[dc.callback_context.triggered_id];
-		if (tab) dc.set_props("rec-tabs", {value: tab});
+		const [tab, card] = {
+			"rec-habitat-jump": ["diagnostics"],
+			"rec-quality-jump": ["diagnostics"],
+			"rec-mice-jump": ["overview", "cohort-card"],
+		}[dc.callback_context.triggered_id] || [];
+		if (!tab) return;
+		dc.set_props("rec-tabs", {value: tab});
+		if (card) {
+			requestAnimationFrame(() => {
+				const el = document.getElementById(card);
+				const bar = document.querySelector(".deh-controls");
+				if (!el || !bar) return;
+				const below = parseFloat(getComputedStyle(bar).top) + bar.offsetHeight + 16;
+				window.scrollTo({top: scrollY + el.getBoundingClientRect().top - below, behavior: "smooth"});
+			});
+		}
 	},
 
 	/* --- builder ---------------------------------------------------------- */

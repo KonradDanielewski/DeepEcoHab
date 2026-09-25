@@ -283,9 +283,10 @@ The recording dashboard.
 1. The recording shown. Pick another from the list, or step through the project's
    recordings with the arrows.
 2. A summary of the recording:
-   - the dates it ran (hover to see its time zone);
+   - the dates it ran (hover to see the exact start and end time, and the time zone);
+   - where it was recorded, the `recording_location` in its config, if it names one;
    - how many days and phases it spans, and which phase day 1 starts with;
-   - the number of mice;
+   - the number of mice (click to jump to the cohort on Overview);
    - its cages and tunnels (click to jump to the habitat map);
    - its events (hover for their names).
 3. The share of antenna passes the hardware missed, with a quality badge. Click it to
@@ -337,10 +338,18 @@ plot shows one line per animal whatever Group mean says.
 to settle before reading anything the analysis says.
 
 - **Detection quality**: the share of missed passes, the number of detections, the
-  worst antenna and the worst animal, the animal-antenna pairs without a miss, and the
-  share of time an animal's position is unknown. The bands are provisional, to be
+  worst antenna and the worst animal, the share of time an animal's position is unknown,
+  and when the recording started and ended. The bands are provisional, to be
   confirmed on more recordings: under 1% missed is good, 1-2.5% needs checking, and 2.5%
   or more is poor.
+
+  The analysis counts whole phases from the onset of the phase day 1 starts with, so
+  **Recording start** and **Recording end** show the clock time and how far each lies
+  from a phase onset. A recording that started before the onset has time **lost**: what
+  was recorded before the onset is left out. One that started after it has time **added**:
+  the first phase has no data for that long. One that ended before the next onset is
+  **short**: the last phase is short by that much. A gap of more than an hour shows as a
+  warning. Hover a note for the details.
 - **Habitat**: the cages, tunnels and antennas as the recording's config lays them out.
   Each antenna is tinted by how many passes it missed.
 - **Missed passes per antenna**, pooled over the cohort, so a failing antenna stands out.
