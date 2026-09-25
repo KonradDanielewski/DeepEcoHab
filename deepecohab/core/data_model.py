@@ -766,7 +766,8 @@ class Recording(BaseModel):
 
 #: The files a recording is delivered as, side by side as ``<name>.<suffix>``, mapped to
 #: whether it is required. The config is validated into ``config.json`` and the data into
-#: ``raw/data.parquet``; any other file is kept as is in ``raw/``.
+#: ``raw/data.parquet``; every other file, the config as uploaded included, is kept as is in
+#: ``raw/``.
 RECORDING_FILES: Final[dict[str, bool]] = {
 	"config.json": True,
 	"data.parquet": True,
@@ -828,9 +829,9 @@ class Project(BaseModel):
 
 	The project is persisted as <project_location>/project.json, which maps each
 	recording name to its config.json relative to the manifest. Each recording
-	owns <project_location>/<recording_name>/, holding config.json, raw/ (the data
-	and any optional file of `RECORDING_FILES`) and results/. Data is reattached
-	from raw/data.parquet on load. Delisted recordings
+	owns <project_location>/<recording_name>/, holding config.json, raw/ (the data,
+	the config as uploaded and any optional file of `RECORDING_FILES`) and results/. Data is
+	reattached from raw/data.parquet on load. Delisted recordings
 	keep their folder and are mapped the same way under ``delisted``, unloaded.
 	"""
 
@@ -1270,7 +1271,7 @@ class Project(BaseModel):
 				json.dumps(recording.to_config(), indent=2), encoding="utf-8"
 			)
 			for suffix, path in files.items():
-				if suffix not in ("config.json", "data.parquet"):
+				if suffix != "data.parquet":
 					shutil.copyfile(path, root / "raw" / suffix)
 		except Exception:
 			shutil.rmtree(root, ignore_errors=True)  # only ours; root didn't exist above

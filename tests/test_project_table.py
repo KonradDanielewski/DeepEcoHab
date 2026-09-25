@@ -449,8 +449,9 @@ def test_files_group_into_recordings_by_name(tmp_path):
 		"notes.txt": ValueError,
 		"orphan": FileNotFoundError,
 	}
-	kept = project["grouped"].root / "raw" / "diagnostic.json"
-	assert kept.read_text(encoding="utf-8") == diagnostic.read_text(encoding="utf-8")
+	raw = project["grouped"].root / "raw"
+	assert (raw / "diagnostic.json").read_bytes() == diagnostic.read_bytes()
+	assert (raw / "config.json").read_bytes() == config.read_bytes()
 
 
 def test_update_notes_persists_to_config_json(tmp_path):
