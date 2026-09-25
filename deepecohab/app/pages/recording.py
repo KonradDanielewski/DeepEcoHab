@@ -70,6 +70,9 @@ _BADGES = {
 	),
 }
 _OPTION_LABELS = {"agg": "Aggregate", "edge_cutoff": "Hide edges below"}
+#: A control the recording has no use for is hidden, not dropped: its callbacks take it as an
+#: Input, and Dash throws on a callback whose inputs are only partly in the layout.
+_HIDDEN = {"display": "none"}
 #: Height of the Position-unknown table, matching the heatmap it shares a grid row with.
 _MISSING_TABLE_H = 430
 #: (id, label, cells); a cell is (plot, column span of 12, height px[, grid rows]).
@@ -880,6 +883,9 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 	gradient, band_title = _hours_band(summary, controls["phases"])
 	label, hint = _hours_text(controls["hours"])
 	window_label, window_hint = _window_text(bound, controls["granularity"], controls["window"])
+	one_phase = summary["phases"] == 1 or len(summary["onsets"]) == 1
+	window_style = _HIDDEN if summary["phases"] == 1 else None
+	animals_style = _HIDDEN if len(attrs) == 1 else None
 
 	return html.Div(
 		[
@@ -897,6 +903,7 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 					),
 				],
 				className="deh-ctl",
+				style=window_style,
 			),
 			html.Div(
 				[
@@ -919,6 +926,7 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 					),
 				],
 				className="deh-range-wrap",
+				style=window_style,
 			),
 			html.Div(
 				[
@@ -975,6 +983,7 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 					),
 				],
 				className="deh-ctl",
+				style=_HIDDEN if one_phase else None,
 			),
 			html.Div(
 				[
@@ -1005,6 +1014,7 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 					),
 				],
 				className="deh-ctl",
+				style=animals_style,
 			),
 			dmc.Switch(
 				id="rec-group-mean",
@@ -1012,13 +1022,14 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 				checked=controls.get("group_mean", False),
 				disabled=color_by == "animal_id",
 				size="xs",
+				style=animals_style,
 			),
 			dmc.Switch(
 				id="rec-events",
 				label="Events",
 				checked=False,
-				disabled=not summary["events"],
 				size="xs",
+				style=None if summary["events"] else _HIDDEN,
 			),
 			dmc.Popover(
 				[
