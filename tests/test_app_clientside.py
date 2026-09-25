@@ -30,7 +30,7 @@ global.window = {
 	addEventListener: () => {},
 };
 // The heatmap centring watches the page, which node does not have.
-global.document = {body: {}};
+global.document = {body: {}, addEventListener: () => {}};
 global.MutationObserver = class { observe() {} };
 eval(require("fs").readFileSync(process.argv[2], "utf8"));
 const deh = window.dash_clientside.deh;

@@ -326,6 +326,17 @@ code {
 	}
 }
 
+/* A button whose download the server is still preparing: its icon becomes a spinner. */
+.is-downloading {
+	pointer-events: none;
+}
+
+.is-downloading .deh-ic {
+	-webkit-mask-image: url(icons/loader-2.svg) !important;
+	mask-image: url(icons/loader-2.svg) !important;
+	animation: deh-spin 0.9s linear infinite;
+}
+
 .deh-btn {
 	display: inline-flex;
 	align-items: center;

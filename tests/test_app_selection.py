@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="needs node
 _HARNESS = """
 global.window = {addEventListener: () => {}};
 // The file wires a MutationObserver and a scroll listener on load; node has no DOM.
-global.document = {body: {}, querySelectorAll: () => []};
+global.document = {body: {}, querySelectorAll: () => [], addEventListener: () => {}};
 global.MutationObserver = class {
 	observe() {}
 };

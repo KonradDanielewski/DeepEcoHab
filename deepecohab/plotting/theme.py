@@ -22,6 +22,7 @@ def sample_palette(count: int, cmap: str = "Phase") -> list[str]:
 DEFAULT_COLORWAY: list[str] = sample_palette(12)
 
 FONT = "Geist, Segoe UI, system-ui, sans-serif"
+FONT_SIZE = 13
 
 #: House sequential scale for heatmaps, teal through gold, replacing plain Viridis.
 _AURORA_STOPS: list[str] = [
@@ -157,7 +158,7 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 		layout=go.Layout(
 			paper_bgcolor="rgba(0,0,0,0)",
 			plot_bgcolor="rgba(0,0,0,0)",
-			font={"family": FONT, "size": 13, "color": tokens["ink"]},
+			font={"family": FONT, "size": FONT_SIZE, "color": tokens["ink"]},
 			xaxis=axis,
 			yaxis=axis,
 			shapedefaults={"line": {"color": tokens["axis"]}},
@@ -198,7 +199,7 @@ PUBLICATION_THEME = go.layout.Template(
 	layout=go.Layout(
 		paper_bgcolor="#ffffff",
 		plot_bgcolor="#ffffff",
-		font={"family": "Arial, sans-serif", "size": 13, "color": "#000000"},
+		font={"family": "Arial, sans-serif", "size": FONT_SIZE, "color": "#000000"},
 		xaxis=_PUBLICATION_AXIS,
 		yaxis=_PUBLICATION_AXIS,
 		legend={"bgcolor": "rgba(0,0,0,0)", "font": {"color": "#000000"}},

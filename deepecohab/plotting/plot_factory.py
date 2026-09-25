@@ -1,4 +1,5 @@
 import math
+import textwrap
 from typing import Literal
 
 import networkx as nx
@@ -10,8 +11,9 @@ from plotly.subplots import make_subplots
 
 from deepecohab.core.data_model import Layout
 from deepecohab.plotting.animals import ColorMapping, collapse_legend
+from deepecohab.plotting.export import LEGEND_ITEM_PX, text_px
 from deepecohab.plotting.prepare import Heatmap
-from deepecohab.plotting.theme import AURORA, COLORBAR, PHASE_BAND, sample_palette
+from deepecohab.plotting.theme import AURORA, COLORBAR, FONT_SIZE, PHASE_BAND, sample_palette
 
 
 def _tick_labels(names: list[str]) -> list[str]:
@@ -850,19 +852,32 @@ def plot_metrics_polar(frame: pl.DataFrame, mapping: ColorMapping) -> go.Figure:
 
 	collapse_legend(figure, mapping)
 	means = frame["mean"]
+	metrics = frame["metric"].unique(maintain_order=True).to_list()
+	aliases = {metric: "<br>".join(textwrap.wrap(metric, 14)) for metric in metrics}
+	# Polar axes have no automargin: the angular labels hang past the circle, so the
+	# margins make room for them and the legend is pinned beyond the right-hand ones.
+	label_px = max((text_px(alias, FONT_SIZE) for alias in aliases.values()), default=0) + FONT_SIZE
+	legend_px = (
+		max(text_px(name, FONT_SIZE) for name in [mapping.legend_title, *mapping.categories])
+		+ LEGEND_ITEM_PX
+	)
 	figure.update_layout(
 		title="<b>Animal feature overview</b>",
 		title_y=0.95,
 		legend_title_text=mapping.legend_title,
 		title_x=0.45,
 		polar={
+			"angularaxis": {"labelalias": aliases},
 			"radialaxis": {
 				"visible": True,
+				# Between the first two metrics, clear of the label at 0°.
+				"angle": 180 / max(len(metrics), 1),
 				# Series.min/max is typed as a broad union; arithmetic is valid for this column.
 				"range": [means.min() - 0.5, means.max() + 0.5],  # ty: ignore[unsupported-operator]
-			}
+			},
 		},
-		legend={"tracegroupgap": 0},
+		margin={"l": label_px, "r": label_px + legend_px},
+		legend={"tracegroupgap": 0, "xref": "container", "x": 1, "xanchor": "right"},
 		showlegend=True,
 	)
 	figure.update_polars(bgcolor="rgba(0,0,0,0)")
@@ -1356,7 +1371,7 @@ def plot_phenotype_map(
 	# Dynamic annotation for top animal
 	top = frame.sort("ordinal", nulls_last=True).row(-1, named=True)
 	if top["gregariousness"] is not None:
-		active_str = "more" if top["visits"] >= frame["visits"].median() else "least"
+		active_str = "more" if top["visits"] >= frame["visits"].median() else "less"
 		social_str = "more" if top["gregariousness"] >= frame["gregariousness"].median() else "less"
 
 		fig.add_annotation(

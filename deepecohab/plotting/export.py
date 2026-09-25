@@ -45,7 +45,7 @@ _MIN_TICK_GAP = 1.15
 _MAX_LINE_PX = 1.5
 """Line width is capped here: a heavier stroke reads as a smear at export sizes."""
 
-_LEGEND_ITEM_PX = 46
+LEGEND_ITEM_PX = 46
 """Swatch, padding and margin around a legend label, in pixels."""
 
 _LEGEND_WARN_FRACTION = 0.4
@@ -87,6 +87,11 @@ _TAG_RE = re.compile(r"<[^>]+>")
 def _plain_text(text: Any) -> str:
 	"""Strip HTML tags a plotly title, tick label or annotation text may carry."""
 	return _TAG_RE.sub("", str(text or ""))
+
+
+def text_px(text: Any, size: float) -> float:
+	"""Estimated width of the widest ``<br>``-separated line of ``text`` at font ``size``."""
+	return max(len(_plain_text(line)) for line in str(text or "").split("<br>")) * _CHAR * size
 
 
 def _title_text(title: Any) -> str:
@@ -280,7 +285,7 @@ def fit_for_export(
 			entries.setdefault(key, _plain_text(trace["name"]))
 
 	longest_entry = max((len(name) for name in entries.values()), default=0)
-	item_px = longest_entry * _CHAR * tick + _LEGEND_ITEM_PX
+	item_px = longest_entry * _CHAR * tick + LEGEND_ITEM_PX
 	has_colorbar = any(key.startswith("coloraxis") for key in layout)
 	axis_bottom = tick * _TICK_ROW_HEIGHT + base * _LINE_HEIGHT
 
@@ -456,14 +461,34 @@ def fit_for_export(
 			)
 
 	if "polar" in layout:
-		layout["polar"]["angularaxis"] = {
-			**(layout["polar"].get("angularaxis") or {}),
-			"tickfont": {"size": tick},
-		}
+		angular = layout["polar"].get("angularaxis") or {}
+		layout["polar"]["angularaxis"] = {**angular, "tickfont": {"size": tick}}
 		layout["polar"]["radialaxis"] = {
 			**(layout["polar"].get("radialaxis") or {}),
 			"tickfont": {"size": tick},
 		}
+		# Polar axes have no automargin: the angular labels hang past the circle, so the
+		# margins make room for them and the legend is pinned beyond the right-hand ones.
+		aliases = angular.get("labelalias") or {}
+		labels = [
+			str(aliases.get(t, t))
+			for trace in data
+			if trace.get("theta") is not None
+			for t in trace["theta"]
+		]
+		if labels:
+			label_px = max(text_px(label, tick) for label in labels) + tick
+			label_h = max(label.count("<br>") + 1 for label in labels) * tick * _LINE_HEIGHT
+			layout["margin"].update(
+				{
+					"l": label_px,
+					"r": label_px + (item_px if entries else 0),
+					"t": top_px + label_h,
+					"b": label_h,
+				}
+			)
+			if entries:
+				layout["legend"].update({"xref": "container", "x": 1, "xanchor": "right"})
 
 	for trace in data:
 		if trace.get("type") in ("scatter", "scattergl"):

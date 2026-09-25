@@ -323,6 +323,61 @@ window.addEventListener("scroll", function () {
 	});
 }, {passive: true});
 
+/* Downloads load into a hidden frame (DOWNLOAD_FRAME in components.py), which gives the page
+ * no event when a file starts arriving. So each request carries a token the server hands
+ * back as the deh-download cookie with the file (downloads._echo_download_token), and the
+ * button that asked spins until it lands. The frame has room for one request at a time, so
+ * a new download ends the previous spinner too. */
+let _endDownload = () => {};
+
+function _startDownload(button, setUrl, url) {
+	_endDownload();
+	const token = Math.random().toString(36).slice(2);
+	url.searchParams.set("download_token", token);
+	setUrl(url.href);
+	button.classList.add("is-downloading");
+	const timer = setInterval(() => {
+		if (document.cookie.includes(`deh-download=${token}`)) _endDownload();
+	}, 250);
+	_endDownload = () => {
+		clearInterval(timer);
+		button.classList.remove("is-downloading");
+		_endDownload = () => {};
+	};
+}
+
+document.addEventListener("click", function (event) {
+	const link = event.target.closest && event.target.closest('a[target="deh-download"]');
+	if (!link) return;
+	// A menu item closes its dropdown on click, so the spinner goes on the menu's trigger.
+	const menu = link.closest('[role="menu"]');
+	const trigger = menu && document.getElementById(menu.getAttribute("aria-labelledby"));
+	_startDownload(trigger || link, (href) => (link.href = href), new URL(link.href));
+}, true);
+
+document.addEventListener("submit", function (event) {
+	const form = event.target;
+	if (form.target !== "deh-download") return;
+	const button = event.submitter || form.querySelector('[type="submit"]');
+	_startDownload(button, (action) => (form.action = action), new URL(form.action));
+}, true);
+
+/* A file never loads a page in the frame, so a page that does is the server refusing -
+ * shown as a toast, since the frame itself is out of sight. Flask's abort() puts its
+ * message in the <p> after <h1>. */
+document.addEventListener("load", function (event) {
+	const frame = event.target;
+	if (frame.name !== "deh-download") return;
+	_endDownload();
+	const page = frame.contentDocument;
+	if (!page || !page.body || !page.body.textContent.trim()) return;
+	const detail = page.querySelector("h1 + p");
+	window.dash_clientside.set_props("notifications", {sendNotifications: [{
+		action: "show", message: `Download failed: ${detail ? detail.textContent : page.title}`,
+		className: "deh-toast deh-toast-bad", withCloseButton: true, autoClose: 8000,
+	}]});
+}, true);
+
 
 window.dash_clientside.deh = {
 	/* --- shell ------------------------------------------------------------ */
