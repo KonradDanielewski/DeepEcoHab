@@ -597,7 +597,11 @@ The fields come in groups:
 
 The **Detail** shelf splits the data into groups without drawing them. Box, violin, strip,
 histogram and ECDF plots fill it with recording and animal id, so each box is a spread over
-animals rather than one number. An ordered field on a shelf can also be grouped into
+animals rather than one number. The **Hover** shelf takes any number of fields of any kind
+and adds them to the hover text without changing the plot. If a point covers several
+values of a field, the hover text lists them, or gives how many there are when there are
+more than three. Histograms and density heatmaps have no Hover shelf, because each bar or
+cell counts many rows. An ordered field on a shelf can also be grouped into
 blocks: click it and type, for example, `3` for blocks of three, or `1-3, 4-6`.
 
 ### Filters

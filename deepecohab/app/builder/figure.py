@@ -44,8 +44,14 @@ CHANNELS: tuple[str, ...] = (
 	"facet_row",
 	"animation_frame",
 	"text",
-	"hover_name",
+	"hover_data",
 )
+
+#: Hover only describes a point, so a category there is listed, never grouped by.
+HOVER = "hover_data"
+
+#: Past this many values a hover lists only how many there are.
+HOVER_LIST_MAX = 3
 
 #: Not a plotly argument: fields here only add keys to the group-by, which is how a box
 #: gets one point per animal instead of one per hour.
@@ -54,6 +60,9 @@ DETAIL = "detail"
 #: Plot types that draw a spread rather than a point, so they are meaningless until
 #: something on Detail says what one observation is.
 DISTRIBUTIONS: frozenset[str] = frozenset({"box", "violin", "strip", "histogram", "ecdf"})
+
+#: Plot types that count rows into bins rather than drawing them.
+BINNED: frozenset[str] = frozenset({"histogram", "density_heatmap"})
 
 #: The finest identity a project table holds: one animal within one recording. Tags are
 #: reused between recordings, so animal_id on its own would merge different animals.
@@ -72,12 +81,11 @@ ACCEPTS: dict[str, frozenset[Kind]] = {
 	"facet_col": frozenset({"dimension", "time"}),
 	"facet_row": frozenset({"dimension", "time"}),
 	"animation_frame": frozenset({"dimension", "time"}),
-	"hover_name": frozenset({"dimension", "time"}),
 	DETAIL: frozenset({"dimension", "time"}),
 }
 
 #: Shelves that hold an ordered list instead of replacing on every drop.
-MULTI: frozenset[str] = frozenset({"path", DETAIL})
+MULTI: frozenset[str] = frozenset({"path", HOVER, DETAIL})
 
 #: What the Blocks box on an ordered field's chip accepts, and the one example it shows.
 BIN_HINT = "3, or 1-3, 4-6"
@@ -100,7 +108,7 @@ LABELS: dict[str, str] = {
 	"facet_row": "Facet row",
 	"animation_frame": "Animate",
 	"text": "Label",
-	"hover_name": "Hover",
+	HOVER: "Hover",
 	DETAIL: "Detail",
 }
 
@@ -149,7 +157,9 @@ class PlotType:
 	def channels(self) -> tuple[str, ...]:
 		"""The shelves this plot type offers, read off its own signature."""
 		accepted = inspect.signature(self.builder).parameters
-		return (*(channel for channel in CHANNELS if channel in accepted), DETAIL)
+		# A bin pools many rows, which leaves a hover field nothing to attach to.
+		skipped = HOVER if self.name in BINNED else None
+		return (*(c for c in CHANNELS if c in accepted and c != skipped), DETAIL)
 
 
 PLOTS: tuple[PlotType, ...] = (
@@ -221,12 +231,16 @@ def assigned(state: dict[str, Any]) -> dict[str, list[str]]:
 	return {channel: names for channel, names in state["channels"].items() if names}
 
 
-def _shelved(state: dict[str, Any], catalog: Sequence[Field], *, discrete: bool) -> list[Field]:
-	"""Fields of one kind on a shelf, in shelf order and without repeats."""
+def _shelved(
+	state: dict[str, Any], catalog: Sequence[Field], *, discrete: bool, skip: str = ""
+) -> list[Field]:
+	"""Fields of one kind on a shelf other than ``skip``, in shelf order and without repeats."""
 	fields = {item.name: item for item in catalog}
 	picked: dict[str, Field] = {}
 
-	for names in assigned(state).values():
+	for channel, names in assigned(state).items():
+		if channel == skip:
+			continue
 		for name in names:
 			item = fields.get(name)
 			if item is not None and item.discrete is discrete:
@@ -239,9 +253,35 @@ def group_keys(state: dict[str, Any], catalog: Sequence[Field]) -> list[str]:
 	"""Every discrete field on a shelf, in shelf order and without repeats.
 
 	These are what the frame is grouped by, so the measure is computed once per drawn
-	point rather than once per hourly row.
+	point rather than once per hourly row. Hover is left out: see :func:`hover_listed`.
 	"""
-	return [item.name for item in _shelved(state, catalog, discrete=True)]
+	return [item.name for item in _shelved(state, catalog, discrete=True, skip=HOVER)]
+
+
+def hover_listed(state: dict[str, Any], catalog: Sequence[Field]) -> list[str]:
+	"""Discrete fields only on Hover: listed per point rather than grouped by.
+
+	Grouping by them would split every point into one per value, so adding a field to
+	the hover would change what is drawn.
+	"""
+	keys = set(group_keys(state, catalog))
+	discrete = {item.name for item in catalog if item.discrete}
+	return [
+		name
+		for name in dict.fromkeys(state["channels"].get(HOVER, []))
+		if name in discrete and name not in keys
+	]
+
+
+def _listing(name: str, column: pl.Expr) -> pl.Expr:
+	"""A point's distinct values of ``column``, or only how many once they are too many."""
+	count = column.n_unique()
+	return (
+		pl.when(count <= HOVER_LIST_MAX)
+		.then(column.unique().sort().cast(pl.String).str.join(", "))
+		.otherwise(pl.format("{} values", count))
+		.alias(name)
+	)
 
 
 def measures(state: dict[str, Any], catalog: Sequence[Field]) -> list[Field]:
@@ -382,14 +422,26 @@ def build_frame(
 	keys = group_keys(state, catalog)
 	wanted = measures(state, catalog)
 	mode = state.get("measure_as", DEFAULT_MODE)
+	hovered = hover_listed(state, catalog)
+	carried: set[str] = set()
 
 	if mode == "mean":
 		# An hour's value is split over the positions it happened in; put it back
 		# together first, or the mean would be over positions rather than hours.
 		spread = {"position", "position_type"} - set(keys)
+		# A position on Hover rides along as each hour's list, flattened when listed.
+		carried = spread & set(hovered)
 		frame = frame.group_by(cs.exclude(VALUE, EXPOSURE, *spread)).agg(
-			pl.sum(VALUE), pl.sum(EXPOSURE)
+			pl.sum(VALUE), pl.sum(EXPOSURE), *carried
 		)
+
+	listed = [
+		_listing(
+			name,
+			pl.col(name).list.explode(empty_as_null=False) if name in carried else pl.col(name),
+		)
+		for name in hovered
+	]
 
 	# Only what is grouped is binned: a leftover block for a field since taken off every
 	# shelf would otherwise still rewrite its column.
@@ -406,10 +458,10 @@ def build_frame(
 		)
 
 	if not wanted:
-		return collected(frame.group_by(keys).agg(pl.len().alias("rows")))
+		return collected(frame.group_by(keys).agg(pl.len().alias("rows"), *listed))
 
 	value = next((item for item in wanted if item.agg == "metric"), None)
-	plain = [pl.mean(item.name) for item in wanted if item.agg != "metric"]
+	plain = [pl.mean(item.name) for item in wanted if item.agg != "metric"] + listed
 
 	if value is None:
 		return collected(frame.group_by(keys).agg(plain) if keys else frame.select(plain))
@@ -612,6 +664,9 @@ def build_figure(
 		for channel, names in assigned(state).items()
 		if channel != DETAIL
 	}
+	if HOVER in kwargs:
+		numeric = {item.name for item in measures(state, catalog)}
+		kwargs[HOVER] = {name: ":.4~r" if name in numeric else True for name in kwargs[HOVER]}
 
 	# Builder colours come from sample_palette(n) for the categories actually on the
 	# Colour shelf, not the colorway's first n: plotly express walks the colorway in
