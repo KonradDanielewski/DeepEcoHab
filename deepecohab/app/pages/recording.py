@@ -1,4 +1,5 @@
 import datetime as dt
+import math
 from urllib.parse import parse_qs, quote, urlencode
 
 import dash
@@ -22,7 +23,7 @@ from dash.exceptions import PreventUpdate
 from deepecohab.app import components, services
 from deepecohab.app.components import icon, notify
 from deepecohab.core import topology
-from deepecohab.core.data_model import DataFrameRegistry
+from deepecohab.core.data_model import LEAD_WARNING_THRESHOLD, DataFrameRegistry, Timeline
 from deepecohab.plotting import PlotContext, PlotRegistry, available_attributes, theme as plot_theme
 from deepecohab.plotting.animals import resolve_colors
 from deepecohab.plotting.plot_catalog import PHASES
@@ -225,7 +226,16 @@ def _meta_strip(summary: dict) -> list:
 	items = [
 		html.Span(
 			[icon("calendar", size=15), f"{start.day} {start:%b} → {end.day} {end:%b %Y}"],
-			title=summary["timezone"],
+			title=(
+				f"Start: {start:%a} {start.day} {start:%b %Y, %H:%M:%S}\n"
+				f"End: {end:%a} {end.day} {end:%b %Y, %H:%M:%S}\n"
+				f"Time zone: {summary['timezone']}"
+			),
+		),
+		*(
+			[html.Span([icon("map-pin", size=15), summary["location"]], title="Recording location")]
+			if summary["location"]
+			else []
 		),
 		html.Span(
 			[
@@ -236,7 +246,12 @@ def _meta_strip(summary: dict) -> list:
 				),
 			]
 		),
-		html.Span([icon("users", size=15), f"{summary['n_mice']} mice"]),
+		html.Button(
+			[icon("users", size=15), f"{summary['n_mice']} mice"],
+			id="rec-mice-jump",
+			className="deh-btn deh-btn-ghost sm",
+			title="Show the cohort",
+		),
 		html.Button(
 			[
 				icon("grid-dots", size=15),
@@ -615,11 +630,6 @@ def _quality_summary_children(context: PlotContext) -> list:
 			quality["worst_animal"]["animal_id"],
 			html.Span(f"{quality['worst_animal']['miss']:.2f}% missed", className="deh-sub"),
 		),
-		(
-			"Animal x antenna pairs without a miss",
-			f"{quality['clean_cells']} of {quality['cells']}",
-			html.Span(f"{quality['antennas']} antennas", className="deh-sub"),
-		),
 	]
 	if "activity_df" in context and "phase_durations" in context:
 		missing = services.missing_time(context)
@@ -634,6 +644,8 @@ def _quality_summary_children(context: PlotContext) -> list:
 				),
 			),
 		)
+	if context.recording:
+		tiles += _window_tiles(context.recording.timeline)
 	body = html.Div(
 		[
 			html.Div(
@@ -649,6 +661,59 @@ def _quality_summary_children(context: PlotContext) -> list:
 		className="deh-tiles",
 	)
 	return [header, body]
+
+
+def _span(delta: dt.timedelta, rounding=math.ceil) -> str:
+	"""A lead or tail in whole minutes, rounded to match the HH:MM clocks shown beside it.
+
+	Clocks drop their seconds, so time before an onset rounds up and time after it down.
+	"""
+	hours, minutes = divmod(rounding(delta / dt.timedelta(minutes=1)), 60)
+	return " ".join(f"{n}{unit}" for n, unit in ((hours, "h"), (minutes, "m")) if n) or "0m"
+
+
+def _window_note(gap: dt.timedelta, text: str, hover: str) -> html.Span:
+	"""A gap off the phase grid, as a warning badge once it is as long as adding one warns of."""
+	if gap > LEAD_WARNING_THRESHOLD:
+		return html.Span(
+			[icon("alert-triangle", size=14), text],
+			className="deh-badge deh-badge-warn",
+			title=hover,
+		)
+	return html.Span(text, className="deh-sub", title=hover)
+
+
+def _window_tiles(line: Timeline) -> list[tuple]:
+	"""Acquisition start and end on the clock, each noted with how far it is off the phase grid."""
+	onset = f"the {line.phases[line.start_from]:%H:%M} {_human(line.start_from)} onset"
+	early, late, tail = line.discarded_lead, line.unrecorded_lead, line.unrecorded_tail
+	if early:
+		start = _window_note(
+			early,
+			f"{_span(early)} lost",
+			f"Started {_span(early)} before {onset}; what was recorded before it is left out.",
+		)
+	elif late:
+		start = _window_note(
+			late,
+			f"{_span(late, math.floor)} added",
+			f"Started {_span(late, math.floor)} after {onset}, where the grid still opens; "
+			"the first phase has no data for that long.",
+		)
+	else:
+		start = _window_note(late, "on the onset", f"Started on {onset}.")
+	end = _window_note(
+		tail,
+		f"{_span(tail)} short" if tail else "on an onset",
+		f"Ended {_span(tail)} before the next phase onset; the last phase is short by as much."
+		if tail
+		else "Ended on a phase onset.",
+	)
+	zone = line.recording_timezone
+	return [
+		("Recording start", f"{line.start_datetime.astimezone(zone):%H:%M}", start),
+		("Recording end", f"{line.end_datetime.astimezone(zone):%H:%M}", end),
+	]
 
 
 def _quality_missing_children(context: PlotContext, color_by: str) -> list:
@@ -1170,6 +1235,7 @@ clientside_callback(
 	ClientsideFunction("deh", "tabJump"),
 	Input("rec-habitat-jump", "n_clicks"),
 	Input("rec-quality-jump", "n_clicks"),
+	Input("rec-mice-jump", "n_clicks"),
 	prevent_initial_call=True,
 )
 

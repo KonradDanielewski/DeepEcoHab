@@ -105,6 +105,19 @@ def test_leads_are_exclusive_and_measured_as_real_time():
 	assert crossing.unrecorded_lead == dt.timedelta(0)
 
 
+def test_tail_runs_to_the_next_onset_in_real_time():
+	"""The last phase is short by the time to the next onset of either phase.
+
+	The last span ends before the spring-forward and the next onset comes after it, so
+	the wall clock reads an hour more than actually elapses.
+	"""
+	line = partial(timeline, at(2023, 3, 20, 20, 0), phases=ALIGNED, start_from="dark_phase")
+
+	assert line(at(2023, 3, 24, 4, 12)).unrecorded_tail == dt.timedelta(hours=2, minutes=48)
+	assert line(at(2023, 3, 24, 20, 0)).unrecorded_tail == dt.timedelta(0)
+	assert line(at(2023, 3, 26, 1, 30)).unrecorded_tail == dt.timedelta(hours=4, minutes=30)
+
+
 def test_analysed_span_starts_at_the_experiment_start():
 	"""local_span is the one place the trim happens, so everything downstream inherits it."""
 	line = timeline(at(2023, 5, 24, 9, 30), at(2023, 5, 28, 0, 0), ALIGNED, "dark_phase")

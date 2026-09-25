@@ -212,6 +212,7 @@ def recording_summary(location: str, name: str) -> dict:
 		"phases": timeline.phase_range[1] - timeline.phase_range[0] + 1,
 		"start_from": timeline.start_from,
 		"onsets": {phase: onset.isoformat("minutes") for phase, onset in timeline.phases.items()},
+		"location": recording.recording_location,
 		"n_mice": recording.cohort.n_mice,
 		"cages": len(recording.layout.cages),
 		"tunnels": len(recording.layout.tunnels),
@@ -260,9 +261,6 @@ def quality_summary(context: PlotContext) -> dict:
 			for antenna, miss in zip(by_antenna["antenna"], by_antenna["miss_rate"], strict=True)
 		},
 		"worst_animal": {"animal_id": worst_animal["animal_id"], "miss": worst_animal["miss_rate"]},
-		"clean_cells": frame.filter(pl.col("missed") == 0).height,
-		"cells": frame.height,
-		"antennas": by_antenna.height,
 	}
 
 
