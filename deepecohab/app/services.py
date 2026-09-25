@@ -2,13 +2,16 @@ import hashlib
 import json
 import threading
 import time
+import urllib.request
 from collections.abc import Callable
 from functools import cache, lru_cache
+from importlib.metadata import version
 from pathlib import Path
 
 import diskcache
 import polars as pl
 from dash import no_update
+from packaging.version import Version
 
 from deepecohab import AnalysisParams, Project, Recording, recording_status
 from deepecohab.app.builder import catalog as builder_catalog
@@ -569,3 +572,20 @@ def _analyse_projects(
 
 def _analysed(location: str, name: str) -> bool:
 	return all(recording_status(Path(location) / name).values())
+
+
+# ponytail: local installs only - delete with its _check_update callback and the toast's
+# Cancel listener in clientside.js once the app is deployed and users no longer update it.
+@cache
+def newer_release() -> str | None:
+	"""The latest stable PyPI release if it is newer than the installed one, else None.
+
+	PyPI's ``info.version`` skips pre-releases, so an installed rc above the last stable
+	release compares as newer and nothing is offered. None too when PyPI is unreachable.
+	"""
+	try:
+		with urllib.request.urlopen("https://pypi.org/pypi/deepecohab/json", timeout=3) as r:
+			latest = json.load(r)["info"]["version"]
+	except (OSError, ValueError, KeyError):
+		return None
+	return latest if Version(latest) > Version(version("deepecohab")) else None

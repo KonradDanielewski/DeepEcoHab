@@ -46,6 +46,7 @@ dependencies = [
     app = [
         "dash[diskcache]>=4",
         "dash-mantine-components>=2.8.0",
+        "packaging",
         "pyshortcuts",
     ]
 

@@ -79,6 +79,7 @@ def _layout() -> dmc.MantineProvider:
 			dcc.Store(id="project-paths", storage_type="local", data=[]),
 			# Above Dash's debug bar (z-index 10000), which sits where toasts appear.
 			dmc.NotificationContainer(id="notifications", zIndex=10001),
+			dcc.Store(id="update-check"),
 			html.Iframe(name=DOWNLOAD_FRAME, hidden=True),
 			# Shared by every page rather than duplicated per page: every page stays mounted,
 			# so one id per component, and each page's own "open" callback drives it by id.
@@ -232,6 +233,34 @@ def _register_callbacks(app: Dash) -> None:
 		active = [output["id"]["index"] == pathname for output in dash.ctx.outputs_list[0]]
 		missing = None if page else f"No page at {pathname}. Pick one from the sidebar."
 		return active, html.B(page["name"] if page else "Not found"), False, missing
+
+	# Toast content renders outside Dash's layout, so its Cancel button is no callback
+	# Input; a click listener in clientside.js hides the toast by id instead.
+	@app.callback(Input("update-check", "data"))
+	def _check_update(_):
+		latest = services.newer_release()
+		if latest is None:
+			return
+		message = [
+			f"DeepEcoHab {latest} is available (you have {version('deepecohab')}). "
+			"To update, close the app and run ",
+			html.Code("uv tool upgrade deepecohab"),
+			html.Div(
+				html.Button(
+					"Cancel", type="button", className="deh-btn deh-btn-ghost deh-update-cancel"
+				),
+				className="deh-update-actions",
+			),
+		]
+		toast = {
+			"id": "update-available",
+			"action": "show",
+			"message": message,
+			"className": "deh-toast deh-toast-info",
+			"withCloseButton": False,
+			"autoClose": False,
+		}
+		dash.set_props("notifications", {"sendNotifications": [toast]})
 
 	# The export dialog is shared shell UI (see _layout above); its behaviour does not
 	# depend on which page opened it, so it registers once here rather than once per

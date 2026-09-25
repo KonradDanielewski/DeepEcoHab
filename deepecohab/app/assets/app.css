@@ -1052,6 +1052,12 @@ code {
 	font-size: 13.5px;
 }
 
+.deh-update-actions {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 8px;
+}
+
 .mantine-Notification-root.deh-toast-good::before {
 	--toast-icon: url("icons/circle-check.svg");
 	background-color: var(--good);
