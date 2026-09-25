@@ -936,6 +936,30 @@ def test_sociability_nodes_are_uniform_without_a_ranking():
 	assert figure.data[-1].marker.size == (30, 30)
 
 
+def test_edge_cutoff_refits_the_layout_without_the_weak_edges():
+	"""Weak edges are dropped before the layout, so the nodes move rather than lines hiding."""
+	connections = pl.DataFrame(
+		{"source": ["a", "b", "a"], "target": ["b", "c", "c"], "chasings": [10.0, 9.0, 1.0]}
+	)
+	nodes = pl.DataFrame({"animal_id": ["a", "b", "c"], "ordinal": [30.0, 20.0, 10.0]})
+
+	def build(edge_cutoff):
+		return plot_factory.plot_network_graph(
+			connections,
+			nodes,
+			["a", "b", "c"],
+			["#111", "#222", "#333"],
+			"chasings",
+			"spring",
+			edge_cutoff,
+		)
+
+	full, cut = build(0), build(50)
+
+	assert len(full.data) == 4 and len(cut.data) == 3
+	assert full.data[-1].x != cut.data[-1].x
+
+
 # --- module boundaries -------------------------------------------------------
 
 
