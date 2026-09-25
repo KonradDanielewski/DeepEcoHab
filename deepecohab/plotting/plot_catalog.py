@@ -48,6 +48,11 @@ def _window(
 @PlotRegistry.register(
 	"recording-timeline",
 	title="Position timeline",
+	info=(
+		"Each bar is one visit, running from the animal's previous antenna read to the read "
+		"that ended it; consecutive reads at the same position merge into one bar. One row per "
+		"animal, coloured by position. Undefined positions are left as gaps."
+	),
 	requires=("main_df", "animals"),
 )
 def recording_timeline(
@@ -70,6 +75,12 @@ def recording_timeline(
 @PlotRegistry.register(
 	"activity-bar",
 	title="Activity per position",
+	info=(
+		"Visits to each position, or time spent there, per animal, summed over the selected "
+		"phases and window. Sum draws grouped bars of the window total; mean draws boxes over "
+		"the per-day (or per-phase) values, the dashed line marking the mean. Undefined is time "
+		"no antenna could place."
+	),
 	requires=("activity_df", "animals"),
 	dynamic_choices=BY_COHORT_AND_PHASE,
 )
@@ -110,6 +121,11 @@ def activity(
 @PlotRegistry.register(
 	"time-alone-bar",
 	title="Time spent alone",
+	info=(
+		"Time each animal spent at a position with no other animal there, summed per position "
+		"over the selected phases and window. Sum draws grouped bars of the total; mean draws "
+		"boxes over the per-day (or per-phase) totals."
+	),
 	requires=("activity_df", "animals"),
 	dynamic_choices=BY_COHORT_AND_PHASE,
 )
@@ -148,6 +164,11 @@ def time_alone(
 @PlotRegistry.register(
 	"cage-preference",
 	title="Position preference",
+	info=(
+		"Time each animal spent in each position, summed per day (or phase) over the selected "
+		"phases. Each box pools every animal's per-day totals, so it shows how the cohort as a "
+		"whole split its time; the dashed line is the mean, points are outliers."
+	),
 	requires=("activity_df",),
 	dynamic_choices=PHASE_TYPE,
 )
@@ -181,6 +202,12 @@ def cage_preference(
 @PlotRegistry.register(
 	"cage-preference-evolution",
 	title="Position preference over time",
+	info=(
+		"Time each animal spent in each cage (or tunnel), drawn as one heatmap per position "
+		"with animals as rows. Columns step through the window's days or phases, or fold it "
+		"onto the 24 hours of the day. Sum totals each cell's time; mean averages the hourly "
+		"values it gathers."
+	),
 	requires=("activity_df", "animals"),
 )
 def cage_preference_evolution(
@@ -224,6 +251,12 @@ def cage_preference_evolution(
 @PlotRegistry.register(
 	"activity-line",
 	title="Activity over time",
+	info=(
+		"Antenna reads per animal, counted per hour of each day or phase, then folded onto the "
+		"24 hours of the day or onto the window's days/phases. Sum draws the totals; mean draws "
+		"the average with a shaded standard-error band. The side panel shows each line's total "
+		"or spread."
+	),
 	requires=("main_df", "animals"),
 	dynamic_choices=BY_COHORT,
 )
@@ -260,6 +293,11 @@ def activity_line(
 @PlotRegistry.register(
 	"chasings-line",
 	title="Chasings over time",
+	info=(
+		"Chasings per animal, as chaser or chased: one animal following another through the "
+		"same tunnel within a set time window. Counts per hour are folded onto the hours of the "
+		"day or onto days/phases; mean adds a shaded standard-error band."
+	),
 	requires=("chasings_df", "animals"),
 	dynamic_choices=BY_COHORT,
 )
@@ -296,6 +334,12 @@ def chasings_line(
 @PlotRegistry.register(
 	"ranking-line",
 	title="Dominance ranking",
+	info=(
+		"Every chasing is replayed in time order as a match the chaser won, updating each "
+		"animal's Plackett-Luce rating. Intime draws each animal's ordinal rating (mu - 3 "
+		"sigma) after every match; stability ranks animals by their last rating in each day or "
+		"phase, rank 1 on top."
+	),
 	requires=("ranking", "animals"),
 	dynamic_choices=BY_COHORT,
 )
@@ -327,6 +371,12 @@ def ranking_over_time(
 @PlotRegistry.register(
 	"ranking-distribution-line",
 	title="Ranking distribution",
+	info=(
+		"Each animal's rating after the last chasing in the window is a normal distribution: mu "
+		"is its estimated skill, sigma the uncertainty. The curve is that density, so its peak "
+		"shows where the animal ranks and its width how sure the model is; overlapping curves "
+		"mean an unsettled order."
+	),
 	requires=("ranking", "animals"),
 	dynamic_choices=BY_COHORT,
 )
@@ -348,6 +398,12 @@ def ranking_distribution(
 @PlotRegistry.register(
 	"metrics-polar-line",
 	title="Feature overview",
+	info=(
+		"Per-animal rates of activity, time alone, time together, encounters and chasings, each "
+		"normalised by its exposure (hours observed, or per partner). Each metric is z-scored "
+		"across animals and phases within the selection, then averaged per animal; the shaded "
+		"band is the standard error across days or phases."
+	),
 	requires=("feature_df", "animals"),
 	dynamic_choices=BY_COHORT_AND_PHASE,
 )
@@ -377,6 +433,12 @@ def polar_metrics(
 @PlotRegistry.register(
 	"chasings-heatmap",
 	title="Chasings matrix",
+	info=(
+		"Number of chasings for every chaser (column) and chased (row) pair, over the selected "
+		"phases and window. Sum totals them; mean averages the per-day (or per-phase) counts. "
+		"Brighter cells mean more chasings; compare a cell with its mirror across the diagonal "
+		"to see who dominates the pair."
+	),
 	requires=("chasings_df", "animals"),
 	dynamic_choices=PHASE_TYPE,
 )
@@ -417,6 +479,12 @@ def chasings_heatmap(
 @PlotRegistry.register(
 	"tube-test-heatmap",
 	title="Tube-test matrix",
+	info=(
+		"Spontaneous tube tests: two animals enter one tunnel from opposite ends and one backs "
+		"out to the cage it came from. Cells count wins for every winner (column) and loser "
+		"(row) pair; sum totals them, mean averages per day or phase. Compare mirrored cells to "
+		"see who dominates."
+	),
 	requires=("tube_test_df",),
 	dynamic_choices=PHASE_TYPE,
 )
@@ -454,6 +522,11 @@ def tube_test_heatmap(
 @PlotRegistry.register(
 	"sociability-heatmap",
 	title="Pairwise sociability",
+	info=(
+		"Time each pair spent together at a position, or how many separate meetings they had, "
+		"one matrix per cage or tunnel. Co-presence shorter than the minimum meeting time is "
+		"dropped. Sum totals the window; mean averages the hourly values."
+	),
 	requires=("pairwise_meetings", "animals"),
 	dynamic_choices=PHASE_TYPE,
 )
@@ -490,6 +563,12 @@ def pairwise_sociability(
 @PlotRegistry.register(
 	"cohort-heatmap",
 	title="Within-cohort sociability",
+	info=(
+		"Proportion together is the share of each phase a pair spent together at the selected "
+		"positions. Sociability is the cage share minus the chance expectation from each "
+		"animal's own cage time (tA·tB/T²), summed over cages; positive means the pair sought "
+		"each other out. Cells average the selected phases."
+	),
 	requires=("incohort_sociability", "pairwise_meetings", "phase_durations", "animals"),
 	dynamic_choices=PHASE_TYPE,
 )
@@ -525,6 +604,12 @@ def within_cohort_sociability(
 @PlotRegistry.register(
 	"social-stability",
 	title="Relationship stability",
+	info=(
+		"Each animal gets one point per partner, coloured by that animal: height is the median "
+		"share of each day (or phase) the pair spent together. Stability, along x, is 1 - "
+		"MAD/median of those shares, clipped to 0-1; points further right are steadier "
+		"relationships."
+	),
 	requires=("pairwise_meetings", "phase_durations", "animals"),
 	dynamic_choices=BY_COHORT_AND_PHASE,
 )
@@ -548,6 +633,12 @@ def social_stability(
 @PlotRegistry.register(
 	"quality-heatmap",
 	title="Missed passes by animal and antenna",
+	info=(
+		"An animal read at an antenna not connected to its previous one passed antennas that "
+		"never fired, each charged as a missed pass. Cells show the share of each animal's "
+		"passes per antenna that went unrecorded, a lower bound. Bright columns flag weak "
+		"antennas; bright rows, weak tags."
+	),
 	requires=("recording_quality",),
 )
 def quality_heatmap(context: PlotContext) -> go.Figure:
@@ -561,6 +652,12 @@ def quality_heatmap(context: PlotContext) -> go.Figure:
 @PlotRegistry.register(
 	"quality-antenna",
 	title="Missed passes per antenna",
+	info=(
+		"A missed pass is an antenna an animal must have crossed between two reads the layout "
+		"doesn't connect. Bars pool the cohort: missed over missed plus detected, summed across "
+		"animals, so heavily sampled animals weigh more. One tall bar points to a marginal "
+		"antenna."
+	),
 	requires=("recording_quality",),
 )
 def quality_by_antenna(context: PlotContext) -> go.Figure:
@@ -571,6 +668,12 @@ def quality_by_antenna(context: PlotContext) -> go.Figure:
 @PlotRegistry.register(
 	"network-dominance",
 	title="Dominance network",
+	info=(
+		"Nodes are animals, sized by their latest dominance rating; arrows run from chaser to "
+		"chased, their width and colour scaled by the number of chasings in the window. Edges "
+		"under the cutoff (percent of the strongest) are dropped before the layout is fitted; "
+		"spring pulls frequent pairs together."
+	),
 	requires=("chasings_df", "ranking", "animals"),
 	dynamic_choices=BY_COHORT,
 )
@@ -602,6 +705,12 @@ def network_dominance(
 @PlotRegistry.register(
 	"network-sociability",
 	title="Sociability network",
+	info=(
+		"Nodes are animals; each edge is the pair's share of each phase spent together at the "
+		"selected positions, summed over the window, its width and colour scaled to the "
+		"cohort's range. Edges under the cutoff (percent of the strongest) are dropped before "
+		"the layout is fitted."
+	),
 	requires=("pairwise_meetings", "phase_durations", "animals"),
 	dynamic_choices=BY_COHORT,
 )
@@ -639,6 +748,11 @@ def network_sociability(
 @PlotRegistry.register(
 	"recording-pulse",
 	title="Recording pulse",
+	info=(
+		"Cohort visits summed per hour, one row per experiment day, so gaps and rhythm drifts "
+		"stand out. Blank cells are hours with nothing recorded; the vertical line marks the "
+		"phase switch and outlined cells an event."
+	),
 	requires=("activity_df",),
 )
 def recording_pulse(
@@ -662,6 +776,11 @@ def recording_pulse(
 @PlotRegistry.register(
 	"habitat-occupancy",
 	title="Habitat occupancy",
+	info=(
+		"Share of the cohort's total animal-time held by each cage, all tunnels together, and "
+		"undefined, per day or phase, stacked to 100%. Undefined (hatched) is time no antenna "
+		"could place. A band that thins over days shows the cohort abandoning that cage."
+	),
 	requires=("activity_df",),
 )
 def habitat_occupancy(
@@ -693,6 +812,12 @@ def habitat_occupancy(
 @PlotRegistry.register(
 	"cohort-phenotype",
 	title="Cohort phenotype map",
+	info=(
+		"One marker per animal: x is visits (locomotion), y the share of its cage time spent "
+		"with company (1 - time alone / cage time). Marker area is the dominance rating, "
+		"measured from the lowest; hover adds chases won, and the top-ranked animal is "
+		"annotated against the cohort median."
+	),
 	requires=("activity_df", "chasings_df", "ranking", "animals"),
 	dynamic_choices=BY_COHORT,
 )
@@ -706,11 +831,11 @@ def cohort_phenotype(
 ) -> go.Figure:
 	"""One marker per animal, carrying locomotion, sociality, chasing and rank at once.
 
-	Marker area is chases won and colour the dominance rating, so an animal that sits
-	apart from the cloud is the one to open the Social or Dominance tab for.
+	Marker area is the dominance rating, so an animal that sits apart from the cloud is
+	the one to open the Social or Dominance tab for.
 	"""
 	window = _window(context, days_range, granularity)
-	# Colour is the rating, so the animals-by choice only decides the name on each marker.
+	# Markers are named by subject when coloured by subject, by tag otherwise.
 	label = "subject_name" if color_by == "subject_name" else "animal_id"
 	mapping = resolve_colors(context, color_by)
 	return plot_factory.plot_phenotype_map(

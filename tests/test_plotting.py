@@ -368,7 +368,7 @@ def test_option_without_a_default_is_rejected(clean_registry):
 	"""Every option needs a default so a plot can be built with no arguments."""
 	with pytest.raises(TypeError, match="no default"):
 
-		@clean_registry.register("broken", title="Broken", requires=())
+		@clean_registry.register("broken", title="Broken", info="", requires=())
 		def broken(context, *, mode) -> go.Figure:
 			"""Broken."""
 			return go.Figure()
@@ -378,7 +378,7 @@ def test_default_outside_its_literal_is_rejected(clean_registry):
 	"""A default that no choice allows would fail on every build, so it fails here."""
 	with pytest.raises(ValueError, match="not one of"):
 
-		@clean_registry.register("broken", title="Broken", requires=())
+		@clean_registry.register("broken", title="Broken", info="", requires=())
 		def broken(context, *, mode: Literal["a", "b"] = "c") -> go.Figure:
 			"""Broken."""
 			return go.Figure()
@@ -389,7 +389,11 @@ def test_resolver_for_an_unknown_option_is_rejected(clean_registry):
 	with pytest.raises(TypeError, match="unknown"):
 
 		@clean_registry.register(
-			"broken", title="Broken", requires=(), dynamic_choices={"colour_by": lambda c: ["x"]}
+			"broken",
+			title="Broken",
+			info="",
+			requires=(),
+			dynamic_choices={"colour_by": lambda c: ["x"]},
 		)
 		def broken(context, *, color_by: str = "animal_id") -> go.Figure:
 			"""Broken."""
@@ -401,7 +405,11 @@ def test_literal_and_resolver_on_one_option_is_rejected(clean_registry):
 	with pytest.raises(TypeError, match="Literal"):
 
 		@clean_registry.register(
-			"broken", title="Broken", requires=(), dynamic_choices={"mode": lambda c: ["x"]}
+			"broken",
+			title="Broken",
+			info="",
+			requires=(),
+			dynamic_choices={"mode": lambda c: ["x"]},
 		)
 		def broken(context, *, mode: Literal["a", "b"] = "a") -> go.Figure:
 			"""Broken."""
@@ -415,6 +423,7 @@ def test_resolved_default_reaches_the_builder(clean_registry, context):
 	@clean_registry.register(
 		"demo",
 		title="Demo",
+		info="",
 		requires=("animals",),
 		dynamic_choices={"color_by": animals_module.available_attributes},
 	)
@@ -432,7 +441,7 @@ def test_resolved_default_reaches_the_builder(clean_registry, context):
 def test_value_outside_its_choices_is_rejected(clean_registry, context):
 	"""The choices a spec advertises are enforced, not merely documented."""
 
-	@clean_registry.register("demo", title="Demo", requires=("animals",))
+	@clean_registry.register("demo", title="Demo", info="", requires=("animals",))
 	def demo(context, *, agg: Literal["sum", "mean"] = "sum") -> go.Figure:
 		"""Demo."""
 		return go.Figure()
@@ -444,7 +453,7 @@ def test_value_outside_its_choices_is_rejected(clean_registry, context):
 def test_missing_required_table_names_the_plot(clean_registry, context):
 	"""A plot whose step has not run says so, rather than failing deep inside polars."""
 
-	@clean_registry.register("demo", title="Demo", requires=("chasings_df",))
+	@clean_registry.register("demo", title="Demo", info="", requires=("chasings_df",))
 	def demo(context) -> go.Figure:
 		"""Demo."""
 		return go.Figure()
@@ -457,6 +466,13 @@ def test_unknown_plot_raises(clean_registry, context):
 	"""An unregistered name is an error, not an empty figure."""
 	with pytest.raises(KeyError):
 		clean_registry.build("nope", context)
+
+
+def test_every_plot_explains_itself_briefly():
+	"""The card's info popup has room for a few sentences, not an essay."""
+	for name in PlotRegistry.list_available():
+		words = len(PlotRegistry.spec(name).info.split())
+		assert 0 < words <= 50, name
 
 
 def test_unit_option_flattens_its_literal_union():

@@ -1314,11 +1314,18 @@ def plot_phenotype_map(
 	frame: pl.DataFrame, mapping: ColorMapping, label: str = "animal_id"
 ) -> go.Figure:
 	"""Plots one marker per animal: locomotion, sociality, chases won and rating."""
+	# A rating's zero is arbitrary (mu - 3 sigma, often negative), so area grows from the
+	# cohort's lowest rating, offset so that animal still gets a ninth of the top area.
+	rating = pl.col("ordinal")
+	span = rating.max() - rating.min()
+	frame = frame.with_columns(
+		pl.when(span > 0).then(rating - rating.min() + span / 8).otherwise(1).alias("rating_size")
+	)
 	fig = px.scatter(
 		frame,
 		x="visits",
 		y="gregariousness",
-		size="won",
+		size="rating_size",
 		size_max=30,
 		color=mapping.trace_column,
 		color_discrete_map=mapping.trace_colors,
@@ -1367,7 +1374,9 @@ def plot_phenotype_map(
 
 	# Formatting adjustments
 	collapse_legend(fig, mapping)
-	fig.update_coloraxes(colorbar=COLORBAR)
-	fig.update_layout(yaxis_tickformat=".0%", legend={"title": mapping.legend_title})
+	# Legend symbols otherwise take each animal's raw size, shrinking the low-rated ones.
+	fig.update_layout(
+		yaxis_tickformat=".0%", legend={"title": mapping.legend_title, "itemsizing": "constant"}
+	)
 
 	return fig

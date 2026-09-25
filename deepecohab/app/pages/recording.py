@@ -456,6 +456,25 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 			html.Span(None if missing else badges, className="deh-card-badge"),
 			html.Div(
 				[
+					dmc.Menu(
+						[
+							dmc.MenuTarget(
+								html.Button(
+									icon("info-circle", size=15),
+									className="deh-icon-btn sm",
+									title=f"About {spec.title}",
+								)
+							),
+							dmc.MenuDropdown(
+								[
+									dmc.MenuLabel(spec.title),
+									html.P(spec.info, className="deh-menu-text"),
+								]
+							),
+						],
+						position="bottom-end",
+						classNames={"dropdown": "deh-menu"},
+					),
 					html.Button(
 						icon("format", size=15),
 						id={"type": "card-format", "plot": name},

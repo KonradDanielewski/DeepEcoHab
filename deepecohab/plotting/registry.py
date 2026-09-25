@@ -46,6 +46,7 @@ class PlotSpec:
 		name: registry key.
 		title: display title.
 		summary: first line of the builder's docstring.
+		info: what the plot shows and how it is calculated, for the card's info popup.
 		requires: analysis tables the plot reads, checked by :meth:`PlotRegistry.build`.
 		options: the builder's keyword arguments.
 		builder: the plot function itself.
@@ -55,6 +56,7 @@ class PlotSpec:
 	name: str
 	title: str
 	summary: str
+	info: str
 	requires: tuple[str, ...]
 	options: tuple[Option, ...]
 	builder: Callable[..., go.Figure]
@@ -177,12 +179,14 @@ class PlotRegistry:
 		name: str,
 		*,
 		title: str,
+		info: str,
 		requires: tuple[str, ...],
 		dynamic_choices: Mapping[str, ChoiceResolver] | None = None,
 	) -> Callable[[Callable[..., go.Figure]], Callable[..., go.Figure]]:
 		"""Register a plot builder under ``name``.
 
 		Args:
+			info: what the plot shows and how its data is transformed, in a few sentences.
 			requires: analysis tables the builder reads.
 			dynamic_choices: resolvers for options whose choices depend on the
 				cohort, keyed by option name.
@@ -212,6 +216,7 @@ class PlotRegistry:
 				name=name,
 				title=title,
 				summary=docstring.split("\n", 1)[0],
+				info=info,
 				requires=requires,
 				options=options,
 				builder=func,
