@@ -828,7 +828,6 @@ def _dashboard(
 				id="builder-graph",
 				figure=fig,
 				config={"displayModeBar": False, "responsive": True},
-				style={"height": "420px"},
 			),
 		],
 		id="builder-graph-card",

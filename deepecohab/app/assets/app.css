@@ -1958,6 +1958,14 @@ code {
 	background: var(--surface);
 }
 
+/* The card stretches to the taller rail, so the plot fills it. `contain: size` keeps the
+   drawn plot out of the row height, or the row could never shrink back after a resize. */
+.deh-graph-card > .dash-graph {
+	flex: 1;
+	min-height: 420px;
+	contain: size;
+}
+
 .deh-graph-head {
 	display: flex;
 	align-items: center;
