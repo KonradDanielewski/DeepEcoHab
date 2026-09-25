@@ -45,8 +45,8 @@ def project(tmp_path_factory) -> Project:
 	recording = strategies.analysis_recording()
 	recording.name = "rec1"
 
-	metadata_path = root / "metadata.json"
-	data_path = root / "data.parquet"
+	metadata_path = root / "rec1.config.json"
+	data_path = root / "rec1.data.parquet"
 	metadata_path.write_text(json.dumps({"recording": recording.to_config()}), encoding="utf-8")
 	_raw_reads(recording, hours=48).write_parquet(data_path)
 

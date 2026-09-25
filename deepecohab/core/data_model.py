@@ -6,6 +6,7 @@ import queue
 import shutil
 import threading
 import warnings
+from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations, pairwise, product
@@ -743,12 +744,56 @@ class Recording(BaseModel):
 		return self
 
 
-class FailedRecording(NamedTuple):
-	"""A recording that could not be added, with the exception that stopped it."""
+#: The files a recording is delivered as, side by side as ``<name>.<suffix>``, mapped to
+#: whether it is required. The config is validated into ``config.json`` and the data into
+#: ``raw/data.parquet``; any other file is kept as is in ``raw/``.
+RECORDING_FILES: Final[dict[str, bool]] = {
+	"config.json": True,
+	"data.parquet": True,
+	"diagnostic.json": False,
+}
 
-	metadata_path: Path
-	data_path: Path
+
+class FailedRecording(NamedTuple):
+	"""A recording, or a stray file, that could not be added, with the exception that stopped it."""
+
+	name: str
 	error: Exception
+
+
+def _group_files(
+	paths: Iterable[str | Path],
+) -> tuple[dict[Path, dict[str, Path]], list[FailedRecording]]:
+	"""Sort files named ``<name>.<suffix>`` into one set per recording.
+
+	Returns:
+		Every complete set, keyed by its folder and name, with its files keyed by suffix; and
+		a failure for every file no suffix in `RECORDING_FILES` fits and every set missing a
+		required file.
+	"""
+	groups: dict[Path, dict[str, Path]] = defaultdict(dict)
+	failed = []
+	for path in map(Path, paths):
+		name = path.name.lower()
+		suffix = next(
+			(s for s in RECORDING_FILES if name.endswith(f".{s}") and name != f".{s}"), None
+		)
+		if suffix is None:
+			expected = ", ".join(f"<name>.{s}" for s in RECORDING_FILES)
+			failed.append(FailedRecording(path.name, ValueError(f"not one of {expected}")))
+		else:
+			groups[path.with_name(path.name[: -len(suffix) - 1])][suffix] = path
+
+	complete = {}
+	for base, files in groups.items():
+		if missing := [s for s, required in RECORDING_FILES.items() if required and s not in files]:
+			absent = " or ".join(f"{base.name}.{s}" for s in missing)
+			failed.append(
+				FailedRecording(base.name, FileNotFoundError(f"no {absent} came with it"))
+			)
+		else:
+			complete[base] = files
+	return complete, failed
 
 
 class AddReport(NamedTuple):
@@ -763,8 +808,9 @@ class Project(BaseModel):
 
 	The project is persisted as <project_location>/project.json, which maps each
 	recording name to its config.json relative to the manifest. Each recording
-	owns <project_location>/<recording_name>/, holding config.json, raw/ and
-	results/. Data is reattached from raw/data.parquet on load. Delisted recordings
+	owns <project_location>/<recording_name>/, holding config.json, raw/ (the data
+	and any optional file of `RECORDING_FILES`) and results/. Data is reattached
+	from raw/data.parquet on load. Delisted recordings
 	keep their folder and are mapped the same way under ``delisted``, unloaded.
 	"""
 
@@ -863,38 +909,48 @@ class Project(BaseModel):
 		"""Every recording in the project, in the order they were added."""
 		return list(self.data_catalog.values())
 
-	def add_recording(self, metadata_path: Path, data_path: Path) -> Recording:
-		"""Adds a recording to the project and updates the manifest."""
-		recording = self._add_one(Path(metadata_path), Path(data_path))
+	def add_recording(self, *paths: str | Path) -> Recording:
+		"""Adds one recording from its files and updates the manifest.
+
+		Args:
+			paths: the recording's files, named ``<name>.<suffix>`` for each suffix in
+				`RECORDING_FILES`; the optional ones may be left out.
+
+		Raises:
+			ValueError: ``paths`` are not the files of exactly one recording.
+		"""
+		groups, failed = _group_files(paths)
+		if failed or len(groups) != 1:
+			reasons = [f"{f.name}: {f.error}" for f in failed] or [f"{len(groups)} recordings"]
+			raise ValueError(f"Not the files of one recording - {'; '.join(reasons)}")
+
+		recording = self._add_one(*groups.values())
 		self._save()
 		return recording
 
-	def add_recordings(self, sources: Iterable[tuple[Path, Path]]) -> AddReport:
-		"""Adds several recordings, matched pairwise as (metadata_path, data_path).
+	def add_recordings(self, paths: Iterable[str | Path]) -> AddReport:
+		"""Adds every recording among ``paths``, grouped by name as in :meth:`add_recording`.
 
-		Recordings are added independently: a failure on one is logged and
-		warned about, and the rest still go in. The manifest is written once,
-		after the batch.
+		Recordings are added independently: a failure on one, or a file that belongs to
+		none, is logged and warned about, and the rest still go in. The manifest is
+		written once, after the batch.
 		"""
+		groups, failed = _group_files(paths)
 		added: list[str] = []
-		failed: list[FailedRecording] = []
 
-		for metadata_path, data_path in sources:
-			metadata_path, data_path = Path(metadata_path), Path(data_path)
+		for base, files in groups.items():
 			try:
-				added.append(self._add_one(metadata_path, data_path).name)
+				added.append(self._add_one(files).name)
 			except Exception as exc:
-				failed.append(FailedRecording(metadata_path, data_path, exc))
-				self.log.exception("failed to add recording from %s", metadata_path)
+				failed.append(FailedRecording(base.name, exc))
+				self.log.exception("failed to add recording from %s", base)
 
 		if added:
 			self._save()
 		self.log.info("batch add: %d added, %d failed", len(added), len(failed))
 
 		if failed:
-			details = "\n".join(
-				f"  {f.metadata_path}: {type(f.error).__name__}: {f.error}" for f in failed
-			)
+			details = "\n".join(f"  {f.name}: {type(f.error).__name__}: {f.error}" for f in failed)
 			warnings.warn(
 				f"{len(failed)} of {len(failed) + len(added)} recordings could not be "
 				f"added:\n{details}",
@@ -1156,10 +1212,13 @@ class Project(BaseModel):
 		"""The recordings a run covers; the one place that decides which of them run."""
 		return [self[name] for name in names] if names is not None else self.recordings
 
-	def _add_one(self, metadata_path: Path, data_path: Path) -> Recording:
-		"""Validate, write, and catalog one recording. Raises on any failure."""
-		metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-		recording = Recording.from_config(metadata["recording"], data_path)
+	def _add_one(self, files: dict[str, Path]) -> Recording:
+		"""Validate, write, and catalog one recording from its files keyed by suffix.
+
+		Raises on any failure.
+		"""
+		metadata = json.loads(files["config.json"].read_text(encoding="utf-8"))
+		recording = Recording.from_config(metadata["recording"], files["data.parquet"])
 		root = self.project_location / recording.name
 
 		if recording.name in self.data_catalog or root.exists():
@@ -1177,6 +1236,9 @@ class Project(BaseModel):
 			(root / self.CONFIG).write_text(
 				json.dumps(recording.to_config(), indent=2), encoding="utf-8"
 			)
+			for suffix, path in files.items():
+				if suffix not in ("config.json", "data.parquet"):
+					shutil.copyfile(path, root / "raw" / suffix)
 		except Exception:
 			shutil.rmtree(root, ignore_errors=True)  # only ours; root didn't exist above
 			raise
@@ -1186,7 +1248,7 @@ class Project(BaseModel):
 		self.log.info(
 			"added recording %r from %s (%d animals)",
 			recording.name,
-			metadata_path,
+			files["config.json"],
 			recording.cohort.n_mice,
 		)
 

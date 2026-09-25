@@ -367,11 +367,13 @@ layout = html.Div(
 								html.Span(
 									[
 										"One ",
-										html.Code("<name>.json"),
-										" of metadata beside its ",
-										html.Code("<name>.parquet"),
-										" of registrations. Files are copied into the project "
-										"under the name the metadata carries.",
+										html.Code("<name>.config.json"),
+										" beside its ",
+										html.Code("<name>.data.parquet"),
+										" and, optionally, ",
+										html.Code("<name>.diagnostic.json"),
+										". Files are copied into the project under the name "
+										"the config carries.",
 									]
 								),
 							],
@@ -1136,28 +1138,6 @@ def _generate_table(event):
 	return time.time()
 
 
-def _pair_uploads(files: list[Path]) -> tuple[list[tuple[Path, Path]], list[str]]:
-	"""Match every ``<name>.json`` of metadata to the ``<name>.parquet`` dropped with it.
-
-	Returns:
-		The (metadata, data) pairs, and one line for each file left without a partner.
-	"""
-	metadata = {path.stem: path for path in files if path.suffix.lower() == ".json"}
-	data = {path.stem: path for path in files if path.suffix.lower() == ".parquet"}
-	pairs, lonely = [], []
-	for path in files:
-		suffix = path.suffix.lower()
-		if suffix == ".json" and path.stem in data:
-			pairs.append((path, data[path.stem]))
-		elif suffix == ".json":
-			lonely.append(f"{path.name}: no {path.stem}.parquet came with it")
-		elif suffix == ".parquet" and path.stem not in metadata:
-			lonely.append(f"{path.name}: no {path.stem}.json came with it")
-		elif suffix != ".parquet":
-			lonely.append(f"{path.name}: neither metadata (.json) nor registrations (.parquet)")
-	return pairs, lonely
-
-
 @callback(
 	Output("upload-modal", "opened"),
 	Output("upload-modal", "title"),
@@ -1191,12 +1171,10 @@ def _add_recordings(event, contents, _close, filenames, location):
 			path.write_bytes(base64.b64decode(blob.split(",", 1)[1]))
 			files.append(path)
 
-		pairs, lonely = _pair_uploads(files)
-		added, failed = project.add_recordings(pairs) if pairs else ([], [])
+		added, failed = project.add_recordings(files)
 
-	problems = lonely + [
-		f"{source.metadata_path.name}: {type(source.error).__name__}: {source.error}"
-		for source in failed
+	problems = [
+		f"{source.name}: {type(source.error).__name__}: {source.error}" for source in failed
 	]
 	if not problems:
 		noun = "recording" if len(added) == 1 else "recordings"

@@ -408,9 +408,18 @@ window.dash_clientside.deh = {
 			};
 			requestAnimationFrame(restore);
 		}
+		// Opening a recording from another project points the plot builder at that project;
+		// moving between pages or recordings of the same one leaves the builder's pick alone.
+		const project = pathname === "/recording" && new URLSearchParams(search).get("project");
+		const follow = project && project !== dc.recordingProject;
+		if (follow) dc.recordingProject = project;
 		return [
 			pages.map((page) => page.id.index !== pathname),
-			links.map((link, i) => (link.id.index === pathname ? pathname + search : hrefs[i])),
+			links.map((link, i) => {
+				if (link.id.index === pathname) return pathname + search;
+				if (follow && link.id.index === "/builder") return "/builder?project=" + project;
+				return hrefs[i];
+			}),
 		];
 	},
 

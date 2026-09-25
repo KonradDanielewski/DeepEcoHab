@@ -36,8 +36,8 @@ def project(tmp_path_factory) -> Iterator[deh.Project]:
 
 	Session-scoped: the pipeline runs once for the whole module.
 	"""
-	sources = sorted((path, path.with_suffix(".parquet")) for path in DATA_DIR.glob("*.json"))
-	if not sources:
+	configs = list(DATA_DIR.glob("*.config.json"))
+	if not configs:
 		raise FileNotFoundError(f"No example recordings in {DATA_DIR}; the e2e test needs them.")
 
 	created = deh.Project.create(
@@ -45,9 +45,9 @@ def project(tmp_path_factory) -> Iterator[deh.Project]:
 		experimenter="Tester",
 		location=tmp_path_factory.mktemp("e2e") / "project",
 	)
-	report = created.add_recordings(sources)
+	report = created.add_recordings(DATA_DIR.iterdir())
 	assert not report.failed, f"recordings failed to add: {report.failed}"
-	assert len(report.added) == len(sources)
+	assert len(report.added) == len(configs)
 
 	created.run_analysis()
 	# Not a pipeline step: sinking it is the caller's call, and the tube-test plot
@@ -84,7 +84,7 @@ def _tables(recording: deh.Recording) -> dict[str, pl.DataFrame]:
 
 def test_reload_finds_every_recording(project):
 	"""The manifest round-trips: every recording reopens with its metadata attached."""
-	assert len(project) == len(list(DATA_DIR.glob("*.json")))
+	assert len(project) == len(list(DATA_DIR.glob("*.config.json")))
 	for recording in project.recordings:
 		assert recording.name == recording.root.name
 		assert recording.cohort.animal_tags

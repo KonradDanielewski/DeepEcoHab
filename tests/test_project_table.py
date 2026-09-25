@@ -53,8 +53,8 @@ def raw_reads(recording: Recording, hours: int) -> pl.DataFrame:
 def write_recording(directory: Path, recording: Recording, hours: int) -> tuple[Path, Path]:
 	"""Persist a recording's metadata and raw data the way Project.add_recording reads them."""
 	directory.mkdir(parents=True, exist_ok=True)
-	metadata_path = directory / "metadata.json"
-	data_path = directory / "data.parquet"
+	metadata_path = directory / f"{recording.name}.config.json"
+	data_path = directory / f"{recording.name}.data.parquet"
 
 	metadata_path.write_text(
 		json.dumps({"recording": recording.to_config()}, indent=2), encoding="utf-8"
@@ -88,7 +88,7 @@ def project(tmp_path_factory) -> Project:
 		("ko_cohort", ["X", "Y"], "KO", "2023-05-26 00:00:00", 36),
 	):
 		recording = make_recording(name, animals, genotype, finish)
-		sources.append(write_recording(root / "sources" / name, recording, hours))
+		sources.extend(write_recording(root / "sources" / name, recording, hours))
 
 	project = Project.create(
 		project_name="table_test", experimenter="tester", location=root / "project"
@@ -207,8 +207,8 @@ def test_event_columns_are_added_and_null_for_recordings_that_declare_nothing(tm
 	without_event = make_recording("without_event", ["X", "Y"], "KO", "2023-05-26 00:00:00")
 
 	sources = [
-		write_recording(root / "sources" / "with_event", with_event, 60),
-		write_recording(root / "sources" / "without_event", without_event, 48),
+		*write_recording(root / "sources" / "with_event", with_event, 60),
+		*write_recording(root / "sources" / "without_event", without_event, 48),
 	]
 
 	project = Project.create(
@@ -251,7 +251,7 @@ def test_removing_a_recording_drops_it_from_the_project_table(tmp_path):
 		("drop", ["X", "Y"], "KO", "2023-05-26 00:00:00", 36),
 	):
 		recording = make_recording(name, animals, genotype, finish)
-		sources.append(write_recording(tmp_path / "sources" / name, recording, hours))
+		sources.extend(write_recording(tmp_path / "sources" / name, recording, hours))
 
 	project = Project.create(
 		project_name="remove_test", experimenter="tester", location=tmp_path / "project"
@@ -411,6 +411,33 @@ def test_adding_an_untrimmed_recording_is_quiet(tmp_path):
 	with warnings.catch_warnings():
 		warnings.simplefilter("error")
 		project.add_recording(metadata_path, data_path)
+
+
+def test_files_group_into_recordings_by_name(tmp_path):
+	recording = make_recording("grouped", ["A", "B"], "WT", "2023-05-26 00:00:00")
+	config, data = write_recording(tmp_path / "src", recording, 12)
+	diagnostic = tmp_path / "src" / "grouped.diagnostic.json"
+	diagnostic.write_text('{"diagnostics_version": 8}', encoding="utf-8")
+	orphan = tmp_path / "src" / "orphan.config.json"
+	orphan.write_text("{}", encoding="utf-8")
+	stray = tmp_path / "src" / "notes.txt"
+	stray.write_text("", encoding="utf-8")
+
+	project = Project.create(
+		project_name="grouped", experimenter="tester", location=tmp_path / "project"
+	)
+	with pytest.raises(ValueError, match=r"no orphan.data.parquet came with it"):
+		project.add_recording(orphan)
+	with pytest.warns(UserWarning, match="2 of 3"):
+		report = project.add_recordings([stray, data, orphan, diagnostic, config])
+
+	assert report.added == ["grouped"]
+	assert {f.name: type(f.error) for f in report.failed} == {
+		"notes.txt": ValueError,
+		"orphan": FileNotFoundError,
+	}
+	kept = project["grouped"].root / "raw" / "diagnostic.json"
+	assert kept.read_text(encoding="utf-8") == diagnostic.read_text(encoding="utf-8")
 
 
 def test_update_notes_persists_to_config_json(tmp_path):

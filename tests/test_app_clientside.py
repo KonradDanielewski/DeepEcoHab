@@ -249,6 +249,29 @@ eq(
 	"builderKind ignores other edits"
 );
 
+// --- pageScroll: an opened recording takes the builder link to its project -------------
+global.history = {};
+global.requestAnimationFrame = () => {};
+document.getElementById = () => null;
+const pages = ["/recording", "/builder"].map((index) => ({id: {index}}));
+window.dash_clientside.callback_context = {outputs_list: [pages, pages]};
+const links = (pathname, search, hrefs) => deh.pageScroll(pathname, search, hrefs)[1];
+eq(
+	links("/recording", "?project=b&recording=r", ["/recording", "/builder?project=a"]),
+	["/recording?project=b&recording=r", "/builder?project=b"],
+	"a recording from another project moves the builder"
+);
+eq(
+	links("/builder", "?project=c", ["/recording?project=b&recording=r", "/builder?project=b"]),
+	["/recording?project=b&recording=r", "/builder?project=c"],
+	"the builder keeps its own pick"
+);
+eq(
+	links("/recording", "?project=b&recording=s", ["/recording", "/builder?project=c"]),
+	["/recording?project=b&recording=s", "/builder?project=c"],
+	"another recording of the same project leaves the builder alone"
+);
+
 console.log("ok");
 """
 )
