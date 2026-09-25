@@ -2118,7 +2118,7 @@ code {
 
 .deh-hab-type {
 	fill: var(--ink-3);
-	font: 11px var(--mono);
+	font: 8px var(--mono);
 	text-anchor: middle;
 }
 

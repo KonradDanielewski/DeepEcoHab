@@ -47,7 +47,7 @@ AURORA: list[list] = [
 
 _COLORSCALE = {"sequential": AURORA, "sequentialminus": "Plasma", "diverging": "curl"}
 
-COLORBAR = {
+COLORBAR: dict = {
 	"thicknessmode": "fraction",
 	"thickness": 0.03,
 	"lenmode": "fraction",
@@ -153,8 +153,11 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 		"tickfont": {"color": tokens["ink2"]},
 		"title": {"font": {"color": tokens["ink2"]}},
 	}
+	# Colour bars and annotations (subplot titles among them) otherwise fall back to font.color.
+	label = {"color": tokens["ink2"]}
+	colorbar = {"tickfont": label, "title": {**COLORBAR["title"], "font": label}}
 	return go.layout.Template(
-		data=_DATA,
+		data={**_DATA, "heatmap": [{"colorbar": colorbar}]},
 		layout=go.Layout(
 			paper_bgcolor="rgba(0,0,0,0)",
 			plot_bgcolor="rgba(0,0,0,0)",
@@ -162,6 +165,7 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 			xaxis=axis,
 			yaxis=axis,
 			shapedefaults={"line": {"color": tokens["axis"]}},
+			annotationdefaults={"font": label},
 			polar={
 				"bgcolor": "rgba(0,0,0,0)",
 				"angularaxis": {"gridcolor": tokens["grid"], "linecolor": tokens["axis"]},
@@ -175,7 +179,7 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 			},
 			colorway=DEFAULT_COLORWAY,
 			colorscale=_COLORSCALE,
-			coloraxis={"colorbar": COLORBAR},
+			coloraxis={"colorbar": {**COLORBAR, **colorbar}},
 		),
 	)
 
