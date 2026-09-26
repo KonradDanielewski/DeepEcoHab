@@ -263,6 +263,7 @@ def overview_tiles(context: PlotContext) -> list[dict]:
 	Returns:
 		One ``label`` / ``value`` / ``note`` dict per tile, in reading order.
 	"""
+	assert context.recording is not None
 	days = context.days_range[1] - context.days_range[0] + 1
 	phases = context.phase_range[1] - context.phase_range[0] + 1
 	tiles = [
@@ -273,7 +274,7 @@ def overview_tiles(context: PlotContext) -> list[dict]:
 		}
 	]
 
-	if "main_df" in context and context.recording is not None:
+	if "main_df" in context:
 		# Lazily: this card is built for every recording that is opened, and main_df runs
 		# to hundreds of thousands of rows that nothing here reads except to count them.
 		rows = context.recording.load_results("main_df", eager=False).select(pl.len())
@@ -313,14 +314,16 @@ def overview_tiles(context: PlotContext) -> list[dict]:
 			.sort("pct", descending=True)
 			.row(0, named=True)
 		)
-		layout = context.recording.layout if context.recording else None
-		kinds = {cage.name: cage.cage_type for cage in layout.cages} if layout else {}
-		kind = kinds.get(share["position"])
+		kind = next(
+			cage.cage_type
+			for cage in context.recording.layout.cages
+			if cage.name == share["position"]
+		)
 		tiles.append(
 			{
 				"label": "Busiest cage",
 				"value": share["position"].capitalize().replace("_", " "),
-				"note": f"{share['pct']:.0f}% of cohort time" + (f" · {kind}" if kind else ""),
+				"note": f"{share['pct']:.0f}% of cohort time · {kind}",
 			}
 		)
 
