@@ -728,9 +728,22 @@ window.dash_clientside.deh = {
 		return [1, bound, marks, value, merged];
 	},
 
+	// The card's plot is drawn at its on-page size and scaled up whole, so fonts, legend and
+	// colorbar keep their proportions instead of shrinking relative to a larger canvas.
 	fullscreen: function (_clicks, figures, ids, titles, titleIds) {
 		const picked = _pickPlot(figures, ids);
-		return [true, _plotTitle(picked.name, titles, titleIds), picked.figure];
+		const card = document.getElementById(JSON.stringify({plot: picked.name, type: "plot"}));
+		const width = card.offsetWidth;
+		const height = card.offsetHeight;
+		const scale = Math.min((window.innerWidth - 32) / width, (window.innerHeight - 120) / height);
+		const layout = Object.assign({}, picked.figure.layout, {width: width, height: height, autosize: false});
+		return [
+			true,
+			_plotTitle(picked.name, titles, titleIds),
+			Object.assign({}, picked.figure, {layout: layout}),
+			{width: width + "px", height: height + "px", transform: "scale(" + scale + ")", transformOrigin: "0 0"},
+			{width: width * scale + "px", height: height * scale + "px", margin: "auto", overflow: "hidden"},
+		];
 	},
 
 	openExport: function (_clicks, figures, ids, titles, titleIds, context) {
