@@ -287,10 +287,6 @@ def _faceted_heatmap(
 		# and toward the colour bar rather than leaving a gap before it.
 		figure.update_xaxes(constrain="domain", constraintoward="right")
 		figure.update_yaxes(constrain="domain", constraintoward="top")
-		# The shrink leaves the bottom of the plotting area to the tick labels of the panel
-		# the shared bar is pushed up against, so it stops short of them rather than running
-		# the full height the theme's bar would (§ COLORBAR).
-		figure.update_coloraxes(colorbar={"thickness": 0.009})
 
 	return figure
 
