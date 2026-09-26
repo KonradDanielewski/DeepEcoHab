@@ -265,7 +265,7 @@ def split_on_minute_boundaries(frame: pl.LazyFrame, recording: Recording) -> pl.
 						pl.col("time_under")
 						.dt.total_microseconds()
 						.mul(pl.col("__piece"))
-						.truediv(pl.col("__visit").clip(lower_bound=1))
+						.truediv(pl.col("__visit"))
 					)
 					.round()
 					.cast(pl.Int64)

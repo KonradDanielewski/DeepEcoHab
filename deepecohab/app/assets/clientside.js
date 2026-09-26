@@ -93,7 +93,8 @@ function _autoTitles(base) {
 	return {
 		xaxis: axis("x"),
 		yaxis: axis("y"),
-		colorbar: bar ? _titleText((bar.colorbar || {}).title) : null,
+		// A hidden bar (the network's edges) offers its scale but no title or bounds.
+		colorbar: bar && bar.showscale !== false ? _titleText((bar.colorbar || {}).title) : null,
 		coloraxis: bar ? "" : null,
 		colorway: base.colorway ? "" : null,
 	};
@@ -179,6 +180,31 @@ function _recolor(data, from, to) {
 	return data.map(walk);
 }
 
+/* The rgb() colour ``scale`` draws at ``t`` in [0, 1], from hex or rgb()/rgba() stops alike. */
+function _sample(scale, t) {
+	const channels = (color) =>
+		color[0] === "#"
+			? [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16))
+			: _rgb(color).key.split(",").map(Number);
+	const upper = Math.max(1, scale.findIndex(([at]) => at >= t));
+	const [[from, low], [to, high]] = [scale[upper - 1], scale[upper]];
+	const f = to > from ? (t - from) / (to - from) : 0;
+	const [a, b] = [channels(low), channels(high)];
+	return `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * f)).join(", ")})`;
+}
+
+/* ``data`` with each line whose markers ride the colour axis resampled from ``scale``: a
+ * line cannot ride it, so the network's edges keep theirs in step by hand. */
+function _followScale(data, scale) {
+	return data.map((trace) => {
+		const marker = trace.marker || {};
+		if (!marker.coloraxis || !trace.line) return trace;
+		return Object.assign({}, trace, {
+			line: Object.assign({}, trace.line, {color: _sample(scale, marker.color[0])}),
+		});
+	});
+}
+
 /* ``fig`` with ``fmt`` drawn on it, or null when that would change nothing. */
 function _formatFigure(fig, fmt, choices) {
 	if (!fig || !fig.layout) return null;
@@ -203,6 +229,9 @@ function _formatFigure(fig, fmt, choices) {
 			layout[key] = _withRange(titledAxis, range === "inverted" ? null : range, (base.ranges || {})[key]);
 		});
 	});
+	// The data only changes along with the colour scale or colorway, so comparing layouts
+	// still decides.
+	let data = fig.data || [];
 	if (base.coloraxis) {
 		const axis = Object.assign({}, base.coloraxis);
 		if ("colorbar" in live) {
@@ -213,13 +242,14 @@ function _formatFigure(fig, fmt, choices) {
 		const range = _colorRange(live, base);
 		if (range && range !== "inverted") Object.assign(axis, range);
 		layout.coloraxis = axis;
+		if (JSON.stringify(axis.colorscale) !== JSON.stringify((fig.layout.coloraxis || {}).colorscale)) {
+			data = _followScale(data, axis.colorscale);
+		}
 	}
-	// The data only changes along with the colorway, so comparing layouts still decides.
-	let data = fig.data;
 	if (base.colorway) {
 		const colorway = _colorway(live, base, palettes);
 		if (JSON.stringify(colorway) !== JSON.stringify(fig.layout.colorway)) {
-			data = _recolor(fig.data || [], fig.layout.colorway || base.colorway, colorway);
+			data = _recolor(data, fig.layout.colorway || base.colorway, colorway);
 			layout.colorway = colorway;
 		}
 	}

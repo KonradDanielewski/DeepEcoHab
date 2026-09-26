@@ -891,7 +891,6 @@ def plot_metrics_polar(frame: pl.DataFrame, mapping: ColorMapping) -> go.Figure:
 def _edge_traces(
 	graph: nx.Graph,
 	pos: dict[str, np.ndarray],
-	cmap: str = "Viridis",
 	edge_weight: Literal["chasings", "proportion_together"] = "chasings",
 ) -> list[go.Scatter]:
 	"""One trace per edge, its width and colour scaled by the edge's weight.
@@ -900,10 +899,12 @@ def _edge_traces(
 	cohort's own range; a cohort whose edges all carry the same weight has no spread
 	to scale by, and takes the middle of the colorscale throughout.
 
+	The arrowheads ride the figure's colour axis, so Format can swap its scale; a line
+	cannot, so its colour is sampled here and resampled by the clientside Format.
+
 	Args:
 		graph: the network, whose edges carry ``edge_weight`` as an attribute.
 		pos: node positions, as ``(x, y, ranking)`` per node.
-		cmap: any named plotly colorscale.
 		edge_weight: which edge attribute drives width and colour.
 
 	Returns:
@@ -920,7 +921,7 @@ def _edge_traces(
 		z_scores = (edge_widths - mu) / std
 		normalized_for_colors = 1 / (1 + np.exp(-z_scores))
 
-	colorscale: list[str] = px.colors.sample_colorscale(cmap, normalized_for_colors.tolist())
+	colorscale: list[str] = px.colors.sample_colorscale(AURORA, normalized_for_colors.tolist())
 
 	edge_trace: list[go.Scatter] = []
 
@@ -941,7 +942,13 @@ def _edge_traces(
 				},
 				hoverinfo="none",
 				mode="lines+markers",
-				marker={"size": edge_width, "symbol": "arrow", "angleref": "previous"},
+				marker={
+					"size": edge_width,
+					"symbol": "arrow",
+					"angleref": "previous",
+					"color": [normalized_for_colors[index]] * 2,
+					"coloraxis": "coloraxis",
+				},
 				opacity=0.5,
 				showlegend=False,
 			)
@@ -1050,6 +1057,7 @@ def plot_network_graph(
 			showlegend=False,
 			hovermode="closest",
 			title={"text": title, "x": 0.5, "y": 0.95},
+			coloraxis={"colorscale": AURORA, "cmin": 0, "cmax": 1, "showscale": False},
 		),
 	)
 

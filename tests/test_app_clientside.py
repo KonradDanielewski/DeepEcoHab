@@ -516,6 +516,29 @@ eq(
 	"the palette menu disables the ones too short for this plot"
 );
 
+// --- a colour scale resamples the network's edges, whose lines cannot ride the axis ----
+const channels = (color) => color.match(/[\\d.]+/g).map(Number);
+const near = (got, want) => got.every((color, i) =>
+	channels(color).every((c, j) => Math.abs(c - channels(want[i])[j]) <= 1)
+);
+const edgeLines = (fig) => fig.data.slice(0, -1).map((trace) => trace.line.color);
+const viridis = apply(wanted.network, {colorscale: {on: "", value: "Viridis"}});
+eq(near(edgeLines(viridis), wanted.networkViridis), true, "edge lines follow the picked scale");
+eq(viridis.data.at(-1), wanted.network.data.at(-1), "the nodes are left alone");
+eq(
+	near(edgeLines(apply(viridis, {})), edgeLines(wanted.network)),
+	true,
+	"clearing restores the server's edge colours"
+);
+
+const fields = ["colorbar", "cmin", "colorscale"].map((key) => ({id: {type: "rec-fmt", key}}));
+window.dash_clientside.callback_context.outputs_list = [null, null, null, fields];
+eq(
+	deh.openFormat(null, [wanted.network], ids, ["P"], ids, {}, wanted.colors)[5],
+	[true, true, false],
+	"a hidden colour bar offers its scale but no title or bounds"
+);
+
 console.log("ok");
 """
 )
@@ -564,6 +587,7 @@ def test_format_matches_builder(tmp_path):
 	import polars as pl
 
 	from deepecohab.app.builder import figure
+	from deepecohab.plotting import plot_factory
 	from deepecohab.plotting.theme import COLORSCALES, PALETTES
 
 	frame = pl.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 1, 2], "g": ["p", "q", "p", "q"]})
@@ -587,12 +611,25 @@ def test_format_matches_builder(tmp_path):
 	expected = go.Figure(fig)
 	figure.apply_format(expected, fmt)
 
+	network = plot_factory.plot_network_graph(
+		pl.DataFrame({"source": ["a", "b"], "target": ["b", "c"], "chasings": [3.0, 1.0]}),
+		pl.DataFrame({"animal_id": ["a", "b", "c"], "ordinal": [30.0, 20.0, 10.0]}),
+		["a", "b", "c"],
+		["#111111", "#222222", "#333333"],
+		"chasings",
+		"circular",
+	)
+
 	wanted = {
 		"figure": json.loads(fig.to_json()),
 		"expected": json.loads(expected.to_json()),
 		"auto": auto,
 		"fmt": fmt,
 		"colors": {"colorscale": COLORSCALES, "palette": PALETTES},
+		"network": json.loads(network.to_json()),
+		"networkViridis": px.colors.sample_colorscale(
+			COLORSCALES["Viridis"], [edge.marker.color[0] for edge in network.data[:-1]]
+		),
 	}
 	_run(tmp_path, _FORMAT_HARNESS, wanted)
 

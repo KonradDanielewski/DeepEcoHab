@@ -146,12 +146,10 @@ def _thin_axis(axis: dict[str, Any], labels: list[Any], slot: float, tick: float
 	longest = max(len(str(label)) for label in labels) * _CHAR * tick
 
 	if longest <= tick * _WIDE_LABEL_SCALE:
-		step = math.ceil((longest * _LINE_HEIGHT) / slot) if slot < longest * _LINE_HEIGHT else 1
+		step = max(1, math.ceil((longest * _LINE_HEIGHT) / slot))
 	else:
 		axis["tickangle"] = -90 if slot < longest * _ROTATE_BELOW else 0
-		step = (
-			math.ceil((tick * _ROTATED_TICK_GAP) / slot) if slot < tick * _ROTATED_TICK_GAP else 1
-		)
+		step = max(1, math.ceil((tick * _ROTATED_TICK_GAP) / slot))
 
 	if step > 1:
 		kept = labels[::step]
