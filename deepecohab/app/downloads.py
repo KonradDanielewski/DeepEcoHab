@@ -53,25 +53,17 @@ def _computed_tables(recording: Recording) -> list[str]:
 	return [name for name in DataFrameRegistry.list_available() if done.get(name)]
 
 
-@bp.route("/download/project/<pid>/table.parquet")
-def project_table_parquet(pid: str):
-	"""The project table, unconverted."""
+@bp.route("/download/project/<pid>/table")
+def project_table(pid: str):
+	"""The project table, parquet or ``?format=csv`` (converted with :func:`services.csv_ready`)."""
 	project = _project(pid)
 	path = project.project_location / Project.PROJECT_TABLE
 	if not path.is_file():
 		abort(404, "Generate the project table first.")
-	return send_file(
-		path, as_attachment=True, download_name=f"{project.project_name}__project_table.parquet"
-	)
-
-
-@bp.route("/download/project/<pid>/table.csv")
-def project_table_csv(pid: str):
-	"""The project table, converted with :func:`services.csv_ready`."""
-	project = _project(pid)
-	path = project.project_location / Project.PROJECT_TABLE
-	if not path.is_file():
-		abort(404, "Generate the project table first.")
+	if request.args.get("format") != "csv":
+		return send_file(
+			path, as_attachment=True, download_name=f"{project.project_name}__project_table.parquet"
+		)
 	text = services.csv_ready(pl.read_parquet(path)).write_csv()
 	return send_file(
 		io.BytesIO(text.encode("utf-8")),

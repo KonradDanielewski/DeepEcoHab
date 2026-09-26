@@ -144,7 +144,7 @@ def test_recording_raw_and_config_stream(client):
 def test_unknown_project_id_404s(client):
 	test_client, _ = client
 
-	assert test_client.get("/download/project/deadbeefcafe/table.parquet").status_code == 404
+	assert test_client.get("/download/project/deadbeefcafe/table").status_code == 404
 
 
 def test_project_archive_zip_excludes_raw_by_default(client):
