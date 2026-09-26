@@ -9,17 +9,17 @@ hand-built match table and exercise the pure compute body directly via
 
 import datetime as dt
 from functools import partial
+from zoneinfo import ZoneInfo
 
 import polars as pl
 import pytest
 import strategies
-import tzlocal
 from openskill.models import PlackettLuce
 
 from deepecohab.core import antenna_analysis
 from deepecohab.core.data_model import AnalysisParams, Recording
 
-TZ = tzlocal.get_localzone()
+TZ = ZoneInfo("Europe/Warsaw")
 
 PHASE_CFG = {"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 0)}
 

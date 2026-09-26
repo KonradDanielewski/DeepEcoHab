@@ -1,16 +1,16 @@
 import datetime as dt
 from functools import partial
+from zoneinfo import ZoneInfo
 
 import polars as pl
 import pytest
 import strategies
-import tzlocal
 from hypothesis import given, settings, strategies as st
 
 from deepecohab.core.antenna_analysis import _get_time_alone
 from deepecohab.core.data_model import AnalysisParams
 
-TZ = tzlocal.get_localzone()
+TZ = ZoneInfo("Europe/Warsaw")
 
 SCHEMA: dict[str, pl.DataType] = {
 	"animal_id": pl.Enum(["A", "B", "C"]),
