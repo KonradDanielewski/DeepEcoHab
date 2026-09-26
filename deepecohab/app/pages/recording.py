@@ -231,9 +231,19 @@ def _reads(tables: tuple[str, ...]) -> list:
 	return children
 
 
-def _card_head(title: str, blurb) -> html.Div:
+def _card_head(title: str, blurb, *, maximize: bool = False) -> html.Div:
+	# The card itself fills the window (deh-card-max in clientside.js) rather than a copy in a
+	# modal, so its table rows and map stay the live, clickable ones.
+	button = html.Button(
+		[icon("maximize", size=15), icon("x", size=15)],
+		className="deh-icon-btn sm deh-card-max",
+		title=f"Open {title} full screen",
+	)
 	return html.Div(
-		html.Div([html.H3(title), html.P(blurb)], className="deh-card-titles"),
+		[
+			html.Div([html.H3(title), html.P(blurb)], className="deh-card-titles"),
+			html.Div(button, className="deh-card-actions") if maximize else None,
+		],
 		className="deh-card-head",
 	)
 
@@ -808,6 +818,7 @@ def _events_card_children(recording: Recording) -> list:
 			html.Code("config.json"),
 			" declares them, over the light and dark phases they fell in.",
 		],
+		maximize=True,
 	)
 	strip = html.Div(
 		[
@@ -848,7 +859,9 @@ def _events_card_children(recording: Recording) -> list:
 
 def _quality_missing_children(context: PlotContext, color_by: str) -> list:
 	header = _card_head(
-		"Position unknown", "Time each animal spent at a position antennas could not resolve."
+		"Position unknown",
+		"Time each animal spent at a position antennas could not resolve.",
+		maximize=True,
 	)
 	needed = ("activity_df", "phase_durations")
 	missing = [table for table in needed if table not in context]
@@ -921,6 +934,7 @@ def _habitat_card_children(context: PlotContext, height: int) -> list:
 			html.Code("config.json"),
 			" lays them out. Antennas are tinted by missed passes.",
 		],
+		maximize=True,
 	)
 
 	# The map is drawn from the layout alone, so this card is the one that renders for a
@@ -1441,6 +1455,7 @@ def _cohort_card_children(context: PlotContext, color_by: str) -> list:
 			html.B(_human(color_by)),
 			" on every plot here.",
 		],
+		maximize=True,
 	)
 	if "animals" not in context:
 		return [header, _needs("animals")]
