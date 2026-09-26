@@ -309,6 +309,8 @@ def _position_plot(
 	granularity: str,
 ) -> go.Figure:
 	"""Per-animal values against position: grouped bars for a sum, boxes for a mean."""
+	# Pinned so the index-based tick labels below name the right category.
+	orders = {"position": positions, mapping.trace_column: mapping.order}
 	match agg:
 		case "sum":
 			# px.histogram re-aggregates in the browser and drops customdata with it,
@@ -319,7 +321,7 @@ def _position_plot(
 				y=y,
 				color=mapping.trace_column,
 				color_discrete_map=mapping.trace_colors,
-				category_orders={mapping.trace_column: mapping.order},
+				category_orders=orders,
 				hover_data=hover,
 				title=title,
 				barmode="group",
@@ -332,7 +334,7 @@ def _position_plot(
 				y=y,
 				color=mapping.trace_column,
 				color_discrete_map=mapping.trace_colors,
-				category_orders={mapping.trace_column: mapping.order},
+				category_orders=orders,
 				hover_data=hover | {granularity: True},
 				title=title,
 				boxmode="group",
