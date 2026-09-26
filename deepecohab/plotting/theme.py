@@ -48,8 +48,9 @@ AURORA: list[list] = [
 _COLORSCALE = {"sequential": AURORA, "sequentialminus": "Plasma", "diverging": "curl"}
 
 COLORBAR: dict = {
-	"thicknessmode": "fraction",
-	"thickness": 0.03,
+	# Pixels, like the fonts: a fraction of the plot width swells the bar under browser zoom.
+	"thicknessmode": "pixels",
+	"thickness": 12,
 	"lenmode": "fraction",
 	"len": 1,
 	"y": 1,
@@ -214,7 +215,6 @@ pio.templates["publication"] = go.layout.Template(
 		coloraxis={
 			"colorbar": {
 				**COLORBAR,
-				"thickness": 0.025,
 				"title": {"side": "right", "font": {"color": "black"}},
 			}
 		},
