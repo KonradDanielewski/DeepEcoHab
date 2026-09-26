@@ -93,7 +93,9 @@ def build_main_df(recording: Recording, params: AnalysisParams) -> pl.LazyFrame:
 		)
 		.pipe(grids.assign_phase_count, recording)
 		.drop("__tail")
-		.sort("datetime")
+		# animal_id breaks datetime ties, so the row order - padded_df's row_id - is
+		# the same on every run.
+		.sort("datetime", "animal_id")
 	)
 
 
@@ -111,7 +113,9 @@ def build_padded_df(recording: Recording, params: AnalysisParams) -> pl.LazyFram
 	# the phase_count inherited from that visit no longer applies. Every piece starts
 	# inside the window - build_main_df clips the first visit's time_spent to it - so
 	# this left join always resolves and no piece leaves with a null phase_count.
-	return grids.assign_phase_count(pieces.drop("phase_count"), recording).sort("datetime")
+	return grids.assign_phase_count(pieces.drop("phase_count"), recording).sort(
+		"datetime", "row_id"
+	)
 
 
 @DataFrameRegistry.register("phase_durations")

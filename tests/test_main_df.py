@@ -325,6 +325,30 @@ def test_pieces_tile_the_visit_exactly(monkeypatch):
 	assert (~pieces["interpolated"]).sum() == main.height  # one first piece per visit
 
 
+def test_row_order_and_row_id_do_not_depend_on_input_order(monkeypatch):
+	"""Reruns write identical tables, row for row.
+
+	The two animals read at the same instants and are both carried to the window end,
+	so ``datetime`` alone leaves ties. padded_df's ``row_id`` is main_df's row index, so
+	an unpinned tie order renumbers the visits on every run.
+	"""
+	rows = [
+		("A", 1, at(2023, 5, 24, 0, 5)),
+		("B", 2, at(2023, 5, 24, 0, 5)),
+		("A", 2, at(2023, 5, 24, 0, 10)),
+		("B", 1, at(2023, 5, 24, 0, 10)),
+	]
+	recordings = [recording_with(order) for order in (rows, rows[::-1])]
+	mains = [
+		recording_pipeline.build_main_df(recording, AnalysisParams()).collect()
+		for recording in recordings
+	]
+	paddeds = [padded(monkeypatch, *pair) for pair in zip(recordings, mains, strict=True)]
+
+	assert mains[0].equals(mains[1])
+	assert paddeds[0].equals(paddeds[1])
+
+
 def test_no_piece_starts_before_the_analysed_window(monkeypatch):
 	"""The clipped first visit is what keeps padding inside the grid.
 
