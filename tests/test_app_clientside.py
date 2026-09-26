@@ -89,22 +89,26 @@ eq(
 	"openExport falls back when there is no recording context"
 );
 
-// --- switchTab: a querystring edit that keeps the other parameters, plus the rec-tab -----
-// mirror plotRequest reads (rec-tabs itself is built into rec-body, too late to be an Input).
-const NO_UPDATE = window.dash_clientside.no_update;
-fire("rec-tabs", "social");
-eq(
-	deh.switchTab("social", "?project=abc&tab=overview"),
-	["?project=abc&tab=social", "social"],
-	"switchTab"
-);
-eq(
-	deh.switchTab("social", "?project=abc"),
-	["?project=abc&tab=social", "social"],
-	"switchTab adds tab"
-);
-// The tab the body mounts with is already in the search; the mirror still has to be filled.
-eq(deh.switchTab("social", "?tab=social"), [NO_UPDATE, "social"], "switchTab on the current tab");
+// --- switchTab: the rec-tab mirror plotRequest reads (rec-tabs itself is built into rec-body,
+// too late to be an Input), with the tab written into the address bar alone, not url.search.
+const replaced = [];
+const linked = [];
+global.history = {state: null, replaceState: (_state, _title, href) => replaced.push(href)};
+window.dash_clientside.set_props = (id, props) => linked.push([id.index, props.href]);
+const switchTo = (tab, search) => {
+	global.location = {pathname: "/recording", search};
+	replaced.length = linked.length = 0;
+	return deh.switchTab(tab);
+};
+eq(switchTo("social", "?project=abc&tab=overview"), "social", "switchTab mirrors the tab");
+eq(replaced, ["/recording?project=abc&tab=social"], "switchTab rewrites only the tab");
+eq(linked, [["/recording", "/recording?project=abc&tab=social"]], "the sidebar link follows");
+switchTo("social", "?project=abc");
+eq(replaced, ["/recording?project=abc&tab=social"], "switchTab adds tab");
+// The tab the body mounts with is already in the address bar; the mirror still has to be filled.
+eq(switchTo("social", "?tab=social"), "social", "switchTab on the current tab");
+eq([replaced, linked], [[], []], "the current tab leaves the address bar alone");
+window.dash_clientside.set_props = () => {};
 
 // --- windowControl: bounds, marks and the reset on a granularity change ----------------
 for (const [granularity, bound] of [["day", wanted.days], ["phase_count", wanted.phases]]) {
@@ -245,8 +249,11 @@ const full = {
 	group_mean: false,
 };
 const context = {recording: "r", days: 2, phases: 4};
-const request = (tab, stores, options = metric("time"), controls = full, badges = []) => {
+const request = (
+	tab, stores, options = metric("time"), controls = full, badges = [], trigger, hover
+) => {
 	window.dash_clientside.callback_context = {
+		triggered_id: trigger,
 		inputs_list: [null, null, null, null, options],
 		states_list: [
 			Object.entries(stores).map(([plot, value]) => ({id: {type: "plot-req", plot}, value})),
@@ -254,7 +261,7 @@ const request = (tab, stores, options = metric("time"), controls = full, badges 
 		],
 	};
 	sets.length = 0;
-	deh.plotRequest(context, controls, tab, "dark");
+	deh.plotRequest(context, controls, tab, "dark", options, hover);
 	return Object.fromEntries(sets.map(([id, props]) => [id.plot, props.data]));
 };
 const uses = ["window", "granularity"];
@@ -285,6 +292,26 @@ eq(
 	request("activity", {bar: drawn}, metric("visits")).bar.opts,
 	{metric: "visits"},
 	"a changed card option asks again"
+);
+const social = {tab: "social", uses};
+const hovered = {tab: "social", at: 1};
+eq(
+	request("activity", {bar: drawn, line: social}, metric("time"), full, [], "rec-hover", hovered),
+	{line: Object.assign({}, drawn, {tab: "social", opts: {}})},
+	"a hovered tab's cards ask for the showing tab's inputs"
+);
+eq(
+	request(
+		"activity",
+		{bar: drawn, line: social},
+		metric("time"),
+		{...full, window: [2, 2]},
+		[],
+		"rec-controls",
+		hovered
+	),
+	{bar: Object.assign({}, drawn, {controls: {window: [2, 2], granularity: "day"}})},
+	"a control changed after the hover rebuilds only the showing tab"
 );
 
 // --- plotRequest badges: shown while a control the card ignores is narrowed -----------

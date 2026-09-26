@@ -47,20 +47,23 @@ def test_rebuilt_header_does_not_navigate_on_its_own():
 	# so Dash fires this callback with no trigger behind it. Stepping there walked to the
 	# previous recording, which rebuilt the header and fired it again.
 	with _triggered(), pytest.raises(PreventUpdate):
-		recording._switch_recording("rec_b", None, None, _CONTEXT, "?recording=rec_b")
+		recording._switch_recording("rec_b", None, None, _CONTEXT, "?recording=rec_b", None)
 
 
-def test_next_click_steps_to_the_following_recording():
+def test_next_click_steps_to_the_following_recording_on_the_showing_tab():
+	# url.search still holds the tab the page loaded with; rec-tab holds the one showing.
 	with _triggered({"prop_id": "rec-next.n_clicks", "value": 1}):
-		search = recording._switch_recording("rec_b", None, 1, _CONTEXT, "?recording=rec_b")
-	assert search == "?recording=rec_c"
+		search = recording._switch_recording(
+			"rec_b", None, 1, _CONTEXT, "?recording=rec_b&tab=overview", "social"
+		)
+	assert search == ("?recording=rec_c&tab=social", "/recording?recording=rec_c&tab=social")
 
 
 def test_prev_click_wraps_past_the_first_recording():
 	context = {"location": "/project", "recording": "rec_a"}
 	with _triggered({"prop_id": "rec-prev.n_clicks", "value": 1}):
-		search = recording._switch_recording("rec_a", 1, None, context, "?recording=rec_a")
-	assert search == "?recording=rec_c"
+		search = recording._switch_recording("rec_a", 1, None, context, "?recording=rec_a", None)
+	assert search == ("?recording=rec_c", "/recording?recording=rec_c")
 
 
 def _layout(cages: list[tuple], tunnels: list[tuple]) -> Layout:

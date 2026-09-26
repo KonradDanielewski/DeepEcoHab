@@ -161,6 +161,8 @@ layout = html.Div(
 		# static layout would be dispatched before it exists ("a nonexistent object was used
 		# in an Input"). switchTab mirrors the tab here, where plotRequest can always see it.
 		dcc.Store(id="rec-tab"),
+		# The tab the pointer rests on, as {tab, at}, for plotRequest to prefetch.
+		dcc.Store(id="rec-hover"),
 		# What the cohort cards were drawn for: _dashboard bakes them for animal_id.
 		dcc.Store(id="rec-color-by", data="animal_id"),
 		# The timeline's zoomed x range, or null for its whole window.
@@ -1285,14 +1287,20 @@ def _merge_search(search: str, **updates: str) -> str:
 
 @callback(
 	Output("url", "search", allow_duplicate=True),
+	# dcc.Location pushes a changed href ahead of a changed search, and its own href still holds
+	# the URL it last saw, which deh.switchTab's replaceState has since moved past: sent alone,
+	# the search would lose to that stale href.
+	Output("url", "href", allow_duplicate=True),
 	Input("rec-select", "value"),
 	Input("rec-prev", "n_clicks"),
 	Input("rec-next", "n_clicks"),
 	State("rec-context", "data"),
 	State("url", "search"),
+	# url.search lags on the tab (see deh.switchTab), so the showing one comes from here.
+	State("rec-tab", "data"),
 	prevent_initial_call=True,
 )
-def _switch_recording(selected, _prev, _next, context_data, search):
+def _switch_recording(selected, _prev, _next, context_data, search, tab):
 	# All three inputs are rebuilt into rec-body on every recording switch, so they fire this
 	# once with no click and no trigger behind them (see _notes_modal). Unguarded, that lands
 	# in the step branch as step -1 and walks to the previous recording on its own, which
@@ -1313,15 +1321,14 @@ def _switch_recording(selected, _prev, _next, context_data, search):
 	if name == current:
 		raise PreventUpdate
 
-	return _merge_search(search, recording=name)
+	search = _merge_search(search, recording=name, **({"tab": tab} if tab else {}))
+	return search, PATH + search
 
 
 clientside_callback(
 	ClientsideFunction("deh", "switchTab"),
-	Output("url", "search", allow_duplicate=True),
 	Output("rec-tab", "data"),
 	Input("rec-tabs", "value"),
-	State("url", "search"),
 	prevent_initial_call=True,
 )
 
@@ -1487,6 +1494,7 @@ clientside_callback(
 	Input("rec-tab", "data"),
 	Input("plot-theme", "data"),
 	Input({"type": "card-opt", "plot": ALL, "option": ALL}, "value"),
+	Input("rec-hover", "data"),
 	State({"type": "plot-req", "plot": ALL}, "data"),
 	State({"type": "badge", "plot": ALL, "control": ALL}, "hidden"),
 )

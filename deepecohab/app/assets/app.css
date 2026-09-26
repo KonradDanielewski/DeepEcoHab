@@ -1236,6 +1236,16 @@ code {
 	margin-top: 14px;
 }
 
+/* Mantine hides an inactive panel with an inline display: none, where a plot prefetched into
+   it draws at Plotly's 700 px fallback and only snaps to its card on reveal. Laid out but
+   unseen, it draws at its real width. */
+#rec-tabs > .mantine-Tabs-panel[style*="display: none"] {
+	display: block !important;
+	visibility: hidden;
+	height: 0;
+	overflow: hidden;
+}
+
 .deh-mini-strip {
 	display: inline-flex;
 	gap: 2px;
