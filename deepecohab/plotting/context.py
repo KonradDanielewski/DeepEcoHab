@@ -130,14 +130,5 @@ class PlotContext:
 		)
 
 	def axis_range(self, granularity: Granularity) -> tuple[int, int]:
-		"""Full range of the day or phase axis, for an unset selection.
-
-		Raises:
-			ValueError: ``granularity`` is not one of the two axis columns.
-		"""
-		if granularity not in get_args(Granularity):
-			raise ValueError(
-				f"granularity must be one of {get_args(Granularity)}, got {granularity!r}"
-			)
-
+		"""Full range of the day or phase axis, for an unset selection."""
 		return self.phase_range if granularity == "phase_count" else self.days_range
