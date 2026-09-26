@@ -1478,13 +1478,6 @@ code {
 	letter-spacing: -0.02em;
 }
 
-.deh-q-note {
-	margin: 0;
-	padding: 10px 16px 14px;
-	color: var(--ink-3);
-	font-size: 12.5px;
-}
-
 .deh-cohort-table {
 	flex: 1;
 	min-height: 0;

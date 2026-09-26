@@ -184,8 +184,8 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 	)
 
 
-DARK_THEME = _template(_TOKENS["dark"])
-LIGHT_THEME = _template(_TOKENS["light"])
+pio.templates["dark"] = _template(_TOKENS["dark"])
+pio.templates["light"] = _template(_TOKENS["light"])
 
 _PUBLICATION_AXIS = {
 	"showgrid": False,
@@ -198,7 +198,7 @@ _PUBLICATION_AXIS = {
 	"title": {"font": {"color": "#000000"}},
 }
 
-PUBLICATION_THEME = go.layout.Template(
+pio.templates["publication"] = go.layout.Template(
 	data=_DATA,
 	layout=go.Layout(
 		paper_bgcolor="#ffffff",
@@ -213,12 +213,8 @@ PUBLICATION_THEME = go.layout.Template(
 		colorscale=_COLORSCALE,
 		coloraxis={
 			"colorbar": {
-				"thicknessmode": "fraction",
+				**COLORBAR,
 				"thickness": 0.025,
-				"lenmode": "fraction",
-				"len": 1,
-				"y": 1,
-				"yanchor": "top",
 				"title": {"side": "right", "font": {"color": "black"}},
 			}
 		},
@@ -240,8 +236,3 @@ def apply(figure: go.Figure, name: str) -> go.Figure:
 		figure.update_shapes(fillcolor=color, selector={"name": f"phase-band-{phase}"})
 
 	return figure
-
-
-pio.templates["dark"] = DARK_THEME
-pio.templates["light"] = LIGHT_THEME
-pio.templates["publication"] = PUBLICATION_THEME

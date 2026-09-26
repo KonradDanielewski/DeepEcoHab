@@ -1,5 +1,4 @@
 import base64
-import copy
 import math
 import re
 import textwrap
@@ -190,8 +189,8 @@ def fit_for_export(
 		still would not fit - an oversized legend, or panels too short to read.
 	"""
 	source = figure.to_dict()
-	data: list[dict[str, Any]] = copy.deepcopy(source.get("data", []))
-	layout: dict[str, Any] = copy.deepcopy(source.get("layout", {}))
+	data: list[dict[str, Any]] = source.get("data", [])
+	layout: dict[str, Any] = source.get("layout", {})
 	notes: list[str] = []
 
 	# A trace draws its axes whether or not the layout names them; name every one, so the

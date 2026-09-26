@@ -468,23 +468,14 @@ def build_frame(
 
 	agg_keys = keys if METRIC in keys else [*keys, METRIC]
 
-	match mode:
-		case "total":
-			grouped = frame.group_by(agg_keys).agg(*plain, pl.sum(VALUE).alias(value.name))
-		case "exposure":
-			grouped = frame.group_by(agg_keys).agg(*plain, pl.sum(EXPOSURE).alias(value.name))
-		case "mean":
-			grouped = frame.group_by(agg_keys).agg(*plain, pl.mean(VALUE).alias(value.name))
-		case _:  # "rate"
-			summed = frame.group_by(agg_keys).agg(
-				*plain, pl.sum(VALUE).alias("_v"), pl.sum(EXPOSURE).alias("_e")
-			)
-			grouped = summed.with_columns(
-				pl.when(pl.col("_e") > 0)
-				.then(pl.col("_v") / pl.col("_e"))
-				.otherwise(None)
-				.alias(value.name)
-			).drop("_v", "_e")
+	by_mode = {
+		"total": pl.sum(VALUE),
+		"exposure": pl.sum(EXPOSURE),
+		"mean": pl.mean(VALUE),
+	}
+	rate = pl.when(pl.sum(EXPOSURE) > 0).then(pl.sum(VALUE) / pl.sum(EXPOSURE))
+	measure = by_mode.get(mode, rate)
+	grouped = frame.group_by(agg_keys).agg(*plain, measure.alias(value.name))
 
 	if METRIC not in keys:
 		grouped = grouped.drop(METRIC)
@@ -782,23 +773,15 @@ def apply_format(figure: go.Figure, fmt: dict[str, Any]) -> dict[str, str | None
 	return auto
 
 
-def prune(state: dict[str, Any], keep: Iterable[str]) -> tuple[dict[str, Any], list[str]]:
+def prune(state: dict[str, Any], keep: Iterable[str]) -> dict[str, Any]:
 	"""Drop assignments the new plot type has no shelf for.
 
 	Args:
 		keep: the channels the new plot type supports.
-
-	Returns:
-		The state and the labels of the channels that were cleared.
 	"""
 	supported = set(keep)
-	dropped = [
-		LABELS.get(channel, channel)
-		for channel, names in state["channels"].items()
-		if names and channel not in supported
-	]
 	state["channels"] = {
 		channel: names for channel, names in state["channels"].items() if channel in supported
 	}
 
-	return state, dropped
+	return state

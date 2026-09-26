@@ -619,26 +619,20 @@ def _presets_children(
 					preset.id, preset.name, preset.description, "built-in", matched(preset.id)
 				)
 			)
-	for preset in services.load_saved_presets(location):
-		cards.append(
-			_preset_card(
-				preset["id"],
-				preset["name"],
-				preset.get("description", ""),
-				"project",
-				matched(preset["id"]),
+	for scope, saved in (
+		("project", services.load_saved_presets(location)),
+		("browser", saved_local or []),
+	):
+		for preset in saved:
+			cards.append(
+				_preset_card(
+					preset["id"],
+					preset["name"],
+					preset.get("description", ""),
+					scope,
+					matched(preset["id"]),
+				)
 			)
-		)
-	for preset in saved_local or []:
-		cards.append(
-			_preset_card(
-				preset["id"],
-				preset["name"],
-				preset.get("description", ""),
-				"browser",
-				matched(preset["id"]),
-			)
-		)
 	cards.append(
 		html.Button(
 			[icon("bookmark-plus", size=16), "Save current"],
@@ -1181,11 +1175,11 @@ def _reduce(
 		case "builder-reset":
 			if not last_preset:
 				raise PreventUpdate
-			return copy.deepcopy(last_preset["state"]), no_update
+			return last_preset["state"], no_update
 
 		case {"type": "builder-kind", "kind": kind}:
 			state["kind"] = kind
-			state, _dropped = figure.prune(state, figure.plot_type(kind).channels)
+			state = figure.prune(state, figure.plot_type(kind).channels)
 			return figure.seed_detail(state, fields), no_update
 
 		case {"type": "builder-mode", "mode": mode}:
@@ -1243,7 +1237,7 @@ def _reduce(
 				if saved is None:
 					raise PreventUpdate
 				entry = {"id": saved["id"], "name": saved["name"], "state": saved["state"]}
-			return copy.deepcopy(entry["state"]), entry
+			return entry["state"], entry
 
 		case {"type": "preset-slot", "id": pid, "choice": choice}:
 			preset = presets_mod.BY_ID.get(pid)
@@ -1251,7 +1245,7 @@ def _reduce(
 				raise PreventUpdate
 			resolved = presets_mod.resolve(preset, services.load_project(location), choice)
 			entry = {"id": preset.id, "name": f"{preset.name}: {choice}", "state": resolved}
-			return copy.deepcopy(resolved), entry
+			return resolved, entry
 
 		case {"type": "filter-mode", "field": name, "mode": mode}:
 			if state["filters"].get(name, {}).get("mode") == mode:

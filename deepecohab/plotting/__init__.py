@@ -6,21 +6,13 @@ from deepecohab.plotting import (
 	# Imported for its side effect: registering every plot in the catalog.
 	plot_catalog as plot_catalog,
 )
-from deepecohab.plotting.animals import (
-	COLOR_COLUMNS as COLOR_COLUMNS,
-	ColorMapping as ColorMapping,
-	available_attributes as available_attributes,
-)
+from deepecohab.plotting.animals import available_attributes as available_attributes
 from deepecohab.plotting.context import PlotContext as PlotContext
 from deepecohab.plotting.export import (
 	export_figure as export_figure,
 	fit_for_export as fit_for_export,
 )
-from deepecohab.plotting.registry import (
-	Option as Option,
-	PlotRegistry as PlotRegistry,
-	PlotSpec as PlotSpec,
-)
+from deepecohab.plotting.registry import PlotRegistry as PlotRegistry
 
 if TYPE_CHECKING:
 	from deepecohab.core.data_model import Recording
