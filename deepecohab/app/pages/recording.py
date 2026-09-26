@@ -261,77 +261,92 @@ def _quality_badge(miss: float) -> html.Span:
 def _meta_strip(summary: dict) -> list:
 	start = dt.datetime.fromisoformat(summary["start"])
 	end = dt.datetime.fromisoformat(summary["end"])
-	items = [
-		html.Span(
-			[icon("calendar", size=15), f"{start.day} {start:%b} → {end.day} {end:%b %Y}"],
-			title=(
-				f"Start: {start:%a} {start.day} {start:%b %Y, %H:%M:%S}\n"
-				f"End: {end:%a} {end.day} {end:%b %Y, %H:%M:%S}\n"
-				f"Time zone: {summary['timezone']}"
-			),
-		),
-		*(
-			[html.Span([icon("map-pin", size=15), summary["location"]], title="Recording location")]
-			if summary["location"]
-			else []
-		),
-		html.Span(
-			[
-				icon("clock", size=15),
-				(
-					f"{summary['days']} days · {summary['phases']} phases, "
-					f"from {_human(summary['start_from'])}"
-				),
-			],
-			title="\n".join(
-				f"{_human(phase).capitalize()} onset: {at}"
-				for phase, at in summary["onsets"].items()
-			),
-		),
-		html.Button(
-			[icon("users", size=15), f"{summary['n_mice']} mice"],
-			id="rec-mice-jump",
-			className="deh-btn deh-btn-ghost sm",
-			title="Show the cohort",
-		),
-		html.Button(
-			[
-				icon("grid-dots", size=15),
-				f"{summary['cages']} cages · {summary['tunnels']} tunnels",
-			],
-			id="rec-habitat-jump",
-			className="deh-btn deh-btn-ghost sm",
-			title="Show the habitat map",
-		),
-		html.Button(
-			[icon("bolt", size=15), f"{len(summary['events'])} events"],
-			id="rec-events-jump",
-			className="deh-btn deh-btn-ghost sm",
-			title=", ".join(summary["events"]) or "No events",
-			disabled=not summary["events"],
-		),
-	]
 	quality = summary["quality"]
-	if quality is not None:
-		items.append(
-			html.Button(
-				[f"{quality['miss']:.2f}% missed ", _quality_badge(quality["miss"])],
-				id="rec-quality-jump",
-				className="deh-btn deh-btn-ghost sm",
+	# Grouped by what they answer (when / where and who / what to follow up), so a narrow
+	# header wraps between groups rather than through one.
+	groups = [
+		[
+			html.Span(
+				[icon("calendar", size=15), f"{start.day} {start:%b} → {end.day} {end:%b %Y}"],
 				title=(
-					f"Worst antenna {quality['worst_antenna']['antenna']}: "
-					f"{quality['worst_antenna']['miss']:.2f}% missed"
+					f"Start: {start:%a} {start.day} {start:%b %Y, %H:%M:%S}\n"
+					f"End: {end:%a} {end.day} {end:%b %Y, %H:%M:%S}\n"
+					f"Time zone: {summary['timezone']}"
 				),
-			)
-		)
-	items.append(
-		html.Button(
-			[icon("notes", size=15), "Notes"],
-			id="rec-notes-btn",
-			className="deh-btn deh-btn-ghost sm",
-		)
-	)
-	return items
+			),
+			html.Span(
+				[
+					icon("clock", size=15),
+					f"{summary['days']} days · {summary['phases']} phases",
+				],
+				title="\n".join(
+					[
+						f"Starts with the {_human(summary['start_from'])}",
+						*(
+							f"{_human(phase).capitalize()} onset: {at}"
+							for phase, at in summary["onsets"].items()
+						),
+					]
+				),
+			),
+		],
+		[
+			*(
+				[
+					html.Span(
+						[icon("map-pin", size=15), summary["location"]], title="Recording location"
+					)
+				]
+				if summary["location"]
+				else []
+			),
+			html.Button(
+				[icon("users", size=15), f"{summary['n_mice']} mice"],
+				id="rec-mice-jump",
+				className="deh-btn deh-btn-ghost sm",
+				title="Show the cohort",
+			),
+			html.Button(
+				[
+					icon("grid-dots", size=15),
+					f"{summary['cages']} cages · {summary['tunnels']} tunnels",
+				],
+				id="rec-habitat-jump",
+				className="deh-btn deh-btn-ghost sm",
+				title="Show the habitat map",
+			),
+		],
+		[
+			html.Button(
+				[icon("bolt", size=15), f"{len(summary['events'])} events"],
+				id="rec-events-jump",
+				className="deh-btn deh-btn-ghost sm",
+				title=", ".join(summary["events"]) or "No events",
+				disabled=not summary["events"],
+			),
+			*(
+				[
+					html.Button(
+						[f"{quality['miss']:.2f}% missed ", _quality_badge(quality["miss"])],
+						id="rec-quality-jump",
+						className="deh-btn deh-btn-ghost sm",
+						title=(
+							f"Worst antenna {quality['worst_antenna']['antenna']}: "
+							f"{quality['worst_antenna']['miss']:.2f}% missed"
+						),
+					)
+				]
+				if quality is not None
+				else []
+			),
+			html.Button(
+				[icon("notes", size=15), "Notes"],
+				id="rec-notes-btn",
+				className="deh-btn deh-btn-ghost sm",
+			),
+		],
+	]
+	return [html.Div(group, className="deh-meta-group") for group in groups]
 
 
 def _shade(phase: str, selected: bool) -> str:
@@ -1138,7 +1153,7 @@ def _dashboard(
 						data=[{"value": n, "label": n} for n in names],
 						value=name,
 						size="sm",
-						w=280,
+						w=270,
 						allowDeselect=False,
 						searchable=True,
 						classNames={"input": "deh-mono"},
@@ -1153,14 +1168,14 @@ def _dashboard(
 				],
 				className="deh-rec-pick",
 			),
-			html.Div(_meta_strip(summary), className="deh-rec-meta"),
-			html.Span(className="deh-grow"),
+			# Before the facts: a float only rises to the line it comes after.
 			components.download_menu(
 				pid,
 				name,
 				html.Button([icon("download", size=16), "Download"], className="deh-btn sm"),
 				[table for table in DataFrameRegistry.list_available() if table in context],
 			),
+			html.Div(_meta_strip(summary), className="deh-rec-meta"),
 		],
 		className="deh-rec-head",
 	)

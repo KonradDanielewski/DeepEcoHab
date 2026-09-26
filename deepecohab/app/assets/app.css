@@ -1083,35 +1083,82 @@ code {
 	container-name: deh-main;
 }
 
+/* Download floats top right and the facts flow around it as one inline box: beside the
+   picker when they fit, otherwise on a full-width line under both, clear of the button.
+   The content decides where the head breaks, not a breakpoint. */
 .deh-rec-head {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 10px 16px;
+	display: flow-root;
 	margin-bottom: 12px;
 }
 
-.deh-rec-pick {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	min-width: 0;
+/* The Menu wraps its target in a bare div, which is what has to float. */
+.deh-rec-head > :has(> .deh-btn) {
+	float: right;
+	margin: 3px 0 0 12px;
 }
 
+.deh-rec-pick {
+	display: inline-flex;
+	vertical-align: top;
+	align-items: center;
+	gap: 4px;
+	margin-right: 12px;
+}
+
+/* Every fact is the same 28px box with the same padding, button or not, so a wrapped line
+   keeps the rhythm and left edge of the first; the negative margin puts the first icon of
+   a wrapped line on the page's left edge, and the top margin centres a 28px line on the
+   picker's 36px. A divider hangs in the gap before each group, and the clip hides the one
+   leading each line. */
 .deh-rec-meta {
-	display: flex;
+	display: inline-flex;
+	vertical-align: top;
 	flex-wrap: wrap;
-	gap: 6px 18px;
+	gap: 2px 21px;
+	margin: 4px 0 0 -6px;
+	overflow: clip;
+	overflow-clip-margin: 4px;
 	color: var(--ink-2);
 	font-size: 13px;
 }
 
-.deh-rec-meta > span,
-.deh-rec-meta > button {
+.deh-meta-group {
+	position: relative;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px 4px;
+	min-width: 0;
+}
+
+.deh-meta-group::before {
+	content: "";
+	position: absolute;
+	top: 7px;
+	left: -11px;
+	width: 1px;
+	height: 14px;
+	background: var(--line-strong);
+}
+
+.deh-rec-meta .deh-meta-group > * {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
+	height: 28px;
+	padding: 0 6px;
+	border: 0;
+	border-radius: 6px;
+	font-size: 13px;
 	white-space: nowrap;
+}
+
+.deh-meta-group > span {
+	color: var(--ink-2);
+}
+
+/* The clickable facts show it on hover. */
+.deh-meta-group > button:hover:not(:disabled) {
+	background: var(--sunken);
 }
 
 .deh-controls {
