@@ -59,7 +59,6 @@ dependencies = [
     test = [
         "pytest",
         "hypothesis",
-        "tzlocal",
     ]
 
     docs = [
