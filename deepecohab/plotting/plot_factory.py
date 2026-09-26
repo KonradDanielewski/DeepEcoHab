@@ -1200,11 +1200,12 @@ def plot_timeline(
 	figure = go.Figure()
 
 	# Every position and animal gets a trace, empty or not: plotly keeps a hidden legend
-	# entry by trace index, and a zoom redraws the figure with other bars.
+	# entry by trace index, and a zoom redraws the figure with other bars. An empty trace
+	# holds one None, since plotly hides a zero-length trace and its legend entry with it.
 	for position in positions:
 		for row, animal in enumerate(animals):
 			rows = groups.get((position, animal), visits.clear())
-			x = rows["x"].explode(empty_as_null=False).to_list()
+			x = rows["x"].explode(empty_as_null=False).to_list() or [None]
 
 			figure.add_trace(
 				go.Scattergl(

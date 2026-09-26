@@ -937,6 +937,32 @@ def test_timeline_bars_stop_where_the_visits_do_not_at_bucket_edges(context):
 	]
 
 
+def test_timeline_leaves_an_undefined_gap_empty_between_bars_at_one_position(context):
+	"""The 1.4 s gap spends under half of either 1 s bucket at cage_1, so both buckets go
+	undefined and the bar breaks, where a vote among defined visits alone bridged it."""
+	zone = "Europe/Warsaw"
+	noon = dt.datetime(2023, 5, 24, 12, tzinfo=ZoneInfo(zone))
+	main_df = pl.DataFrame(
+		{
+			"animal_id": ["0035A"] * 3,
+			"position": ["cage_1", "undefined", "cage_1"],
+			"datetime": [noon + dt.timedelta(seconds=s) for s in (1000.3, 1001.7, 2000)],
+			"time_spent": [dt.timedelta(seconds=s) for s in (1000.3, 1.4, 998.3)],
+			"day": [1] * 3,
+		},
+		schema_overrides={"datetime": pl.Datetime("us", zone)},
+	)
+	context = replace(context, _loaded={"main_df": main_df})
+
+	def wall(seconds: float) -> dt.datetime:
+		return dt.datetime(2023, 5, 24, 12) + dt.timedelta(seconds=seconds)
+
+	assert prepare.prep_timeline(context, (1, 1), "day").rows() == [
+		("0035A", "cage_1", wall(0), wall(1000)),
+		("0035A", "cage_1", wall(1002), wall(2000)),
+	]
+
+
 def test_timeline_ships_wall_clock_strings_and_reads_back_as_dates():
 	"""The timeline's x is wall-clock strings - plotly reads epoch numbers in the browser's
 	zone - and its y a typed array, but its CSV still names dates and animals."""
@@ -970,7 +996,9 @@ def test_timeline_ships_wall_clock_strings_and_reads_back_as_dates():
 		"2023-05-24 03:00:00.000000",
 		None,
 	]
-	assert all("bdata" in trace["y"] for trace in payload["data"] if trace["x"])
+	# Plotly hides a zero-length trace, legend entry and all.
+	assert all(trace["x"] for trace in payload["data"])
+	assert all("bdata" in trace["y"] for trace in payload["data"])
 	assert payload["layout"]["xaxis"]["type"] == "date"
 
 	(csv,) = export.figure_data_csv(payload)

@@ -140,10 +140,11 @@ def prep_timeline(
 	A week holds hundreds of thousands of registrations, nearly all narrower than a
 	pixel, so the span on show - the window, or ``x_range`` once zoomed in - is cut into
 	2000 buckets, about one per pixel of a full-width card. Each bucket takes the
-	position the animal spent most of it in, and neighbouring buckets at one position
-	merge into a single bar, trimmed to the visits it covers - the recording's ends and
-	undefined gaps rarely fall on a bucket edge. Times, ``x_range`` included, are naive
-	wall-clock, as plotly draws them.
+	position the animal spent most of it in, undefined included, and neighbouring buckets
+	at one position merge into a single bar, trimmed to the defined visits it covers - the
+	recording's ends and undefined gaps rarely fall on a bucket edge. Undefined bars are
+	then dropped, so a gap wider than a bucket or two always shows. Times, ``x_range``
+	included, are naive wall-clock, as plotly draws them.
 	"""
 	visits = (
 		context.table("main_df")
@@ -158,8 +159,8 @@ def prep_timeline(
 			.alias("start"),
 			pl.col("datetime").dt.replace_time_zone(None).dt.epoch("ms").alias("end"),
 		)
-		.filter(pl.col("position") != Layout.UNDEFINED)
 	)
+	defined = pl.col("position") != Layout.UNDEFINED
 	if x_range is not None:
 		low, high = (pl.lit(dt.datetime.fromisoformat(edge)).dt.epoch("ms") for edge in x_range)
 		visits = visits.filter(pl.col("end") > low, pl.col("start") < high).with_columns(
@@ -190,8 +191,8 @@ def prep_timeline(
 		.agg(
 			pl.col("position").sort_by("overlap", "position").last(),
 			pl.col("width").first(),
-			pl.col("start").min(),
-			pl.col("end").max(),
+			pl.col("start").filter(defined).min(),
+			pl.col("end").filter(defined).max(),
 		)
 		.sort("animal_id", "bucket")
 		.with_columns(
@@ -213,6 +214,7 @@ def prep_timeline(
 				(pl.col("bucket").max() + 1) * pl.col("width").first(), pl.col("end").max()
 			),
 		)
+		.filter(defined)
 		.select("animal_id", "position", pl.from_epoch("start", "ms"), pl.from_epoch("end", "ms"))
 		.sort("animal_id", "start")
 		.collect(engine="in-memory")
