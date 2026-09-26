@@ -729,7 +729,6 @@ def plot_ranking_stability(
 		)
 
 	collapse_legend(figure, mapping)
-	_pin_bin_axis(figure, frame[granularity])
 	_event_spans(figure, spans)
 
 	return figure
@@ -1332,8 +1331,6 @@ def plot_occupancy_ribbon(
 		bins = frame.select(granularity, "phase").unique().sort(granularity)
 		for row in bins.iter_rows(named=True):
 			_band_segment(figure, row["phase"], row[granularity] - 0.5, row[granularity] + 0.5)
-
-	_pin_bin_axis(figure, frame[granularity])
 
 	# The bands stack to 100%, so a span behind them would only show through the
 	# translucent tunnel and undefined ones at the top.
