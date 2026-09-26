@@ -1374,6 +1374,36 @@ code {
 	grid-row: span 2;
 }
 
+/* Under Mantine's modals (z-index 200), so a notes dialog opened from a row still shows. */
+.deh-card.is-max,
+.deh-graph-card.is-max {
+	position: fixed;
+	inset: 0;
+	z-index: 150;
+	border: 0;
+	border-radius: 0;
+}
+
+.deh-card.is-max .deh-cohort-table {
+	max-height: none !important;
+}
+
+.deh-card.is-max .deh-hab {
+	flex: 1;
+	min-height: 0;
+	height: auto !important;
+	padding-bottom: 14px;
+}
+
+.deh-card-max .deh-ic + .deh-ic,
+.is-max .deh-card-max .deh-ic:first-child {
+	display: none;
+}
+
+.is-max .deh-card-max .deh-ic + .deh-ic {
+	display: inline-block;
+}
+
 @container deh-main (max-width: 900px) {
 	.deh-card[data-span] {
 		grid-column: span 6;

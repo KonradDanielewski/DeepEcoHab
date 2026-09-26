@@ -682,6 +682,11 @@ def _graph_head(title_children: list, reset_disabled: bool) -> html.Div:
 				className="deh-icon-btn sm",
 				title="Export this plot",
 			),
+			html.Button(
+				[icon("maximize", size=15), icon("x", size=15)],
+				className="deh-icon-btn sm deh-card-max",
+				title="Open this plot full screen",
+			),
 		],
 		className="deh-graph-head",
 	)

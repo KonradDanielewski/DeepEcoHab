@@ -535,6 +535,17 @@ function _toggleEventGroup(event) {
 document.addEventListener("click", _toggleEventGroup);
 document.addEventListener("keydown", _toggleEventGroup);
 
+/* Table, habitat and builder plot cards: the maximize button fills the window with the card itself; the same
+ * button, now an X, or Escape puts it back. An open dialog holds focus, so its Escape is its own. */
+document.addEventListener("click", function (event) {
+	const button = event.target.closest(".deh-card-max");
+	if (button) button.closest(".deh-card, .deh-graph-card").classList.toggle("is-max");
+});
+document.addEventListener("keydown", function (event) {
+	if (event.key !== "Escape" || event.target.closest(".mantine-Modal-root")) return;
+	document.querySelectorAll(".deh-card.is-max").forEach((card) => card.classList.remove("is-max"));
+});
+
 
 window.dash_clientside.deh = {
 	/* --- shell ------------------------------------------------------------ */
