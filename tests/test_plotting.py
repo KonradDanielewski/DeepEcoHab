@@ -869,8 +869,11 @@ def test_datetime_spans_are_written_like_the_trace_they_mark(context):
 		ranking, mapping, prepare.prep_event_spans(with_bouts, (1, 2), "day", "datetime")
 	)
 	payload = json.loads(figure.to_json())
+	(csv,) = export.figure_data_csv(payload)
 
-	assert payload["layout"]["shapes"][0]["x0"] == payload["data"][0]["x"][0]
+	assert dt.datetime.fromisoformat(payload["layout"]["shapes"][0]["x0"]) == (
+		dt.datetime.fromisoformat(pl.read_csv(csv.encode())["x"][0])
+	)
 
 
 def test_timeline_ships_wall_clock_numbers_and_reads_back_as_dates():
@@ -1003,6 +1006,31 @@ def test_ranking_distribution_is_the_same_for_a_window_in_days_or_phases(context
 	assert fit((1, 2), "day").equals(fit((1, 4), "phase_count"))
 	# The nearest phase with matches after the window must not stand in for its empty end.
 	assert fit((1, 1), "day").equals(fit((1, 2), "phase_count"))
+
+
+def test_ranking_over_time_keeps_only_rating_changes_and_each_animals_last(context):
+	"""A match moves just its two animals, so an unchanged rating adds nothing to the step line."""
+	ranking = pl.DataFrame(
+		{
+			"animal_id": ["0035A", "0035B"] * 4,
+			"ordinal": [0.0, 0.0, 1.0, 0.0, 1.0, -1.0, 1.0, -1.0],
+			"datetime": [dt.datetime(2023, 5, 24, hour) for hour in (1, 1, 2, 2, 3, 3, 4, 4)],
+			"day": [1] * 8,
+			"hour": [1, 1, 2, 2, 3, 3, 4, 4],
+		}
+	)
+	context = replace(context, _loaded={"ranking": ranking})
+
+	frame = prepare.prep_ranking_over_time(context, (1, 1), "day")
+
+	assert frame.select("animal_id", "hour").rows() == [
+		("0035A", 1),
+		("0035B", 1),
+		("0035A", 2),
+		("0035B", 3),
+		("0035A", 4),
+		("0035B", 4),
+	]
 
 
 # --- network graphs ----------------------------------------------------------
