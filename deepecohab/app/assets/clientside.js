@@ -27,13 +27,15 @@ function _plotTitle(name, titles, titleIds) {
 	return index < 0 ? name : titles[index];
 }
 
-/* Format: builder/figure.py apply_format for the recording cards, with the same lapse rule
- * - an override holds only while its element still carries the automatic text it was set
- * on. What the server drew is stashed in layout.meta.dehFormat when an override first lands,
- * so clearing one restores it; a rebuilt figure arrives without the stash and is read afresh.
- * A figure's category colours are the ones its layout.colorway declares (see
- * animals.collapse_legend); a palette swaps exactly those, so a weight-scaled edge keeps its. */
+/* Format, for the recording cards and the builder alike. An override holds only while its
+ * element still carries the automatic text it was set on, so a renamed axis never ends up
+ * labelling a different quantity. What the server drew is stashed in layout.meta.dehFormat
+ * when an override first lands, so clearing one restores it; a rebuilt figure arrives without
+ * the stash and is read afresh. A figure's category colours are the ones its layout.colorway
+ * declares (see animals.collapse_legend); a palette swaps exactly those, so a weight-scaled
+ * edge keeps its. Shared y ("True"/"False") links or frees the facets' y axes. */
 const _FORMAT_BINDS = {
+	title: "title",
 	xaxis: "xaxis",
 	xmin: "xaxis",
 	xmax: "xaxis",
@@ -45,8 +47,9 @@ const _FORMAT_BINDS = {
 	cmax: "colorbar",
 	colorscale: "coloraxis",
 	palette: "colorway",
+	sharey: "sharey",
 };
-const _FORMAT_SELECTS = ["colorscale", "palette"];
+const _FORMAT_SELECTS = ["colorscale", "palette", "sharey"];
 const _FORMAT_BOUNDS = ["xmin", "xmax", "ymin", "ymax", "cmin", "cmax"];
 
 function _titleText(title) {
@@ -73,14 +76,25 @@ function _formatBase(layout) {
 	if (stash) return stash;
 	const axes = {};
 	const ranges = {};
+	const sharing = {};
 	Object.keys(layout)
 		.filter((key) => /^[xy]axis\d*$/.test(key) && layout[key].visible !== false)
 		.sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))
 		.forEach((key) => {
 			axes[key] = _titleText(layout[key].title);
 			ranges[key] = {range: layout[key].range ?? null, autorange: layout[key].autorange ?? null};
+			if (key[0] === "y") {
+				sharing[key] = {matches: layout[key].matches ?? null, showticklabels: layout[key].showticklabels ?? null};
+			}
 		});
-	return {axes: axes, ranges: ranges, coloraxis: layout.coloraxis || null, colorway: layout.colorway || null};
+	return {
+		title: layout.title ?? null,
+		axes: axes,
+		ranges: ranges,
+		sharing: sharing,
+		coloraxis: layout.coloraxis || null,
+		colorway: layout.colorway || null,
+	};
 }
 
 /* Each element's automatic text: "" when drawn untitled, null when the figure has none. */
@@ -90,13 +104,17 @@ function _autoTitles(base) {
 		return texts.length ? texts.find(Boolean) || "" : null;
 	};
 	const bar = base.coloraxis;
+	const yKeys = Object.keys(base.sharing || {});
 	return {
+		title: _titleText(base.title),
 		xaxis: axis("x"),
 		yaxis: axis("y"),
 		// A hidden bar (the network's edges) offers its scale but no title or bounds.
 		colorbar: bar && bar.showscale !== false ? _titleText((bar.colorbar || {}).title) : null,
 		coloraxis: bar ? "" : null,
 		colorway: base.colorway ? "" : null,
+		// Offered only once there are facets to share it.
+		sharey: yKeys.length > 1 ? (yKeys.some((key) => base.sharing[key].matches) ? "True" : "False") : null,
 	};
 }
 
@@ -217,6 +235,9 @@ function _formatFigure(fig, fmt, choices) {
 	const layout = Object.assign({}, fig.layout, {
 		meta: Object.assign({}, fig.layout.meta, {dehFormat: base}),
 	});
+	const title = "title" in live ? _withTitle(base, live.title).title : base.title;
+	if (title) layout.title = title;
+	else delete layout.title;
 	["x", "y"].forEach((letter) => {
 		const keys = Object.keys(base.axes).filter((key) => key[0] === letter);
 		// Facets title only their outer axes; an untitled axis gets it on the first.
@@ -228,6 +249,16 @@ function _formatFigure(fig, fmt, choices) {
 			const titledAxis = _titleText(layout[key].title) === text ? layout[key] : _withTitle(layout[key], text);
 			layout[key] = _withRange(titledAxis, range === "inverted" ? null : range, (base.ranges || {})[key]);
 		});
+	});
+	Object.keys(base.sharing || {}).forEach((key, i, keys) => {
+		const drawn = base.sharing[key];
+		const want =
+			live.sharey === "False" ? {matches: null, showticklabels: true}
+			: live.sharey === "True" ? {matches: i ? keys[0].replace("axis", "") : null, showticklabels: drawn.showticklabels}
+			: drawn;
+		const axis = Object.assign({}, layout[key]);
+		Object.entries(want).forEach(([prop, value]) => (value === null ? delete axis[prop] : (axis[prop] = value)));
+		if (JSON.stringify(axis) !== JSON.stringify(layout[key])) layout[key] = axis;
 	});
 	// The data only changes along with the colour scale or colorway, so comparing layouts
 	// still decides.
@@ -271,11 +302,71 @@ function _formErrors(fmt, layout, palettes) {
 	};
 }
 
-function _flagErrors(fmt, layout, palettes) {
+function _flagErrors(fmt, layout, palettes, prefix) {
 	const dc = window.dash_clientside;
 	Object.entries(_formErrors(fmt, layout, palettes)).forEach(([key, error]) =>
-		dc.set_props({type: "rec-fmt", key: key}, {error: error})
+		dc.set_props({type: prefix + "-fmt", key: key}, {error: error})
 	);
+}
+
+/* The Format form for ``fmt`` on ``layout``, field by field in the order of ``keys``: each
+ * one's value, placeholder and whether it is off, then the palette menu. */
+function _formatForm(fmt, layout, keys, choices, prefix) {
+	const base = _formatBase(layout);
+	const auto = _autoTitles(base);
+	const live = _liveFormat(fmt, auto);
+	const hint = (key) => {
+		if (key in auto) return _plain(auto[key]) || (auto[key] === "" ? "No title" : "Not on this plot");
+		if (_FORMAT_SELECTS.includes(key)) return "Default";
+		return String((base.coloraxis || {})[key] ?? "Auto");
+	};
+	const palettes = (choices || {}).palette || {};
+	const needed = (base.colorway || []).length;
+	_flagErrors(fmt, layout, palettes, prefix);
+	return [
+		keys.map((key) => live[key] ?? (_FORMAT_SELECTS.includes(key) ? null : "")),
+		keys.map(hint),
+		keys.map((key) => auto[_FORMAT_BINDS[key]] === null),
+		Object.entries(palettes).map(([name, colors]) => ({
+			value: name,
+			label: `${name} · ${colors.length}`,
+			disabled: colors.length < needed,
+		})),
+	];
+}
+
+/* ``fmt`` after the edit that fired. Only the fields that fired are touched, so an override
+ * that has lapsed - its element shows other text now, and the form shows it empty - is kept
+ * for when that text returns; ``{prefix}-fmt-reset`` drops the lot. */
+function _editedFormat(fmt, layout, choices, prefix) {
+	const dc = window.dash_clientside;
+	const ctx = dc.callback_context;
+	const auto = _autoTitles(_formatBase(layout));
+	let next = Object.assign({}, fmt);
+
+	if (ctx.triggered_id === prefix + "-fmt-reset") {
+		if (!ctx.triggered[0].value) throw dc.PreventUpdate;
+		ctx.inputs_list[0].forEach((field) =>
+			dc.set_props(field.id, {value: _FORMAT_SELECTS.includes(field.id.key) ? null : ""})
+		);
+		next = {};
+	} else {
+		const live = _liveFormat(next, auto);
+		ctx.triggered.forEach((trigger) => {
+			// A dialog mounting fires every input at once, the reset button's among them.
+			if (trigger.prop_id[0] !== "{") return;
+			const key = JSON.parse(trigger.prop_id.slice(0, trigger.prop_id.lastIndexOf("."))).key;
+			let value = typeof trigger.value === "string" ? trigger.value.trim() : trigger.value;
+			if (_FORMAT_BOUNDS.includes(key) && typeof value !== "number") value = null;
+			if (value === "" || value === undefined || value === _plain(auto[key])) value = null;
+			if (value === (live[key] ?? null)) return;
+			if (value === null) delete next[key];
+			else next[key] = {on: auto[_FORMAT_BINDS[key]], value: value};
+		});
+	}
+
+	_flagErrors(next, layout, (choices || {}).palette, prefix);
+	return next;
 }
 
 // The twin of recording.py's _shade, which the events card uses.
@@ -655,67 +746,21 @@ window.dash_clientside.deh = {
 	openFormat: function (_clicks, figures, ids, titles, titleIds, formats, choices) {
 		const dc = window.dash_clientside;
 		const picked = _pickPlot(figures, ids);
-		const layout = picked.figure.layout || {};
-		const base = _formatBase(layout);
-		const auto = _autoTitles(base);
-		const fmt = (formats || {})[picked.name];
-		const live = _liveFormat(fmt, auto);
 		const keys = dc.callback_context.outputs_list[3].map((field) => field.id.key);
-		const hint = (key) => {
-			if (key in auto) return _plain(auto[key]) || (auto[key] === "" ? "No title" : "Not on this plot");
-			if (_FORMAT_SELECTS.includes(key)) return "Default";
-			return String((base.coloraxis || {})[key] ?? "Auto");
-		};
-		const palettes = (choices || {}).palette || {};
-		const needed = (base.colorway || []).length;
-		_flagErrors(fmt, layout, palettes);
 		return [
 			true,
 			"Format · " + _plotTitle(picked.name, titles, titleIds),
 			picked.name,
-			keys.map((key) => live[key] ?? (_FORMAT_SELECTS.includes(key) ? null : "")),
-			keys.map(hint),
-			keys.map((key) => auto[_FORMAT_BINDS[key]] === null),
-			Object.entries(palettes).map(([name, colors]) => ({
-				value: name,
-				label: `${name} · ${colors.length}`,
-				disabled: colors.length < needed,
-			})),
+			..._formatForm((formats || {})[picked.name], picked.figure.layout || {}, keys, choices, "rec"),
 		];
 	},
 
-	// Only the fields that fired are touched, so an override that has lapsed - its element
-	// shows other text now, and the form shows it empty - is kept for when that text returns.
 	editFormat: function (_values, _reset, plot, formats, figures, ids, choices) {
 		const dc = window.dash_clientside;
-		const ctx = dc.callback_context;
 		const index = ids.findIndex((id) => id.plot === plot);
 		if (index < 0 || !figures[index]) throw dc.PreventUpdate;
-		const layout = figures[index].layout || {};
-		const auto = _autoTitles(_formatBase(layout));
 		const next = Object.assign({}, formats);
-		const fmt = Object.assign({}, next[plot]);
-
-		if (ctx.triggered_id === "rec-fmt-reset") {
-			if (!ctx.triggered[0].value) throw dc.PreventUpdate;
-			ctx.inputs_list[0].forEach((field) =>
-				dc.set_props(field.id, {value: _FORMAT_SELECTS.includes(field.id.key) ? null : ""})
-			);
-			Object.keys(fmt).forEach((key) => delete fmt[key]);
-		} else {
-			const live = _liveFormat(fmt, auto);
-			ctx.triggered.forEach((trigger) => {
-				const key = JSON.parse(trigger.prop_id.slice(0, trigger.prop_id.lastIndexOf("."))).key;
-				let value = typeof trigger.value === "string" ? trigger.value.trim() : trigger.value;
-				if (_FORMAT_BOUNDS.includes(key) && typeof value !== "number") value = null;
-				if (value === "" || value === undefined || value === _plain(auto[key])) value = null;
-				if (value === (live[key] ?? null)) return;
-				if (value === null) delete fmt[key];
-				else fmt[key] = {on: auto[_FORMAT_BINDS[key]], value: value};
-			});
-		}
-
-		_flagErrors(fmt, layout, (choices || {}).palette);
+		const fmt = _editedFormat(next[plot], figures[index].layout || {}, choices, "rec");
 		if (Object.keys(fmt).length) next[plot] = fmt;
 		else delete next[plot];
 		return JSON.stringify(next) === JSON.stringify(formats || {}) ? dc.no_update : next;
@@ -813,6 +858,33 @@ window.dash_clientside.deh = {
 	builderKind: function (state, current) {
 		const kind = (state || {}).kind;
 		return !kind || kind === current ? window.dash_clientside.no_update : kind;
+	},
+
+	// The builder's Format is the cards', kept in its state so a preset saves it.
+	openBuilderFormat: function (clicks, figure, state, choices) {
+		const dc = window.dash_clientside;
+		if (!clicks || !figure) throw dc.PreventUpdate;
+		const keys = dc.callback_context.outputs_list[1].map((field) => field.id.key);
+		return [true, ..._formatForm((state || {}).format, figure.layout || {}, keys, choices, "builder")];
+	},
+
+	// Only while open: the dialog mounts with the page, empty until opened, and those empty
+	// fields firing would read as clearing every override.
+	editBuilderFormat: function (_values, _reset, opened, state, figure, choices) {
+		const dc = window.dash_clientside;
+		if (!opened || !state || !figure) throw dc.PreventUpdate;
+		const next = Object.assign({}, state);
+		const fmt = _editedFormat(state.format, figure.layout || {}, choices, "builder");
+		// No empty dict left behind, or a preset would read as edited after a reset.
+		if (Object.keys(fmt).length) next.format = fmt;
+		else delete next.format;
+		return JSON.stringify(next) === JSON.stringify(state) ? dc.no_update : next;
+	},
+
+	// Set rather than returned, as applyFormat does: the figure is its Input too.
+	applyBuilderFormat: function (state, figure, choices) {
+		const next = _formatFigure(figure, (state || {}).format, choices);
+		if (next) window.dash_clientside.set_props("builder-graph", {figure: next});
 	},
 
 	/* --- projects --------------------------------------------------------- */

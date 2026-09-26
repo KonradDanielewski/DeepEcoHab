@@ -8,7 +8,6 @@ import polars as pl
 import pytest
 
 from deepecohab.app.builder import catalog, figure
-from deepecohab.plotting import theme
 
 
 @pytest.fixture
@@ -99,60 +98,6 @@ def test_build_figure_colours_by_sample_palette(frame, fields):
 	assert colors == set(figure.theme.sample_palette(2))
 
 
-def test_format_override_lapses_once_its_axis_shows_something_else(frame, fields):
-	state = {
-		"kind": "line",
-		"measure_as": "rate",
-		"channels": {"x": ["hour"], "y": ["value"], "facet_col": ["genotype"]},
-		"filters": {"metric": ["activity"]},
-	}
-	fig, _notes = figure.build_figure(frame, state, fields)
-	auto = figure.auto_titles(fig)
-	fmt = {
-		"xaxis": {"on": auto["xaxis"], "value": "Hour of day"},
-		"yaxis": {"on": "Some other field", "value": "Stale"},
-	}
-	figure.apply_format(fig, fmt)
-
-	assert {axis.title.text for axis in fig.select_xaxes() if axis.title.text} == {"Hour of day"}
-	assert fig.layout.yaxis.title.text == auto["yaxis"]
-
-
-def test_colour_range_takes_one_bound_and_skips_an_inverted_pair(frame, fields):
-	state = {
-		"kind": "density_heatmap",
-		"measure_as": "rate",
-		"channels": {"x": ["hour"], "y": ["animal_id"], "z": ["value"]},
-		"filters": {"metric": ["activity"]},
-	}
-	fig, _notes = figure.build_figure(frame, state, fields)
-	on = figure.auto_titles(fig)["colorbar"]
-	figure.apply_format(fig, {"cmin": {"on": on, "value": 1}})
-	assert (fig.layout.coloraxis.cauto, fig.layout.coloraxis.cmin) == (False, 1)
-
-	fig, _notes = figure.build_figure(frame, state, fields)
-	figure.apply_format(fig, {"cmin": {"on": on, "value": 5}, "cmax": {"on": on, "value": 2}})
-	assert fig.layout.coloraxis.cmin is None
-
-
-def test_palette_recolours_categories_unless_too_short(frame, fields, monkeypatch):
-	state = {
-		"kind": "line",
-		"measure_as": "rate",
-		"channels": {"x": ["hour"], "y": ["value"], "color": ["genotype"]},
-		"filters": {"metric": ["activity"]},
-		"format": {"palette": {"on": "", "value": "Set1"}},
-	}
-	fig, _notes = figure.build_figure(frame, state, fields)
-	assert {trace.line.color for trace in fig.data} == set(theme.PALETTES["Set1"][:2])
-	assert figure.auto_titles(fig)["colorway"] == ""
-
-	monkeypatch.setitem(theme.PALETTES, "One", ["rgb(0, 0, 0)"])
-	state["format"] = {"palette": {"on": "", "value": "One"}}
-	fig, _notes = figure.build_figure(frame, state, fields)
-	assert list(fig.layout.colorway) == theme.sample_palette(2)
-
-
 def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
 	"""``_reduce`` matches each trigger it handles, and prevents the update on anything else.
 
@@ -182,13 +127,10 @@ def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
 			None,
 			None,
 			None,
-			None,
-			None,
 			state if state is not None else figure.new_state(),
 			{"location": "somewhere"},
 			None,
 			[],
-			{"title": ""},  # the automatic titles an override is pinned to
 		)
 
 	held = figure.new_state()
@@ -232,10 +174,6 @@ def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
 		]
 		== "1-3, 4-6"
 	)
-	assert (
-		reduce({"type": "builder-fmt", "key": "title"}, value="T")[0]["format"]["title"]["value"]
-		== "T"
-	)
 
 	# A Blocks spec outlives the field it was typed on unless something clears it, and
 	# would then come back to life under the field when it is dropped again.
@@ -245,9 +183,6 @@ def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
 	}
 	unshelved = dict(binned, channels={})
 	assert "bins" not in reduce({"type": "builder-mode", "mode": "rate"}, state=unshelved)[0]
-
-	formatted = reduce({"type": "builder-fmt", "key": "title"}, value="T")[0]
-	assert "format" not in reduce("builder-fmt-reset", value=1, state=formatted)[0]
 
 	for unknown in ("no-such-id", {"type": "no-such-type"}, {"type": "chip-x", "shelf": "x"}):
 		with pytest.raises(PreventUpdate):

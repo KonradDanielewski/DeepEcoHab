@@ -137,7 +137,7 @@ Without this, figures use Plotly's default. To theme a single figure:
 ## Save a figure
 
 ```python
-figure.write_html("activity.html")    # interactive, opens in any browser
+figure.write_html("activity.html")  # interactive, opens in any browser
 figure.write_image("activity.png", scale=3)  # static image for publication
-figure.write_json("activity.json")    # reopen later with plotly.io.read_json()
+figure.write_json("activity.json")  # reopen later with plotly.io.read_json()
 ```

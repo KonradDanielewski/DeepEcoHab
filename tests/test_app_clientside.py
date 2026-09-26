@@ -412,6 +412,7 @@ def _run(tmp_path: Path, harness: str, wanted: dict) -> None:
 		capture_output=True,
 		text=True,
 		encoding="utf-8",
+		check=False,
 	)
 	assert result.returncode == 0, result.stderr
 	assert result.stdout.strip() == "ok"
@@ -460,11 +461,28 @@ const edit = (key, value, store, fig = wanted.figure, choices = wanted.colors) =
 	return deh.editFormat(null, null, "p", store, [fig], ids, choices);
 };
 
-// --- applyFormat draws what builder/figure.py apply_format draws ----------------------
+// --- applyFormat draws each override, and a facet's titles where plotly express put them --
 const formatted = apply(wanted.figure, wanted.fmt);
-eq(titles(formatted.layout), titles(wanted.expected.layout), "axis titles match apply_format");
-eq(bar(formatted.layout), bar(wanted.expected.layout), "colour axis matches apply_format");
-eq(ranges(formatted.layout), ranges(wanted.expected.layout), "axis ranges match apply_format");
+eq(
+	titles(formatted.layout),
+	{xaxis: "X", yaxis: "Y", xaxis2: "X", yaxis2: ""},
+	"titles land on the titled axes only"
+);
+eq(
+	bar(formatted.layout),
+	[false, 1, 3, "N", wanted.colors.colorscale.Viridis],
+	"the colour axis takes its title, bounds and scale"
+);
+eq(
+	ranges(formatted.layout),
+	{
+		xaxis: [true, null, 1, 4],
+		yaxis: [true, null, 0.5, null],
+		xaxis2: [true, null, 1, 4],
+		yaxis2: [true, null, 0.5, null],
+	},
+	"bounds hold on every facet, one alone leaving the data the other"
+);
 eq(apply(formatted, wanted.fmt), null, "re-applying the same format sets nothing");
 
 const cleared = apply(formatted, {});
@@ -531,6 +549,37 @@ eq(flagged("cmax"), "Must be above min", "an inverted range is flagged on the fo
 sets.length = 0;
 edit("xmax", 0.5, {p: {xmin: {on: wanted.auto.xaxis, value: 1}}});
 eq(flagged("xmax"), "Must be above min", "an inverted x range is flagged too");
+
+// --- the builder's plot title, kept in its state with the rest of its Format -----------
+const placed = {data: [], layout: {title: {x: 0, xanchor: "left"}}};
+const titled = apply(placed, {title: {on: "", value: "T"}});
+eq(titled.layout.title, {x: 0, xanchor: "left", text: "T"}, "a title keeps the server's placement");
+eq(apply(titled, {}).layout.title, placed.layout.title, "clearing it restores the server's");
+
+const builderEdit = (key, value, state, trigger = {type: "builder-fmt", key}) => {
+	window.dash_clientside.callback_context = {
+		triggered_id: trigger,
+		triggered: [{prop_id: JSON.stringify(trigger) + ".value", value}],
+		inputs_list: [[{id: {type: "builder-fmt", key: "title"}}]],
+	};
+	return deh.editBuilderFormat(null, null, true, state, placed, wanted.colors);
+};
+const withTitle = builderEdit("title", " T ", {kind: "bar"});
+eq(withTitle, {kind: "bar", format: {title: {on: "", value: "T"}}}, "an edit lands in the state");
+eq(builderEdit(null, 1, withTitle, "builder-fmt-reset"), {kind: "bar"}, "reset leaves no format");
+
+// the builder's dialog mounts with its page, which fires every field and the reset at once
+window.dash_clientside.callback_context = {
+	triggered_id: {type: "builder-fmt", key: "title"},
+	triggered: [
+		{prop_id: JSON.stringify({key: "title", type: "builder-fmt"}) + ".value", value: ""},
+		{prop_id: "builder-fmt-reset.n_clicks", value: null},
+	],
+};
+prevents(
+	() => deh.editBuilderFormat(null, null, false, withTitle, placed, wanted.colors),
+	"mounting the closed dialog keeps every override"
+);
 
 // --- a palette swaps the colours the colorway declares, and only those -----------------
 const A = "rgb(10, 20, 30)", B = "rgb(40, 50, 60)", EDGE = "rgb(1, 2, 3)";
@@ -607,6 +656,17 @@ eq(
 	"a hidden colour bar offers its scale but no title or bounds"
 );
 
+// --- shared y links or frees the facets' y axes ------------------------------------------
+const shareY = (value) => ({sharey: {on: "True", value}});
+const freed = apply(wanted.figure, shareY("False"));
+const freedY = freed.layout.yaxis2;
+eq([freedY.matches, freedY.showticklabels], [undefined, true], "False frees the facets");
+const relinked = apply(freed, shareY("True")).layout.yaxis2;
+eq([relinked.matches, relinked.showticklabels], ["y", false], "True links them back");
+const unshared = apply(freed, {}).layout.yaxis2;
+eq([unshared.matches, unshared.showticklabels], ["y", false], "clearing restores the drawn axis");
+eq(apply(wanted.network, shareY("False")), null, "a single y axis offers no sharing");
+
 console.log("ok");
 """
 )
@@ -643,41 +703,39 @@ def test_renderer_patch_drops_only_resets_with_nothing_to_reset(tmp_path):
 	script = tmp_path / "patch.js"
 	script.write_text(_PATCH_HARNESS, encoding="utf-8")
 	result = subprocess.run(
-		["node", str(script), str(patch)], capture_output=True, text=True, encoding="utf-8"
+		["node", str(script), str(patch)],
+		capture_output=True,
+		text=True,
+		encoding="utf-8",
+		check=False,
 	)
 	assert result.returncode == 0, result.stderr
 	assert result.stdout.strip() == "ok"
 
 
-def test_format_matches_builder(tmp_path):
+def test_format_draws_and_clears(tmp_path):
 	import plotly.express as px
-	import plotly.graph_objects as go
 	import polars as pl
 
-	from deepecohab.app.builder import figure
 	from deepecohab.plotting import plot_factory
 	from deepecohab.plotting.theme import COLORSCALES, PALETTES
 
 	frame = pl.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 1, 2], "g": ["p", "q", "p", "q"]})
 	# Faceted, so the x title sits on several axes and the y title on one.
 	fig = px.density_heatmap(frame, x="a", y="b", facet_col="g")
-	auto = figure.auto_titles(fig)
+	# Each override is set on the text plotly express gave its element.
+	auto = {"xaxis": "a", "yaxis": "b", "colorbar": "count"}
 	fmt = {
-		key: {"on": auto[figure.FORMAT_BINDS[key]], "value": value}
-		for key, value in (
-			("xaxis", "X"),
-			("yaxis", "Y"),
-			("colorbar", "N"),
-			("xmin", 1),
-			("xmax", 4),
-			("ymin", 0.5),
-			("cmin", 1),
-			("cmax", 3),
-			("colorscale", "Viridis"),
-		)
+		"xaxis": {"on": "a", "value": "X"},
+		"yaxis": {"on": "b", "value": "Y"},
+		"colorbar": {"on": "count", "value": "N"},
+		"xmin": {"on": "a", "value": 1},
+		"xmax": {"on": "a", "value": 4},
+		"ymin": {"on": "b", "value": 0.5},
+		"cmin": {"on": "count", "value": 1},
+		"cmax": {"on": "count", "value": 3},
+		"colorscale": {"on": "", "value": "Viridis"},
 	}
-	expected = go.Figure(fig)
-	figure.apply_format(expected, fmt)
 
 	network = plot_factory.plot_network_graph(
 		pl.DataFrame({"source": ["a", "b"], "target": ["b", "c"], "chasings": [3.0, 1.0]}),
@@ -690,7 +748,6 @@ def test_format_matches_builder(tmp_path):
 
 	wanted = {
 		"figure": json.loads(fig.to_json()),
-		"expected": json.loads(expected.to_json()),
 		"auto": auto,
 		"fmt": fmt,
 		"colors": {"colorscale": COLORSCALES, "palette": PALETTES},
@@ -702,24 +759,8 @@ def test_format_matches_builder(tmp_path):
 	_run(tmp_path, _FORMAT_HARNESS, wanted)
 
 
-def test_format_constants_match_python():
-	"""The clientside copies of the Format tables must not drift from the Python ones.
-
-	:func:`test_format_matches_builder` pins the behaviour but reads the keys from Python,
-	so a key added on one side only would still pass it.
-	"""
-	from deepecohab.app.builder import figure
-	from deepecohab.app.pages.builder import _SELECTS, PALETTE
-
-	source = CLIENTSIDE_JS.read_text(encoding="utf-8")
-	binds_block = re.search(r"const _FORMAT_BINDS = \{(.*?)\};", source, re.S)
-	selects_block = re.search(r"const _FORMAT_SELECTS = \[(.*?)\];", source)
-	assert binds_block and selects_block
-
-	binds = dict(re.findall(r"(\w+):\s*\"([^\"]+)\"", binds_block.group(1)))
-	# The cards draw no figure title of their own, so the JS binds every key but that one.
-	assert binds == {key: on for key, on in figure.FORMAT_BINDS.items() if key != "title"}
-	assert tuple(re.findall(r'"([^"]+)"', selects_block.group(1))) == _SELECTS
+def test_dnd_palette_matches_python():
+	from deepecohab.app.pages.builder import PALETTE
 
 	dnd = CLIENTSIDE_JS.with_name("dnd.js").read_text(encoding="utf-8")
 	assert re.search(r'var PALETTE = "([^"]+)"', dnd).group(1) == PALETTE

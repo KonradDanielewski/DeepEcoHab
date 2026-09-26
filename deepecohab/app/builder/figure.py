@@ -112,28 +112,6 @@ LABELS: dict[str, str] = {
 	DETAIL: "Detail",
 }
 
-#: What Format can override, each bound to the element whose automatic title it was set
-#: on. An override lapses once that title changes - another field or measure landed
-#: there - so a renamed axis never ends up labelling a different quantity.
-FORMAT_BINDS: dict[str, str] = {
-	"title": "title",
-	"xaxis": "xaxis",
-	"xmin": "xaxis",
-	"xmax": "xaxis",
-	"yaxis": "yaxis",
-	"ymin": "yaxis",
-	"ymax": "yaxis",
-	"colorbar": "colorbar",
-	"cmin": "colorbar",
-	"cmax": "colorbar",
-	"colorscale": "coloraxis",
-	"palette": "colorway",
-}
-
-#: Format's numeric bounds, each upper one paired with the lower it must stay above.
-FORMAT_PAIRS: dict[str, str] = {"xmax": "xmin", "ymax": "ymin", "cmax": "cmin"}
-FORMAT_BOUNDS: frozenset[str] = frozenset(FORMAT_PAIRS) | frozenset(FORMAT_PAIRS.values())
-
 
 @dataclass(frozen=True)
 class PlotType:
@@ -666,11 +644,7 @@ def build_figure(
 	color_item = next((item for item in catalog if item.name == color_field), None)
 	if isinstance(color_field, str) and color_item is not None and color_item.kind == "dimension":
 		n = data.select(pl.col(color_field).n_unique()).item()
-		# Format's palette is drawn here, while plotly express still hands out the colours;
-		# one too short to give every category its own is skipped, as the form says.
-		picked = theme.PALETTES.get(state.get("format", {}).get("palette", {}).get("value"))
-		fits = picked is not None and len(picked) >= n
-		kwargs["color_discrete_sequence"] = picked[:n] if fits else theme.sample_palette(n)
+		kwargs["color_discrete_sequence"] = theme.sample_palette(n)
 
 	try:
 		figure = plot.builder(data, **kwargs, **plot.extra, labels=labels, template=TEMPLATE)
@@ -686,91 +660,6 @@ def build_figure(
 	figure.for_each_annotation(lambda note: note.update(text=note.text.split("=")[-1]))
 
 	return figure, [note.text for note in notes]
-
-
-def auto_titles(figure: go.Figure) -> dict[str, str | None]:
-	"""The titles plotly express gave each element Format can change.
-
-	Args:
-		figure: a figure straight out of ``build_figure``.
-
-	Returns:
-		Title text per element: ``""`` when the element is drawn untitled, ``None``
-		when the figure has no such element (no cartesian axes, no colour bar). The
-		colour axis and colorway carry no text, so they are ``""`` whenever present.
-	"""
-	cartesian = any(getattr(trace, "xaxis", None) for trace in figure.data)
-	colorbar = figure.layout.coloraxis.colorbar.title.text
-
-	def axis_title(axes: Iterable[Any]) -> str | None:
-		return (
-			next((axis.title.text for axis in axes if axis.title.text), "") if cartesian else None
-		)
-
-	return {
-		"title": figure.layout.title.text or "",
-		"xaxis": axis_title(figure.select_xaxes()),
-		"yaxis": axis_title(figure.select_yaxes()),
-		"colorbar": colorbar or None,
-		"coloraxis": None if colorbar is None else "",
-		"colorway": "" if figure.layout.colorway else None,
-	}
-
-
-def live_format(fmt: dict[str, Any], auto: dict[str, str | None]) -> dict[str, Any]:
-	"""The overrides in ``fmt`` whose element still carries the title they were set on."""
-	return {
-		key: entry["value"] for key, entry in fmt.items() if entry["on"] == auto[FORMAT_BINDS[key]]
-	}
-
-
-def inverted(low: float | None, high: float | None) -> bool:
-	"""Whether a pair of Format bounds crosses, which draws nothing but the form's error."""
-	return low is not None and high is not None and low >= high
-
-
-def apply_format(figure: go.Figure, fmt: dict[str, Any]) -> dict[str, str | None]:
-	"""Draw the Format overrides that still hold onto ``figure``.
-
-	Args:
-		figure: a figure straight out of ``build_figure``.
-		fmt: ``state["format"]``, key -> ``{"on": title it was set on, "value": ...}``.
-
-	Returns:
-		The automatic titles, as ``auto_titles`` read them before any override.
-	"""
-	auto = auto_titles(figure)
-	live = live_format(fmt, auto)
-
-	if "title" in live:
-		figure.update_layout(title_text=live["title"])
-	for letter, axes in (("x", figure.select_xaxes), ("y", figure.select_yaxes)):
-		every = list(axes())
-		if f"{letter}axis" in live:
-			# Facets title only their outer axes; an untitled axis gets it on the first.
-			for axis in [axis for axis in every if axis.title.text] or every[:1]:
-				axis.title.text = live[f"{letter}axis"]
-		low, high = live.get(f"{letter}min"), live.get(f"{letter}max")
-		if (low is not None or high is not None) and not inverted(low, high):
-			# minallowed/maxallowed hold one bound while the data still sets the other; a
-			# figure that drew its own range hands it back to autorange for them to count.
-			for axis in every:
-				axis.update(
-					autorange=True,
-					range=None,
-					autorangeoptions={"minallowed": low, "maxallowed": high},
-				)
-	if "colorbar" in live:
-		figure.update_layout(coloraxis_colorbar_title_text=live["colorbar"])
-	if scale := theme.COLORSCALES.get(live.get("colorscale")):
-		figure.update_layout(coloraxis_colorscale=scale)
-
-	cmin, cmax = live.get("cmin"), live.get("cmax")
-	if (cmin is not None or cmax is not None) and not inverted(cmin, cmax):
-		# With cauto off plotly fills a missing bound from the data; on, it ignores both.
-		figure.update_layout(coloraxis={"cauto": False, "cmin": cmin, "cmax": cmax})
-
-	return auto
 
 
 def prune(state: dict[str, Any], keep: Iterable[str]) -> dict[str, Any]:

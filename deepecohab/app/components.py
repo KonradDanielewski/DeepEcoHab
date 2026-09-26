@@ -1,7 +1,7 @@
 import json
 import math
 from collections import Counter, deque
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from html import escape
 from typing import Any
 from urllib.parse import quote
@@ -154,7 +154,8 @@ def format_dialog(prefix: str, note: str, props: dict[str, dict] | None = None) 
 		prefix: ids are ``{prefix}-format-modal``, ``{prefix}-fmt`` (one per field key)
 			and ``{prefix}-fmt-reset``.
 		note: the line under the fields.
-		props: each field's props by key; a ``"title"`` entry adds a plot title field.
+		props: each field's props by key; a ``"title"`` entry adds a plot title field,
+			a ``"sharey"`` one a shared y axis switch.
 
 	Returns:
 		The dialog, kept mounted so props set while it is closed survive opening it.
@@ -176,7 +177,7 @@ def format_dialog(prefix: str, note: str, props: dict[str, dict] | None = None) 
 	def bound(key: str, label: str) -> dmc.NumberInput:
 		return field(dmc.NumberInput, key, label, debounce=True, hideControls=True)
 
-	def select(key: str, label: str, choices: dict) -> dmc.Select:
+	def select(key: str, label: str, choices: Iterable[str]) -> dmc.Select:
 		return field(dmc.Select, key, label, data=list(choices), clearable=True)
 
 	return dmc.Modal(
@@ -208,6 +209,11 @@ def format_dialog(prefix: str, note: str, props: dict[str, dict] | None = None) 
 					),
 					select("colorscale", "Colour scale", COLORSCALES),
 					select("palette", "Category palette", PALETTES),
+					*(
+						[select("sharey", "Shared y axis", ["True", "False"])]
+						if "sharey" in props
+						else []
+					),
 					html.P(note, className="deh-sub"),
 				],
 				className="deh-dialog-body",
