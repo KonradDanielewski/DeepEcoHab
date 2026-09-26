@@ -223,6 +223,23 @@ def _reads(tables: tuple[str, ...]) -> list:
 	return children
 
 
+def _card_head(title: str, blurb) -> html.Div:
+	return html.Div(
+		html.Div([html.H3(title), html.P(blurb)], className="deh-card-titles"),
+		className="deh-card-head",
+	)
+
+
+def _needs(*tables: str, hint: str | None = None) -> html.Div:
+	return html.Div(
+		[
+			icon("database", size=22),
+			html.Div([html.B(["Needs ", *_reads(tables)[1:]]), hint and html.P(hint)]),
+		],
+		className="deh-missing-body",
+	)
+
+
 def _quality_badge(miss: float) -> html.Span:
 	if miss < 1:
 		kind, glyph, label = "good", "circle-check", "Good"
@@ -536,18 +553,7 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 	)
 
 	if missing:
-		body = html.Div(
-			[
-				icon("database", size=22),
-				html.Div(
-					[
-						html.B(["Needs ", *_reads(tuple(missing))[1:]]),
-						html.P("Run analysis for this recording to build it."),
-					]
-				),
-			],
-			className="deh-missing-body",
-		)
+		body = _needs(*missing, hint="Run analysis for this recording to build it.")
 		return [header, body, html.Footer(_reads(spec.requires), className="deh-card-foot")]
 
 	options = [option for option in spec.options if option.name not in _GLOBAL_OPTIONS]
@@ -574,18 +580,10 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 
 
 def _overview_summary_children(context: PlotContext) -> list:
-	header = html.Div(
-		html.Div(
-			[
-				html.H3("Recording at a glance"),
-				html.P(
-					"What this recording amounts to: how long it ran, how many detections, "
-					"and where the cohort spent its time."
-				),
-			],
-			className="deh-card-titles",
-		),
-		className="deh-card-head",
+	header = _card_head(
+		"Recording at a glance",
+		"What this recording amounts to: how long it ran, how many detections, "
+		"and where the cohort spent its time.",
 	)
 	tiles = services.overview_tiles(context)
 	body = html.Div(
@@ -608,29 +606,14 @@ def _overview_summary_children(context: PlotContext) -> list:
 
 
 def _quality_summary_children(context: PlotContext) -> list:
-	header = html.Div(
-		html.Div(
-			[
-				html.H3("Detection quality"),
-				html.P(
-					"Passes the antennas should have caught but did not. An animal that turns up "
-					"at an antenna the layout does not join to its previous one crossed antennas "
-					"that never fired."
-				),
-			],
-			className="deh-card-titles",
-		),
-		className="deh-card-head",
+	header = _card_head(
+		"Detection quality",
+		"Passes the antennas should have caught but did not. An animal that turns up "
+		"at an antenna the layout does not join to its previous one crossed antennas "
+		"that never fired.",
 	)
 	if "recording_quality" not in context:
-		body = html.Div(
-			[
-				icon("database", size=22),
-				html.Div(html.B(["Needs ", html.Code("recording_quality")])),
-			],
-			className="deh-missing-body",
-		)
-		return [header, body]
+		return [header, _needs("recording_quality")]
 
 	quality = services.quality_summary(context)
 	tiles = [
@@ -858,21 +841,13 @@ def _events_card_children(recording: Recording) -> list:
 
 	count, kinds = sum(len(event.bouts) for event in recording.events), len(recording.events)
 	tally = f"{count} bout{'s' * (count != 1)} of {kinds} event{'s' * (kinds != 1)}"
-	header = html.Div(
-		html.Div(
-			[
-				html.H3("Events"),
-				html.P(
-					[
-						f"{tally}, as ",
-						html.Code("config.json"),
-						" declares them, over the light and dark phases they fell in.",
-					]
-				),
-			],
-			className="deh-card-titles",
-		),
-		className="deh-card-head",
+	header = _card_head(
+		"Events",
+		[
+			f"{tally}, as ",
+			html.Code("config.json"),
+			" declares them, over the light and dark phases they fell in.",
+		],
 	)
 	strip = html.Div(
 		[
@@ -912,24 +887,13 @@ def _events_card_children(recording: Recording) -> list:
 
 
 def _quality_missing_children(context: PlotContext, color_by: str) -> list:
-	header = html.Div(
-		html.Div(
-			[
-				html.H3("Position unknown"),
-				html.P("Time each animal spent at a position antennas could not resolve."),
-			],
-			className="deh-card-titles",
-		),
-		className="deh-card-head",
+	header = _card_head(
+		"Position unknown", "Time each animal spent at a position antennas could not resolve."
 	)
 	needed = ("activity_df", "phase_durations")
 	missing = [table for table in needed if table not in context]
 	if missing:
-		body = html.Div(
-			[icon("database", size=22), html.Div(html.B(["Needs ", *_reads(tuple(missing))[1:]]))],
-			className="deh-missing-body",
-		)
-		return [header, body, html.Footer(_reads(needed), className="deh-card-foot")]
+		return [header, _needs(*missing), html.Footer(_reads(needed), className="deh-card-foot")]
 
 	result = services.missing_time(context)
 	subjects = (
@@ -988,54 +952,28 @@ def _quality_missing_children(context: PlotContext, color_by: str) -> list:
 
 def _habitat_card_children(context: PlotContext, height: int) -> list:
 	layout = context.recording.layout if context.recording else None
-	header = html.Div(
-		html.Div(
-			[
-				html.H3("Habitat"),
-				html.P(
-					[
-						f"{len(layout.cages)} cages, {len(layout.tunnels)} tunnels and ",
-						f"{len(topology.antennas(layout.antenna_combinations))} antennas, as ",
-						html.Code("config.json"),
-						" lays them out. Antennas are tinted by missed passes.",
-					]
-					if layout
-					else "The habitat this recording was made in."
-				),
-			],
-			className="deh-card-titles",
-		),
-		className="deh-card-head",
+	header = _card_head(
+		"Habitat",
+		[
+			f"{len(layout.cages)} cages, {len(layout.tunnels)} tunnels and ",
+			f"{len(topology.antennas(layout.antenna_combinations))} antennas, as ",
+			html.Code("config.json"),
+			" lays them out. Antennas are tinted by missed passes.",
+		]
+		if layout
+		else "The habitat this recording was made in.",
 	)
 	if layout is None:
-		body = html.Div(
-			[icon("database", size=22), html.Div(html.B("Needs a recording config"))],
-			className="deh-missing-body",
-		)
-		return [header, body]
+		return [header, _needs("layout")]
 
 	# The map is drawn from the layout alone, so this card is the one that renders for a
 	# recording whose pipeline has never run; the antennas just draw plain until there is a
 	# quality table to band them by.
 	antenna_miss = None
-	foot: list = _reads(("layout",))
+	reads = ("layout",)
 	if "recording_quality" in context:
-		quality = services.quality_summary(context)
-		antenna_miss = quality["antenna_miss"]
-		worst = quality["worst_antenna"]
-		foot = _reads(("layout", "recording_quality"))
-		# One span, not three children: the footer is a flex row, so each child of its own
-		# would be gapped away from the comma after the antenna, and this reads as one line
-		# whether or not the row wraps.
-		foot.append(
-			html.Span(
-				[
-					"worst: antenna ",
-					html.B(str(worst["antenna"])),
-					f", {worst['miss']:.2f}% of its passes missed",
-				]
-			)
-		)
+		antenna_miss = services.quality_summary(context)["antenna_miss"]
+		reads = ("layout", "recording_quality")
 
 	name = context.recording.name if context.recording else "this recording"
 	return [
@@ -1043,7 +981,7 @@ def _habitat_card_children(context: PlotContext, height: int) -> list:
 		*components.habitat_map(
 			layout, f"Habitat of {name}", antenna_miss=antenna_miss, height=height
 		),
-		html.Footer(foot, className="deh-card-foot"),
+		html.Footer(_reads(reads), className="deh-card-foot"),
 	]
 
 
@@ -1537,28 +1475,16 @@ def _update_cohort(color_by, context_data):
 
 
 def _cohort_card_children(context: PlotContext, color_by: str) -> list:
-	header = html.Div(
-		html.Div(
-			[
-				html.H3("Cohort"),
-				html.P(
-					[
-						f"{len(context.animal_ids)} animals. Colour follows ",
-						html.B(_human(color_by)),
-						" on every plot here.",
-					]
-				),
-			],
-			className="deh-card-titles",
-		),
-		className="deh-card-head",
+	header = _card_head(
+		"Cohort",
+		[
+			f"{len(context.animal_ids)} animals. Colour follows ",
+			html.B(_human(color_by)),
+			" on every plot here.",
+		],
 	)
 	if "animals" not in context:
-		body = html.Div(
-			[icon("database", size=22), html.Div(html.B(["Needs ", html.Code("animals")]))],
-			className="deh-missing-body",
-		)
-		return [header, body]
+		return [header, _needs("animals")]
 
 	mapping, animals = resolve_colors(context, color_by), context.animals.sort("animal_id")
 	table = html.Table(
