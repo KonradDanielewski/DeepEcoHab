@@ -342,6 +342,9 @@ def _position_plot(
 			)
 			figure.update_traces(boxmean=True)
 
+	# px pins each trace to an offsetgroup, which reserves a slot even when legend-hidden;
+	# without one, plotly groups only the visible traces.
+	figure.update_traces(offsetgroup="", alignmentgroup="")
 	collapse_legend(figure, mapping)
 	figure.update_xaxes(
 		title_text=x_title,
@@ -1150,6 +1153,9 @@ def plot_cage_preference(
 	place: str = "cage",
 ) -> go.Figure:
 	"""Plots position preference on a per position basis (cohort preference summary)."""
+	labels = _tick_labels(positions)
+	frame = frame.with_columns(pl.col("position").replace_strict(positions, labels))
+	positions = labels
 	figure = px.box(
 		frame,
 		x="position",
@@ -1168,13 +1174,10 @@ def plot_cage_preference(
 	)
 
 	figure.update_traces(boxmean=True)
-	figure.update_layout(colorway=colors, legend={"title": "<b>Position</b>"})
+	# Overlay + trace order: a legend-hidden position frees its slot instead of leaving a gap.
+	figure.update_layout(colorway=colors, boxmode="overlay", legend={"title": "<b>Position</b>"})
 	figure.update_yaxes(title_text=value_label)
-	figure.update_xaxes(
-		title_text=f"<b>{place.capitalize()}s</b>",
-		tickvals=list(range(len(positions))),
-		ticktext=_tick_labels(positions),
-	)
+	figure.update_xaxes(title_text=f"<b>{place.capitalize()}s</b>", categoryorder="trace")
 
 	return figure
 
