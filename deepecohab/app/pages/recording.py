@@ -615,6 +615,7 @@ def _quality_summary_children(context: PlotContext) -> list:
 	if "recording_quality" not in context:
 		return [header, _needs("recording_quality")]
 
+	assert context.recording is not None
 	quality = services.quality_summary(context)
 	tiles = [
 		("Missed passes", f"{quality['miss']:.2f}%", _quality_badge(quality["miss"])),
@@ -647,8 +648,7 @@ def _quality_summary_children(context: PlotContext) -> list:
 				),
 			),
 		)
-	if context.recording:
-		tiles += _window_tiles(context.recording.timeline)
+	tiles += _window_tiles(context.recording.timeline)
 	body = html.Div(
 		[
 			html.Div(
@@ -951,7 +951,8 @@ def _quality_missing_children(context: PlotContext, color_by: str) -> list:
 
 
 def _habitat_card_children(context: PlotContext, height: int) -> list:
-	layout = context.recording.layout if context.recording else None
+	assert context.recording is not None
+	layout = context.recording.layout
 	header = _card_head(
 		"Habitat",
 		[
@@ -959,12 +960,8 @@ def _habitat_card_children(context: PlotContext, height: int) -> list:
 			f"{len(topology.antennas(layout.antenna_combinations))} antennas, as ",
 			html.Code("config.json"),
 			" lays them out. Antennas are tinted by missed passes.",
-		]
-		if layout
-		else "The habitat this recording was made in.",
+		],
 	)
-	if layout is None:
-		return [header, _needs("layout")]
 
 	# The map is drawn from the layout alone, so this card is the one that renders for a
 	# recording whose pipeline has never run; the antennas just draw plain until there is a
@@ -975,17 +972,20 @@ def _habitat_card_children(context: PlotContext, height: int) -> list:
 		antenna_miss = services.quality_summary(context)["antenna_miss"]
 		reads = ("layout", "recording_quality")
 
-	name = context.recording.name if context.recording else "this recording"
 	return [
 		header,
 		*components.habitat_map(
-			layout, f"Habitat of {name}", antenna_miss=antenna_miss, height=height
+			layout,
+			f"Habitat of {context.recording.name}",
+			antenna_miss=antenna_miss,
+			height=height,
 		),
 		html.Footer(_reads(reads), className="deh-card-foot"),
 	]
 
 
 def _card(cell: tuple, context: PlotContext, color_by: str, tab: str) -> html.Article:
+	assert context.recording is not None
 	name, span, height, *rest = cell
 	rows = rest[0] if rest else 1
 	match name:
@@ -994,7 +994,7 @@ def _card(cell: tuple, context: PlotContext, color_by: str, tab: str) -> html.Ar
 			return _card_frame(children, span, rows, card_id="cohort-card")
 		case "habitat":
 			return _card_frame(_habitat_card_children(context, height), span, rows)
-		case "events" if context.recording:
+		case "events":
 			children = _events_card_children(context.recording)
 			return _card_frame(children, span, rows, card_id="events-card")
 		case "overview-summary":
