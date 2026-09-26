@@ -409,6 +409,24 @@ document.addEventListener("load", function (event) {
 	}]});
 }, true);
 
+/* Resting on a recording tab prefetches its plots (see plotRequest), so they are usually drawn
+ * by the time the click lands. The short dwell skips tabs the pointer only crosses; `at` makes
+ * a second hover of the same tab a new value. */
+const _PREFETCH_DWELL_MS = 50;
+let _hoveredTab = null;
+let _prefetchTimer = 0;
+document.addEventListener("mouseover", function (event) {
+	const tab = event.target.closest && event.target.closest('#rec-tabs [role="tab"]');
+	if (tab === _hoveredTab) return;
+	_hoveredTab = tab;
+	clearTimeout(_prefetchTimer);
+	if (!tab || tab.getAttribute("aria-selected") === "true") return;
+	_prefetchTimer = setTimeout(() => {
+		const value = tab.id.slice("rec-tabs-tab-".length);
+		window.dash_clientside.set_props("rec-hover", {data: {tab: value, at: Date.now()}});
+	}, _PREFETCH_DWELL_MS);
+});
+
 /* The update toast's Cancel (see _check_update): toast content is outside Dash's layout. */
 document.addEventListener("click", function (event) {
 	if (!event.target.closest(".deh-update-cancel")) return;
@@ -532,24 +550,27 @@ window.dash_clientside.deh = {
 
 	// A card is rebuilt only while its tab shows, and only for inputs it was not already
 	// drawn with: a hidden tab catches up when opened, and returning to one costs nothing.
+	// A hovered tab is also fetched, on the hover alone: the controls still rebuild only the
+	// showing tab, and a prefetched card they have since outdated catches up like any hidden one.
 	// Each store starts as {tab, uses}: the tab its card sits on and the controls its plot
 	// takes, so a control it ignores never rebuilds it - it shows that control's badge instead.
 	// One run serves every card and sets only the stores and badges that change: every callback
 	// run and every write re-runs the renderer's per-component checks, so one callback per card
 	// made each tab switch several times dearer.
-	plotRequest: function (context, controls, tab, theme) {
+	plotRequest: function (context, controls, tab, theme, _opts, hover) {
 		const dc = window.dash_clientside;
 		if (!context || !controls) return;
+		const hovered = dc.callback_context.triggered_id === "rec-hover" && hover ? hover.tab : null;
 		const opts = {};
 		dc.callback_context.inputs_list[4].forEach((option) => {
 			(opts[option.id.plot] = opts[option.id.plot] || {})[option.id.option] = option.value;
 		});
 		dc.callback_context.states_list[0].forEach((store) => {
 			const previous = store.value || {};
-			if (previous.tab !== tab) return;
+			if (previous.tab !== tab && previous.tab !== hovered) return;
 			const used = {};
 			(previous.uses || []).forEach((key) => (used[key] = controls[key]));
-			const request = {tab: tab, uses: previous.uses, context: context, controls: used, theme: theme, opts: opts[store.id.plot] || {}};
+			const request = {tab: previous.tab, uses: previous.uses, context: context, controls: used, theme: theme, opts: opts[store.id.plot] || {}};
 			if (JSON.stringify(request) !== JSON.stringify(previous)) dc.set_props(store.id, {data: request});
 		});
 		(dc.callback_context.states_list[1] || []).forEach((badge) => {
@@ -580,11 +601,19 @@ window.dash_clientside.deh = {
 
 	// Also the only writer of rec-tab, which plotRequest reads instead of rec-tabs itself:
 	// this fires only when the tabs exist, so it stays a safe place to touch them.
-	switchTab: function (tab, search) {
-		const params = new URLSearchParams(search || "");
-		if (params.get("tab") === tab) return [window.dash_clientside.no_update, tab];
-		params.set("tab", tab);
-		return ["?" + params.toString(), tab];
+	// The tab reaches the address bar, not url.search: that write would re-run _resolve on the
+	// server, and the renderer holds plotRequest, downstream of its outputs, until it returns.
+	// So url.search lags on the tab; _switch_recording takes it from rec-tab instead, and the
+	// sidebar link, which pageScroll only rewrites on a URL change, is kept current here.
+	switchTab: function (tab) {
+		const params = new URLSearchParams(location.search);
+		if (params.get("tab") !== tab) {
+			params.set("tab", tab);
+			const href = location.pathname + "?" + params.toString();
+			history.replaceState(history.state, "", href);
+			window.dash_clientside.set_props({type: "nav-link", index: "/recording"}, {href: href});
+		}
+		return tab;
 	},
 
 	windowControl: function (granularity, window_, context, controls) {
