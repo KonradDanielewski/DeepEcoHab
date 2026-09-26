@@ -158,14 +158,7 @@ def calculate_matches(recording: Recording, params: AnalysisParams) -> pl.LazyFr
 	chasing_length = pl.col("winner_exit") - pl.col("loser_exit")
 	shortest, longest = (pl.duration(seconds=bound) for bound in params.chasing_time_window)
 
-	winners = chasing.with_columns(
-		pl.lit(2, dtype=pl.Int64)
-		.pow(pl.col("winner").to_physical().cast(pl.Int64))
-		.cast(pl.Int64)
-		.alias("bit")
-	)
-	# Maps each winner's single-bit mask value back to its id, for decoding the bitmask.
-	winner_lookup = winners.select("winner", "bit").unique()
+	winners, winner_lookup = transforms.with_animal_bits(chasing, "winner")
 
 	# `kind` orders ties at equal timestamps -- enter(0) < query(1) < leave(2) -- so a winner
 	# counts as inside iff tunnel_entry <= loser_exit < winner_exit; the strict window below

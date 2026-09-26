@@ -111,6 +111,29 @@ def add_occupancy_bounds(frame: pl.LazyFrame) -> pl.LazyFrame:
 	)
 
 
+def with_animal_bits(frame: pl.LazyFrame, animal: str) -> tuple[pl.LazyFrame, pl.LazyFrame]:
+	"""Frame with a single-bit ``bit`` mask per animal, and the lookup that decodes it.
+
+	Summed over the animals present, the bits form a presence bitmask (one bit per
+	animal, so capped at ~63 animals - far above any EcoHab study).
+
+	Args:
+		frame: table with an animal id column.
+		animal: name of that column.
+
+	Returns:
+		``frame`` with ``bit`` added, and the ``animal``/``bit`` pairs that map each
+		bit back to its id.
+	"""
+	bits = frame.with_columns(
+		pl.lit(2, dtype=pl.Int64)
+		.pow(pl.col(animal).to_physical().cast(pl.Int64))
+		.cast(pl.Int64)
+		.alias("bit")
+	)
+	return bits, bits.select(animal, "bit").unique()
+
+
 def occupancy_spans(intervals: pl.LazyFrame) -> pl.LazyFrame:
 	"""Frame of every span of time a position was occupied, one row per animal inside.
 
@@ -129,18 +152,9 @@ def occupancy_spans(intervals: pl.LazyFrame) -> pl.LazyFrame:
 		One row per span and animal inside it, with ``position``, ``time``, ``end`` and
 		``animals_present``.
 	"""
-	codes = intervals.select(
-		"animal_id",
-		"position",
-		"start",
-		"end",
-		pl.lit(2, dtype=pl.Int64)
-		.pow(pl.col("animal_id").to_physical().cast(pl.Int64))
-		.cast(pl.Int64)
-		.alias("bit"),
+	codes, animal_lookup = with_animal_bits(
+		intervals.select("animal_id", "position", "start", "end"), "animal_id"
 	)
-	# Maps each animal's single-bit mask value back to its id, for decoding the bitmask.
-	animal_lookup = codes.select("animal_id", "bit").unique()
 
 	enters = codes.select(
 		pl.col("start").alias("time"),
