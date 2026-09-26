@@ -180,11 +180,13 @@ layout = html.Div(
 			title="",
 			fullScreen=True,
 			classNames=components.DIALOG_CLASSES,
-			children=dcc.Graph(
-				id="fullscreen-plot",
-				figure=components.EMPTY_FIGURE,
-				config={"displayModeBar": False},
-				style={"height": "calc(100vh - 120px)"},
+			children=html.Div(
+				dcc.Graph(
+					id="fullscreen-plot",
+					figure=components.EMPTY_FIGURE,
+					config={"displayModeBar": False},
+				),
+				id="fullscreen-frame",
 			),
 		),
 		dmc.Modal(
@@ -1577,6 +1579,8 @@ clientside_callback(
 	Output("fullscreen-modal", "opened"),
 	Output("fullscreen-modal", "title"),
 	Output("fullscreen-plot", "figure"),
+	Output("fullscreen-plot", "style"),
+	Output("fullscreen-frame", "style"),
 	Input({"type": "card-fullscreen", "plot": ALL}, "n_clicks"),
 	State({"type": "plot", "plot": ALL}, "figure"),
 	State({"type": "plot", "plot": ALL}, "id"),
