@@ -18,7 +18,6 @@ from dash import (
 	dcc,
 	html,
 	no_update,
-	set_props,
 )
 from dash.exceptions import PreventUpdate
 
@@ -26,7 +25,7 @@ from deepecohab import Project
 from deepecohab.app import components, services
 from deepecohab.app.builder import catalog, figure, presets as presets_mod
 from deepecohab.app.components import icon, notify
-from deepecohab.plotting.theme import PALETTES
+from deepecohab.plotting.theme import COLORSCALES, PALETTES
 
 PATH = "/builder"
 
@@ -65,8 +64,6 @@ PLOT_ICON = {
 #: Numeric time fields that offer a Range | Pick values toggle; others (age_days) are
 #: range-only, and every dimension field is pick-only.
 PICKABLE = frozenset({"day", "phase_count", "hour", "n_mice"})
-#: Format keys picked from a menu, empty as ``None`` rather than ``""``.
-_SELECTS = ("colorscale", "palette")
 
 _SCOPE = {
 	"built-in": ("template", "built in"),
@@ -85,6 +82,7 @@ layout = html.Div(
 		dcc.Store(id="builder-kind"),
 		dcc.Store(id="builder-project"),
 		dcc.Store(id="builder-state"),
+		dcc.Store(id="builder-colors", data={"colorscale": COLORSCALES, "palette": PALETTES}),
 		dcc.Store(id="builder-last-preset"),
 		dcc.Store(id="builder-presets-local", storage_type="local", data=[]),
 		dcc.Store(id="builder-presets-bump", data=0),
@@ -242,30 +240,6 @@ def _drop_unshelved_bins(state: dict) -> None:
 		state["bins"] = bins
 	else:
 		state.pop("bins", None)
-
-
-def _set_format(state: dict, key: str, value, auto: dict) -> dict:
-	"""``state`` with Format ``key`` set to ``value``; empty, or the automatic text, clears it."""
-	if key in figure.FORMAT_BOUNDS:
-		value = value if isinstance(value, int | float) else None
-	else:
-		value = (value or "").strip() or None
-	if value == auto.get(key):
-		value = None
-	fmt = state.get("format", {})
-	if figure.live_format(fmt, auto).get(key) == value:
-		raise PreventUpdate
-
-	if value is None:
-		fmt.pop(key, None)
-	else:
-		fmt[key] = {"on": auto[figure.FORMAT_BINDS[key]], "value": value}
-	# No empty dict left behind, or a preset would read as edited after a reset.
-	if fmt:
-		state["format"] = fmt
-	else:
-		state.pop("format", None)
-	return state
 
 
 def _send_to_items(field: catalog.Field, source: str, plot: figure.PlotType) -> list:
@@ -663,42 +637,6 @@ def _graph_title(state: dict, last_preset: dict | None) -> tuple[list, bool]:
 	return head_label, last_preset is None
 
 
-def _format_props(state: dict, auto: dict) -> dict[str, dict]:
-	"""Props for each Format field: its live override, and what empty falls back to.
-
-	``auto`` is what ``builder-auto-titles`` holds: the automatic titles, plus how many
-	categories the figure colours, which a palette must have colours enough for.
-	"""
-	live = figure.live_format(state.get("format", {}), auto)
-	needed = auto["categories"]
-	picked = PALETTES.get(live.get("palette"), [])
-	props = {}
-	for key, bind in figure.FORMAT_BINDS.items():
-		element = auto[bind]
-		if key in figure.FORMAT_BOUNDS:
-			placeholder = "Auto"
-		elif key in _SELECTS:
-			placeholder = "Default"
-		else:
-			placeholder = element or ("No title" if element == "" else "Not on this plot")
-		props[key] = {
-			"value": live.get(key, None if key in _SELECTS else ""),
-			"placeholder": placeholder,
-			"disabled": element is None,
-			"error": None,
-		}
-	for high, low in figure.FORMAT_PAIRS.items():
-		if figure.inverted(live.get(low), live.get(high)):
-			props[high]["error"] = "Must be above min"
-	if 0 < len(picked) < needed:
-		props["palette"]["error"] = f"{len(picked)} colours for {needed} categories"
-	props["palette"]["data"] = [
-		{"value": name, "label": f"{name} · {len(colors)}", "disabled": len(colors) < needed}
-		for name, colors in PALETTES.items()
-	]
-	return props
-
-
 def _graph_head(title_children: list, reset_disabled: bool) -> html.Div:
 	"""The graph card's head: built once by ``_dashboard`` and never remounted.
 
@@ -756,10 +694,6 @@ def _graph_children(
 	theme: str,
 ):
 	fig, note_texts = figure.build_figure(frame, _plain_state(state), fields)
-	auto = {
-		**figure.apply_format(fig, state.get("format", {})),
-		"categories": len(fig.layout.colorway or ()),
-	}
 	# The top margin keeps room for a title set through Format.
 	fig.update_layout(
 		template=theme or "light",
@@ -767,7 +701,13 @@ def _graph_children(
 		title={"x": 0, "xref": "paper", "xanchor": "left"},
 	)
 
-	return fig, note_texts, auto
+	return fig, note_texts
+
+
+def _drawn(state: dict, theme: str | None) -> dict:
+	"""What the graph is drawn from: all but Format, which the browser draws on it."""
+	plot = {key: value for key, value in state.items() if key != "format"}
+	return {"state": plot, "theme": theme}
 
 
 def _status_text(project, frame: pl.LazyFrame) -> str:
@@ -807,15 +747,17 @@ def _bare(paths: list[str] | None, pid: str | None, message: str) -> html.Div:
 def _dashboard(
 	project, location, paths, frame, fields, state, last_preset, saved_local, theme, search=""
 ) -> html.Div:
-	fig, note_texts, auto = _graph_children(frame, fields, state, theme)
+	fig, note_texts = _graph_children(frame, fields, state, theme)
 	title_children, reset_disabled = _graph_title(state, last_preset)
 	graph_card = html.Div(
 		[
-			dcc.Store(id="builder-auto-titles", data=auto),
+			# Beside the graph rather than in the page's layout: _render writes it, and a
+			# callback with only some of its outputs mounted fires off the builder page too.
+			dcc.Store(id="builder-drawn", data=_drawn(state, theme)),
 			components.format_dialog(
 				"builder",
 				"Empty means automatic. Saved with the preset.",
-				_format_props(state, auto),
+				{"title": {}, "sharey": {}},
 			),
 			_graph_head(title_children, reset_disabled),
 			dcc.Graph(
@@ -1011,16 +953,17 @@ def _render_palette(search, kind, project_data):
 	Output("builder-presets", "children"),
 	Output("builder-types", "children"),
 	Output("builder-mode-row", "children"),
-	Output("builder-auto-titles", "data"),
+	Output("builder-drawn", "data"),
 	Input("builder-state", "data"),
 	Input("plot-theme", "data"),
 	Input("builder-presets-bump", "data"),
 	State("builder-project", "data"),
 	State("builder-presets-local", "data"),
 	State("builder-last-preset", "data"),
+	State("builder-drawn", "data"),
 	prevent_initial_call=True,
 )
-def _render(state, theme, _bump, project_data, saved_local, last_preset):
+def _render(state, theme, _bump, project_data, saved_local, last_preset, last_drawn):
 	if not project_data or not state:
 		raise PreventUpdate
 	location = project_data["location"]
@@ -1030,57 +973,63 @@ def _render(state, theme, _bump, project_data, saved_local, last_preset):
 	except FileNotFoundError:
 		raise PreventUpdate from None
 
-	fig, note_texts, auto = _graph_children(frame, fields, state, theme)
+	# Format is drawn in the browser, so a change to it alone leaves the figure be.
+	drawn = _drawn(state, theme)
+	if drawn == last_drawn:
+		fig = alerts = no_update
+	else:
+		fig, note_texts = _graph_children(frame, fields, state, theme)
+		alerts = _alerts_children(note_texts)
 	title_children, reset_disabled = _graph_title(state, last_preset)
 	return (
 		_shelves_children(fields, state),
 		_filters_children(frame, fields, state),
-		_alerts_children(note_texts),
+		alerts,
 		title_children,
 		reset_disabled,
 		fig,
 		_presets_children(project, location, state, last_preset, saved_local),
 		_types_children(state),
 		_mode_children(state),
-		auto,
+		drawn,
 	)
 
 
-@callback(
+# Format only rewrites layout the browser already holds, as on the recording cards.
+clientside_callback(
+	ClientsideFunction("deh", "openBuilderFormat"),
 	Output("builder-format-modal", "opened"),
-	Input("builder-format", "n_clicks"),
-	prevent_initial_call=True,
-)
-def _open_format(clicks):
-	if not clicks:
-		raise PreventUpdate
-	return True
-
-
-@callback(
+	Output({"type": "builder-fmt", "key": ALL}, "value"),
 	Output({"type": "builder-fmt", "key": ALL}, "placeholder"),
 	Output({"type": "builder-fmt", "key": ALL}, "disabled"),
-	Output({"type": "builder-fmt", "key": ALL}, "error"),
 	Output({"type": "builder-fmt", "key": "palette"}, "data"),
-	Input("builder-auto-titles", "data"),
+	Input("builder-format", "n_clicks"),
+	State("builder-graph", "figure"),
 	State("builder-state", "data"),
-	State({"type": "builder-fmt", "key": ALL}, "value"),
+	State("builder-colors", "data"),
 	prevent_initial_call=True,
 )
-def _render_format(auto, state, _values):
-	"""Refill the Format form in place: remounting it would drop focus mid-edit."""
-	if not auto or not state:
-		raise PreventUpdate
-	props = _format_props(state, auto)
-	# Values are set, not declared as outputs: they are _reduce's inputs, so an output
-	# here would close a loop through builder-state that Dash refuses to register.
-	for field in ctx.states_list[1]:
-		value = props[field["id"]["key"]]["value"]
-		if field.get("value") != value:
-			set_props(field["id"], {"value": value})
-	keys = [output["id"]["key"] for output in ctx.outputs_list[0]]
-	columns = ([props[key][prop] for key in keys] for prop in ("placeholder", "disabled", "error"))
-	return *columns, props["palette"]["data"]
+
+clientside_callback(
+	ClientsideFunction("deh", "editBuilderFormat"),
+	Output("builder-state", "data", allow_duplicate=True),
+	Input({"type": "builder-fmt", "key": ALL}, "value"),
+	Input("builder-fmt-reset", "n_clicks"),
+	State("builder-format-modal", "opened"),
+	State("builder-state", "data"),
+	State("builder-graph", "figure"),
+	State("builder-colors", "data"),
+	prevent_initial_call=True,
+)
+
+clientside_callback(
+	ClientsideFunction("deh", "applyBuilderFormat"),
+	Input("builder-state", "data"),
+	# Optional: a placeholder body without a graph still takes a new state.
+	Input("builder-graph", "figure", allow_optional=True),
+	State("builder-colors", "data"),
+	prevent_initial_call=True,
+)
 
 
 clientside_callback(
@@ -1121,13 +1070,10 @@ clientside_callback(
 	Input({"type": "chip-bin", "field": ALL}, "value"),
 	Input({"type": "filter-pick", "field": ALL}, "value"),
 	Input({"type": "filter-range", "field": ALL}, "value"),
-	Input({"type": "builder-fmt", "key": ALL}, "value"),
-	Input("builder-fmt-reset", "n_clicks"),
 	State("builder-state", "data"),
 	State("builder-project", "data"),
 	State("builder-last-preset", "data"),
 	State("builder-presets-local", "data"),
-	State("builder-auto-titles", "data"),
 	prevent_initial_call=True,
 )
 def _reduce(
@@ -1136,13 +1082,10 @@ def _reduce(
 	_bin_specs,
 	_pick_values,
 	_range_values,
-	_format_values,
-	_format_reset,
 	state,
 	project_data,
 	last_preset,
 	saved_local,
-	auto,
 ):
 	# A button click arrives as builder-action's id - the one Dash would have triggered.
 	trigger = action["id"] if ctx.triggered_id == "builder-action" else ctx.triggered_id
@@ -1161,15 +1104,6 @@ def _reduce(
 	match trigger:
 		case "builder-clear":
 			state["channels"] = {}
-			return state, no_update
-
-		case {"type": "builder-fmt", "key": key}:
-			return _set_format(state, key, ctx.triggered[0]["value"], auto), no_update
-
-		case "builder-fmt-reset":
-			if not ctx.triggered[0]["value"] or "format" not in state:
-				raise PreventUpdate
-			del state["format"]
 			return state, no_update
 
 		case "builder-reset":

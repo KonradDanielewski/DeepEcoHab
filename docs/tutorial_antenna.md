@@ -145,10 +145,10 @@ after the project inside `location`.
 
 ```python
 project = deh.Project.create(
-    project_name="tsc2",
-    experimenter="Jane Doe",
-    location="path/to/projects",
-    description="Vglut2 HET vs WT, females",
+	project_name="tsc2",
+	experimenter="Jane Doe",
+	location="path/to/projects",
+	description="Vglut2 HET vs WT, females",
 )
 ```
 
@@ -163,7 +163,7 @@ or open the project in a `with` block:
 
 ```python
 with deh.Project.load("path/to/projects/tsc2") as project:
-    ...
+	...
 ```
 
 ## Add recordings
@@ -176,9 +176,9 @@ A recording is delivered as files sharing one name, `<name>.<suffix>`:
 
 ```python
 recording = project.add_recording(
-    "path/to/cohort1.config.json",
-    "path/to/cohort1.data.parquet",
-    "path/to/cohort1.diagnostic.json",  # optional
+	"path/to/cohort1.config.json",
+	"path/to/cohort1.data.parquet",
+	"path/to/cohort1.diagnostic.json",  # optional
 )
 ```
 
@@ -187,7 +187,7 @@ Several at once, from their files in any order - they are grouped by name:
 ```python
 report = project.add_recordings(Path("path/to/recordings").iterdir())
 
-report.added   # names of the recordings that went in
+report.added  # names of the recordings that went in
 report.failed  # (name, error) for each recording or stray file that did not
 ```
 
@@ -212,7 +212,7 @@ Recordings are reached by name, or all together:
 ```python
 recording = project["cohort1_2023_05_17"]
 project.recordings
-project.remove_recording("cohort1_2023_05_17")                     # keeps the files
+project.remove_recording("cohort1_2023_05_17")  # keeps the files
 project.remove_recording("cohort1_2023_05_17", delete_files=True)  # deletes them too
 ```
 
@@ -231,11 +231,11 @@ Options:
 
 ```python
 project.run_analysis(
-    params=deh.AnalysisParams(minimum_time=5),
-    names=["cohort1_2023_05_17"],  # only these recordings
-    targets=["feature_df"],        # only these tables and the tables they are built from
-    overwrite=True,                # rebuild tables that already exist
-    workers=2,                     # how many recordings to analyse at once
+	params=deh.AnalysisParams(minimum_time=5),
+	names=["cohort1_2023_05_17"],  # only these recordings
+	targets=["feature_df"],  # only these tables and the tables they are built from
+	overwrite=True,  # rebuild tables that already exist
+	workers=2,  # how many recordings to analyse at once
 )
 ```
 
@@ -255,8 +255,8 @@ Existing tables are not rebuilt when parameters change: pass `overwrite=True`, w
 ## Load results
 
 ```python
-activity = recording.load_results("activity_df")               # polars LazyFrame
-activity = recording.load_results("activity_df", eager=True)   # polars DataFrame
+activity = recording.load_results("activity_df")  # polars LazyFrame
+activity = recording.load_results("activity_df", eager=True)  # polars DataFrame
 ```
 
 An unknown name raises `KeyError`; a table that has not been built yet raises
@@ -405,11 +405,11 @@ up exactly to a phase, a day or the whole recording:
 import polars as pl
 
 rates = (
-    recording.load_results("feature_df")
-    .filter(pl.col("phase") == "dark_phase")
-    .group_by("animal_id", "metric")
-    .agg((pl.sum("value") / pl.sum("exposure")).alias("rate"))
-    .collect()
+	recording.load_results("feature_df")
+	.filter(pl.col("phase") == "dark_phase")
+	.group_by("animal_id", "metric")
+	.agg((pl.sum("value") / pl.sum("exposure")).alias("rate"))
+	.collect()
 )
 ```
 
@@ -430,7 +430,7 @@ transponder as a row:
 
 ```python
 recording.load_results("recording_quality", eager=True).pivot(
-    on="antenna", index="animal_id", values="miss_rate"
+	on="antenna", index="animal_id", values="miss_rate"
 )
 ```
 
@@ -461,8 +461,8 @@ activity during the hours a novel object was present:
 bouts = recording.load_results("event_bouts")
 
 during_novel_object = recording.load_results("activity_df").join(
-    bouts.filter(pl.col("event") == "novel_object").select("day", "hour").unique(),
-    on=["day", "hour"],
+	bouts.filter(pl.col("event") == "novel_object").select("day", "hour").unique(),
+	on=["day", "hour"],
 )
 ```
 
@@ -517,9 +517,9 @@ other - swap in `"novel_object"` below to split a metric by whether the event wa
 
 ```python
 rates = (
-    table.group_by("genotype", "phase", "metric")
-    .agg((pl.sum("value") / pl.sum("exposure")).alias("rate"))
-    .collect()
+	table.group_by("genotype", "phase", "metric")
+	.agg((pl.sum("value") / pl.sum("exposure")).alias("rate"))
+	.collect()
 )
 ```
 
