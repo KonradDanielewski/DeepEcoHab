@@ -236,35 +236,21 @@ def update_notes(location: str, name: str, notes: str, tag: str | None = None) -
 def quality_summary(context: PlotContext) -> dict:
 	"""Pooled detection-quality stats for the header and the quality tab's tiles."""
 	frame = context.table("recording_quality").with_columns(pl.col("animal_id").cast(pl.String))
-	rate = 100 * pl.col("missed") / (pl.col("missed") + pl.col("detected"))
+	counts = pl.col("missed", "detected").sum()
+	passes = pl.col("missed") + pl.col("detected")
+	rate = pl.when(passes > 0).then(100 * pl.col("missed") / passes).otherwise(0.0).alias("miss")
 
-	overall = frame.select(pl.col("missed").sum(), pl.col("detected").sum()).row(0, named=True)
-	by_antenna = (
-		frame.group_by("antenna")
-		.agg(pl.col("missed").sum(), pl.col("detected").sum())
-		.with_columns(rate.alias("miss_rate"))
-		.sort("miss_rate", descending=True)
-	)
-	by_animal = (
-		frame.group_by("animal_id")
-		.agg(pl.col("missed").sum(), pl.col("detected").sum())
-		.with_columns(rate.alias("miss_rate"))
-		.sort("miss_rate", descending=True)
-	)
-	worst_antenna = by_antenna.row(0, named=True)
-	worst_animal = by_animal.row(0, named=True)
-	missed, detected = overall["missed"], overall["detected"]
+	pooled = frame.select(counts).with_columns(rate).row(0, named=True)
+	worst = {
+		key: frame.group_by(key).agg(counts).select(key, rate).sort("miss", descending=True)
+		for key in ("antenna", "animal_id")
+	}
 
 	return {
-		"miss": 100 * missed / (missed + detected) if missed + detected else 0.0,
-		"detected": detected,
-		"missed": missed,
-		"worst_antenna": {"antenna": worst_antenna["antenna"], "miss": worst_antenna["miss_rate"]},
-		"antenna_miss": {
-			str(antenna): miss
-			for antenna, miss in zip(by_antenna["antenna"], by_antenna["miss_rate"], strict=True)
-		},
-		"worst_animal": {"animal_id": worst_animal["animal_id"], "miss": worst_animal["miss_rate"]},
+		**pooled,
+		"worst_antenna": worst["antenna"].row(0, named=True),
+		"antenna_miss": {str(antenna): miss for antenna, miss in worst["antenna"].iter_rows()},
+		"worst_animal": worst["animal_id"].row(0, named=True),
 	}
 
 
