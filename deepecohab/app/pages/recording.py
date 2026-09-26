@@ -326,69 +326,10 @@ def _meta_strip(summary: dict) -> list:
 	return items
 
 
-def _window_marks(lo: int, hi: int) -> list[dmc.RangeSlider.Marks]:
-	step = 2 if hi - lo + 1 > 12 else 1
-	return [
-		{"value": v, "label": str(v)} for v in range(lo, hi + 1) if (v - lo) % step == 0 or v == hi
-	]
-
-
-def _clock(summary: dict, hour: int) -> str:
-	base_h, base_m = (int(part) for part in summary["onsets"][summary["start_from"]].split(":"))
-	total = (base_h * 60 + base_m + hour * 60) % 1440
-	return f"{total // 60:02d}:{total % 60:02d}"
-
-
 def _shade(phase: str, selected: bool) -> str:
-	"""One phase's colour for the hours band, dimmed when the chips have turned it off."""
+	"""One phase's colour for a band, dimmed when the chips have turned it off."""
 	token = "--tick-dark" if phase == "dark_phase" else "--tick-light"
 	return f"color-mix(in srgb, var({token}) {100 if selected else 22}%, transparent)"
-
-
-def _hours_band(summary: dict, phases: list[str]) -> tuple[str, str]:
-	"""The hours slider's band as a CSS gradient, and the hover text naming its stretches.
-
-	``hour`` counts from the ``start_from`` onset, so each phase is one unbroken stretch
-	and the band never has to wrap around midnight. The slider runs over hour boundaries,
-	``h`` at ``h / 24`` of the track, so the split sits under the other onset's tick.
-	"""
-	onsets, start = summary["onsets"], summary["start_from"]
-	other = next((name for name in onsets if name != start), None)
-	if other is None:
-		return _shade(start, start in phases), _human(start)
-
-	minutes = {name: int(at[:2]) * 60 + int(at[3:5]) for name, at in onsets.items()}
-	first = ((minutes[other] - minutes[start]) % 1440) / 60
-	split = 100 * first / 24
-	edge = round(first)
-
-	return (
-		(
-			f"linear-gradient(90deg, {_shade(start, start in phases)} 0 {split}%, "
-			f"{_shade(other, other in phases)} {split}% 100%)"
-		),
-		(
-			f"{_human(start)} {_clock(summary, 0)}-{_clock(summary, edge)} · "
-			f"{_human(other)} {_clock(summary, edge)}-{_clock(summary, 24)}"
-		),
-	)
-
-
-def _window_text(bound: int, granularity: str, window: list[int]) -> tuple[str, str]:
-	"""The label above the window slider, and the hint on its right."""
-	lo, hi = window
-	unit = "Days" if granularity == "day" else "Phases"
-	span = f"all {bound}" if [lo, hi] == [1, bound] else f"{hi - lo + 1} of {bound}"
-
-	return f"{unit} {lo} → {hi}", span
-
-
-def _hours_text(hours: list[int]) -> tuple[str, str]:
-	"""The label above the hours slider, and the hint on its right."""
-	lo, hi = hours
-	span = "whole day" if [lo, hi] == [0, 23] else f"{hi - lo + 1} of 24 h"
-
-	return f"Hours {lo} → {hi + 1}", span
 
 
 def _cohort_widgets(context: PlotContext, color_by: str) -> tuple[list, html.Div]:
@@ -1012,9 +953,6 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 	attrs = available_attributes(context) if "animals" in context else ["animal_id"]
 	color_by = controls["color_by"] if controls["color_by"] in attrs else "animal_id"
 	cohort_children, cohort_pop = _cohort_widgets(context, color_by)
-	gradient, band_title = _hours_band(summary, controls["phases"])
-	label, hint = _hours_text(controls["hours"])
-	window_label, window_hint = _window_text(bound, controls["granularity"], controls["window"])
 	one_phase = summary["phases"] == 1 or len(summary["onsets"]) == 1
 	window_style = _HIDDEN if summary["phases"] == 1 else None
 	animals_style = _HIDDEN if len(attrs) == 1 else None
@@ -1041,8 +979,8 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 				[
 					html.Div(
 						[
-							html.Span(window_label, id="rec-window-label"),
-							html.Span(window_hint, id="rec-window-hint", className="deh-sub"),
+							html.Span(id="rec-window-label"),
+							html.Span(id="rec-window-hint", className="deh-sub"),
 						],
 						className="deh-range-top",
 					),
@@ -1052,7 +990,6 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 						max=bound,
 						step=1,
 						value=controls["window"],
-						marks=_window_marks(1, bound),
 						minRange=0,
 						size="sm",
 					),
@@ -1064,19 +1001,14 @@ def _controls_bar(summary: dict, controls: dict, context: PlotContext) -> html.D
 				[
 					html.Div(
 						[
-							html.Span(label, id="rec-hours-label"),
-							html.Span(hint, id="rec-hours-hint", className="deh-sub"),
+							html.Span(id="rec-hours-label"),
+							html.Span(id="rec-hours-hint", className="deh-sub"),
 						],
 						className="deh-range-top",
 					),
 					html.Div(
 						[
-							html.Div(
-								id="rec-hours-band",
-								className="deh-band",
-								style={"background": gradient},
-								title=band_title,
-							),
+							html.Div(id="rec-hours-band", className="deh-band"),
 							# Hours since the phase onset, as on the plots' hour axis, over
 							# boundaries rather than bins so 0 → 12 reads as the first 12 h;
 							# controls["hours"] stays in bins.
@@ -1334,7 +1266,7 @@ def _resolve(pathname, search, paths, current):
 		**identity,
 		"days": summary["days"],
 		"phases": summary["phases"],
-		# The hours band and its label are repainted clientside as the slider moves.
+		# The hours band and its hover text are painted clientside.
 		"onsets": summary["onsets"],
 		"start_from": summary["start_from"],
 	}
@@ -1417,6 +1349,8 @@ clientside_callback(
 	Input("rec-window", "value"),
 	State("rec-context", "data"),
 	State("rec-controls", "data"),
+	# Still runs whenever rec-body mounts, as rec-controls sits outside it: Dash fires a
+	# callback whose Inputs arrive in a new chunk if any Output lies outside that chunk.
 	prevent_initial_call=True,
 )
 
@@ -1432,6 +1366,7 @@ clientside_callback(
 	Input("rec-group-mean", "checked"),
 	State("rec-controls", "data"),
 	State("rec-context", "data"),
+	# Runs whenever rec-body mounts too, like windowControl above.
 	prevent_initial_call=True,
 )
 

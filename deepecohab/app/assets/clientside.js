@@ -278,13 +278,14 @@ function _flagErrors(fmt, layout, palettes) {
 	);
 }
 
-// The hours slider's band and label, repainted as the handles move - the twin of
-// recording.py's _hours_band / _hours_text, which paint the first one server-side.
+// The twin of recording.py's _shade, which the events card uses.
 function _shade(phase, selected) {
 	const token = phase === "dark_phase" ? "--tick-dark" : "--tick-light";
 	return "color-mix(in srgb, var(" + token + ") " + (selected ? 100 : 22) + "%, transparent)";
 }
 
+// The hours slider's band as a CSS gradient. Hours count from the start_from onset, so each
+// phase is one unbroken stretch and the band never wraps around midnight.
 function _hoursBand(context, phases) {
 	const onsets = context.onsets || {};
 	const start = context.start_from;
@@ -577,7 +578,7 @@ window.dash_clientside.deh = {
 		if (!context) throw dc.PreventUpdate;
 		const bound = granularity === "day" ? context.days : context.phases;
 		const value = dc.callback_context.triggered_id === "rec-granularity" ? [1, bound] : window_;
-		const step = bound > 12 ? 2 : 1;  // mirrors _window_marks
+		const step = bound > 12 ? 2 : 1;
 		const marks = [];
 		for (let v = 1; v <= bound; v += 1) {
 			if ((v - 1) % step === 0 || v === bound) marks.push({value: v, label: String(v)});

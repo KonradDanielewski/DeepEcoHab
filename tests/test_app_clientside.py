@@ -1,8 +1,8 @@
 """Tests for the recording-page callbacks that moved into ``assets/clientside.js``.
 
 Each one replaced a server callback, so the checks run the JS in node and compare it against
-the Python it was ported from: the window marks against ``_window_marks``, the export
-filename against the string ops the old callback did.
+the Python it was ported from, such as the export filename against the string ops the old
+callback did.
 """
 
 import json
@@ -15,8 +15,6 @@ import pytest
 from dash import Dash
 
 Dash(__name__, use_pages=True, pages_folder="")
-
-from deepecohab.app.pages.recording import _window_marks  # noqa: E402
 
 CLIENTSIDE_JS = Path(__file__).parent.parent / "deepecohab" / "app" / "assets" / "clientside.js"
 
@@ -115,17 +113,19 @@ for (const [granularity, bound] of [["day", wanted.days], ["phase_count", wanted
 	const out = deh.windowControl(granularity, [2, 3], bounds, {color_by: "sex"});
 	eq(out[0], 1, "window min");
 	eq(out[1], bound, "window max");
-	eq(out[2], wanted.marks[String(bound)], `marks for ${bound}`);
 	eq(out[3], [1, bound], "a granularity change re-spans the window");
 	eq(out[4], {color_by: "sex", granularity, window: [1, bound]}, "controls merged");
 }
 
-// the mark thinning turns over at 12, so compare the whole ported rule against Python
-for (const bound of Object.keys(wanted.marks)) {
+// every mark up to 12, then every other one, always keeping the last
+const marks = (bound) => {
 	fire("rec-granularity", "day");
-	const out = deh.windowControl("day", [1, 1], {days: Number(bound), phases: 0}, null);
-	eq(out[2], wanted.marks[bound], `marks for ${bound} days`);
-}
+	return deh.windowControl("day", [1, 1], {days: bound, phases: 0}, null)[2];
+};
+eq(marks(1), [{value: 1, label: "1"}], "one mark");
+eq(marks(12).map((m) => m.value), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "12 marks");
+eq(marks(13).map((m) => m.value), [1, 3, 5, 7, 9, 11, 13], "13 thins");
+eq(marks(30).map((m) => m.value).slice(-3), [27, 29, 30], "the last mark is kept");
 
 fire("rec-window", [2, 3]);
 eq(
@@ -133,6 +133,20 @@ eq(
 	[2, 3],
 	"a drag keeps the dragged window"
 );
+
+// the readout above the slider follows the window
+const painted = {};
+window.dash_clientside.set_props = (id, props) => (painted[id] = props);
+fire("rec-window", [2, 3]);
+deh.windowControl("day", [2, 3], {days: 5, phases: 10}, null);
+eq(
+	[painted["rec-window-label"].children, painted["rec-window-hint"].children],
+	["Days 2 → 3", "2 of 5"],
+	"window readout"
+);
+fire("rec-granularity", "phase_count");
+deh.windowControl("phase_count", [2, 3], {days: 5, phases: 10}, null);
+eq(painted["rec-window-hint"].children, "all 10", "a whole window reads all");
 prevents(() => deh.windowControl("day", [2, 3], null, null), "windowControl without a context");
 
 // --- filterControls: a dict merge, plus the group-mean disable rule -------------------
@@ -167,6 +181,24 @@ eq(
 	],
 	"filterControls forces group mean off and disables the switch when colouring by animal"
 );
+
+// the hours band splits under the other onset, whichever phase the hours count from
+const hours = (bounds, phases, context) =>
+	deh.filterControls(bounds, phases, "animal_id", "animal_id", false, {}, context);
+hours([0, 24], ["dark_phase"], {
+	onsets: {light_phase: "07:00", dark_phase: "19:30"},
+	start_from: "dark_phase",
+});
+eq(
+	[painted["rec-hours-label"].children, painted["rec-hours-hint"].children],
+	["Hours 0 → 24", "whole day"],
+	"hours readout"
+);
+const band = painted["rec-hours-band"].style.background;
+eq(band.includes(" 0 47.916666666666664%"), true, "band splits at 11.5 h");
+hours([2, 5], [], {onsets: {light_phase: "07:00"}, start_from: "light_phase"});
+eq(painted["rec-hours-hint"].children, "3 of 24 h", "a narrowed hours hint");
+window.dash_clientside.set_props = () => {};
 
 // --- toggleEvents: sets only the figures whose event items show the wrong way --------
 const sets = [];
@@ -348,11 +380,9 @@ def _run(tmp_path: Path, harness: str, wanted: dict) -> None:
 
 
 def test_recording_clientside_callbacks(tmp_path):
-	days, phases = 5, 13  # one below the mark-thinning threshold, one just above
 	wanted = {
-		"days": days,
-		"phases": phases,
-		"marks": {str(bound): _window_marks(1, bound) for bound in (1, 5, 12, 13, 30, 31)},
+		"days": 5,
+		"phases": 13,
 		"filename": "cohort 1 wt__activity-bar".replace(" ", "-"),
 	}
 	_run(tmp_path, _HARNESS, wanted)
