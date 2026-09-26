@@ -876,8 +876,70 @@ def test_datetime_spans_are_written_like_the_trace_they_mark(context):
 	)
 
 
-def test_timeline_ships_wall_clock_numbers_and_reads_back_as_dates():
-	"""The timeline's axes are typed arrays, but its hover and CSV still name dates and animals."""
+def test_timeline_buckets_take_their_dominant_position_until_zoomed_in(context):
+	"""A 2000 s span buckets by the second, so a 0.3 s tunnel crossing folds into the cage
+	it was mostly spent in; zoomed to 1.5 s, the buckets are milliseconds and it is back."""
+	zone = "Europe/Warsaw"
+	noon = dt.datetime(2023, 5, 24, 12, tzinfo=ZoneInfo(zone))
+	main_df = pl.DataFrame(
+		{
+			"animal_id": ["0035A", "0035A", "0035A", "0035B"],
+			"position": ["cage_1", "tunnel_1_a", "cage_2", "cage_1"],
+			"datetime": [noon + dt.timedelta(seconds=s) for s in (1000, 1000.3, 2000, 2000)],
+			"time_spent": [dt.timedelta(seconds=s) for s in (1000, 0.3, 999.7, 2000)],
+			"day": [1] * 4,
+		},
+		schema_overrides={"datetime": pl.Datetime("us", zone)},
+	)
+	context = replace(context, _loaded={"main_df": main_df})
+
+	def wall(seconds: float) -> dt.datetime:
+		return dt.datetime(2023, 5, 24, 12) + dt.timedelta(seconds=seconds)
+
+	assert prepare.prep_timeline(context, (1, 1), "day").rows() == [
+		("0035A", "cage_1", wall(0), wall(1000)),
+		("0035A", "cage_2", wall(1000), wall(2000)),
+		("0035B", "cage_1", wall(0), wall(2000)),
+	]
+
+	zoomed = ("2023-05-24 12:16:39.5", "2023-05-24 12:16:41")
+	assert prepare.prep_timeline(context, (1, 1), "day", x_range=zoomed).rows() == [
+		("0035A", "cage_1", wall(999.5), wall(1000)),
+		("0035A", "tunnel_1", wall(1000), wall(1000.3)),
+		("0035A", "cage_2", wall(1000.3), wall(1001)),
+		("0035B", "cage_1", wall(999.5), wall(1001)),
+	]
+
+
+def test_timeline_bars_stop_where_the_visits_do_not_at_bucket_edges(context):
+	"""The 999 ms buckets of this 1999.75 s span are counted from the epoch, so neither the
+	first read, the undefined gap nor the last read falls on an edge; the bars still do."""
+	zone = "Europe/Warsaw"
+	noon = dt.datetime(2023, 5, 24, 12, tzinfo=ZoneInfo(zone))
+	main_df = pl.DataFrame(
+		{
+			"animal_id": ["0035A"] * 3,
+			"position": ["cage_1", "undefined", "cage_2"],
+			"datetime": [noon + dt.timedelta(seconds=s) for s in (1000.5, 1200, 2000.25)],
+			"time_spent": [dt.timedelta(seconds=s) for s in (1000, 199.5, 800.25)],
+			"day": [1] * 3,
+		},
+		schema_overrides={"datetime": pl.Datetime("us", zone)},
+	)
+	context = replace(context, _loaded={"main_df": main_df})
+
+	def wall(seconds: float) -> dt.datetime:
+		return dt.datetime(2023, 5, 24, 12) + dt.timedelta(seconds=seconds)
+
+	assert prepare.prep_timeline(context, (1, 1), "day").rows() == [
+		("0035A", "cage_1", wall(0.5), wall(1000.5)),
+		("0035A", "cage_2", wall(1200), wall(2000.25)),
+	]
+
+
+def test_timeline_ships_wall_clock_strings_and_reads_back_as_dates():
+	"""The timeline's x is wall-clock strings - plotly reads epoch numbers in the browser's
+	zone - and its y a typed array, but its CSV still names dates and animals."""
 	zone = "Europe/Warsaw"
 
 	def at(hour: int) -> dt.datetime:
@@ -901,18 +963,24 @@ def test_timeline_ships_wall_clock_numbers_and_reads_back_as_dates():
 		("cage_1", "0035A", True),
 		("cage_1", "0035B", False),
 		("tunnel_1", "0035A", True),
+		("tunnel_1", "0035B", False),
 	]
-	assert all("bdata" in trace["x"] and "bdata" in trace["y"] for trace in payload["data"])
+	assert payload["data"][0]["x"] == [
+		"2023-05-24 02:00:00.000000",
+		"2023-05-24 03:00:00.000000",
+		None,
+	]
+	assert all("bdata" in trace["y"] for trace in payload["data"] if trace["x"])
 	assert payload["layout"]["xaxis"]["type"] == "date"
 
 	(csv,) = export.figure_data_csv(payload)
 	assert pl.read_csv(csv.encode()).rows() == [
-		("cage_1", "2023-05-24T02:00:00.000", "0035A"),
-		("cage_1", "2023-05-24T03:00:00.000", "0035A"),
-		("cage_1", "2023-05-24T01:00:00.000", "0035B"),
-		("cage_1", "2023-05-24T02:00:00.000", "0035B"),
-		("tunnel_1", "2023-05-24T04:00:00.000", "0035A"),
-		("tunnel_1", "2023-05-24T05:00:00.000", "0035A"),
+		("cage_1", "2023-05-24 02:00:00.000000", "0035A"),
+		("cage_1", "2023-05-24 03:00:00.000000", "0035A"),
+		("cage_1", "2023-05-24 01:00:00.000000", "0035B"),
+		("cage_1", "2023-05-24 02:00:00.000000", "0035B"),
+		("tunnel_1", "2023-05-24 04:00:00.000000", "0035A"),
+		("tunnel_1", "2023-05-24 05:00:00.000000", "0035A"),
 	]
 
 

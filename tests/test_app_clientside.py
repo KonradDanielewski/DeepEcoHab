@@ -322,6 +322,17 @@ eq(
 	"colorBy ignores the other controls"
 );
 
+// --- timelineZoom: only a change of the x range asks for the timeline again -----------
+const span = ["2023-05-24 12:00", "2023-05-24 13:00"];
+const zoom = {"xaxis.range[0]": span[0], "xaxis.range[1]": span[1]};
+eq(deh.timelineZoom(zoom, null), span, "a zoom or pan asks for its span");
+eq(deh.timelineZoom({"xaxis.range": span}, null), span, "so does a range set whole");
+eq(deh.timelineZoom(zoom, span) === NO, true, "the span already drawn asks for nothing");
+const reset = {"xaxis.autorange": true, "yaxis.autorange": true};
+eq(deh.timelineZoom(reset, span), null, "a reset asks for the window");
+eq(deh.timelineZoom(reset, undefined) === NO, true, "the window already drawn asks for nothing");
+eq(deh.timelineZoom({autosize: true}, span) === NO, true, "a resize asks for nothing");
+
 // --- clickEvent: a re-rendered button is not a click ----------------------------------
 const chip = {type: "chip-x", shelf: "y", field: "day"};
 fire(chip, null);

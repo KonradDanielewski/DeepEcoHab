@@ -579,14 +579,11 @@ def _plotly_array(value: Any) -> Any:
 def _axis_values(values: list[Any], axis: dict[str, Any]) -> list[Any]:
 	"""A trace's coordinates as its axis labels them, where the trace holds plain numbers.
 
-	Epoch milliseconds on a date axis become ISO datetimes, and positions on an axis whose
-	ticks are relabelled through ``tickvals``/``ticktext`` become that tick text.
+	Positions on an axis whose ticks are relabelled through ``tickvals``/``ticktext``
+	become that tick text.
 	"""
 	if not values or not all(isinstance(value, int | float) for value in values):
 		return values
-	if axis.get("type") == "date":
-		stamps = np.array(values, dtype="float64").astype("datetime64[ms]")
-		return np.datetime_as_string(stamps).tolist()
 	if axis.get("tickvals") is not None and axis.get("ticktext") is not None:
 		labels = dict(zip(axis["tickvals"], axis["ticktext"], strict=False))
 		return [labels.get(value, value) for value in values]
