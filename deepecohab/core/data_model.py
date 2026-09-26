@@ -1323,14 +1323,13 @@ class Project(BaseModel):
 		recording._root = config_path.parent
 		return recording
 
-	def _save(self) -> Path:
+	def _save(self) -> None:
 		"""Write the pointer manifest to <project_location>/project.json."""
 		path = self.project_location / self.MANIFEST
 		tmp = path.with_suffix(".json.tmp")
 		tmp.write_text(self.model_dump_json(indent=2), encoding="utf-8")
 		tmp.replace(path)
 		self.log.info("saved manifest (%d recordings)", len(self.data_catalog))
-		return path
 
 	@property
 	def log(self) -> logging.Logger:

@@ -58,11 +58,6 @@ def window_filter(
 	return expr
 
 
-def _bins(days_range: tuple[int, int]) -> int:
-	"""Number of window units the selection spans, for the SEM denominator."""
-	return days_range[1] - days_range[0] + 1
-
-
 def _matrix(
 	frame: pl.DataFrame,
 	on: str,
@@ -313,7 +308,7 @@ def prep_polar(
 	hours_range: tuple[int, int] | None = None,
 ) -> pl.DataFrame:
 	"""Z-score every feature metric onto one comparable polar scale."""
-	n_bins = _bins(days_range)
+	n_bins = days_range[1] - days_range[0] + 1
 
 	return (
 		context.table("feature_df")

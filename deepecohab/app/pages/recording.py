@@ -532,20 +532,11 @@ def _overview_summary_children(context: PlotContext) -> list:
 		"What this recording amounts to: how long it ran, how many detections, "
 		"and where the cohort spent its time.",
 	)
-	tiles = services.overview_tiles(context)
-	body = html.Div(
+	body = _tiles(
 		[
-			html.Div(
-				[
-					html.Span(tile["label"], className="deh-tile-label"),
-					html.Span(tile["value"], className="deh-tile-value"),
-					html.Span(tile["note"], className="deh-sub"),
-				],
-				className="deh-tile",
-			)
-			for tile in tiles
-		],
-		className="deh-tiles",
+			(tile["label"], tile["value"], html.Span(tile["note"], className="deh-sub"))
+			for tile in services.overview_tiles(context)
+		]
 	)
 	reads = [table for table in ("main_df", "activity_df", "chasings_df") if table in context]
 
@@ -596,7 +587,11 @@ def _quality_summary_children(context: PlotContext) -> list:
 			),
 		)
 	tiles += _window_tiles(context.recording.timeline)
-	body = html.Div(
+	return [header, _tiles(tiles)]
+
+
+def _tiles(rows: list) -> html.Div:
+	return html.Div(
 		[
 			html.Div(
 				[
@@ -606,11 +601,10 @@ def _quality_summary_children(context: PlotContext) -> list:
 				],
 				className="deh-tile",
 			)
-			for label, value, aside in tiles
+			for label, value, aside in rows
 		],
 		className="deh-tiles",
 	)
-	return [header, body]
 
 
 def _span(delta: dt.timedelta, rounding=math.ceil) -> str:

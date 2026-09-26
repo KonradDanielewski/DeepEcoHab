@@ -559,8 +559,8 @@ def _reinstate_menu(project: dict) -> dmc.Menu:
 def _project_download_items(pid: str) -> list[tuple[str, str, str]]:
 	base = f"/download/project/{pid}"
 	return [
-		("table", "Project table · parquet", f"{base}/table.parquet"),
-		("file-type-csv", "Project table · CSV", f"{base}/table.csv"),
+		("table", "Project table · parquet", f"{base}/table"),
+		("file-type-csv", "Project table · CSV", f"{base}/table?format=csv"),
 		("file-zip", "Configs and results · zip", f"{base}/archive.zip"),
 		("file-zip", "Configs, results and raw data · zip", f"{base}/archive.zip?raw=1"),
 	]
@@ -1368,7 +1368,6 @@ def _cancel_run(_clicks, selection):
 
 clientside_callback(
 	ClientsideFunction("deh", "copyPath"),
-	Output("notifications", "sendNotifications", allow_duplicate=True),
 	Input({"type": "copy-path", "place": ALL, "index": ALL}, "n_clicks"),
 	prevent_initial_call=True,
 )
