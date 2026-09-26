@@ -113,7 +113,14 @@ def activity(
 	window = _window(context, days_range, granularity)
 	positions = context.positions if scope == "all" else context.scope_positions(scope)
 	frame = prepare.prep_activity(
-		context, window, phase_type, granularity, agg, positions, hours_range
+		context,
+		window,
+		phase_type,
+		granularity,
+		agg,
+		positions,
+		{"visits": "visits_to_position", "time": "time_in_position"},
+		hours_range,
 	)
 	mapping = resolve_colors(context, color_by, group_mean=group_mean, label_by=label_by)
 	frame = mean_by_group(frame, mapping, ["visits", "time"])
@@ -156,8 +163,15 @@ def time_alone(
 	"""
 	window = _window(context, days_range, granularity)
 	positions = context.scope_positions(scope)
-	frame = prepare.prep_time_alone(
-		context, window, phase_type, granularity, agg, positions, hours_range
+	frame = prepare.prep_activity(
+		context,
+		window,
+		phase_type,
+		granularity,
+		agg,
+		positions,
+		{"time_alone": "time_alone"},
+		hours_range,
 	)
 	mapping = resolve_colors(context, color_by, group_mean=group_mean, label_by=label_by)
 	frame = mean_by_group(frame, mapping, ["time_alone"])
