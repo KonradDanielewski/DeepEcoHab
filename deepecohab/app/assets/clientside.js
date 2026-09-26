@@ -524,6 +524,17 @@ document.addEventListener("click", function (event) {
 	window.dash_clientside.set_props("notifications", {hideNotifications: ["update-available"]});
 });
 
+/* Events table: an event's name folds its bouts away. */
+function _toggleEventGroup(event) {
+	const label = event.target.closest(".deh-ev-group .deh-ev-label");
+	if (!label || (event.type === "keydown" && event.key !== "Enter" && event.key !== " ")) return;
+	event.preventDefault();
+	const collapsed = label.closest("tbody").classList.toggle("is-collapsed");
+	label.setAttribute("aria-expanded", String(!collapsed));
+}
+document.addEventListener("click", _toggleEventGroup);
+document.addEventListener("keydown", _toggleEventGroup);
+
 
 window.dash_clientside.deh = {
 	/* --- shell ------------------------------------------------------------ */
