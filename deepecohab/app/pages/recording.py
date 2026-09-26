@@ -778,6 +778,8 @@ def _events_card_children(recording: Recording) -> list:
 									html.Span(event.description, className="deh-sub"),
 								],
 								className="deh-ev-label",
+								role="button",
+								tabIndex=0,
 							),
 							colSpan=5,
 						),

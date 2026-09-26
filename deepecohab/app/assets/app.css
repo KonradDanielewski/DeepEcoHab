@@ -1630,6 +1630,26 @@ code {
 	background: var(--sunken);
 }
 
+.deh-ev-group .deh-ev-label {
+	cursor: pointer;
+	user-select: none;
+}
+
+.deh-ev-group .deh-ev-label::after {
+	content: "▾";
+	margin-left: auto;
+	color: var(--ink-3);
+	transition: transform 0.15s;
+}
+
+.is-collapsed .deh-ev-group .deh-ev-label::after {
+	transform: rotate(-90deg);
+}
+
+.deh-ev-table tbody.is-collapsed > tr:not(.deh-ev-group) {
+	display: none;
+}
+
 /* Bouts sit under their event's name, past the swatch. */
 .deh-ev-table tr:not(.deh-ev-group) > :first-child {
 	padding-left: 28px;
