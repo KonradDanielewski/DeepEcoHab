@@ -513,14 +513,15 @@ def prep_activity(
 	granularity: Granularity,
 	agg: Aggregation,
 	positions: list[str],
+	columns: dict[str, str],
 	hours_range: tuple[int, int] | None = None,
 ) -> pl.DataFrame:
-	"""Visits and time spent per position and animal, ``time`` a raw Duration.
+	"""``activity_df`` columns summed per position and animal, keyed ``{output: source}``.
 
 	A summed plot draws one row per animal and position; a mean plot keeps the
 	window units so the box has a distribution to show. Aggregating here rather
 	than in the plot is what keeps the hover text describing the value on screen -
-	the catalog step still owns turning ``time`` into a display unit, once any
+	the catalog step still owns turning Durations into a display unit, once any
 	group averaging has run.
 	"""
 	per_unit = (
@@ -533,42 +534,11 @@ def prep_activity(
 			pl.col("position").is_in(positions),
 		)
 		.group_by(granularity, "animal_id", "position")
-		.agg(
-			pl.sum("visits_to_position").alias("visits"),
-			pl.sum("time_in_position").alias("time"),
-		)
+		.agg(pl.sum(source).alias(output) for output, source in columns.items())
 	)
 
 	if agg == "sum":
-		per_unit = per_unit.group_by("animal_id", "position").agg(pl.sum("visits"), pl.sum("time"))
-
-	return per_unit.sort("animal_id", "position").collect(engine="in-memory")
-
-
-def prep_time_alone(
-	context: PlotContext,
-	days_range: tuple[int, int],
-	phase_type: Sequence[str],
-	granularity: Granularity,
-	agg: Aggregation,
-	positions: list[str],
-	hours_range: tuple[int, int] | None = None,
-) -> pl.DataFrame:
-	"""Time each animal spent alone, per position, as a raw Duration column."""
-	per_unit = (
-		context.table("activity_df")
-		.lazy()
-		.filter(
-			pl.col("phase").is_in(list(phase_type)),
-			window_filter(days_range, granularity, hours_range),
-			pl.col("position").is_in(positions),
-		)
-		.group_by(granularity, "animal_id", "position")
-		.agg(pl.sum("time_alone"))
-	)
-
-	if agg == "sum":
-		per_unit = per_unit.group_by("animal_id", "position").agg(pl.sum("time_alone"))
+		per_unit = per_unit.group_by("animal_id", "position").agg(pl.sum(*columns))
 
 	return per_unit.sort("animal_id", "position").collect(engine="in-memory")
 
