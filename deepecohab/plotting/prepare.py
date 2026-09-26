@@ -1,3 +1,4 @@
+import datetime as dt
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -133,40 +134,91 @@ def prep_timeline(
 	days_range: tuple[int, int],
 	granularity: Granularity,
 	hours_range: tuple[int, int] | None = None,
+	x_range: tuple[str, str] | None = None,
 ) -> pl.DataFrame:
 	"""Every animal's position intervals within the selected window, as timeline bars.
 
 	Reads ``main_df`` directly rather than a downstream table, so each row is one real
 	visit - a registration's ``time_spent`` is the gap since the animal's previous one,
-	so it ran from ``datetime - time_spent`` to ``datetime``. Consecutive registrations
-	at the same position - repeat triggers of one antenna pair mid-visit - are merged
-	into a single bar, or the strip would carry orders of magnitude more bars than there
-	were actual visits.
+	so it ran from ``datetime - time_spent`` to ``datetime``.
+
+	A week holds hundreds of thousands of registrations, nearly all narrower than a
+	pixel, so the span on show - the window, or ``x_range`` once zoomed in - is cut into
+	2000 buckets, about one per pixel of a full-width card. Each bucket takes the
+	position the animal spent most of it in, and neighbouring buckets at one position
+	merge into a single bar, trimmed to the visits it covers - the recording's ends and
+	undefined gaps rarely fall on a bucket edge. Times, ``x_range`` included, are naive
+	wall-clock, as plotly draws them.
 	"""
-	return (
+	visits = (
 		context.table("main_df")
 		.lazy()
 		.filter(window_filter(days_range, granularity, hours_range))
-		.with_columns(
+		.select(
+			"animal_id",
 			pl.col("position").cast(pl.String).replace(context.tunnels_map),
-			(pl.col("datetime") - pl.col("time_spent")).alias("start"),
+			(pl.col("datetime") - pl.col("time_spent"))
+			.dt.replace_time_zone(None)
+			.dt.epoch("ms")
+			.alias("start"),
+			pl.col("datetime").dt.replace_time_zone(None).dt.epoch("ms").alias("end"),
 		)
-		.filter(
-			pl.col("position") != Layout.UNDEFINED,
-			pl.col("time_spent") > pl.duration(microseconds=0),
+		.filter(pl.col("position") != Layout.UNDEFINED)
+	)
+	if x_range is not None:
+		low, high = (pl.lit(dt.datetime.fromisoformat(edge)).dt.epoch("ms") for edge in x_range)
+		visits = visits.filter(pl.col("end") > low, pl.col("start") < high).with_columns(
+			pl.col("start").clip(low), pl.col("end").clip(upper_bound=high)
 		)
-		.sort("animal_id", "start")
+
+	return (
+		visits.filter(pl.col("end") > pl.col("start"))
+		.with_columns(width=((pl.col("end").max() - pl.col("start").min()) // 2000).clip(1))
 		.with_columns(
-			(pl.col("position") != pl.col("position").shift(1))
-			.over("animal_id")
+			bucket=pl.int_ranges(
+				pl.col("start") // pl.col("width"), (pl.col("end") - 1) // pl.col("width") + 1
+			)
+		)
+		.explode("bucket", empty_as_null=False)
+		.with_columns(
+			overlap=pl.min_horizontal("end", (pl.col("bucket") + 1) * pl.col("width"))
+			- pl.max_horizontal("start", pl.col("bucket") * pl.col("width"))
+		)
+		.group_by("animal_id", "bucket", "position")
+		.agg(
+			pl.col("overlap").sum(),
+			pl.col("width").first(),
+			pl.col("start").min(),
+			pl.col("end").max(),
+		)
+		.group_by("animal_id", "bucket")
+		.agg(
+			pl.col("position").sort_by("overlap", "position").last(),
+			pl.col("width").first(),
+			pl.col("start").min(),
+			pl.col("end").max(),
+		)
+		.sort("animal_id", "bucket")
+		.with_columns(
+			(
+				(pl.col("position") != pl.col("position").shift(1))
+				| (pl.col("bucket") != pl.col("bucket").shift(1) + 1)
+			)
 			.fill_null(True)
 			.cum_sum()
 			.over("animal_id")
 			.alias("run")
 		)
 		.group_by("animal_id", "position", "run")
-		.agg(pl.col("start").min(), pl.col("datetime").max().alias("end"))
-		.select("animal_id", "position", "start", "end")
+		.agg(
+			start=pl.max_horizontal(
+				pl.col("bucket").min() * pl.col("width").first(), pl.col("start").min()
+			),
+			end=pl.min_horizontal(
+				(pl.col("bucket").max() + 1) * pl.col("width").first(), pl.col("end").max()
+			),
+		)
+		.select("animal_id", "position", pl.from_epoch("start", "ms"), pl.from_epoch("end", "ms"))
 		.sort("animal_id", "start")
 		.collect(engine="in-memory")
 	)

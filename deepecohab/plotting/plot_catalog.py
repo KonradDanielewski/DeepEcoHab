@@ -60,15 +60,20 @@ def _window(
 )
 def recording_timeline(
 	context: PlotContext,
+	x_range: tuple[str, str] | None = None,
 	*,
 	days_range: tuple[int, int] | None = None,
 	granularity: Granularity = "day",
 	hours_range: tuple[int, int] | None = None,
 	label_by: LabelBy = "animal_id",
 ) -> go.Figure:
-	"""Every animal's position over time, as a compact Gantt-style strip."""
+	"""Every animal's position over time, as a compact Gantt-style strip.
+
+	``x_range`` is the span a zoom shows, resampled at its own resolution. It sits before
+	the ``*`` because it follows the plot's axis, not a control, so it is no card option.
+	"""
 	window = _window(context, days_range, granularity)
-	frame = prepare.prep_timeline(context, window, granularity, hours_range)
+	frame = prepare.prep_timeline(context, window, granularity, hours_range, x_range)
 	spans = prepare.prep_event_spans(context, window, granularity, "datetime", hours_range)
 
 	figure = plot_factory.plot_timeline(

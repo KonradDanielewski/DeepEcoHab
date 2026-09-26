@@ -638,10 +638,9 @@ def plot_mean_line(
 def plot_ranking_line(frame: pl.DataFrame, mapping: ColorMapping, spans: pl.DataFrame) -> go.Figure:
 	"""Plots line graph of ranking over time."""
 	figure = px.line(
-		# Epoch milliseconds ship as a typed array, where datetimes would go as ISO strings.
-		frame.with_columns(
-			pl.col("datetime").dt.replace_time_zone(None).dt.epoch("ms").cast(pl.Float64)
-		),
+		# Wall-clock, as the event spans are; not epoch numbers, which plotly would read in
+		# the browser's zone.
+		frame.with_columns(pl.col("datetime").dt.replace_time_zone(None)),
 		x="datetime",
 		y="ordinal",
 		line_shape="hv",
@@ -1188,34 +1187,40 @@ def plot_timeline(
 	colors = dict(zip(positions, sample_palette(len(positions)), strict=True))
 	row_dtype = np.min_scalar_type(len(animals))
 
-	visits = frame.with_columns(pl.col("start", "end").dt.replace_time_zone(None).dt.epoch("ms"))
+	# Wall-clock strings, not epoch numbers: plotly reads a number on a date axis in the
+	# browser's zone, shifting every bar by its UTC offset. None breaks the line between bars.
+	visits = frame.select(
+		"position",
+		"animal_id",
+		x=pl.concat_list(
+			pl.col("start").dt.replace_time_zone(None).dt.to_string(),
+			pl.col("end").dt.replace_time_zone(None).dt.to_string(),
+			pl.lit(None, pl.String),
+		),
+	)
 	groups = visits.partition_by("position", "animal_id", as_dict=True)
 	figure = go.Figure()
 
+	# Every position and animal gets a trace, empty or not: plotly keeps a hidden legend
+	# entry by trace index, and a zoom redraws the figure with other bars.
 	for position in positions:
-		first_animal = True  # Only show legend for the first animal of each position
 		for row, animal in enumerate(animals):
-			if (rows := groups.get((position, animal))) is None:
-				continue
-
-			x = np.full(3 * rows.height, np.nan)
-			x[0::3] = rows["start"].to_numpy()
-			x[1::3] = rows["end"].to_numpy()
+			rows = groups.get((position, animal), visits.clear())
+			x = rows["x"].explode(empty_as_null=False).to_list()
 
 			figure.add_trace(
 				go.Scattergl(
 					x=x,
-					y=np.full(x.size, row, dtype=row_dtype),
+					y=np.full(len(x), row, dtype=row_dtype),
 					mode="lines",
 					line={"width": 10, "color": colors[position]},
 					name=position,
 					legendgroup=position,
-					showlegend=first_animal,  # Only show legend for the first animal
+					showlegend=row == 0,
 					meta=animal,
 					hovertemplate=f"{position}<br>Animal: %{{meta}}<br>%{{x}}<extra></extra>",
 				)
 			)
-			first_animal = False
 
 	figure.update_yaxes(
 		title=None,

@@ -1,10 +1,12 @@
 import datetime as dt
+import json
 import math
 from itertools import pairwise
 from urllib.parse import parse_qs, quote, urlencode
 
 import dash
 import dash_mantine_components as dmc
+import plotly.graph_objects as go
 from dash import (
 	ALL,
 	MATCH,
@@ -161,6 +163,8 @@ layout = html.Div(
 		dcc.Store(id="rec-tab"),
 		# What the cohort cards were drawn for: _dashboard bakes them for animal_id.
 		dcc.Store(id="rec-color-by", data="animal_id"),
+		# The timeline's zoomed x range, or null for its whole window.
+		dcc.Store(id="rec-timeline-zoom"),
 		dcc.Store(id="notes-target"),
 		dcc.Store(id="rec-format", storage_type="session"),
 		dcc.Store(id="rec-format-target"),
@@ -1499,8 +1503,34 @@ def _update_plot(request, events_on):
 	if not request or "context" not in request:
 		raise PreventUpdate
 
+	return _build_plot(ctx.outputs_list["id"]["plot"], request, events_on)
+
+
+clientside_callback(
+	ClientsideFunction("deh", "timelineZoom"),
+	Output("rec-timeline-zoom", "data"),
+	Input({"type": "plot", "plot": "recording-timeline"}, "relayoutData"),
+	State("rec-timeline-zoom", "data"),
+	prevent_initial_call=True,
+)
+
+
+@callback(
+	Output({"type": "plot", "plot": "recording-timeline"}, "figure", allow_duplicate=True),
+	Input("rec-timeline-zoom", "data"),
+	State({"type": "plot-req", "plot": "recording-timeline"}, "data"),
+	State("rec-events", "checked"),
+	prevent_initial_call=True,
+)
+def _zoom_timeline(x_range, request, events_on):
+	if not request or "context" not in request:
+		raise PreventUpdate
+
+	return _build_plot("recording-timeline", request, events_on, x_range=x_range)
+
+
+def _build_plot(name: str, request: dict, events_on: bool, **extra) -> go.Figure:
 	context_data, controls, theme = request["context"], request["controls"], request["theme"]
-	name = ctx.outputs_list["id"]["plot"]
 	context = services.plot_context(context_data["location"], context_data["recording"])
 	spec = PlotRegistry.spec(name)
 	if any(table not in context for table in spec.requires):
@@ -1518,11 +1548,15 @@ def _update_plot(request, events_on):
 	if values.get("hours_range") == [0, 23]:
 		values["hours_range"] = None
 
-	figure = PlotRegistry.build(name, context, **values)
+	figure = PlotRegistry.build(name, context, **values, **extra)
 	# The card header already carries the title; the figure's own would double it up.
 	# Plotly still reserves top margin for it, so that's trimmed back too - which is also
 	# where the phase band sits, so it keeps a little more room than the title needed.
-	figure.update_layout(title=None, margin={"t": 30})
+	# Rebuilt for the same request - a zoomed timeline - the figure keeps the viewer's
+	# zoom and hidden legend entries; a new request starts afresh.
+	figure.update_layout(
+		title=None, margin={"t": 30}, uirevision=hash(json.dumps(request, sort_keys=True))
+	)
 	# Not a bare template=: a shape carries a literal colour, so the phase band has to be
 	# repainted for the theme rather than inheriting it.
 	plot_theme.apply(figure, theme or "light")

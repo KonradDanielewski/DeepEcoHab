@@ -558,6 +558,20 @@ window.dash_clientside.deh = {
 		});
 	},
 
+	// A zoom or pan asks for the timeline's bars again at the new span's resolution, a reset
+	// (null) for the whole window. Any other relayout - a resize, a Format edit - leaves it be.
+	timelineZoom: function (relayout, current) {
+		const r = relayout || {};
+		let range;
+		if (r["xaxis.autorange"]) range = null;
+		else if (r["xaxis.range"]) range = r["xaxis.range"];
+		else if ("xaxis.range[0]" in r) range = [r["xaxis.range[0]"], r["xaxis.range[1]"]];
+		if (range === undefined || JSON.stringify(range) === JSON.stringify(current ?? null)) {
+			return window.dash_clientside.no_update;
+		}
+		return range;
+	},
+
 	// The cohort cards follow colour alone, so the other controls leave them be.
 	colorBy: function (controls, current) {
 		const next = (controls || {}).color_by || "animal_id";
