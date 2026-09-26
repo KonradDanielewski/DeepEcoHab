@@ -229,6 +229,35 @@ def test_activity_scope_keeps_undefined_only_at_all(context, scope, expected):
 	assert {x for trace in figure.data for x in trace.x} == expected
 
 
+@pytest.mark.parametrize("plot", ["activity-bar", "time-alone-bar"])
+@pytest.mark.parametrize("agg", ["sum", "mean"])
+def test_position_ticks_name_their_own_bars(context, plot, agg):
+	"""A tunnel named ``T1`` sorts before ``cage_1``, so the data arrives tunnel-first."""
+	activity_df = pl.DataFrame(
+		{
+			"phase": ["light_phase"] * 2,
+			"day": [1] * 2,
+			"animal_id": [ANIMALS[0]] * 2,
+			"position": pl.Series(["T1", "cage_1"], dtype=pl.Categorical),
+			"visits_to_position": [1, 5],
+			"time_in_position": pl.Series([dt.timedelta(seconds=10)] * 2, dtype=pl.Duration("us")),
+			"time_alone": pl.Series([dt.timedelta(seconds=1)] * 2, dtype=pl.Duration("us")),
+		}
+	)
+	scoped = replace(
+		context,
+		cages=["cage_1"],
+		positions=["cage_1", "T1", "undefined"],
+		_loaded={**context._loaded, "activity_df": activity_df},
+	)
+
+	axis = PlotRegistry.build(plot, scoped, scope="all", agg=agg).layout.xaxis
+
+	assert list(axis.ticktext) == plot_factory._tick_labels(
+		[axis.categoryarray[i] for i in axis.tickvals]
+	)
+
+
 def test_unknown_scope_is_rejected(context):
 	"""A typo names a scope that would silently select nothing."""
 	with pytest.raises(ValueError, match="scope must be one of"):

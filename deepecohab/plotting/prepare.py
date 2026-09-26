@@ -440,7 +440,7 @@ def prep_directed_heatmap(
 		.agg(pl.sum(value))
 		.group_by(column, row, maintain_order=True)
 		.agg(agg_func)
-		.join(join_frame, on=[column, row], how="right")
+		.join(join_frame, on=[column, row], how="right", maintain_order="right")
 		.collect(engine="in-memory")
 	)
 
@@ -790,7 +790,7 @@ def prep_within_cohort_sociability(
 		)
 		.group_by(["animal_id", "animal_id_2"], maintain_order=True)
 		.agg(pl.mean(metric).round(2).alias("mean"))
-		.join(join_frame, on=["animal_id", "animal_id_2"], how="right")
+		.join(join_frame, on=["animal_id", "animal_id_2"], how="right", maintain_order="right")
 		.collect(engine="in-memory")
 	)
 
