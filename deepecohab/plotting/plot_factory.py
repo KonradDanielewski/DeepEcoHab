@@ -638,9 +638,13 @@ def plot_mean_line(
 def plot_ranking_line(frame: pl.DataFrame, mapping: ColorMapping, spans: pl.DataFrame) -> go.Figure:
 	"""Plots line graph of ranking over time."""
 	figure = px.line(
-		frame,
+		# Epoch milliseconds ship as a typed array, where datetimes would go as ISO strings.
+		frame.with_columns(
+			pl.col("datetime").dt.replace_time_zone(None).dt.epoch("ms").cast(pl.Float64)
+		),
 		x="datetime",
 		y="ordinal",
+		line_shape="hv",
 		color=mapping.trace_column,
 		color_discrete_map=mapping.trace_colors,
 		category_orders={mapping.trace_column: mapping.order},
@@ -650,7 +654,7 @@ def plot_ranking_line(frame: pl.DataFrame, mapping: ColorMapping, spans: pl.Data
 	figure.update_layout(
 		title="<b>Social dominance ranking in time</b>",
 		legend={"title": mapping.legend_title, "tracegroupgap": 0},
-		xaxis={"title": "<b>Timeline</b>"},
+		xaxis={"title": "<b>Timeline</b>", "type": "date"},
 		yaxis={"title": "<b>Ranking</b>"},
 	)
 	_event_spans(figure, spans)

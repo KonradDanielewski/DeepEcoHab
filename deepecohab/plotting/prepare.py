@@ -177,7 +177,12 @@ def prep_ranking_over_time(
 	days_range: tuple[int, int],
 	granularity: Granularity,
 ) -> pl.DataFrame:
-	"""Aggregate animal ordinal rankings by window unit, hour, and datetime."""
+	"""Aggregate animal ordinal rankings by window unit, hour, and datetime.
+
+	A match moves only its two animals, yet ``ranking`` repeats every animal's rating
+	after it. Only the rows where an animal's rating changes are kept, plus its last
+	one: the step line holds each rating until the next change anyway.
+	"""
 	return (
 		context.table("ranking")
 		.lazy()
@@ -188,6 +193,10 @@ def prep_ranking_over_time(
 			pl.when(pl.first(granularity) == 1)
 			.then(pl.first("ordinal"))
 			.otherwise(pl.last("ordinal"))
+		)
+		.filter(
+			(pl.col("ordinal").diff().over("animal_id") != 0).fill_null(True)
+			| (pl.col("datetime") == pl.col("datetime").max().over("animal_id"))
 		)
 		.collect(engine="in-memory")
 	)
