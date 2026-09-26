@@ -489,6 +489,36 @@ def test_update_notes_through_the_app_leaves_a_line_in_the_project_log(tmp_path)
 	assert "noted: notes updated for animal A" in log
 
 
+@pytest.mark.parametrize("manifest", [None, "not json"])
+def test_project_name_falls_back_to_the_folder_name(tmp_path, manifest):
+	if manifest is not None:
+		(tmp_path / Project.MANIFEST).write_text(manifest, encoding="utf-8")
+	assert services.project_name(str(tmp_path)) == tmp_path.name
+
+
+def test_project_name_reads_the_manifest(tmp_path):
+	project = Project.create(
+		project_name="named", experimenter="tester", location=tmp_path / "project"
+	)
+	assert services.project_name(str(project.project_location)) == "named"
+
+
+def test_a_project_that_fails_to_load_is_summarised_from_its_manifest(tmp_path, monkeypatch):
+	monkeypatch.setattr(services, "CACHE_DIR", tmp_path / "cache")
+	recording = make_recording("broken", ["A", "B"], "WT", "2023-05-25 00:00:00")
+	project = Project.create(
+		project_name="summary", experimenter="tester", location=tmp_path / "project"
+	)
+	project.add_recording(*write_recording(tmp_path / "src", recording, 6))
+	(project.project_location / "broken" / Project.CONFIG).write_text("{}", encoding="utf-8")
+
+	summary = services.project_summary(str(project.project_location))
+
+	assert summary["error"]
+	assert (summary["name"], summary["experimenter"]) == ("summary", "tester")
+	assert [row["name"] for row in summary["recordings"]] == ["broken"]
+
+
 def test_update_notes_with_a_tag_persists_to_one_animal(tmp_path):
 	"""A tag targets that animal's notes and leaves the recording's own notes alone."""
 	recording = strategies.analysis_recording(

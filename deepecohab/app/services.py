@@ -61,13 +61,17 @@ def resolve_project_path(pid: str) -> str | None:
 		return disk.get(f"path:{pid}")
 
 
+def _manifest(root: Path) -> dict:
+	"""The project's ``project.json``, or an empty dict when it cannot be read."""
+	try:
+		return json.loads((root / Project.MANIFEST).read_text(encoding="utf-8"))
+	except (OSError, ValueError):
+		return {}
+
+
 def project_name(location: str) -> str:
 	"""The name in the project's manifest, or its folder name when that cannot be read."""
-	try:
-		manifest = json.loads((Path(location) / Project.MANIFEST).read_text(encoding="utf-8"))
-	except (OSError, ValueError):
-		manifest = {}
-	return manifest.get("project_name", Path(location).name)
+	return _manifest(Path(location)).get("project_name", Path(location).name)
 
 
 def csv_ready(frame: pl.DataFrame) -> pl.DataFrame:
@@ -128,10 +132,7 @@ def project_summary(location: str) -> dict:
 	try:
 		project = load_project(location)
 	except Exception as exc:  # any unreadable folder still gets its row, with the reason
-		try:
-			manifest = json.loads((root / Project.MANIFEST).read_text(encoding="utf-8"))
-		except (OSError, ValueError):
-			manifest = {}
+		manifest = _manifest(root)
 		return {
 			**summary,
 			"name": manifest.get("project_name", root.name),

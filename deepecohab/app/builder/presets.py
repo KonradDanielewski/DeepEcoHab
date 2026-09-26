@@ -1,4 +1,3 @@
-import copy
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -151,11 +150,10 @@ def resolve(preset: Preset, project: "Project", choice: str | None = None) -> di
 	Returns:
 		A fresh builder state; the preset itself is never mutated.
 	"""
-	state = copy.deepcopy(preset.state)
-
+	text = json.dumps(preset.state)
 	if preset.needs_event and choice:
-		text = json.dumps(state).replace(json.dumps(EVENT_SLOT), json.dumps(choice))
-		state = json.loads(text)
+		text = text.replace(json.dumps(EVENT_SLOT), json.dumps(choice))
+	state = json.loads(text)
 
 	if preset.shared_days:
 		# Pick-mode values are always strings: ``figure.apply_filters`` matches them
