@@ -406,5 +406,24 @@ def test_optional_column_is_accepted_when_present_and_typed():
 	Recording.model_validate({**recording.to_config(), "data": stamps})
 
 	untyped = stamps.with_columns(pl.col("internal_board_timestamp").cast(pl.Int64))
-	with pytest.raises(ValidationError, match="schema mismatch"):
+	with pytest.raises(
+		ValidationError, match="internal_board_timestamp is Int64, expected Datetime"
+	):
 		Recording.model_validate({**recording.to_config(), "data": untyped})
+
+
+@pytest.mark.parametrize(
+	("change", "problem"),
+	[
+		(lambda df: df.drop("antenna"), "no antenna column"),
+		(lambda df: df.with_columns(extra=pl.lit(1)), "unexpected extra column"),
+		(
+			lambda df: df.select(reversed(df.collect_schema().names())),
+			"columns must be in the order datetime, antenna, time_under, animal_id",
+		),
+	],
+)
+def test_schema_mismatch_names_each_difference(change, problem):
+	recording = loaded_with(["1"])
+	with pytest.raises(ValidationError, match=f"schema mismatch - {problem}"):
+		Recording.model_validate({**recording.to_config(), "data": change(recording.data)})

@@ -61,11 +61,23 @@ const figures = ids.map((id, i) => ({data: [{y: [i]}], layout: {}}));
 const titleIds = [{plot: "chasings-heatmap"}, {plot: "activity-bar"}, {plot: "ranking-line"}];
 const titles = ["Chasings heatmap", "Activity per position", "Social dominance ranking"];
 
+// only the clicked plot's card is measured; any other lookup finds nothing and throws
+const card = {offsetWidth: 400, offsetHeight: 300};
+document.getElementById = (id) =>
+	id === JSON.stringify({plot: "ranking-line", type: "plot"}) ? card : null;
+Object.assign(window, {innerWidth: 1032, innerHeight: 720});
+
 fire({type: "card-fullscreen", plot: "ranking-line"}, 1);
 eq(
 	deh.fullscreen(null, figures, ids, titles, titleIds),
-	[true, "Social dominance ranking", figures[1]],
-	"fullscreen picks the clicked plot"
+	[
+		true,
+		"Social dominance ranking",
+		{data: [{y: [1]}], layout: {width: 400, height: 300, autosize: false}},
+		{width: "400px", height: "300px", transform: "scale(2)", transformOrigin: "0 0"},
+		{width: "800px", height: "600px", margin: "auto", overflow: "hidden"},
+	],
+	"fullscreen picks the clicked plot and scales its card to fit the window"
 );
 
 fire({type: "card-fullscreen", plot: "ranking-line"}, null);

@@ -439,7 +439,7 @@ def test_files_group_into_recordings_by_name(tmp_path):
 	project = Project.create(
 		project_name="grouped", experimenter="tester", location=tmp_path / "project"
 	)
-	with pytest.raises(ValueError, match=r"no orphan.data.parquet came with it"):
+	with pytest.raises(ValueError, match=r"orphan: no data file - expected orphan\.data\.parquet"):
 		project.add_recording(orphan)
 	with pytest.warns(UserWarning, match="2 of 3"):
 		report = project.add_recordings([stray, data, orphan, diagnostic, config])

@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 import tempfile
 import time
 from pathlib import Path
@@ -24,6 +25,7 @@ from dash import (
 	set_props,
 )
 from dash.exceptions import PreventUpdate
+from pydantic import ValidationError
 
 from deepecohab import AnalysisParams, Project, Recording
 from deepecohab.app import components, services
@@ -1138,6 +1140,23 @@ def _generate_table(event):
 	return time.time()
 
 
+def _reason(error: Exception) -> str:
+	"""Why a recording was not added, worded for the person who uploaded it."""
+	if isinstance(error, ValidationError):
+		return "; ".join(
+			(f"{'.'.join(map(str, e['loc']))}: " if e["loc"] else "")
+			+ e["msg"].removeprefix("Value error, ")
+			for e in error.errors()
+		)
+	if isinstance(error, json.JSONDecodeError):
+		return f"the config file is not valid JSON ({error})"
+	if isinstance(error, KeyError):
+		return f"the config file has no {error} entry"
+	if isinstance(error, ValueError | OSError):
+		return str(error)
+	return f"{type(error).__name__}: {error}"
+
+
 @callback(
 	Output("upload-modal", "opened"),
 	Output("upload-modal", "title"),
@@ -1173,15 +1192,14 @@ def _add_recordings(event, contents, _close, filenames, location):
 
 		added, failed = project.add_recordings(files)
 
-	problems = [
-		f"{source.name}: {type(source.error).__name__}: {source.error}" for source in failed
-	]
+	problems = [f"{source.name}: {_reason(source.error)}" for source in failed]
 	if not problems:
 		noun = "recording" if len(added) == 1 else "recordings"
 		notify("good", f"Added {len(added)} {noun} to {project.project_name}")
 		return False, no_update, no_update, None, None, time.time()
 
-	notify("warn", f"Added {len(added)}; {len(problems)} could not be added")
+	more = f" (+{len(problems) - 1} more below)" if len(problems) > 1 else ""
+	notify("bad" if not added else "warn", f"Not added - {problems[0]}{more}")
 	report = html.Div(
 		[
 			icon("circle-x"),
