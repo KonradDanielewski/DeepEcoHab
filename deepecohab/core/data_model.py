@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations, pairwise, product
 from pathlib import Path
-from typing import Any, ClassVar, Final, Literal, NamedTuple, overload
+from typing import Annotated, Any, ClassVar, Final, Literal, NamedTuple, overload
 from zoneinfo import ZoneInfo
 
 import polars as pl
@@ -22,6 +22,7 @@ from pydantic import (
 	Field,
 	PastDate,
 	PrivateAttr,
+	StringConstraints,
 	ValidationInfo,
 	computed_field,
 	field_serializer,
@@ -30,6 +31,8 @@ from pydantic import (
 from tqdm.auto import tqdm
 
 from deepecohab.core import topology
+
+NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 CALENDAR_COLUMNS: Final = ("phase", "day", "phase_count", "hour")
 """The columns placing a row on the recording's calendar; every analysis table is keyed by them."""
@@ -146,14 +149,14 @@ class Animal(BaseModel):
 	``animals`` table joins onto any analysis table.
 	"""
 
-	tag: str
-	mouse_line: str
-	genotype: str
-	subject_name: str
-	sex: str
+	tag: NonEmptyStr
+	mouse_line: NonEmptyStr
+	genotype: NonEmptyStr
+	subject_name: NonEmptyStr | None = None
+	sex: NonEmptyStr
 	date_of_birth: PastDate
-	genetic_background: str
-	treatment: str
+	genetic_background: NonEmptyStr
+	treatment: NonEmptyStr | None = None
 	notes: str
 
 
@@ -547,9 +550,9 @@ class Recording(BaseModel):
 
 	PREV_RANKING: ClassVar[str] = "prev_ranking.parquet"
 
-	name: str
-	project_name: str
-	recording_location: str
+	name: NonEmptyStr
+	project_name: NonEmptyStr
+	recording_location: NonEmptyStr
 	timeline: Timeline
 	cohort: Cohort
 	layout: Layout
