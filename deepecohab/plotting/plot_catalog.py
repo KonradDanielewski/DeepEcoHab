@@ -32,6 +32,88 @@ BY_COHORT = {"color_by": available_attributes}
 PHASE_TYPE = {"phase_type": lambda context: list(context.phases)}
 BY_COHORT_AND_PHASE = {**BY_COHORT, **PHASE_TYPE}
 
+
+@PlotRegistry.register(
+	"animal-speed",
+	title="Tunnel-crossing speed",
+	info=(
+		"Per-animal distributions of 20 cm divided by tunnel-crossing duration. "
+		"Only positive durations up to 10 seconds contribute, in either direction. "
+		"The box shows the distribution's quartiles and median."
+	),
+	requires=("main_df", "animals"),
+	dynamic_choices=BY_COHORT_AND_PHASE,
+)
+def animal_speed(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: Sequence[str] = PHASES,
+	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
+	hours_range: tuple[int, int] | None = None,
+) -> go.Figure:
+	"""Speed distributions assuming 20 cm tunnels and crossings up to 10 seconds."""
+	frame = prepare.prep_animal_speed(
+		context,
+		_window(context, days_range, granularity),
+		phase_type,
+		granularity,
+		hours_range,
+	)
+	figure = plot_factory.plot_animal_speed(
+		frame, resolve_colors(context, color_by, label_by=label_by)
+	)
+	return figure.update_xaxes(
+		tickmode="array",
+		tickvals=context.animal_ids,
+		ticktext=animal_labels(context, label_by),
+		title="<b>Subject name</b>" if label_by == "subject_name" else "<b>Animal ID</b>",
+	)
+
+
+@PlotRegistry.register(
+	"animal-speed-daily",
+	title="Mean tunnel-crossing speed",
+	info=(
+		"Arithmetic mean of individual crossing speeds, assuming 20 cm tunnels and "
+		"positive durations up to 10 seconds. Hour bins count from phase onset and pool "
+		"crossings across selected days. Missing bins are left absent."
+	),
+	requires=("main_df", "animals"),
+	dynamic_choices=BY_COHORT_AND_PHASE,
+)
+def animal_speed_daily(
+	context: PlotContext,
+	*,
+	days_range: tuple[int, int] | None = None,
+	granularity: Granularity = "day",
+	phase_type: Sequence[str] = PHASES,
+	color_by: str = "animal_id",
+	label_by: LabelBy = "animal_id",
+	hours_range: tuple[int, int] | None = None,
+	time_bin: Literal["day", "hour"] = "day",
+	group_mean: bool = False,
+) -> go.Figure:
+	"""Mean crossing speed by day or hour since phase onset; 20 cm tunnels, up to 10 s."""
+	frame = (
+		prepare.prep_animal_speed(
+			context,
+			_window(context, days_range, granularity),
+			phase_type,
+			granularity,
+			hours_range,
+		)
+		.group_by(time_bin, "animal_id")
+		.agg(pl.mean("speed_cm_s").round(2).alias("mean_speed_cm_s"))
+		.sort(time_bin, "animal_id")
+	)
+	mapping = resolve_colors(context, color_by, group_mean=group_mean, label_by=label_by)
+	frame = mean_by_group(frame, mapping, ["mean_speed_cm_s"])
+	return plot_factory.plot_animal_speed_daily(frame, mapping, time_bin, context.phases)
+
+
 #: The count-line builder each aggregation draws with.
 LINE_BY_AGG = {
 	"sum": plot_factory.plot_sum_line,

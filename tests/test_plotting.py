@@ -66,6 +66,49 @@ def context() -> PlotContext:
 # --- palette -----------------------------------------------------------------
 
 
+def test_speed_filters_duration_and_pools_crossings(context):
+	context._loaded["main_df"] = pl.DataFrame(
+		{
+			"animal_id": [ANIMALS[0]] * 9,
+			"day": [1, 2, 1, 1, 1, 1, 1, 3, 1],
+			"hour": [2] * 9,
+			"phase_count": [1, 3, 1, 1, 1, 1, 2, 5, 1],
+			"phase": ["light_phase"] * 6 + ["dark_phase", "light_phase", "light_phase"],
+			"position": [
+				"tunnel_1_a",
+				"tunnel_1_b",
+				"tunnel_1_a",
+				"tunnel_1_a",
+				"tunnel_1_a",
+				"cage_1",
+				"tunnel_1_a",
+				"tunnel_1_a",
+				"tunnel_1_a",
+			],
+			"time_spent": [dt.timedelta(seconds=s) for s in [0.5, 2, 0, -1, 10.1, 1, 1, 1, 10]],
+		}
+	)
+	frame = prepare.prep_animal_speed(context, (1, 2), ["light_phase"])
+	assert frame["speed_cm_s"].to_list() == [2, 10, 40]
+	assert frame["crossings"].to_list() == [3, 3, 3]
+	figure = PlotRegistry.build(
+		"animal-speed-daily",
+		context,
+		days_range=(1, 2),
+		phase_type=["light_phase"],
+		time_bin="hour",
+	)
+	assert list(figure.data[0].y) == [17.33]
+	assert prepare.prep_animal_speed(context, (3, 3), ["light_phase"], "phase_count")[
+		"speed_cm_s"
+	].to_list() == [10]
+	assert prepare.prep_animal_speed(
+		context, (1, 2), ["light_phase"], hours_range=(3, 4)
+	).is_empty()
+	for name in ["animal-speed", "animal-speed-daily"]:
+		assert not PlotRegistry.build(name, context, hours_range=(3, 4)).data
+
+
 @pytest.mark.parametrize("count", [1, 2, 4, 12, 13, 24])
 def test_palette_returns_one_distinct_colour_per_value(count):
 	"""Phase is cyclic, so the closing endpoint must not repeat the first colour."""

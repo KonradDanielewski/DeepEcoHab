@@ -122,6 +122,8 @@ _SECTIONS = [
 			("activity-line", 8, 360),
 			("cage-preference", 4, 360),
 			("activity-bar", 12, 320),
+			("animal-speed", 6, 380),
+			("animal-speed-daily", 6, 380),
 			("cage-preference-evolution", 12, 660),
 		],
 	),
