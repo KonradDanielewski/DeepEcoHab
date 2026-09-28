@@ -706,15 +706,21 @@ class Recording(BaseModel):
 
 	@model_validator(mode="after")
 	def _check_schema(self, info: ValidationInfo) -> "Recording":
-		path = (info.context or {}).get("data_path", "<data>")
+		path = Path((info.context or {}).get("data_path", "<data>")).name
 		found = self.data.collect_schema()
 		optional = {col: dtype for col, dtype in self.optional_data_schema.items() if col in found}
 		expected = pl.Schema({**self.data_schema, **optional})
 
 		if found != expected:
-			raise ValueError(
-				f"{path}: schema mismatch\n  expected: {expected}\n  found:    {found}"
-			)
+			problems = [f"no {col} column" for col in expected if col not in found]
+			problems += [f"unexpected {col} column" for col in found if col not in expected]
+			problems += [
+				f"{col} is {found[col]}, expected {dtype}"
+				for col, dtype in expected.items()
+				if col in found and found[col] != dtype
+			]
+			problems = problems or [f"columns must be in the order {', '.join(expected)}"]
+			raise ValueError(f"{path}: schema mismatch - {'; '.join(problems)}")
 		return self
 
 	@model_validator(mode="after")
@@ -727,7 +733,7 @@ class Recording(BaseModel):
 		undefined. The other direction is left alone: an antenna the layout names but
 		that never read is a dead antenna, which ``recording_quality`` reports.
 		"""
-		path = (info.context or {}).get("data_path", "<data>")
+		path = Path((info.context or {}).get("data_path", "<data>")).name
 		named = topology.antennas(self.layout.antenna_combinations)
 		read = self.data.select(pl.col("antenna").cast(pl.Utf8).unique()).collect()["antenna"]
 
@@ -787,33 +793,54 @@ def _group_files(
 ) -> tuple[dict[Path, dict[str, Path]], list[FailedRecording]]:
 	"""Sort files named ``<name>.<suffix>`` into one set per recording.
 
+	Suffix and name are matched ignoring case on every OS, so how files pair up does not
+	depend on the filesystem they came from. The same file given twice counts once.
+
 	Returns:
-		Every complete set, keyed by its folder and name, with its files keyed by suffix; and
-		a failure for every file no suffix in `RECORDING_FILES` fits and every set missing a
-		required file.
+		Every complete set, keyed by its resolved folder and the name as first given, with
+		its files keyed by suffix; and a failure for every file no suffix in
+		`RECORDING_FILES` fits or that has no name before it, every set missing a required
+		file, and every set given two different files for one suffix.
 	"""
-	groups: dict[Path, dict[str, Path]] = defaultdict(dict)
+	bases: dict[tuple[Path, str], Path] = {}
+	groups: dict[Path, dict[str, list[Path]]] = defaultdict(lambda: defaultdict(list))
 	failed = []
-	for path in map(Path, paths):
+	for path in (Path(p).resolve() for p in paths):
 		name = path.name.lower()
-		suffix = next(
-			(s for s in RECORDING_FILES if name.endswith(f".{s}") and name != f".{s}"), None
-		)
+		suffix = next((s for s in RECORDING_FILES if name.endswith(f".{s}")), None)
+		stem = path.name[: -len(suffix) - 1] if suffix else ""
 		if suffix is None:
-			expected = ", ".join(f"<name>.{s}" for s in RECORDING_FILES)
-			failed.append(FailedRecording(path.name, ValueError(f"not one of {expected}")))
-		else:
-			groups[path.with_name(path.name[: -len(suffix) - 1])][suffix] = path
+			*others, last = [f"<name>.{s}" for s in RECORDING_FILES]
+			reason = f"does not match the file format {', '.join(others)} or {last}"
+			failed.append(FailedRecording(path.name, ValueError(reason)))
+			continue
+		if not stem.strip(". "):
+			reason = f"has no recording name before .{suffix}"
+			failed.append(FailedRecording(path.name, ValueError(reason)))
+			continue
+		base = bases.setdefault((path.parent, stem.casefold()), path.parent / stem)
+		if path not in (found := groups[base][suffix]):
+			found.append(path)
 
 	complete = {}
 	for base, files in groups.items():
-		if missing := [s for s, required in RECORDING_FILES.items() if required and s not in files]:
-			absent = " or ".join(f"{base.name}.{s}" for s in missing)
-			failed.append(
-				FailedRecording(base.name, FileNotFoundError(f"no {absent} came with it"))
+		if clashes := {s: found for s, found in files.items() if len(found) > 1}:
+			reason = "; ".join(
+				f"{len(found)} {s.split('.')[0]} files, "
+				f"{' and '.join(p.name for p in found)} - keep one"
+				for s, found in clashes.items()
 			)
+			failed.append(FailedRecording(base.name, ValueError(reason)))
+		elif missing := [
+			s for s, required in RECORDING_FILES.items() if required and s not in files
+		]:
+			kinds = " or ".join(f"{s.split('.')[0]} file" for s in missing)
+			expected = " and ".join(f"{base.name}.{s}" for s in missing)
+			present = " and ".join(found[0].name for found in files.values())
+			reason = f"no {kinds} - expected {expected} beside {present}"
+			failed.append(FailedRecording(base.name, FileNotFoundError(reason)))
 		else:
-			complete[base] = files
+			complete[base] = {s: found[0] for s, found in files.items()}
 	return complete, failed
 
 
