@@ -1212,8 +1212,10 @@ code {
 	box-shadow: var(--shadow);
 }
 
+/* Keyboard focus and an open select or popover (their dropdowns portal out of the bar) hold
+   it down; a mouse click leaves focus behind but not :focus-visible, so the bar still tucks. */
 .deh-controls.is-tucked:hover,
-.deh-controls.is-tucked:focus-within {
+.deh-controls.is-tucked:has(:focus-visible, [aria-expanded="true"]) {
 	transform: none;
 	box-shadow: var(--shadow-lg);
 }
@@ -1231,7 +1233,7 @@ code {
 }
 
 .deh-controls.is-tucked:hover::after,
-.deh-controls.is-tucked:focus-within::after {
+.deh-controls.is-tucked:has(:focus-visible, [aria-expanded="true"])::after {
 	display: none;
 }
 
