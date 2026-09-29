@@ -28,14 +28,15 @@ const NO = {__no_update: true};
 const names = (st) => st.selection.map((pair) => pair.join("/")).sort();
 
 function app(projects) {
-	const boxes = [], heads = [];
+	const boxes = [], heads = [], removes = [];
 	for (const [project, recordings] of Object.entries(projects)) {
 		heads.push({id: {type: "select-all", index: project}, value: false});
+		removes.push({id: {type: "remove-recordings", index: project}, value: true});
 		for (const index of recordings) {
 			boxes.push({id: {type: "recording-check", project, index}, value: false});
 		}
 	}
-	return {boxes, heads, selection: [], clear: 0};
+	return {boxes, heads, removes, selection: [], clear: 0};
 }
 
 function run(st, trigger, value) {
@@ -55,8 +56,10 @@ function run(st, trigger, value) {
 		// whose value actually changes, so set_props collects exactly the repaints.
 		const painted = [];
 		global.window = {dash_clientside: {
-			set_props: (id, props) => painted.push([id, props.checked]),
-			callback_context: {states_list: [st.boxes, st.heads]},
+			set_props: (id, props) => "hidden" in props
+				? (st.removes.find((b) => b.id.index === id.index).value = props.hidden)
+				: painted.push([id, props.checked]),
+			callback_context: {states_list: [st.boxes, st.heads, st.removes]},
 		}};
 		paint(st.selection);
 		painted.forEach(([id, checked]) => {
@@ -88,9 +91,13 @@ click(st, all("p1"), true);
 eq(names(st), ["p1/a", "p1/b", "p1/c"], "select all of p1");
 eq(st.boxes.map((box) => box.value), [true, true, true, false, false], "p1 ticked");
 eq(st.heads.map((head) => head.value), [true, false], "p1's header ticked, p2's not");
+eq(st.removes.map((button) => button.value), [false, true], "remove shows for p1 only");
 
 click(st, one("p1", "b"), false);
 eq(names(st), ["p1/a", "p1/c"], "untick one recording");
+click(st, one("p1", "c"), false);
+eq(st.removes.map((button) => button.value), [true, true], "one selected hides remove");
+click(st, one("p1", "c"), true);
 eq(st.heads.map((head) => head.value), [false, false], "the header unticks with a gap");
 
 click(st, one("p1", "b"), true);

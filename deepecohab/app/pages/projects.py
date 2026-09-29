@@ -87,7 +87,8 @@ layout = html.Div(
 		dcc.Store(id="generate-table-event"),
 		dcc.Store(id="add-recordings-event"),
 		dcc.Store(id="remove-recording-event"),
-		dcc.Store(id="reinstate-recording-event"),
+		dcc.Store(id="remove-recordings-event"),
+		dcc.Store(id="reinstate-recordings-event"),
 		html.Div(
 			[
 				html.Div([html.H2("Projects"), html.P(id="project-count")], className="deh-titles"),
@@ -440,6 +441,31 @@ def _badge(kind: str, icon_name: str, *content, spin: bool = False, title: str =
 	)
 
 
+def _table_cell(project: dict) -> html.Span | html.Div:
+	rows = project["table_rows"]
+	if rows is None:
+		return _badge("neutral", "circle-dashed", "Not generated")
+	if not project["table_stale"]:
+		return _badge("neutral", "database", f"{rows:,} rows")
+	return html.Div(
+		[
+			_badge(
+				"warn",
+				"alert-triangle",
+				f"{rows:,} rows · regenerate",
+				title="Recordings or results changed since the project table was built",
+			),
+			html.Button(
+				icon("refresh", size=15),
+				id={"type": "generate-table", "place": "cell", "index": project["location"]},
+				className="deh-icon-btn sm",
+				title="Regenerate the project table",
+			),
+		],
+		className="deh-table-cell",
+	)
+
+
 def _running_badge(running: list) -> html.Span:
 	steps, total, building = running
 	building = html.Span(building or "done", className="deh-mono")
@@ -488,7 +514,7 @@ def _project_menu(project: dict) -> dmc.Menu:
 					dmc.MenuItem(
 						"Generate project table",
 						leftSection=icon("database", size=16),
-						id={"type": "generate-table", "index": location},
+						id={"type": "generate-table", "place": "menu", "index": location},
 						disabled=not loadable,
 					),
 					*(
@@ -528,29 +554,51 @@ def _project_menu(project: dict) -> dmc.Menu:
 	)
 
 
-def _reinstate_menu(project: dict) -> dmc.Menu:
+def _reinstate_menu(project: dict) -> dmc.Popover:
 	location, delisted = project["location"], project["delisted"]
-	return dmc.Menu(
+	return dmc.Popover(
 		[
-			dmc.MenuTarget(
+			dmc.PopoverTarget(
 				html.Button(
 					[icon("arrow-back-up", size=16), f"Reinstate ({len(delisted)})"],
 					className="deh-btn deh-btn-ghost sm",
-					title="Bring back a delisted recording, with its results",
+					title="Bring back delisted recordings, with their results",
 					disabled=project["error"] is not None,
 				)
 			),
-			dmc.MenuDropdown(
-				[
-					dmc.MenuLabel("Delisted"),
-					*(
-						dmc.MenuItem(
-							html.Span(name, className="deh-mono"),
-							id={"type": "reinstate-recording", "project": location, "index": name},
-						)
-						for name in delisted
-					),
-				]
+			dmc.PopoverDropdown(
+				dmc.Stack(
+					[
+						dcc.Store(id={"type": "reinstate-names", "index": location}, data=delisted),
+						dmc.Checkbox(
+							id={"type": "reinstate-all", "index": location},
+							label="Select all",
+							checked=False,
+							size="xs",
+						),
+						dmc.CheckboxGroup(
+							id={"type": "reinstate-pick", "index": location},
+							value=[],
+							children=dmc.Stack(
+								[
+									dmc.Checkbox(
+										value=name,
+										label=html.Span(name, className="deh-mono"),
+										size="xs",
+									)
+									for name in delisted
+								],
+								gap=6,
+							),
+						),
+						html.Button(
+							"Reinstate",
+							id={"type": "reinstate-recordings", "index": location},
+							className="deh-btn deh-btn-primary sm",
+						),
+					],
+					gap=10,
+				)
 			),
 		],
 		position="bottom-start",
@@ -675,7 +723,6 @@ def _project_rows(
 	analysed = sum(recording["done"] == recording["total"] for recording in recordings)
 	partial = sum(0 < recording["done"] < recording["total"] for recording in recordings)
 	share = round(100 * analysed / len(recordings)) if recordings else 0
-	table_rows = project["table_rows"]
 
 	rows = [
 		html.Tr(
@@ -714,11 +761,7 @@ def _project_rows(
 						className="deh-an",
 					)
 				),
-				html.Td(
-					_badge("neutral", "database", f"{table_rows:,} rows")
-					if table_rows is not None
-					else _badge("neutral", "circle-dashed", "Not generated")
-				),
+				html.Td(_table_cell(project)),
 				html.Td(
 					html.Div(
 						[
@@ -821,8 +864,16 @@ def _project_detail(
 										"place": "table",
 										"index": location,
 									},
-									className="deh-btn sm",
+									className="deh-btn deh-btn-primary sm",
 									disabled=not loadable,
+								),
+								# Shown by deh.paintSelection once two or more are selected.
+								html.Button(
+									[icon("trash", size=16), "Remove selected"],
+									id={"type": "remove-recordings", "index": location},
+									className="deh-btn sm",
+									hidden=sum(key[0] == location for key in selected) < 2,
+									disabled=not loadable or progress is not None,
 								),
 								*([_reinstate_menu(project)] if project["delisted"] else []),
 							],
@@ -1000,6 +1051,7 @@ clientside_callback(
 	Input("selection", "data"),
 	State({"type": "recording-check", "project": ALL, "index": ALL}, "checked"),
 	State({"type": "select-all", "index": ALL}, "checked"),
+	State({"type": "remove-recordings", "index": ALL}, "hidden"),
 	prevent_initial_call=True,
 )
 
@@ -1093,10 +1145,11 @@ def _create_project(_open, _cancel, _submit, name, experimenter, folder, descrip
 
 for event_store, button in [
 	("remove-project-event", {"type": "remove-project", "index": ALL}),
-	("generate-table-event", {"type": "generate-table", "index": ALL}),
+	("generate-table-event", {"type": "generate-table", "place": ALL, "index": ALL}),
 	("add-recordings-event", {"type": "add-recordings", "place": ALL, "index": ALL}),
 	("remove-recording-event", {"type": "remove-recording", "project": ALL, "index": ALL}),
-	("reinstate-recording-event", {"type": "reinstate-recording", "project": ALL, "index": ALL}),
+	("remove-recordings-event", {"type": "remove-recordings", "index": ALL}),
+	("reinstate-recordings-event", {"type": "reinstate-recordings", "index": ALL}),
 ]:
 	clientside_callback(
 		ClientsideFunction("deh", "clickEvent"),
@@ -1217,6 +1270,7 @@ def _add_recordings(event, contents, _close, filenames, location):
 	Output("data-changed", "data", allow_duplicate=True),
 	Output("selection", "data", allow_duplicate=True),
 	Input("remove-recording-event", "data"),
+	Input("remove-recordings-event", "data"),
 	Input("remove-cancel", "n_clicks"),
 	Input("remove-delist", "n_clicks"),
 	Input("remove-delete", "n_clicks"),
@@ -1224,37 +1278,68 @@ def _add_recordings(event, contents, _close, filenames, location):
 	State("selection", "data"),
 	prevent_initial_call=True,
 )
-def _remove_recording(event, _cancel, _delist, _delete, target, selection):
-	if ctx.triggered_id == "remove-recording-event":
-		location, name = event["id"]["project"], event["id"]["index"]
-		return True, f"Remove {name}?", [location, name], no_update, no_update
+def _remove_recording(event, bulk_event, _cancel, _delist, _delete, target, selection):
+	if ctx.triggered_id in ("remove-recording-event", "remove-recordings-event"):
+		if ctx.triggered_id == "remove-recording-event":
+			location, names = event["id"]["project"], [event["id"]["index"]]
+		else:
+			location = bulk_event["id"]["index"]
+			names = [name for project, name in selection if project == location]
+		title = f"Remove {names[0]}?" if len(names) == 1 else f"Remove {len(names)} recordings?"
+		return True, title, [location, names], no_update, no_update
 	if ctx.triggered_id == "remove-cancel":
 		return False, no_update, no_update, no_update, no_update
 
-	location, name = target
+	location, names = target
 	delete_files = ctx.triggered_id == "remove-delete"
-	services.load_project(location).remove_recording(name, delete_files=delete_files)
+	project = services.load_project(location)
+	for name in names:
+		project.remove_recording(name, delete_files=delete_files)
+	what = names[0] if len(names) == 1 else f"{len(names)} recordings"
 	notify(
 		"info",
-		f"Deleted {name} and its files" if delete_files else f"Delisted {name}; its files stay",
+		f"Deleted {what} and the files" if delete_files else f"Delisted {what}; the files stay",
 	)
-	kept = [key for key in selection if key != [location, name]]
+	kept = [key for key in selection if key[0] != location or key[1] not in names]
 	return False, no_update, no_update, time.time(), kept
+
+
+clientside_callback(
+	ClientsideFunction("deh", "selectDelisted"),
+	Output({"type": "reinstate-pick", "index": MATCH}, "value"),
+	Output({"type": "reinstate-all", "index": MATCH}, "checked"),
+	Output({"type": "reinstate-all", "index": MATCH}, "indeterminate"),
+	Input({"type": "reinstate-all", "index": MATCH}, "checked"),
+	Input({"type": "reinstate-pick", "index": MATCH}, "value"),
+	State({"type": "reinstate-names", "index": MATCH}, "data"),
+	prevent_initial_call=True,
+)
 
 
 @callback(
 	Output("data-changed", "data", allow_duplicate=True),
-	Input("reinstate-recording-event", "data"),
+	Input("reinstate-recordings-event", "data"),
+	State({"type": "reinstate-pick", "index": ALL}, "value"),
 	prevent_initial_call=True,
 )
-def _reinstate_recording(event):
-	location, name = event["id"]["project"], event["id"]["index"]
-	try:
-		services.load_project(location).reinstate_recording(name)
-	except FileNotFoundError as exc:
-		notify("bad", str(exc))
+def _reinstate_recordings(event, _picks):
+	location = event["id"]["index"]
+	names = next(pick["value"] for pick in ctx.states_list[0] if pick["id"]["index"] == location)
+	if not names:
+		raise PreventUpdate
+	project = services.load_project(location)
+	reinstated = []
+	for name in names:
+		try:
+			project.reinstate_recording(name)
+		except FileNotFoundError as exc:
+			notify("bad", str(exc))
+		else:
+			reinstated.append(name)
+	if not reinstated:
 		return no_update
-	notify("good", f"Reinstated {name}")
+	what = reinstated[0] if len(reinstated) == 1 else f"{len(reinstated)} recordings"
+	notify("good", f"Reinstated {what}")
 	return time.time()
 
 
