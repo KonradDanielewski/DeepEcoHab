@@ -57,6 +57,8 @@ class Field:
 		kind: which shelves will accept it.
 		group: which palette section the chip is offered under.
 		agg: how it collapses within a group; ``None`` for grouping fields.
+		metric: the one metric a single-metric Value chip is read from; ``None`` for
+			the pooled Value and every other field.
 	"""
 
 	name: str
@@ -64,6 +66,7 @@ class Field:
 	kind: Kind
 	group: str
 	agg: Literal["mean", "metric"] | None = None
+	metric: str | None = None
 
 	@property
 	def discrete(self) -> bool:
@@ -85,11 +88,13 @@ def prepare(
 	"""Make the table plottable and derive the chips the palette offers.
 
 	The table is long: one row per animal-hour *per metric*, so a bare ``value``
-	column pools quantities that share no units. Rather than pivoting each metric
-	into its own chip, ``value`` is one measure and ``metric`` is the dimension that
-	says which metric it is - filter it to one, or facet by it, and the shelves take
-	care of the rest (see ``figure.warnings_for``). ``age`` becomes whole days, since
-	a birth date is what is recorded but age in days is what gets plotted. Every
+	column pools quantities that share no units. ``value`` is one measure and
+	``metric`` is the dimension that says which metric it is - filter it to one, or
+	facet by it, and the shelves take care of the rest (see ``figure.warnings_for``).
+	Each metric is also offered as a chip of its own, read from that metric's rows
+	only, so two metrics can share one plot - one on X, the other on Y. ``age``
+	becomes whole days, since a birth date is what is recorded but age in days is
+	what gets plotted. Every
 	remaining column is classified from its dtype rather than by name, so a project
 	table that gains a column gains a chip - grouped under "Events" when its name is
 	one of ``event_names`` and not a column deepecohab always produces, else under
@@ -120,6 +125,13 @@ def prepare(
 		fields += [
 			Field(VALUE, "Value", "measure", GROUPS[VALUE], "metric"),
 			Field(METRIC, "Metric", "dimension", GROUPS[METRIC]),
+		]
+		# Prefixed, so a metric can never shadow a project column of the same name.
+		fields += [
+			Field(
+				f"{METRIC}:{name}", name.replace("_", " "), "measure", GROUPS[VALUE], "metric", name
+			)
+			for name in metric_names(frame)
 		]
 
 	for name, dtype in schema.items():

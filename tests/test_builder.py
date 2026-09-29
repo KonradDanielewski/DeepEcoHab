@@ -123,6 +123,73 @@ def test_build_figure_colours_by_sample_palette(frame, fields):
 	assert colors == set(figure.theme.sample_palette(2))
 
 
+@pytest.mark.parametrize("kind", ["box", "violin"])
+@pytest.mark.parametrize(("shelf", "color"), [("genotype", ["sex"]), ("value", [])])
+def test_point_colour_redraws_every_point_once_in_its_box(frame, fields, kind, shelf, color):
+	state = {
+		"kind": kind,
+		"measure_as": "rate",
+		"channels": {
+			"y": ["value"],
+			"color": color,
+			figure.POINT_COLOR: [shelf],
+			figure.DETAIL: ["animal_id", "hour"],
+		},
+		"filters": {"metric": ["activity"]},
+	}
+	fig, _ = figure.build_figure(frame, state, fields)
+
+	shapes = [trace for trace in fig.data if trace.hoveron != "points" and trace.type == kind]
+	points = [trace for trace in fig.data if trace.hoveron == "points"]
+	# A box keeps its points, hidden, so its whiskers still stop at the 1.5 IQR fences.
+	hidden = [
+		trace.marker.opacity == 0 and trace.boxpoints == "all"
+		if kind == "box"
+		else not trace.points
+		for trace in shapes
+	]
+	assert shapes and all(hidden)
+	for shape in shapes:
+		own = [trace for trace in points if trace.offsetgroup == shape.offsetgroup]
+		assert sum(len(trace.y) for trace in own) == len(shape.y)
+	if shelf == "genotype":
+		assert {trace.marker.color for trace in points} == set(fig.layout.colorway[-2:])
+	else:
+		assert fig.layout.coloraxis.cmin == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("kind", ["box", "violin"])
+def test_exclude_outliers_drops_only_points_past_their_own_box_fences(kind):
+	values = [1.0, 2.0, 3.0, 4.0, 100.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+	wide = pl.DataFrame(
+		{
+			"value": values,
+			"exposure": [1.0] * 10,
+			"metric": ["activity"] * 10,
+			"recording": ["rec1"] * 10,
+			"animal_id": [str(i) for i in range(10)],
+			"genotype": ["WT"] * 5 + ["HET"] * 5,
+		}
+	).lazy()
+	wide, fields = catalog.prepare(wide)
+	state = {
+		"kind": kind,
+		"measure_as": "rate",
+		"channels": {"x": ["genotype"], "y": ["value"], figure.DETAIL: ["recording", "animal_id"]},
+		"filters": {"metric": ["activity"]},
+	}
+
+	kept = figure.drop_outliers(figure.build_frame(wide, state, fields), state, fields)
+	assert sorted(kept.filter(pl.col("genotype") == "WT")["value"]) == [1.0, 2.0, 3.0, 4.0]
+	assert sorted(kept.filter(pl.col("genotype") == "HET")["value"]) == [1.0, 2.0, 3.0, 4.0, 5.0]
+
+	fig, notes = figure.build_figure(wide, dict(state, outliers="exclude"), fields)
+	assert sum(len(trace.y) for trace in fig.data) == 9
+	assert notes == [
+		f"Excluded 1 of 10 points lying more than 1.5 IQR outside their {kind}'s quartiles."
+	]
+
+
 def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
 	"""``_reduce`` matches each trigger it handles, and prevents the update on anything else.
 
@@ -165,6 +232,11 @@ def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
 	assert reduce("builder-clear", state=dict(held, channels={"x": ["hour"]}))[0]["channels"] == {}
 	assert reduce({"type": "builder-kind", "kind": "bar"})[0]["kind"] == "bar"
 	assert reduce({"type": "builder-mode", "mode": "mean"})[0]["measure_as"] == "mean"
+	excluding = reduce({"type": "builder-outliers", "mode": "exclude"})[0]
+	assert excluding["outliers"] == "exclude"
+	assert (
+		"outliers" not in reduce({"type": "builder-outliers", "mode": "keep"}, state=excluding)[0]
+	)
 	assert (
 		reduce({"type": "chip-x", "shelf": "x", "field": "hour"}, state=held)[0]["channels"]["x"]
 		== []
@@ -344,3 +416,58 @@ def test_unreadable_block_spec_warns_without_blocking(frame, fields):
 )
 def test_parse_bins(spec, expected):
 	assert figure.parse_bins(spec) == expected
+
+
+def test_single_metric_chips_put_two_metrics_on_one_plot(frame, fields):
+	"""Each chip reads only its own metric's rows, whatever the Metric filter holds."""
+	state = {
+		"kind": "scatter",
+		"measure_as": "rate",
+		"channels": {
+			"x": ["metric:activity"],
+			"y": ["metric:time_alone"],
+			figure.DETAIL: ["animal_id"],
+		},
+		"filters": {"metric": ["time_alone"]},
+	}
+	data = figure.build_frame(frame, state, fields)
+
+	assert data["metric:activity"].to_list() == pytest.approx([1.0, 3.0])
+	assert data["metric:time_alone"].to_list() == pytest.approx([2.0, 2.0])
+	assert figure.warnings_for(frame, state, fields) == []
+
+
+@pytest.mark.parametrize("pooled", [{"y": ["value"]}, {"facet_row": ["metric"]}])
+def test_single_metric_chip_blocks_beside_value_or_metric(frame, fields, pooled):
+	state = {
+		"kind": "scatter",
+		"measure_as": "rate",
+		"channels": {"x": ["metric:activity"], **pooled},
+		"filters": {},
+	}
+
+	assert any(note.blocking for note in figure.warnings_for(frame, state, fields))
+
+
+def test_heatmap_draws_one_cell_per_hour_averaging_detail(frame, fields):
+	state = {
+		"kind": "heatmap",
+		"measure_as": "rate",
+		"channels": {"x": ["hour"], "y": ["genotype"], "z": ["value"]},
+		"filters": {"metric": ["activity"]},
+	}
+	fig, _notes = figure.build_figure(frame, state, fields)
+
+	assert fig.data[0].histfunc == "avg"
+	assert list(fig.data[0].x) == ["0", "1"]
+
+
+def test_heatmap_blocks_a_measure_on_an_axis(frame, fields):
+	state = {
+		"kind": "heatmap",
+		"measure_as": "rate",
+		"channels": {"x": ["metric:activity"], "y": ["animal_id"], "z": ["metric:time_alone"]},
+		"filters": {},
+	}
+
+	assert any(note.blocking for note in figure.warnings_for(frame, state, fields))

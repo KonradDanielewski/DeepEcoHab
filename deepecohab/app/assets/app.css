@@ -1872,7 +1872,20 @@ code {
 	display: grid;
 	flex: 1;
 	grid-template-columns: 236px minmax(0, 1fr) 236px;
+	align-content: start;
 	gap: 14px;
+}
+
+/* The canvas sets the row height; the rails stretch to it and scroll their lists. */
+.deh-builder .deh-rail {
+	contain: size;
+}
+
+#builder-palette,
+#builder-filters {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
 }
 
 .deh-rail {
@@ -2093,21 +2106,23 @@ code {
 
 .deh-graph-card {
 	display: flex;
-	flex: 1;
 	flex-direction: column;
-	min-height: 440px;
+	aspect-ratio: 4 / 3;
 	padding: 8px;
 	border: 1px solid var(--line);
 	border-radius: 12px;
 	background: var(--surface);
 }
 
-/* The card stretches to the taller rail, so the plot fills it. `contain: size` keeps the
-   drawn plot out of the row height, or the row could never shrink back after a resize. */
+/* `contain: size` keeps the drawn plot out of the card's height, or the card could never
+   shrink back after a resize. */
 .deh-graph-card > .dash-graph {
 	flex: 1;
-	min-height: 420px;
 	contain: size;
+}
+
+.deh-graph-card.is-max {
+	aspect-ratio: auto;
 }
 
 .deh-graph-head {
@@ -2142,6 +2157,10 @@ code {
 .deh-filter-block + .deh-filter-block {
 	padding-top: 10px;
 	border-top: 1px solid var(--line);
+}
+
+.deh-seg-row:empty {
+	display: none;
 }
 
 .deh-seg-row {
@@ -2185,6 +2204,7 @@ code {
 	.deh-builder .deh-filters {
 		grid-column: 2;
 		grid-row: 1;
+		contain: none;
 	}
 
 	.deh-builder .deh-canvas {
@@ -2204,6 +2224,7 @@ code {
 	.deh-builder .deh-canvas {
 		grid-column: auto;
 		grid-row: auto;
+		contain: none;
 	}
 }
 
