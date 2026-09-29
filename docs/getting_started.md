@@ -38,7 +38,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Step 2 — Install DeepEcoHab
 
 ```
-uv tool install deepecohab[app]
+uv tool install "deepecohab[app]"
 ```
 
 ### Step 3 — Start the app
@@ -59,6 +59,15 @@ deepecohab-app
 Create a project, add your recordings, run the analysis and build plots — no code involved.
 This is how we expect most people to use DeepEcoHab. [Using the app](./app.md) walks through
 it step by step, with screenshots and short videos.
+
+### Updating
+
+The app tells you when it starts if a newer version is out; **Update now** installs it and
+reopens the app. To update by hand instead, close the app and run:
+
+```
+uv tool upgrade "deepecohab[app]"
+```
 
 ### Working from code instead
 
@@ -92,7 +101,9 @@ my_project/
   project.log
   recording_name/
     config.json
-    raw/data.parquet
+    raw/
+      data.parquet
+      config.json
     results/
       main_df.parquet
       activity_df.parquet
@@ -144,7 +155,7 @@ package {cite}`deepecohab` together with the paper introducing the Eco-HAB syste
 ```bibtex
 @software{deepecohab,
   title     = {{DeepEcoHab}: fast and intuitive data analysis platform for {EcoHab} experiments},
-  author    = {Danielewski, Konrad and Wlodkowska, Ula},
+  author    = {Danielewski, Konrad and Wlodkowska, Ula and Lipiec, Marcin},
   year      = {2026},
   publisher = {GitHub},
   url       = {https://github.com/KonradDanielewski/DeepEcoHab}

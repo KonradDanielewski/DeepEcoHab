@@ -72,6 +72,15 @@ This places a **DeepEcoHab** shortcut on your desktop. Double-clicking it starts
 the dashboard and opens it in your browser — no terminal required. This is the
 recommended way to launch DeepEcoHab for most users.
 
+### Updating
+
+The app tells you when it starts if a newer version is out; **Update now** installs it and
+reopens the app. To update by hand instead, close the app and run:
+
+```
+uv tool upgrade "deepecohab[app]"
+```
+
 ### Working from code instead
 
 The app is an extra because the analysis itself does not need Dash. If you only want the
@@ -109,7 +118,7 @@ To get the list of available keys call `deepecohab.core.data_model.DataFrameRegi
 
 ## Roadmap
 
-1. Full web-app style GUI, deployable via a docker container.
+1. A docker container for running the app on a shared server.
 2. Group analysis - combined analysis of multiple cohort, comparing different groups of cohorts.
 3. Pose estimation based analysis of animal interactions and more detailed social structure analysis.
 

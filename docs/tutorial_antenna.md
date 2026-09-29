@@ -26,8 +26,8 @@ One row per antenna read, with exactly these columns, in this order:
 | `internal_board_timestamp` *(optional)* | `Datetime("us", <recording timezone>)` | the acquisition board's own clock; not used by the analysis yet |
 
 Timestamps are microseconds in the timezone the metadata names. The schema is checked when
-the recording is added, and a mismatch is rejected with the expected and found schemas side
-by side. DeepEcoHab does not read the raw EcoHab `.txt` logs: convert them to this format
+the recording is added, and a mismatch is rejected with a list of what differs: a missing or
+unexpected column, a wrong type, or columns out of order. DeepEcoHab does not read the raw EcoHab `.txt` logs: convert them to this format
 first.
 
 ### Metadata
@@ -96,7 +96,10 @@ hours are counted from there. Data recorded before it is left out; if recording 
 it, the first phase is simply short. Adding a recording warns when either gap exceeds an
 hour.
 
-**Cohort.** Every animal field is required. `tag` is the RFID tag used in `animal_id`.
+**Cohort.** Every animal field is required except `subject_name` and `treatment`, which may be
+left out or set to `null`. Text fields may not be empty. `tag` is the RFID tag used in
+`animal_id`. The recording's `name`, `project_name` and `recording_location` may not be empty
+either.
 
 **Layout.** `antenna_combinations` maps a pair of consecutive reads,
 `"<previous antenna>_<current antenna>"`, to the position the animal was in between them:
@@ -182,7 +185,8 @@ recording = project.add_recording(
 )
 ```
 
-Several at once, from their files in any order - they are grouped by name:
+Several at once, from their files in any order - they are grouped by name, ignoring case, so
+`Cohort1.Config.json` pairs with `cohort1.data.parquet`:
 
 ```python
 report = project.add_recordings(Path("path/to/recordings").iterdir())
@@ -191,8 +195,9 @@ report.added  # names of the recordings that went in
 report.failed  # (name, error) for each recording or stray file that did not
 ```
 
-A recording that fails validation, or misses a required file, does not stop the others; a
-warning lists every failure.
+A recording that fails validation, misses a required file, or comes with two different files
+of one kind (two configs, say), does not stop the others; a warning lists every failure. The
+same file given twice counts once.
 
 Adding copies the data into the project, so the source files are not needed afterwards:
 
@@ -203,6 +208,7 @@ tsc2/
   cohort1_2023_05_17/
     config.json           the validated metadata
     raw/data.parquet      the copied registrations
+    raw/config.json       the metadata exactly as it was given
     raw/diagnostic.json   the diagnostics, when they came with it
     results/              one parquet file per analysis table
 ```
@@ -314,7 +320,7 @@ names. Time is held as polars `Duration` columns; convert with, for example,
 | `ranking` | animal, after every chasing event | `mu`, `sigma`, `ordinal`, `social_rank` |
 | `pairwise_meetings` | hour, pair and position | `time_together`, `pairwise_encounters` |
 | `incohort_sociability` | phase occurrence and pair | `proportion_together`, `sociability` |
-| `feature_df` | hour, animal and metric | `value`, `exposure` |
+| `feature_df` | hour, animal, metric and position | `value`, `exposure` |
 
 ### Activity and time alone
 
@@ -397,6 +403,11 @@ row stores a metric's `value` and the `exposure` it arose from, both per hour:
 | `n_chasing` | chases as chaser | hours observed × (n_mice − 1) | chases per partner-hour |
 | `n_chased` | chases as chased | hours observed × (n_mice − 1) | chases per partner-hour |
 | `n_chasing_per_detection` | chases as chaser | antenna reads | chases per read |
+
+`activity`, `time_alone`, `time_together` and `pairwise_encounters` are held per `position`,
+each exposed against the time spent there, so a rate filtered to some positions reads within
+them and the positions still add back up to the whole. Chasings belong to no position, so the
+three chasing metrics have a `null` position.
 
 A rate is `sum(value) / sum(exposure)` over whatever grouping you need, so the hourly rows add
 up exactly to a phase, a day or the whole recording:
@@ -502,6 +513,9 @@ table = project.generate_project_table()
 
 This combines every recording's `feature_df` with its `animals` metadata, adds `recording` and
 `n_mice` columns, and saves the result as `project_table.parquet` in the project directory.
+A `position_type` column names what each row's position is - its cage's `cage_type`,
+`"tunnel"` or `undefined` - so positions compare across recordings whose layouts name them
+differently.
 Pass `names=[...]` to include only some recordings, and reload a saved table with
 `project.load_project_table()`.
 
