@@ -234,6 +234,8 @@ def _drop_unshelved_bins(state: dict) -> None:
 	to life under the field when it is dropped again.
 	"""
 	held = {name for names in state["channels"].values() for name in names}
+	if catalog.AGE not in held:
+		state.pop("age_unit", None)
 	bins = {name: spec for name, spec in state.get("bins", {}).items() if name in held}
 	# No empty dict left behind, or a preset would read as edited after a reset.
 	if bins:
@@ -281,8 +283,8 @@ def _send_to_items(field: catalog.Field, source: str, plot: figure.PlotType) -> 
 	return items
 
 
-def _bin_items(field: catalog.Field, source: str, spec: str | None) -> list:
-	"""The Blocks box for a numeric ordered field on a shelf; empty for anything else.
+def _bin_items(field: catalog.Field, source: str, spec: str | None, age_unit: str) -> list:
+	"""The Blocks box for a numeric ordered field on a shelf, plus Age's unit; empty otherwise.
 
 	Committed on Enter or on losing focus, never per keystroke: the shelves are rebuilt
 	whenever the state changes, and a rebuild mid-edit would take the caret with it.
@@ -290,7 +292,25 @@ def _bin_items(field: catalog.Field, source: str, spec: str | None) -> list:
 	if source in (PALETTE, FILTERS) or field.name not in catalog.ORDERED_COLUMNS:
 		return []
 
+	units = []
+	if field.name == catalog.AGE:
+		units = [
+			dmc.MenuDivider(),
+			dmc.MenuLabel("Round age to"),
+			*(
+				dmc.MenuItem(
+					unit.capitalize(),
+					leftSection=icon(
+						"circle-check" if unit == age_unit else "circle-dashed", size=14
+					),
+					id={"type": "age-unit", "unit": unit},
+				)
+				for unit in catalog.AGE_UNITS
+			),
+		]
+
 	return [
+		*units,
 		dmc.MenuDivider(),
 		dmc.MenuLabel(f"Group {field.label} into blocks"),
 		dmc.TextInput(
@@ -307,7 +327,11 @@ def _bin_items(field: catalog.Field, source: str, spec: str | None) -> list:
 
 
 def _chip(
-	field: catalog.Field, source: str, plot: figure.PlotType, spec: str | None = None
+	field: catalog.Field,
+	source: str,
+	plot: figure.PlotType,
+	spec: str | None = None,
+	age_unit: str = "days",
 ) -> html.Div:
 	remove = (
 		None
@@ -328,7 +352,7 @@ def _chip(
 					[
 						dmc.MenuLabel(f"Send {field.label} to"),
 						*_send_to_items(field, source, plot),
-						*_bin_items(field, source, spec),
+						*_bin_items(field, source, spec, age_unit),
 					]
 				),
 			],
@@ -392,6 +416,7 @@ def _palette_children(fields: list[catalog.Field], kind: str, search: str) -> li
 def _shelves_children(fields: list[catalog.Field], state: dict) -> list:
 	by_name = {item.name: item for item in fields}
 	bins = state.get("bins", {})
+	age_unit = state.get("age_unit", "days")
 	plot = figure.plot_type(state["kind"])
 	blocks = []
 	for channel in plot.channels:
@@ -400,7 +425,9 @@ def _shelves_children(fields: list[catalog.Field], state: dict) -> list:
 		accepts = " ".join(sorted(figure.ACCEPTS.get(channel, {"dimension", "time", "measure"})))
 		hint = "groups, not drawn" if channel == figure.DETAIL else "drop here"
 		body = [
-			_chip(by_name[name], channel, plot, bins.get(name)) for name in held if name in by_name
+			_chip(by_name[name], channel, plot, bins.get(name), age_unit)
+			for name in held
+			if name in by_name
 		] or [html.Span(hint, className="deh-shelf-hint")]
 		name_label: list = [figure.LABELS.get(channel, channel)]
 		if required:
@@ -977,6 +1004,7 @@ def _render(state, theme, _bump, project_data, saved_local, last_preset, last_dr
 		frame, fields = services.builder_frame(location)
 	except FileNotFoundError:
 		raise PreventUpdate from None
+	fields = catalog.in_age_unit(fields, state.get("age_unit", "days"))
 
 	# Format is drawn in the browser, so a change to it alone leaves the figure be.
 	drawn = _drawn(state, theme)
@@ -1049,6 +1077,7 @@ clientside_callback(
 	Input({"type": "preset-pick", "id": ALL}, "n_clicks"),
 	Input({"type": "preset-slot", "id": ALL, "choice": ALL}, "n_clicks"),
 	Input({"type": "filter-mode", "field": ALL, "mode": ALL}, "n_clicks"),
+	Input({"type": "age-unit", "unit": ALL}, "n_clicks"),
 	prevent_initial_call=True,
 )
 
@@ -1142,6 +1171,15 @@ def _reduce(
 				bins[name] = text
 			else:
 				bins.pop(name, None)
+			return state, no_update
+
+		case {"type": "age-unit", "unit": unit}:
+			if state.get("age_unit", "days") == unit:
+				raise PreventUpdate
+			if unit == "days":
+				state.pop("age_unit", None)
+			else:
+				state["age_unit"] = unit
 			return state, no_update
 
 		case {"type": "chip-send", "field": name, "from": source, "to": target}:
