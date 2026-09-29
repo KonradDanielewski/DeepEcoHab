@@ -848,10 +848,17 @@ def _group_files(
 
 
 class AddReport(NamedTuple):
-	"""Outcome of a batch add: names that went in, sources that didn't."""
+	"""Outcome of a batch add.
+
+	``added`` names every recording that went in, ``replaced`` those of them that took the
+	place of a same-named one. ``existing`` maps each recording left out because its name is
+	taken to its files, ready to be added again with ``overwrite=True``.
+	"""
 
 	added: list[str]
 	failed: list[FailedRecording]
+	existing: dict[str, list[Path]]
+	replaced: list[str]
 
 
 class Project(BaseModel):
@@ -960,46 +967,82 @@ class Project(BaseModel):
 		"""Every recording in the project, in the order they were added."""
 		return list(self.data_catalog.values())
 
-	def add_recording(self, *paths: str | Path) -> Recording:
+	def add_recording(self, *paths: str | Path, overwrite: bool = False) -> Recording:
 		"""Adds one recording from its files and updates the manifest.
 
 		Args:
 			paths: the recording's files, named ``<name>.<suffix>`` for each suffix in
 				`RECORDING_FILES`; the optional ones may be left out.
+			overwrite: replace a recording of the same name, listed or delisted, and
+				discard its results - how a recording is re-added with an edited config.
 
 		Raises:
 			ValueError: ``paths`` are not the files of exactly one recording.
+			FileExistsError: the name is taken and ``overwrite`` is off.
 		"""
 		groups, failed = _group_files(paths)
 		if failed or len(groups) != 1:
 			reasons = [f"{f.name}: {f.error}" for f in failed] or [f"{len(groups)} recordings"]
 			raise ValueError(f"Not the files of one recording - {'; '.join(reasons)}")
 
-		recording = self._add_one(*groups.values())
+		(files,) = groups.values()
+		recording, replaced = self._add_one(files, overwrite)
 		self._save()
+		if replaced:
+			warnings.warn(
+				f"Replaced recording {recording.name!r}; its results were discarded.", stacklevel=2
+			)
 		return recording
 
-	def add_recordings(self, paths: Iterable[str | Path]) -> AddReport:
+	def add_recordings(self, paths: Iterable[str | Path], *, overwrite: bool = False) -> AddReport:
 		"""Adds every recording among ``paths``, grouped by name as in :meth:`add_recording`.
 
 		Recordings are added independently: a failure on one, or a file that belongs to
 		none, is logged and warned about, and the rest still go in. The manifest is
-		written once, after the batch.
+		written once, after the batch. With ``overwrite`` off, a recording whose name is
+		taken is left out and listed in `AddReport.existing`.
 		"""
 		groups, failed = _group_files(paths)
 		added: list[str] = []
+		existing: dict[str, list[Path]] = {}
+		replaced: list[str] = []
 
 		for base, files in groups.items():
 			try:
-				added.append(self._add_one(files).name)
+				recording, was_replaced = self._add_one(files, overwrite)
+			except FileExistsError:
+				existing[base.name] = list(files.values())
+				continue
 			except Exception as exc:
 				failed.append(FailedRecording(base.name, exc))
 				self.log.exception("failed to add recording from %s", base)
+				continue
+			added.append(recording.name)
+			if was_replaced:
+				replaced.append(recording.name)
 
 		if added:
 			self._save()
-		self.log.info("batch add: %d added, %d failed", len(added), len(failed))
+		self.log.info(
+			"batch add: %d added (%d replaced), %d already in the project, %d failed",
+			len(added),
+			len(replaced),
+			len(existing),
+			len(failed),
+		)
 
+		if replaced:
+			warnings.warn(
+				f"Replaced {len(replaced)} recordings, discarding their results: "
+				f"{', '.join(replaced)}",
+				stacklevel=2,
+			)
+		if existing:
+			warnings.warn(
+				f"{len(existing)} recordings are already in the project and were left as they "
+				f"are; pass overwrite=True to replace them: {', '.join(existing)}",
+				stacklevel=2,
+			)
 		if failed:
 			details = "\n".join(f"  {f.name}: {type(f.error).__name__}: {f.error}" for f in failed)
 			warnings.warn(
@@ -1008,7 +1051,7 @@ class Project(BaseModel):
 				stacklevel=2,
 			)
 
-		return AddReport(added, failed)
+		return AddReport(added, failed, existing, replaced)
 
 	def remove_recording(self, name: str, *, delete_files: bool = False) -> None:
 		"""Removes recording from project.
@@ -1026,6 +1069,15 @@ class Project(BaseModel):
 		else:
 			self.delisted[name] = f"{name}/{self.CONFIG}"
 
+		self._drop_from_project_table(name)
+		self.log.warning(
+			"removed recording %r (files %s)",
+			name,
+			"deleted" if delete_files else "kept",
+		)
+		self._save()
+
+	def _drop_from_project_table(self, name: str) -> None:
 		table_path = self.project_location / self.PROJECT_TABLE
 		if table_path.is_file():
 			remaining = pl.read_parquet(table_path).filter(pl.col("recording") != name)
@@ -1033,13 +1085,6 @@ class Project(BaseModel):
 				table_path.unlink()
 			else:
 				remaining.write_parquet(table_path, compression="lz4")
-
-		self.log.warning(
-			"removed recording %r (files %s)",
-			name,
-			"deleted" if delete_files else "kept",
-		)
-		self._save()
 
 	def reinstate_recording(self, name: str) -> Recording:
 		"""Brings a delisted recording back from the files it left on disk.
@@ -1276,20 +1321,27 @@ class Project(BaseModel):
 		"""The recordings a run covers; the one place that decides which of them run."""
 		return [self[name] for name in names] if names is not None else self.recordings
 
-	def _add_one(self, files: dict[str, Path]) -> Recording:
+	def _add_one(self, files: dict[str, Path], overwrite: bool) -> tuple[Recording, bool]:
 		"""Validate, write, and catalog one recording from its files keyed by suffix.
 
-		Raises on any failure.
+		Returns the recording and whether it replaced a same-named one. Raises on any
+		failure, and with `FileExistsError` when the name is taken and ``overwrite`` is off.
 		"""
 		metadata = json.loads(files["config.json"].read_text(encoding="utf-8"))
 		recording = Recording.from_config(metadata["recording"], files["data.parquet"])
 		root = self.project_location / recording.name
 
-		if recording.name in self.data_catalog or root.exists():
-			self.log.error("rejected duplicate recording %r", recording.name)
+		if root.exists() and not overwrite:
 			raise FileExistsError(
 				f"Recording {recording.name!r} is already in project {self.project_name!r}."
 			)
+
+		# Replacing discards the results too: re-uploading with an edited config is how a
+		# recording's settings change. The old folder is kept aside until the new one lands.
+		previous = root.with_name(f"{root.name}.replaced") if root.exists() else None
+		if previous:
+			shutil.rmtree(previous, ignore_errors=True)
+			root.rename(previous)
 
 		target = root / "raw" / "data.parquet"
 		try:
@@ -1304,8 +1356,16 @@ class Project(BaseModel):
 				if suffix != "data.parquet":
 					shutil.copyfile(path, root / "raw" / suffix)
 		except Exception:
-			shutil.rmtree(root, ignore_errors=True)  # only ours; root didn't exist above
+			shutil.rmtree(root, ignore_errors=True)  # only ours; the old one is aside
+			if previous:
+				previous.rename(root)
 			raise
+
+		if previous:
+			shutil.rmtree(previous, ignore_errors=True)
+			self._drop_from_project_table(recording.name)
+			self.delisted.pop(recording.name, None)
+			self.log.warning("replaced recording %r and discarded its results", recording.name)
 
 		recording._root = root
 		self.data_catalog[recording.name] = recording
@@ -1338,7 +1398,7 @@ class Project(BaseModel):
 			if lead > LEAD_WARNING_THRESHOLD:
 				warnings.warn(f"Recording {recording.name!r}: {note}.", stacklevel=2)
 
-		return recording
+		return recording, previous is not None
 
 	@classmethod
 	def _read_config(cls, config_path: Path) -> Recording:

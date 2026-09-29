@@ -311,6 +311,34 @@ def test_deleting_a_recording_leaves_nothing_to_reinstate(tmp_path):
 		project.reinstate_recording("gone")
 
 
+def test_re_adding_a_recording_replaces_it_and_its_results(tmp_path):
+	project = Project.create(
+		project_name="replace", experimenter="tester", location=tmp_path / "project"
+	)
+	first = make_recording("same", ["A", "B"], "WT", "2023-05-26 00:00:00")
+	project.add_recording(*write_recording(tmp_path / "v1", first, 12))
+	project.run_analysis()
+	project.generate_project_table()
+
+	second = make_recording("same", ["A", "B"], "KO", "2023-05-26 00:00:00")
+	files = write_recording(tmp_path / "v2", second, 12)
+	with pytest.raises(FileExistsError):
+		project.add_recording(*files)
+	with pytest.warns(UserWarning, match="left as they are"):
+		report = project.add_recordings(files)
+	assert list(report.existing) == ["same"]
+	assert {a.genotype for a in project["same"].cohort.animals} == {"WT"}
+
+	with pytest.warns(UserWarning, match="Replaced recording 'same'"):
+		project.add_recording(*files, overwrite=True)
+
+	assert list(project.data_catalog) == ["same"]
+	assert {a.genotype for a in project["same"].cohort.animals} == {"KO"}
+	assert not any(project["same"].results_path.iterdir())
+	assert not (project.project_location / Project.PROJECT_TABLE).is_file()
+	assert sorted(p.name for p in project.project_location.iterdir() if p.is_dir()) == ["same"]
+
+
 def test_removing_the_last_recording_deletes_the_project_table(tmp_path):
 	recording = make_recording("only", ["A", "B"], "WT", "2023-05-26 00:00:00")
 	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)

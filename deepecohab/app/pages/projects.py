@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -80,6 +81,8 @@ layout = html.Div(
 		dcc.Store(id="run-failed", data={}),
 		dcc.Store(id="data-changed"),
 		dcc.Store(id="upload-target"),
+		dcc.Store(id="replace-pending"),
+		dcc.Store(id="replace-queue"),
 		dcc.Store(id="remove-target"),
 		# Real clicks on the table's row buttons, via deh.clickEvent: the table is rebuilt on
 		# every search or data change, which would otherwise fire their callbacks each time.
@@ -387,6 +390,33 @@ layout = html.Div(
 				),
 				html.Div(
 					html.Button("Close", id="upload-close", className="deh-btn"),
+					className="deh-dialog-foot",
+				),
+			],
+		),
+		dmc.Modal(
+			id="replace-modal",
+			title="Replace recording?",
+			size=520,
+			closeOnClickOutside=False,
+			closeOnEscape=False,
+			withCloseButton=False,
+			classNames=components.DIALOG_CLASSES,
+			children=[
+				html.Div(
+					[
+						html.P(id="replace-text"),
+						dmc.Checkbox(id="replace-all", size="xs", radius="xs"),
+					],
+					className="deh-dialog-body",
+				),
+				html.Div(
+					[
+						html.Button("Skip", id="replace-skip", className="deh-btn deh-btn-ghost"),
+						html.Button(
+							"Replace", id="replace-confirm", className="deh-btn deh-btn-danger"
+						),
+					],
 					className="deh-dialog-foot",
 				),
 			],
@@ -1217,6 +1247,7 @@ def _reason(error: Exception) -> str:
 	Output("upload-report", "children"),
 	Output("upload-files", "contents"),
 	Output("data-changed", "data", allow_duplicate=True),
+	Output("replace-pending", "data"),
 	Input("add-recordings-event", "data"),
 	Input("upload-files", "contents"),
 	Input("upload-close", "n_clicks"),
@@ -1225,42 +1256,116 @@ def _reason(error: Exception) -> str:
 	prevent_initial_call=True,
 )
 def _add_recordings(event, contents, _close, filenames, location):
-	unchanged = (no_update,) * 6
+	unchanged = (no_update,) * 7
 	if ctx.triggered_id == "upload-close":
-		return False, no_update, no_update, None, None, no_update
+		return False, no_update, no_update, None, None, no_update, no_update
 	if ctx.triggered_id == "add-recordings-event":
 		location = event["id"]["index"]
 		title = f"Add recordings to {services.project_summary(location)['name']}"
-		return True, title, location, None, None, no_update
+		return True, title, location, None, None, no_update, no_update
 	if not contents:  # our own reset of the drop zone comes back through this Input
 		return unchanged
 
 	project = services.load_project(location)
-	with tempfile.TemporaryDirectory(prefix="deh-upload-") as staging:
-		files = []
-		for name, blob in zip(filenames, contents, strict=True):
-			path = Path(staging) / Path(name).name
-			path.write_bytes(base64.b64decode(blob.split(",", 1)[1]))
-			files.append(path)
+	# Outlives this callback when a name is taken: the files wait there for Replace or Skip.
+	# ponytail: leaks if the browser closes mid-dialog; the OS temp cleanup reclaims it.
+	staging = Path(tempfile.mkdtemp(prefix="deh-upload-"))
+	files = []
+	for name, blob in zip(filenames, contents, strict=True):
+		path = staging / Path(name).name
+		path.write_bytes(base64.b64decode(blob.split(",", 1)[1]))
+		files.append(path)
 
-		added, failed = project.add_recordings(files)
+	report = project.add_recordings(files)
+	pending = no_update
+	if report.existing:
+		existing = {name: [str(path) for path in paths] for name, paths in report.existing.items()}
+		pending = {"location": location, "staging": str(staging), "existing": existing}
+	else:
+		shutil.rmtree(staging, ignore_errors=True)
 
-	problems = [f"{source.name}: {_reason(source.error)}" for source in failed]
+	problems = [f"{source.name}: {_reason(source.error)}" for source in report.failed]
 	if not problems:
-		noun = "recording" if len(added) == 1 else "recordings"
-		notify("good", f"Added {len(added)} {noun} to {project.project_name}")
-		return False, no_update, no_update, None, None, time.time()
+		if report.added or not report.existing:
+			noun = "recording" if len(report.added) == 1 else "recordings"
+			notify("good", f"Added {len(report.added)} {noun} to {project.project_name}")
+		return False, no_update, no_update, None, None, time.time(), pending
 
 	more = f" (+{len(problems) - 1} more below)" if len(problems) > 1 else ""
-	notify("bad" if not added else "warn", f"Not added - {problems[0]}{more}")
-	report = html.Div(
+	notify("bad" if not report.added else "warn", f"Not added - {problems[0]}{more}")
+	alert = html.Div(
 		[
 			icon("circle-x"),
 			html.Div([html.B("Not added"), html.Pre("\n".join(problems))]),
 		],
 		className="deh-alert deh-alert-bad",
 	)
-	return True, no_update, no_update, report, None, time.time()
+	return True, no_update, no_update, alert, None, time.time(), pending
+
+
+def _replace_prompt(queue: dict) -> tuple:
+	"""The Replace dialog asking about the first recording still waiting in ``queue``."""
+	names = queue["waiting"]
+	text = [
+		html.B(names[0]),
+		" is already in this project. Replacing it discards its results, so it must be "
+		"analysed again.",
+	]
+	more = len(names) - 1
+	label = f"Do the same for the {more} other recording{'s' if more > 1 else ''} already here"
+	return True, text, label, False, {"display": "flex" if more else "none"}
+
+
+@callback(
+	Output("replace-modal", "opened"),
+	Output("replace-text", "children"),
+	Output("replace-all", "label"),
+	Output("replace-all", "checked"),
+	Output("replace-all", "style"),
+	Output("replace-queue", "data"),
+	Output("data-changed", "data", allow_duplicate=True),
+	Input("replace-pending", "data"),
+	Input("replace-skip", "n_clicks"),
+	Input("replace-confirm", "n_clicks"),
+	State("replace-queue", "data"),
+	State("replace-all", "checked"),
+	prevent_initial_call=True,
+)
+def _replace_recordings(pending, _skip, _confirm, queue, apply_to_all):
+	if ctx.triggered_id == "replace-pending":
+		if not pending:
+			raise PreventUpdate
+		queue = {**pending, "waiting": list(pending["existing"]), "replace": []}
+		return *_replace_prompt(queue), queue, no_update
+
+	waiting = queue["waiting"]
+	decided = len(waiting) if apply_to_all else 1
+	if ctx.triggered_id == "replace-confirm":
+		queue["replace"] += waiting[:decided]
+	queue["waiting"] = waiting[decided:]
+	if queue["waiting"]:
+		return *_replace_prompt(queue), queue, no_update
+
+	# Every name is decided: add the ones to replace, then let go of the staged files.
+	project = services.load_project(queue["location"])
+	files = [path for name in queue["replace"] for path in queue["existing"][name]]
+	report = project.add_recordings(files, overwrite=True) if files else None
+	shutil.rmtree(queue["staging"], ignore_errors=True)
+
+	if report is None:
+		notify("info", "Nothing replaced; the recordings already in the project stay as they were")
+		return False, no_update, no_update, no_update, no_update, None, no_update
+	messages = []
+	if report.replaced:
+		messages.append(
+			f"Replaced {', '.join(report.replaced)} in {project.project_name}; "
+			"the previous results were discarded"
+		)
+	if report.failed:
+		reasons = "; ".join(f"{f.name}: {_reason(f.error)}" for f in report.failed)
+		messages.append(f"Not replaced - {reasons}")
+	notify("bad" if not report.replaced else "warn", ". ".join(messages))
+	return False, no_update, no_update, no_update, no_update, None, time.time()
 
 
 @callback(
