@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 import polars as pl
@@ -13,6 +13,10 @@ EXCLUDED: frozenset[str] = frozenset({"notes"})
 #: counting things (day, phase_count, hour, n_mice) or already-converted duration
 #: (age_days) that would otherwise read as a numeric measure.
 ORDERED_COLUMNS: frozenset[str] = frozenset({"day", "phase_count", "hour", "n_mice", "age_days"})
+
+AGE = "age_days"
+#: What Age can be rounded to, in days per unit; a month is the mean Gregorian one.
+AGE_UNITS: dict[str, float] = {"days": 1, "weeks": 7, "months": 30.4375}
 
 #: The long-format triple the rate semantics are built on.
 VALUE, EXPOSURE, METRIC = "value", "exposure", "metric"
@@ -136,6 +140,11 @@ def prepare(
 			fields.append(Field(name, f"mean {pretty}", "measure", group, "mean"))
 
 	return frame, fields
+
+
+def in_age_unit(fields: Sequence[Field], unit: str) -> list[Field]:
+	"""``fields`` with Age labelled in the unit it is rounded to."""
+	return [replace(item, label=f"Age ({unit})") if item.name == AGE else item for item in fields]
 
 
 def distinct_values(frame: pl.LazyFrame, column: str) -> list[str]:

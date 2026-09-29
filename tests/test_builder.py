@@ -60,6 +60,31 @@ def test_build_frame_computes_rate(frame, fields):
 	assert data.sort("hour")["value"].to_list() == pytest.approx([1.0, 3.0])
 
 
+@pytest.mark.parametrize(
+	("unit", "expected"), [("days", [13, 70]), ("weeks", [2, 10]), ("months", [0, 2])]
+)
+def test_build_frame_rounds_age(frame, unit, expected):
+	aged = frame.with_columns(
+		pl.when(pl.col("animal_id") == "A")
+		.then(pl.duration(days=13))
+		.otherwise(pl.duration(days=70))
+		.alias("age")
+	)
+	aged, fields = catalog.prepare(aged)
+	state = {
+		"kind": "bar",
+		"measure_as": "rate",
+		"age_unit": unit,
+		"channels": {"x": [catalog.AGE], "y": ["value"]},
+		"filters": {"metric": ["activity"]},
+	}
+
+	assert (
+		figure.build_frame(aged, state, fields).sort(catalog.AGE)[catalog.AGE].to_list() == expected
+	)
+	assert catalog.in_age_unit(fields, unit)[-1].label == f"Age ({unit})"
+
+
 def test_warnings_for_blocks_unfaceted_multi_metric(frame, fields):
 	state = {
 		"kind": "line",
@@ -183,6 +208,15 @@ def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
 	}
 	unshelved = dict(binned, channels={})
 	assert "bins" not in reduce({"type": "builder-mode", "mode": "rate"}, state=unshelved)[0]
+
+	aged = dict(held, channels={"x": [catalog.AGE]})
+	weeks = reduce({"type": "age-unit", "unit": "weeks"}, state=aged)[0]
+	assert weeks["age_unit"] == "weeks"
+	assert "age_unit" not in reduce({"type": "age-unit", "unit": "days"}, state=weeks)[0]
+	assert (
+		"age_unit"
+		not in reduce({"type": "builder-mode", "mode": "rate"}, state=dict(weeks, channels={}))[0]
+	)
 
 	for unknown in ("no-such-id", {"type": "no-such-type"}, {"type": "chip-x", "shelf": "x"}):
 		with pytest.raises(PreventUpdate):

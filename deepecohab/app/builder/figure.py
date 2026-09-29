@@ -8,7 +8,16 @@ import plotly.graph_objects as go
 import polars as pl
 import polars.selectors as cs
 
-from deepecohab.app.builder.catalog import EXPOSURE, METRIC, VALUE, Field, Kind, metric_names
+from deepecohab.app.builder.catalog import (
+	AGE,
+	AGE_UNITS,
+	EXPOSURE,
+	METRIC,
+	VALUE,
+	Field,
+	Kind,
+	metric_names,
+)
 from deepecohab.plotting import theme
 
 #: Builder figures render with this template initially; the app callback overrides it
@@ -391,7 +400,9 @@ def build_frame(
 	:func:`parse_bins` reads there rather than one group per value, so the field reads
 	as ``day 1-3``, ``day 4-6`` - which is what a facet needs to compare one stretch of
 	a recording to another. A block spec that cannot be read is ignored here and
-	reported by :func:`warnings_for`.
+	reported by :func:`warnings_for`. Grouped Age is first rounded to whole
+	``state["age_unit"]``, after filtering, since its filter range is in days; blocks
+	then count in that unit.
 
 	Returns:
 		The aggregated frame, with one column per field on a shelf.
@@ -402,6 +413,12 @@ def build_frame(
 	mode = state.get("measure_as", DEFAULT_MODE)
 	hovered = hover_listed(state, catalog)
 	carried: set[str] = set()
+
+	per_unit = AGE_UNITS.get(state.get("age_unit", "days"), 1)
+	if AGE in keys and per_unit != 1:
+		frame = frame.with_columns(
+			(pl.col(AGE) / per_unit).round(mode="half_away_from_zero").cast(pl.Int64)
+		)
 
 	if mode == "mean":
 		# An hour's value is split over the positions it happened in; put it back
