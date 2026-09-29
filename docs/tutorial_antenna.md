@@ -193,11 +193,20 @@ report = project.add_recordings(Path("path/to/recordings").iterdir())
 
 report.added  # names of the recordings that went in
 report.failed  # (name, error) for each recording or stray file that did not
+report.existing  # name -> files of each recording left out because its name is taken
 ```
 
 A recording that fails validation, misses a required file, or comes with two different files
 of one kind (two configs, say), does not stop the others; a warning lists every failure. The
 same file given twice counts once.
+
+A name already in the project is left alone unless you pass `overwrite=True`, which replaces
+that recording and discards its results - how you re-add one with an edited config, say a
+different `start_from` phase:
+
+```python
+project.add_recordings(report.existing["cohort1"], overwrite=True)
+```
 
 Adding copies the data into the project, so the source files are not needed afterwards:
 
