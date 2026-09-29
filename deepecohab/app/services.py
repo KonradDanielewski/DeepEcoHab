@@ -144,6 +144,7 @@ def project_summary(location: str) -> dict:
 				for name in manifest.get("data_catalog", {})
 			],
 			"delisted": list(manifest.get("delisted", {})),
+			"table_stale": False,
 		}
 
 	return {
@@ -154,7 +155,19 @@ def project_summary(location: str) -> dict:
 		"error": None,
 		"recordings": [_recording_summary(recording, steps) for recording in project.recordings],
 		"delisted": list(project.delisted),
+		"table_stale": table.is_file() and _table_stale(project, table),
 	}
+
+
+def _table_stale(project: Project, table: Path) -> bool:
+	"""Whether the project table misses a listed recording or predates any of its results."""
+	built = table.stat().st_mtime_ns
+	listed = set(pl.scan_parquet(table).select(pl.col("recording").unique()).collect().to_series())
+	return listed != {recording.name for recording in project.recordings} or any(
+		path.stat().st_mtime_ns > built
+		for recording in project.recordings
+		for path in recording.results_path.glob("*.parquet")
+	)
 
 
 def _recording_summary(recording: Recording, steps: int) -> dict:

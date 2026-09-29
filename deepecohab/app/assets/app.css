@@ -356,6 +356,10 @@ code {
 	cursor: pointer;
 }
 
+.deh-btn[hidden] {
+	display: none;
+}
+
 .deh-btn:hover {
 	background: var(--sunken);
 }
@@ -651,6 +655,12 @@ code {
 	max-width: 34ch;
 	color: var(--ink-3);
 	font-size: 12.5px;
+}
+
+.deh-table-cell {
+	display: flex;
+	align-items: center;
+	gap: 4px;
 }
 
 .deh-an {
@@ -961,7 +971,13 @@ code {
 	overflow-y: auto;
 }
 
-.mantine-Menu-dropdown.deh-menu {
+.deh-menu .mantine-Checkbox-input:not(:checked, [data-indeterminate]) {
+	border-color: var(--ink-3);
+	background: var(--surface);
+}
+
+.mantine-Menu-dropdown.deh-menu,
+.mantine-Popover-dropdown.deh-menu {
 	min-width: 210px;
 	max-width: 280px;
 	padding: 4px;
@@ -969,6 +985,11 @@ code {
 	border-radius: 10px;
 	background: var(--surface);
 	box-shadow: var(--shadow-lg);
+}
+
+.mantine-Popover-dropdown.deh-menu {
+	max-width: none;
+	padding: 12px;
 }
 
 .deh-menu .mantine-Menu-item {

@@ -957,7 +957,7 @@ window.dash_clientside.deh = {
 	paintSelection: function (selection) {
 		const dc = window.dash_clientside;
 		const key = (id) => JSON.stringify([id.project, id.index]);
-		const [boxes, heads] = dc.callback_context.states_list;
+		const [boxes, heads, removes] = dc.callback_context.states_list;
 		const keys = new Set((selection || []).map((pair) => JSON.stringify(pair)));
 		const paint = (box, checked) => box.value === checked || dc.set_props(box.id, {checked});
 		boxes.forEach((box) => paint(box, keys.has(key(box.id))));
@@ -965,10 +965,24 @@ window.dash_clientside.deh = {
 			const mine = boxes.filter((box) => box.id.project === head.id.index);
 			paint(head, mine.length > 0 && mine.every((box) => keys.has(key(box.id))));
 		});
+		removes.forEach((button) => {
+			const hidden = (selection || []).filter(([project]) => project === button.id.index).length < 2;
+			button.value === hidden || dc.set_props(button.id, {hidden});
+		});
 	},
 
 	resetProgress: function () {
 		return null;
+	},
+
+	/* Reinstate popover: select-all ticks every delisted name; ticking names repaints select-all. */
+	selectDelisted: function (all, picked, names) {
+		const dc = window.dash_clientside;
+		if (dc.callback_context.triggered_id.type === "reinstate-all") {
+			return [all ? names : [], dc.no_update, false];
+		}
+		const n = picked.length;
+		return [dc.no_update, n === names.length, n > 0 && n < names.length];
 	},
 
 	resetParams: function (_clicks, defaults) {
