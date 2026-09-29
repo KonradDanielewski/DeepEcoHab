@@ -524,10 +524,12 @@ document.addEventListener("mouseover", function (event) {
 	}, _PREFETCH_DWELL_MS);
 });
 
-/* The update toast's Cancel (see _check_update): toast content is outside Dash's layout. */
+/* The update toast's buttons (see _check_update): toast content is outside Dash's layout. */
 document.addEventListener("click", function (event) {
-	if (!event.target.closest(".deh-update-cancel")) return;
+	const now = event.target.closest(".deh-update-now");
+	if (!now && !event.target.closest(".deh-update-cancel")) return;
 	window.dash_clientside.set_props("notifications", {hideNotifications: ["update-available"]});
+	if (now) window.dash_clientside.set_props("update-request", {data: Date.now()});
 });
 
 /* Events table: an event's name folds its bouts away. */

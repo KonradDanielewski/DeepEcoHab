@@ -1,14 +1,22 @@
 import logging
+import threading
 from importlib.metadata import version
 
 import dash
 import dash_mantine_components as dmc
 import diskcache
+import multiprocess
 from dash import ALL, ClientsideFunction, Dash, Input, Output, State, dcc, html
 from dash.exceptions import PreventUpdate
 
-from deepecohab.app import downloads, services
-from deepecohab.app.components import DOWNLOAD_FRAME, export_dialog, export_preview, icon
+from deepecohab.app import downloads, services, updater
+from deepecohab.app.components import (
+	DOWNLOAD_FRAME,
+	export_dialog,
+	export_preview,
+	icon,
+	notify,
+)
 from deepecohab.plotting.export import ensure_chrome_available
 
 #: Shade 6 is the light-theme accent, shade 4 the dark one; the rest interpolate the tokens.
@@ -80,6 +88,7 @@ def _layout() -> dmc.MantineProvider:
 			# Above Dash's debug bar (z-index 10000), which sits where toasts appear.
 			dmc.NotificationContainer(id="notifications", zIndex=10001),
 			dcc.Store(id="update-check"),
+			dcc.Store(id="update-request"),
 			html.Iframe(name=DOWNLOAD_FRAME, hidden=True),
 			# Shared by every page rather than duplicated per page: every page stays mounted,
 			# so one id per component, and each page's own "open" callback drives it by id.
@@ -234,24 +243,39 @@ def _register_callbacks(app: Dash) -> None:
 		missing = None if page else f"No page at {pathname}. Pick one from the sidebar."
 		return active, html.B(page["name"] if page else "Not found"), False, missing
 
-	# Toast content renders outside Dash's layout, so its Cancel button is no callback
-	# Input; a click listener in clientside.js hides the toast by id instead.
+	# Toast content renders outside Dash's layout, so its buttons are no callback Inputs;
+	# click listeners in clientside.js hide the toast, or write update-request, instead.
 	@app.callback(Input("update-check", "data"))
 	def _check_update(_):
 		latest = services.newer_release()
 		if latest is None:
 			return
-		message = [
-			f"DeepEcoHab {latest} is available (you have {version('deepecohab')}). "
-			"To update, close the app and run ",
-			html.Code("uv tool upgrade deepecohab"),
-			html.Div(
-				html.Button(
-					"Cancel", type="button", className="deh-btn deh-btn-ghost deh-update-cancel"
+		cancel = html.Button(
+			"Cancel", type="button", className="deh-btn deh-btn-ghost deh-update-cancel"
+		)
+		available = f"DeepEcoHab {latest} is available (you have {version('deepecohab')}). "
+		if updater.can_update():
+			message = [
+				available,
+				html.Div(
+					[
+						cancel,
+						html.Button(
+							"Update now",
+							type="button",
+							className="deh-btn deh-btn-primary deh-update-now",
+						),
+					],
+					className="deh-update-actions",
 				),
-				className="deh-update-actions",
-			),
-		]
+			]
+		else:
+			message = [
+				available,
+				"To update, close the app and run ",
+				html.Code('uv tool upgrade "deepecohab[app]"'),
+				html.Div(cancel, className="deh-update-actions"),
+			]
 		toast = {
 			"id": "update-available",
 			"action": "show",
@@ -261,6 +285,20 @@ def _register_callbacks(app: Dash) -> None:
 			"autoClose": False,
 		}
 		dash.set_props("notifications", {"sendNotifications": [toast]})
+
+	@app.callback(Input("update-request", "data"), prevent_initial_call=True)
+	def _update(_):
+		# Every background callback is a child process of the server; one still running
+		# would be killed mid-write, and on Windows holds files the upgrade must replace.
+		if multiprocess.active_children():  # ty: ignore[unresolved-attribute] - set at runtime
+			notify("warn", "An analysis is running. Update once it has finished.")
+			return
+		notify(
+			"info",
+			"Updating DeepEcoHab. It opens again in a new tab when done; close this one.",
+		)
+		# Delayed, so this response and its toast reach the browser before the app goes.
+		threading.Timer(1, updater.update).start()
 
 	# The export dialog is shared shell UI (see _layout above); its behaviour does not
 	# depend on which page opened it, so it registers once here rather than once per

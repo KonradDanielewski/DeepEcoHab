@@ -577,8 +577,9 @@ def _analysed(location: str, name: str) -> bool:
 	return all(recording_status(Path(location) / name).values())
 
 
-# ponytail: local installs only - delete with its _check_update callback and the toast's
-# Cancel listener in clientside.js once the app is deployed and users no longer update it.
+# ponytail: local installs only - delete with its _check_update and _update callbacks,
+# updater.py and the toast's listener in clientside.js once the app is deployed and users
+# no longer update it.
 @cache
 def newer_release() -> str | None:
 	"""The latest stable PyPI release if it is newer than the installed one, else None.
