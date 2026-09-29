@@ -54,7 +54,7 @@ PLOT_ICON = {
 	"strip": "chart-dots-3",
 	"histogram": "chart-histogram",
 	"ecdf": "stairs",
-	"density_heatmap": "chart-grid-dots",
+	"heatmap": "chart-grid-dots",
 	"scatter_polar": "chart-radar",
 	"line_polar": "chart-radar",
 	"bar_polar": "chart-donut",
@@ -389,7 +389,7 @@ def _palette_children(fields: list[catalog.Field], kind: str, search: str) -> li
 		items = [
 			f for f in fields if f.group == group_name and (not query or query in f.label.lower())
 		]
-		items.sort(key=lambda f: f.label.lower())
+		items.sort(key=lambda f: (list(KIND_ICON).index(f.kind), f.label.lower()))
 		if not items:
 			continue
 		groups.append(
@@ -542,6 +542,21 @@ def _mode_children(state: dict) -> list:
 			className="deh-seg-btn" + (" is-active" if key == state["measure_as"] else ""),
 		)
 		for key, label in figure.MEASURE_MODES.items()
+	]
+
+
+def _outlier_children(state: dict) -> list:
+	"""Keep or exclude outliers, for the plot types that draw a box's spread; empty otherwise."""
+	if state["kind"] not in figure.POINTED:
+		return []
+	chosen = state.get("outliers", "keep")
+	return [
+		html.Button(
+			f"{key.capitalize()} outliers",
+			id={"type": "builder-outliers", "mode": key},
+			className="deh-seg-btn" + (" is-active" if key == chosen else ""),
+		)
+		for key in ("keep", "exclude")
 	]
 
 
@@ -807,6 +822,9 @@ def _dashboard(
 				[
 					_project_picker(paths, services.project_id(location)),
 					html.Div(_mode_children(state), id="builder-mode-row", className="deh-seg-row"),
+					html.Div(
+						_outlier_children(state), id="builder-outlier-row", className="deh-seg-row"
+					),
 					html.Button(
 						[icon("eraser", size=15), "Clear shelves"],
 						id="builder-clear",
@@ -985,6 +1003,7 @@ def _render_palette(search, kind, project_data):
 	Output("builder-presets", "children"),
 	Output("builder-types", "children"),
 	Output("builder-mode-row", "children"),
+	Output("builder-outlier-row", "children"),
 	Output("builder-drawn", "data"),
 	Input("builder-state", "data"),
 	Input("plot-theme", "data"),
@@ -1024,6 +1043,7 @@ def _render(state, theme, _bump, project_data, saved_local, last_preset, last_dr
 		_presets_children(project, location, state, last_preset, saved_local),
 		_types_children(state),
 		_mode_children(state),
+		_outlier_children(state),
 		drawn,
 	)
 
@@ -1072,6 +1092,7 @@ clientside_callback(
 	Input({"type": "chip-send", "field": ALL, "from": ALL, "to": ALL}, "n_clicks"),
 	Input({"type": "builder-kind", "kind": ALL}, "n_clicks"),
 	Input({"type": "builder-mode", "mode": ALL}, "n_clicks"),
+	Input({"type": "builder-outliers", "mode": ALL}, "n_clicks"),
 	Input("builder-clear", "n_clicks"),
 	Input("builder-reset", "n_clicks"),
 	Input({"type": "preset-pick", "id": ALL}, "n_clicks"),
@@ -1152,6 +1173,15 @@ def _reduce(
 
 		case {"type": "builder-mode", "mode": mode}:
 			state["measure_as"] = mode
+			return state, no_update
+
+		case {"type": "builder-outliers", "mode": mode}:
+			if state.get("outliers", "keep") == mode:
+				raise PreventUpdate
+			if mode == "keep":
+				state.pop("outliers", None)
+			else:
+				state["outliers"] = mode
 			return state, no_update
 
 		case {"type": "chip-x", "shelf": shelf, "field": name}:

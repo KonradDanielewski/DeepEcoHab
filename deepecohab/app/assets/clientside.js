@@ -212,10 +212,16 @@ function _sample(scale, t) {
 }
 
 /* ``data`` with each line whose markers ride the colour axis resampled from ``scale``: a
- * line cannot ride it, so the network's edges keep theirs in step by hand. */
+ * line cannot ride it, so the network's edges keep theirs in step by hand. Box and violin
+ * points cannot either, so the builder's Point colour bands carry their place on the scale
+ * in meta.dehScale. */
 function _followScale(data, scale) {
 	return data.map((trace) => {
 		const marker = trace.marker || {};
+		const shade = (trace.meta || {}).dehScale;
+		if (shade !== undefined) {
+			return Object.assign({}, trace, {marker: Object.assign({}, marker, {color: _sample(scale, shade)})});
+		}
 		if (!marker.coloraxis || !trace.line) return trace;
 		return Object.assign({}, trace, {
 			line: Object.assign({}, trace.line, {color: _sample(scale, marker.color[0])}),
