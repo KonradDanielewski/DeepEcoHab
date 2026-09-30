@@ -1616,6 +1616,14 @@ code {
 	margin: 14px 16px 4px;
 }
 
+/* Under the Detection quality tiles: full-bleed rule above, padding in place of margin. */
+.deh-tiles + .deh-ev-strip {
+	grid-template-columns: max-content minmax(0, 1fr);
+	margin: 0;
+	padding: 14px 16px 10px;
+	border-top: 1px solid var(--line);
+}
+
 .deh-ev-label {
 	display: flex;
 	align-items: center;

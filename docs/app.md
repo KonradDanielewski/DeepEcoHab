@@ -357,7 +357,10 @@ to settle before reading anything the analysis says.
 
 - **Detection quality**: the share of missed passes, the number of detections, the
   share of time an animal's position is unknown,
-  and when the recording started and ended. The bands are provisional, to be
+  when the recording started and ended, and how often and for how long it stopped in
+  between. Each stop is drawn in red on a strip across the recording's days and phases;
+  hovering one says whether it was a clean stop, an abrupt end or a silence of unknown
+  cause. The bands are provisional, to be
   confirmed on more recordings: under 1% missed is good, 1-2.5% needs checking, and 2.5%
   or more is poor.
 

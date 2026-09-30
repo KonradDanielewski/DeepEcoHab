@@ -606,8 +606,10 @@ def _quality_summary_children(context: PlotContext) -> list:
 				),
 			),
 		)
-	tiles += _window_tiles(context.recording.timeline)
-	return [header, _tiles(tiles)]
+	gaps = _gaps(context.recording)
+	tiles += [*_window_tiles(context.recording.timeline), _gap_tile(gaps)]
+	strip = _gap_strip(context.recording.timeline, gaps) if gaps else None
+	return [header, _tiles(tiles), strip]
 
 
 def _tiles(rows: list) -> html.Div:
@@ -689,16 +691,85 @@ def _window_tiles(line: Timeline) -> list[tuple]:
 	]
 
 
-def _events_card_children(recording: Recording) -> list:
-	"""Every bout on one strip across the recording, then each event's bouts in full.
+#: What each kind of recording gap means. A clean stop is not a failure.
+_GAP_KINDS = {
+	"abrupt_end": "Acquisition ended abruptly",
+	"observed_record_gap": "Nothing recorded, cause unknown",
+	"confirmed_DAQ_inactive": "Acquisition stopped and restarted cleanly",
+}
 
-	Drawn from the config alone, as the habitat map is, so it renders before analysis. An
-	event's colour is its place among the recording's events, the rule ``_event_spans``
-	colours spans by, so a bar here matches its span on every plot. Days and phases are
-	counted the way the window slider counts them: 24 elapsed hours from the experiment start.
+
+def _gaps(recording: Recording) -> list[tuple[dt.datetime, dt.datetime, str]]:
+	"""The recording's gaps as (start, end, kind), clipped to the analysed window."""
+	begin, stop = recording.timeline.local_span
+	return [
+		(max(gap.start, begin), min(gap.end, stop), gap.kind)
+		for gap in recording.boundaries
+		if gap.end > begin and gap.start < stop
+	]
+
+
+def _gap_tile(gaps: list[tuple[dt.datetime, dt.datetime, str]]) -> tuple:
+	"""How often acquisition stopped and for how long.
+
+	Poor past 12 h lost, otherwise warned of unless every stop was clean.
 	"""
-	line = recording.timeline
+	if not gaps:
+		return ("Recording gaps", "0", html.Span("recorded without a break", className="deh-sub"))
+	lost = sum((end - start for start, end, _ in gaps), dt.timedelta())
+	failed = sum(kind != "confirmed_DAQ_inactive" for *_, kind in gaps)
+	text = f"{_span(lost)} lost"
+	note = html.Span(text, className="deh-sub")
+	if lost > dt.timedelta(hours=12) or failed:
+		kind, glyph = (
+			("bad", "circle-x") if lost > dt.timedelta(hours=12) else ("warn", "alert-triangle")
+		)
+		note = html.Span(
+			[icon(glyph, size=14), text],
+			className=f"deh-badge deh-badge-{kind}",
+			title=f"{failed} of {len(gaps)} were not a clean stop and restart.",
+		)
+	return ("Recording gaps", str(len(gaps)), note)
+
+
+def _gap_strip(line: Timeline, gaps: list[tuple[dt.datetime, dt.datetime, str]]) -> html.Div:
+	"""Each gap as a bar on the phase-tinted strip the events card draws, coloured by kind."""
 	zone = line.recording_timezone
+	place, day_phase, band, axis = _strip_scale(line)
+	bars = []
+	for start, end, kind in gaps:
+		meaning = _GAP_KINDS[kind]
+		onset, offset = start.astimezone(zone), end.astimezone(zone)
+		bars.append(
+			html.Span(
+				className="deh-ev-bar",
+				style={
+					**place(onset, offset),
+					"background": "var(--bad)",
+				},
+				title=(
+					f"{day_phase(onset)}\n{onset.day} {onset:%b %H:%M} → "
+					f"{offset.day} {offset:%b %H:%M} ({_span(end - start)})\n{meaning}"
+				),
+			)
+		)
+	lane = [
+		html.Span("Gaps", className="deh-ev-label"),
+		html.Div(bars, className="deh-ev-track", style={"background": band(False)}),
+	]
+	return html.Div([*lane, *axis], className="deh-ev-strip")
+
+
+def _strip_scale(line: Timeline) -> tuple:
+	"""A strip across the analysed window, as ``(place, day_phase, band, axis)``.
+
+	``place`` positions a bar from onset to offset, held 3px off the track's rounded ends so
+	one at the recording's start or end does not sit flush with them. ``day_phase`` names a
+	moment's day and phase, ``band`` tints a lane by phase and ``axis`` is the Day row that
+	closes the strip.
+	Days and phases are counted the way the window slider counts them: 24 elapsed hours from
+	the experiment start.
+	"""
 	start, end = line.local_span
 	origin = start.astimezone(dt.UTC)
 	length = end.astimezone(dt.UTC) - origin
@@ -710,6 +781,17 @@ def _events_card_children(recording: Recording) -> list:
 	def at(moment: dt.datetime) -> float:
 		return 100 * ((moment.astimezone(dt.UTC) - origin) / length)
 
+	def place(onset: dt.datetime, offset: dt.datetime) -> dict:
+		return {
+			"left": f"max(3px, {at(onset):.3f}%)",
+			"right": f"max(3px, {100 - at(offset):.3f}%)",
+		}
+
+	def day_phase(moment: dt.datetime) -> str:
+		day = (moment.astimezone(dt.UTC) - origin) // dt.timedelta(days=1) + 1
+		phase = next(name for switch, name in reversed(stretches) if switch <= moment)
+		return f"Day {day} · {_human(phase).removesuffix(' phase')}"
+
 	edges = [at(moment) for moment, _ in stretches] + [100.0]
 
 	def band(selected: bool) -> str:
@@ -719,15 +801,41 @@ def _events_card_children(recording: Recording) -> list:
 		)
 		return f"linear-gradient(90deg, {stops})"
 
+	days = line.days_range[1]
+	step = 2 if days > 12 else 1
+	day_edges = [min(at(origin + dt.timedelta(days=d)), 100.0) for d in range(days + 1)]
+	ticks = [
+		html.Span(str(d), className="deh-ev-day", style={"left": f"{(lo + hi) / 2:.3f}%"})
+		for d, (lo, hi) in enumerate(pairwise(day_edges), start=1)
+		if hi > lo and (d - 1) % step == 0
+	] + [html.I(className="deh-ev-tick", style={"left": f"{x:.3f}%"}) for x in day_edges[1:-1]]
+	axis = [
+		html.Span("Day", className="deh-ev-label deh-sub"),
+		html.Div(
+			[html.Div(className="deh-ev-band", style={"background": band(True)}), *ticks],
+			className="deh-ev-axis",
+		),
+	]
+	return place, day_phase, band, axis
+
+
+def _events_card_children(recording: Recording) -> list:
+	"""Every bout on one strip across the recording, then each event's bouts in full.
+
+	Drawn from the config alone, as the habitat map is, so it renders before analysis. An
+	event's colour is its place among the recording's events, the rule ``_event_spans``
+	colours spans by, so a bar here matches its span on every plot.
+	"""
+	zone = recording.timeline.recording_timezone
+	place, day_phase, band, axis = _strip_scale(recording.timeline)
+
 	lanes, groups = [], []
 	for index, event in enumerate(recording.events):
 		color = qualitative.Pastel[index % len(qualitative.Pastel)]
 		bars, rows = [], []
 		for bout in sorted(event.bouts, key=lambda bout: bout.start):
 			onset, offset = bout.start.astimezone(zone), bout.end.astimezone(zone)
-			day = (onset.astimezone(dt.UTC) - origin) // dt.timedelta(days=1) + 1
-			phase = next(name for switch, name in reversed(stretches) if switch <= onset)
-			when = f"Day {day} · {_human(phase).removesuffix(' phase')}"
+			when = day_phase(onset)
 			duration = _span(offset.astimezone(dt.UTC) - onset.astimezone(dt.UTC))
 			where = ", ".join(map(_human, bout.position)) if bout.position else "Whole habitat"
 			ends = (
@@ -739,8 +847,7 @@ def _events_card_children(recording: Recording) -> list:
 				html.Span(
 					className="deh-ev-bar",
 					style={
-						"left": f"{at(onset):.3f}%",
-						"width": f"{at(offset) - at(onset):.3f}%",
+						**place(onset, offset),
 						"background": color,
 					},
 					title=(
@@ -802,15 +909,6 @@ def _events_card_children(recording: Recording) -> list:
 			)
 		)
 
-	days = line.days_range[1]
-	step = 2 if days > 12 else 1
-	day_edges = [min(at(origin + dt.timedelta(days=d)), 100.0) for d in range(days + 1)]
-	ticks = [
-		html.Span(str(d), className="deh-ev-day", style={"left": f"{(lo + hi) / 2:.3f}%"})
-		for d, (lo, hi) in enumerate(pairwise(day_edges), start=1)
-		if hi > lo and (d - 1) % step == 0
-	] + [html.I(className="deh-ev-tick", style={"left": f"{x:.3f}%"}) for x in day_edges[1:-1]]
-
 	count, kinds = sum(len(event.bouts) for event in recording.events), len(recording.events)
 	tally = f"{count} bout{'s' * (count != 1)} of {kinds} event{'s' * (kinds != 1)}"
 	header = _card_head(
@@ -822,17 +920,7 @@ def _events_card_children(recording: Recording) -> list:
 		],
 		maximize=True,
 	)
-	strip = html.Div(
-		[
-			*lanes,
-			html.Span("Day", className="deh-ev-label deh-sub"),
-			html.Div(
-				[html.Div(className="deh-ev-band", style={"background": band(True)}), *ticks],
-				className="deh-ev-axis",
-			),
-		],
-		className="deh-ev-strip",
-	)
+	strip = html.Div([*lanes, *axis], className="deh-ev-strip")
 	table = html.Table(
 		[
 			html.Thead(

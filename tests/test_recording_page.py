@@ -251,5 +251,5 @@ def test_events_card_places_each_bout_on_the_recording_clock():
 		["Day 1 · dark", "24 May 23:00", "25 May 01:00", "2h", "Whole habitat"],
 	]
 	bar = strip.children[1].children[0]
-	assert bar.style["left"] == f"{100 * 37 / 72:.3f}%"
-	assert bar.style["width"] == f"{100 * 2.5 / 72:.3f}%"
+	assert bar.style["left"] == f"max(3px, {100 * 37 / 72:.3f}%)"
+	assert bar.style["right"] == f"max(3px, {100 - 100 * 39.5 / 72:.3f}%)"
