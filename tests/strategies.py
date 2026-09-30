@@ -22,6 +22,7 @@ from deepecohab.core.data_model import (
 	Animal,
 	Cage,
 	Cohort,
+	Device,
 	Event,
 	Layout,
 	Recording,
@@ -355,11 +356,12 @@ def analysis_recording(
 	tunnels_map: dict[str, str] | None = None,
 	root: Path | None = None,
 	events: list[Event] | None = None,
+	devices: list[Device] | None = None,
 ) -> Recording:
 	"""A fully-populated Recording for the antenna_analysis steps.
 
 	Carries everything the grid helpers need (timeline, cohort) plus the linear
-	layout above, and any ``events`` declared on it. ``root`` is where results would
+	layout above, and any ``events`` and ``devices`` declared on it. ``root`` is where results would
 	be written; tests that monkeypatch ``load_results`` can leave it unset.
 	"""
 	animal_ids = animal_ids or ["A", "B", "C"]
@@ -383,6 +385,7 @@ def analysis_recording(
 			tunnels_map or ANALYSIS_TUNNELS_MAP,
 		),
 		events=events or [],
+		devices=devices or [],
 		notes="",
 		data=pl.LazyFrame(
 			schema={

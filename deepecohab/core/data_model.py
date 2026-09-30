@@ -381,6 +381,7 @@ class Event(BaseModel):
 	name: str
 	description: str
 	bouts: list[Bout] = Field(min_length=1)
+	devices: list[str] | None = Field(default=None, min_length=1)
 
 	@model_validator(mode="after")
 	def _check_event(self) -> "Event":
@@ -391,6 +392,29 @@ class Event(BaseModel):
 					f"bouts of {self.name!r} overlap: {earlier.start} to {earlier.end} "
 					f"and {later.start} to {later.end}"
 				)
+		return self
+
+
+class Device(BaseModel):
+	"""An extra device in the habitat, such as a lickometer, read by an antenna or a TTL port.
+
+	Events name the devices they use by ``name``; ``device_type`` groups devices of one
+	kind, so two lickometers in different cages can be analysed together.
+	"""
+
+	model_config = ConfigDict(extra="forbid")
+
+	name: NonEmptyStr
+	device_type: NonEmptyStr
+	description: str
+	antenna: NonEmptyStr | None = None
+	position: str
+	TTL_port: NonEmptyStr | None = None
+
+	@model_validator(mode="after")
+	def _check_device(self) -> "Device":
+		if self.antenna is None and self.TTL_port is None:
+			raise ValueError(f"device {self.name!r} needs an antenna, a TTL_port or both")
 		return self
 
 
@@ -580,6 +604,7 @@ class Recording(BaseModel):
 	cohort: Cohort
 	layout: Layout
 	events: list[Event] = Field(default_factory=list)
+	devices: list[Device] = Field(default_factory=list)
 	notes: str
 	data: pl.LazyFrame = Field(exclude=True, repr=False)
 
@@ -793,6 +818,28 @@ class Recording(BaseModel):
 							f"a bout of {event.name!r} is in {position!r}, which the layout does "
 							f"not have; its positions are {positions}"
 						)
+		return self
+
+	@model_validator(mode="after")
+	def _check_devices(self) -> "Recording":
+		names = [device.name for device in self.devices]
+		if duplicates := sorted({name for name in names if names.count(name) > 1}):
+			raise ValueError(f"device names must be unique, got duplicates of {duplicates}")
+
+		for event in self.events:
+			if unknown := sorted(set(event.devices or ()) - set(names)):
+				raise ValueError(
+					f"event {event.name!r} uses devices {unknown}, which the recording does not "
+					f"have; its devices are {names}"
+				)
+
+		positions = self.layout.cage_names + self.layout.tunnel_names
+		for device in self.devices:
+			if device.position not in positions:
+				raise ValueError(
+					f"device {device.name!r} is in {device.position!r}, which the layout does "
+					f"not have; its positions are {positions}"
+				)
 		return self
 
 
