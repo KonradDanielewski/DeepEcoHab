@@ -146,6 +146,8 @@ Each recording is a set of files with the same name:
 - `<name>.diagnostic.json`, the acquisition software's diagnostics, which say when
   recording stopped and restarted.
 
+All three are required.
+
 To add recordings:
 
 1. Open the project's row, with the arrow or the project's name.
@@ -157,13 +159,25 @@ To add recordings:
 :alt: The Add recordings dialog with its drop zone
 :width: 60%
 
-Files group by name: `<name>.config.json` with `<name>.data.parquet`.
+Files group by name: `<name>.config.json`, `<name>.data.parquet` and `<name>.diagnostic.json`.
 ```
 
 The files are copied into the project, so the originals stay where they were. A recording
 missing a required file, one given two files of the same kind, a file that belongs to no
 recording, or metadata that does not validate, is listed in the dialog under **Not added**
 with the reason. Every other recording is added.
+
+A recording whose name is already in the project asks before it goes in. **Replace**
+swaps in the new files and discards the recording's results, so it must be analysed again;
+this is how you re-add a recording with a corrected config. **Skip** keeps the one already
+there. When several names are taken, tick the box to give the same answer for all of them.
+
+```{figure} images/app/replace-recording-modal.png
+:alt: The Replace recording dialog for a recording already in the project
+:width: 60%
+
+Replacing a recording discards its results.
+```
 
 ```{figure} images/app/project-recordings.png
 :alt: The project's six recordings listed as not analysed
@@ -323,7 +337,9 @@ The control bar.
 - **Hours** narrows the plots to part of the day. Hours count from the onset of the phase
   the recording starts with, and the labels show the clock time. The coloured band under
   the slider marks the light and the dark phase.
-- **Phases** switches the light and the dark phase on and off.
+- **Phases** switches the light and the dark phase on and off. It and **Hours** move
+  together: keeping one phase narrows Hours to that phase's stretch of the day, and
+  narrowing Hours ticks only the phases the window still overlaps.
 - **Label** names the animals by their **Tag** or their **Name** (the `subject_name` in the
   config) on the axes, network nodes and legends, whatever colours them.
 - **Animals by** colours the animals by their tag, or by any cohort attribute that differs
@@ -368,8 +384,10 @@ to settle before reading anything the analysis says.
   **Recording start** and **Recording end** show the clock time and how far each lies
   from a phase onset. A recording that started before the onset has time **lost**: what
   was recorded before the onset is left out. One that started after it has time **added**:
-  the first phase has no data for that long. One that ended before the next onset is
-  **short**: the last phase is short by that much. A gap of more than an hour shows as a
+  the first phase has no data for that long. The end is measured the same way against
+  the close of the config's `end_with` phase: a recording that ran past it has time
+  **lost**, and one that stopped before it is **short**, its last phase short by that
+  much. A gap of more than an hour shows as a
   warning. Hover a note for the details.
 - **Habitat**: the cages, tunnels and antennas as the recording's config lays them out.
   Each antenna is tinted by how many passes it missed. Click an antenna, or focus it and
@@ -518,17 +536,17 @@ The plot builder, with the preset "Time alone by genotype and sex" loaded.
 ```
 
 1. How **Value** is summed up (see [Value and metrics](#value-and-metrics)).
-2. **Clear shelves** takes every field off the shelves. Filters stay.
-3. How many recordings, rows and metrics the project table holds.
-4. Presets: ready-made plots, and the ones you saved.
-5. The plot type.
-6. The fields you can plot.
-7. Filters.
-8. The shelves: X, Y, Colour and the rest, depending on the plot type. A shelf marked `*`
+2. How many recordings, rows and metrics the project table holds.
+3. **Clear shelves** takes every field off the shelves. Filters stay.
+4. The plot type.
+5. The fields you can plot.
+6. Filters.
+7. The shelves: X, Y, Colour and the rest, depending on the plot type. A shelf marked `*`
    is required.
-9. The plot.
-10. **Save preset**. Next to it are **Reset**, which goes back to the preset you last loaded,
-    **Format**, **Export** and **Full screen**.
+8. The plot.
+9. **Presets**: ready-made plots, and the ones you saved (see [Presets](#presets)).
+10. **Save preset**. Before it is **Reset**, which goes back to the preset you last loaded;
+    after it come **Format**, **Export** and **Full screen**.
 
 ### Value and metrics
 
@@ -569,8 +587,17 @@ bar:
 
 ### Presets
 
-The built-in presets are a quick way to start. Click one to load it, then change what you
-like.
+The built-in presets are a quick way to start. **Presets**, above the plot, lists them,
+followed by the ones saved in the project and in this browser. Click one to see what it
+shows and a picture of it, then **Load preset** and change what you like. A built-in's
+picture is drawn from the example recordings; a saved preset's is the plot as it stood
+when it was saved. The preset on the plot now is marked **on the plot**.
+
+```{figure} images/app/builder-presets.png
+:alt: The Presets dialog, with the list on the left and a preview of the selected preset on the right
+
+The Presets dialog.
+```
 
 | preset | what it shows |
 |---|---|
@@ -581,18 +608,19 @@ like.
 | Activity around an event | activity in the hours an event ran, against the same clock hours on other days and all other hours |
 | Chasing against cohort size | one point per recording: are larger cohorts more aggressive per partner? |
 
-**Activity around an event** asks which event to use when you click it, with the number of
-recordings that declare each event. **Any event** pools them all.
+**Activity around an event** is listed only when the project declares events. Its preview
+has an **Event** list, with the number of recordings that declare each event; pick one
+before **Load preset**. **Any event** pools them all.
 
 ```{figure} images/app/builder-event-preset.png
-:alt: The event menu of the Activity around an event preset
-:width: 40%
+:alt: The preview of the Activity around an event preset, with its Event list
+:width: 70%
 
 The event preset asks which event to use.
 ```
 
-**Save preset** keeps the current plot, its filters and its formatting. Give it a name and
-choose where to keep it:
+**Save preset** keeps the current plot, its filters and its formatting. Give it a name, and
+optionally a note that the Presets dialog shows with it, and choose where to keep it:
 
 - **In this browser**: only you see it, on this computer.
 - **In the project**: it is written to `builder_presets.json` in the project folder, so
@@ -605,7 +633,8 @@ choose where to keep it:
 Saving a preset.
 ```
 
-A saved preset appears at the end of the presets strip. Its bin button deletes it. Once
+A saved preset appears in the Presets dialog after the built-in ones, with a picture of the
+plot as you saved it. Its bin button deletes it. Once
 you change a loaded preset, the plot's title says "(edited)", and **Reset** goes back
 to it.
 
