@@ -251,14 +251,9 @@ def quality_summary(context: PlotContext) -> dict:
 	rate = pl.when(passes > 0).then(100 * missed / passes).otherwise(0.0).alias("miss")
 
 	pooled = frame.select(counts).with_columns(rate).row(0, named=True)
-	worst = {
-		key: frame.group_by(key).agg(counts).select(key, rate).sort("miss", descending=True)
-		for key in ("antenna", "animal_id")
-	}
 
 	return {
 		**pooled,
-		"worst_antenna": worst["antenna"].row(0, named=True),
 		"antenna_stats": {
 			str(row.pop("antenna")): row
 			for row in frame.group_by("antenna")
@@ -266,7 +261,6 @@ def quality_summary(context: PlotContext) -> dict:
 			.with_columns(rate)
 			.iter_rows(named=True)
 		},
-		"worst_animal": worst["animal_id"].row(0, named=True),
 	}
 
 

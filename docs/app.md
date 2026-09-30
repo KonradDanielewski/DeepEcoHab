@@ -356,7 +356,7 @@ plot shows one line per animal whatever Group mean says.
 to settle before reading anything the analysis says.
 
 - **Detection quality**: the share of missed passes, the number of detections, the
-  worst antenna and the worst animal, the share of time an animal's position is unknown,
+  share of time an animal's position is unknown,
   and when the recording started and ended. The bands are provisional, to be
   confirmed on more recordings: under 1% missed is good, 1-2.5% needs checking, and 2.5%
   or more is poor.
