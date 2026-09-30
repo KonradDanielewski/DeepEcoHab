@@ -369,7 +369,10 @@ to settle before reading anything the analysis says.
   **short**: the last phase is short by that much. A gap of more than an hour shows as a
   warning. Hover a note for the details.
 - **Habitat**: the cages, tunnels and antennas as the recording's config lays them out.
-  Each antenna is tinted by how many passes it missed.
+  Each antenna is tinted by how many passes it missed. Click an antenna, or focus it and
+  press Enter, to see which cage end of which tunnel it sits at and its **correct**,
+  **interpolated** and **bad** passes and missed share. Click elsewhere or press Escape to
+  close it.
 - **Reads per antenna**, every pass pooled over the cohort and stacked to 100%: read
   (**correct**), filled in by the acquisition preprocessing (**interpolated**), or still
   unresolved (**bad**), so a failing antenna stands out.
