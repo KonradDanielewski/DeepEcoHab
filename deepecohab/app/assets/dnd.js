@@ -59,6 +59,20 @@
 		}
 	});
 
+	/* The browser's own edge scroll zone sits under the fixed header, so scroll ourselves.
+	   dragover keeps firing while the pointer rests, so a still cursor keeps scrolling. */
+	var EDGE = 60;
+
+	document.addEventListener("dragover", function (event) {
+		if (!dragged) return;
+		var header = document.querySelector(".mantine-AppShell-header");
+		var top = header ? header.getBoundingClientRect().bottom : 0;
+		var above = top + EDGE - event.clientY;
+		var below = event.clientY - (window.innerHeight - EDGE);
+		if (above > 0) window.scrollBy(0, -above / 6);
+		else if (below > 0) window.scrollBy(0, below / 6);
+	});
+
 	document.addEventListener("dragleave", function (event) {
 		var shelf = event.target.closest ? event.target.closest("[data-shelf]") : null;
 		if (shelf && !shelf.contains(event.relatedTarget)) {
