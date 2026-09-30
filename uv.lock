@@ -420,7 +420,7 @@ wheels = [
 
 [[package]]
 name = "deepecohab"
-version = "0.6.0rc3"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "kaleido" },
