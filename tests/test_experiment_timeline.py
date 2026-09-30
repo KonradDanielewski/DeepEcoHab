@@ -2,7 +2,8 @@
 
 Recordings are compared by where they are in their own experiment rather than by wall
 clock, so day 1 hour 0 is the first onset of the phase named in ``start_from`` and
-anything recorded before it is trimmed. These tests cover resolving that origin and the
+anything recorded before it is trimmed; the experiment ends at the close of the
+phase named in ``end_with``. These tests cover resolving that origin and the
 grid that follows from it - including the case the minute walk exists for, where one
 hourly bin holds two phases.
 """
@@ -32,13 +33,20 @@ STAGGERED = {"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 30)}
 at = partial(strategies.at, tz=TZ_NAME)
 
 
-def timeline(start: dt.datetime, end: dt.datetime, phases: dict, start_from: str) -> Timeline:
+def timeline(
+	start: dt.datetime,
+	end: dt.datetime,
+	phases: dict,
+	start_from: str,
+	end_with: str = "light_phase",
+) -> Timeline:
 	return Timeline(
 		start_datetime=start,
 		end_datetime=end,
 		recording_timezone=TZ,
 		phases=phases,
 		start_from=start_from,
+		end_with=end_with,
 	)
 
 
@@ -105,39 +113,95 @@ def test_leads_are_exclusive_and_measured_as_real_time():
 	assert crossing.unrecorded_lead == dt.timedelta(0)
 
 
-def test_tail_runs_to_the_next_onset_in_real_time():
-	"""The last phase is short by the time to the next onset of either phase.
+def test_end_is_the_end_of_the_nearest_end_with_phase():
+	"""Acquisition stops mid-dark; the experiment ends at the light onset that closes it."""
+	line = timeline(
+		at(2023, 5, 24, 20, 0), at(2023, 5, 27, 5, 0), ALIGNED, "dark_phase", "dark_phase"
+	)
+	assert line.experiment_end == at(2023, 5, 27, 7, 0)
+	assert line.unrecorded_tail == dt.timedelta(hours=2)
+	assert line.discarded_tail == dt.timedelta(0)
 
-	The last span ends before the spring-forward and the next onset comes after it, so
-	the wall clock reads an hour more than actually elapses.
-	"""
-	line = partial(timeline, at(2023, 3, 20, 20, 0), phases=ALIGNED, start_from="dark_phase")
 
-	assert line(at(2023, 3, 24, 4, 12)).unrecorded_tail == dt.timedelta(hours=2, minutes=48)
-	assert line(at(2023, 3, 24, 20, 0)).unrecorded_tail == dt.timedelta(0)
+def test_end_trims_data_recorded_past_the_onset():
+	line = timeline(
+		at(2023, 5, 24, 20, 0), at(2023, 5, 27, 9, 30), ALIGNED, "dark_phase", "dark_phase"
+	)
+	assert line.experiment_end == at(2023, 5, 27, 7, 0)
+	assert line.discarded_tail == dt.timedelta(hours=2, minutes=30)
+	assert line.unrecorded_tail == dt.timedelta(0)
+
+
+def test_end_on_the_onset_trims_nothing():
+	line = timeline(
+		at(2023, 5, 24, 20, 0), at(2023, 5, 27, 7, 0), ALIGNED, "dark_phase", "dark_phase"
+	)
+	assert line.experiment_end == at(2023, 5, 27, 7, 0)
+	assert line.discarded_tail == line.unrecorded_tail == dt.timedelta(0)
+
+
+def test_end_with_light_ends_at_the_dark_onset():
+	line = timeline(at(2023, 5, 24, 20, 0), at(2023, 5, 27, 18, 0), ALIGNED, "dark_phase")
+	assert line.experiment_end == at(2023, 5, 27, 20, 0)
+
+
+def test_tail_is_measured_in_real_time_across_a_dst_jump():
+	"""The wall clock reads an hour more than elapses over the spring-forward."""
+	line = partial(
+		timeline,
+		at(2023, 3, 20, 20, 0),
+		phases=ALIGNED,
+		start_from="dark_phase",
+		end_with="dark_phase",
+	)
+
 	assert line(at(2023, 3, 26, 1, 30)).unrecorded_tail == dt.timedelta(hours=4, minutes=30)
 
 
-def test_analysed_span_starts_at_the_experiment_start():
+def test_analysed_span_runs_from_experiment_start_to_experiment_end():
 	"""local_span is the one place the trim happens, so everything downstream inherits it."""
 	line = timeline(at(2023, 5, 24, 9, 30), at(2023, 5, 28, 0, 0), ALIGNED, "dark_phase")
-	span_start, span_end = line.local_span
 
-	assert span_start == line.experiment_start
-	assert span_end == at(2023, 5, 28, 0, 0)
+	assert line.local_span == (line.experiment_start, line.experiment_end)
+	assert line.local_span == (at(2023, 5, 24, 20, 0), at(2023, 5, 27, 20, 0))
 
 
 def test_days_range_counts_from_the_experiment_start():
 	"""The lead-in is not part of day 1, so it does not lengthen the recording."""
 	line = timeline(at(2023, 5, 24, 9, 30), at(2023, 5, 28, 20, 0), ALIGNED, "dark_phase")
 	# 20:00 on the 24th to 20:00 on the 28th is exactly four 24h days.
-	assert line.days_range == (1, 5)
+	assert line.days_range == (1, 4)
 
 
 def test_recording_ending_before_the_onset_is_rejected():
 	"""A recording that never reaches its start phase holds no experiment."""
 	with pytest.raises(ValidationError, match="holds no experiment"):
 		timeline(at(2023, 5, 24, 9, 30), at(2023, 5, 24, 18, 0), ALIGNED, "dark_phase")
+
+
+def test_end_with_must_name_a_defined_phase():
+	with pytest.raises(ValidationError, match="end_with"):
+		Timeline(
+			start_datetime=at(2023, 5, 24, 0, 0),
+			end_datetime=at(2023, 5, 28, 0, 0),
+			recording_timezone=TZ,
+			phases={"light_phase": dt.time(7, 0)},
+			start_from="light_phase",
+			end_with="light_phase",
+		)
+
+
+def test_end_with_is_required():
+	with pytest.raises(ValidationError, match="end_with"):
+		Timeline.model_validate(
+			{
+				"start_datetime": at(2023, 5, 24, 0, 0),
+				"end_datetime": at(2023, 5, 28, 0, 0),
+				"recording_timezone": TZ,
+				"phases": ALIGNED,
+				"start_from": "dark_phase",
+			}
+		)
 
 
 def test_start_from_must_name_a_defined_phase():
@@ -148,6 +212,7 @@ def test_start_from_must_name_a_defined_phase():
 			recording_timezone=TZ,
 			phases={"light_phase": dt.time(7, 0)},
 			start_from="dark_phase",
+			end_with="light_phase",
 		)
 
 
@@ -159,6 +224,7 @@ def test_usual_protocol_starts_minutes_before_dark():
 		finish="2023-05-28 20:00:00",
 		phases=ALIGNED,
 		start_from="dark_phase",
+		end_with="light_phase",
 	)
 	line = recording.timeline
 
@@ -189,6 +255,7 @@ def test_config_loaded_recording_keeps_only_registrations_inside_its_window():
 		finish="2023-05-26 20:00:00",
 		phases=ALIGNED,
 		start_from="dark_phase",
+		end_with="light_phase",
 	)
 	reads = [
 		at(2023, 5, 24, 19, 58),  # before the dark onset that starts the experiment
@@ -221,6 +288,7 @@ def staggered_recording():
 		finish="2023-05-27 20:30:00",
 		phases=STAGGERED,
 		start_from="dark_phase",
+		end_with="light_phase",
 	)
 
 
@@ -231,6 +299,7 @@ def aligned_recording():
 		finish="2023-05-27 20:00:00",
 		phases=ALIGNED,
 		start_from="dark_phase",
+		end_with="light_phase",
 	)
 
 
@@ -240,7 +309,7 @@ def test_aligned_onsets_give_exactly_one_row_per_hour():
 	grid = grids.build_time_grid(recording).collect()
 	span_start, span_end = recording.timeline.local_span
 
-	assert grid.height == int((span_end - span_start) // dt.timedelta(hours=1)) + 1
+	assert grid.height == int((span_end - span_start) // dt.timedelta(hours=1))
 	assert grid.select("day", "hour").is_duplicated().sum() == 0
 
 
@@ -283,6 +352,7 @@ def test_every_label_the_data_can_produce_has_a_grid_row(phases):
 		finish="2023-05-27 03:17:00",  # ends mid-hour as a real recording does
 		phases=phases,
 		start_from="dark_phase",
+		end_with="light_phase",
 	)
 	span_start, span_end = recording.timeline.local_span
 

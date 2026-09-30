@@ -219,7 +219,7 @@ def test_the_map_carries_its_svg_for_the_painter():
 def test_events_card_places_each_bout_on_the_recording_clock():
 	"""Day and phase count from the experiment start, as the window slider does.
 
-	The fixture runs 71 h from 24 May 00:00 UTC, light from 00:00 and dark from 12:00.
+	The fixture runs 72 h from 24 May 00:00 UTC, light from 00:00 and dark from 12:00.
 	"""
 	at = strategies.at
 	stimulus = Bout(start=at(2023, 5, 25, 13), end=at(2023, 5, 25, 15, 30), position=["cage_1"])
@@ -242,5 +242,5 @@ def test_events_card_places_each_bout_on_the_recording_clock():
 		["Day 1 · dark", "24 May 23:00", "25 May 01:00", "2h", "Whole habitat"],
 	]
 	bar = strip.children[1].children[0]
-	assert bar.style["left"] == f"{100 * 37 / 71:.3f}%"
-	assert bar.style["width"] == f"{100 * 2.5 / 71:.3f}%"
+	assert bar.style["left"] == f"{100 * 37 / 72:.3f}%"
+	assert bar.style["width"] == f"{100 * 2.5 / 72:.3f}%"

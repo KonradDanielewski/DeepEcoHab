@@ -47,7 +47,8 @@ file lists more animals, cages, tunnels or antenna pairs.
       "end_datetime": "2023-05-22T10:02:17+02:00",
       "recording_timezone": "Europe/Warsaw",
       "phases": {"light_phase": "01:00:00", "dark_phase": "13:00:00"},
-      "start_from": "dark_phase"
+      "start_from": "dark_phase",
+      "end_with": "dark_phase"
     },
     "cohort": {
       "animals": [
@@ -95,6 +96,10 @@ of that phase *nearest* to `start_datetime` - 13:00 in the example above - and d
 hours are counted from there. Data recorded before it is left out; if recording began after
 it, the first phase is simply short. Adding a recording warns when either gap exceeds an
 hour.
+
+`end_with` (required) does the same for the end: the experiment ends where the named phase
+*closes*, which is the onset of the other phase, nearest to `end_datetime`. Data recorded
+after it is left out; if recording stopped before it, the last phase is simply short.
 
 **Cohort.** Every animal field is required except `subject_name` and `treatment`, which may be
 left out or set to `null`. Text fields may not be empty. `tag` is the RFID tag used in

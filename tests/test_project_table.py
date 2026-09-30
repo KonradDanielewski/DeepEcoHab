@@ -360,9 +360,10 @@ def test_adding_a_trimmed_recording_warns_with_the_duration(tmp_path):
 	recording = strategies.analysis_recording(
 		tz=TZ,
 		start="2023-05-24 09:30:00",
-		finish="2023-05-27 00:00:00",
+		finish="2023-05-27 07:00:00",
 		phases={"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 0)},
 		start_from="dark_phase",
+		end_with="dark_phase",
 	)
 	recording.name = "late_start"
 	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
@@ -384,9 +385,10 @@ def test_adding_a_late_started_recording_reports_the_short_first_phase(tmp_path)
 		tz=TZ,
 		# The lead has to clear LEAD_WARNING_THRESHOLD for the warning to be raised at all.
 		start="2023-05-24 21:10:00",
-		finish="2023-05-27 00:00:00",
+		finish="2023-05-27 07:00:00",
 		phases={"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 0)},
 		start_from="dark_phase",
+		end_with="dark_phase",
 	)
 	recording.name = "just_missed"
 	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
@@ -415,9 +417,10 @@ def test_a_lead_under_the_threshold_is_quiet(tmp_path, start, name):
 	recording = strategies.analysis_recording(
 		tz=TZ,
 		start=start,
-		finish="2023-05-27 00:00:00",
+		finish="2023-05-27 07:00:00",
 		phases={"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 0)},
 		start_from="dark_phase",
+		end_with="dark_phase",
 	)
 	recording.name = name
 	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
@@ -439,9 +442,10 @@ def test_adding_an_untrimmed_recording_is_quiet(tmp_path):
 	recording = strategies.analysis_recording(
 		tz=TZ,
 		start="2023-05-24 20:00:00",
-		finish="2023-05-27 00:00:00",
+		finish="2023-05-27 07:00:00",
 		phases={"light_phase": dt.time(7, 0), "dark_phase": dt.time(20, 0)},
 		start_from="dark_phase",
+		end_with="dark_phase",
 	)
 	recording.name = "on_time"
 	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)

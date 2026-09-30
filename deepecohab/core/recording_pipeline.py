@@ -88,11 +88,20 @@ def build_main_df(recording: Recording, params: AnalysisParams) -> pl.LazyFrame:
 		.with_columns(
 			pl.min_horizontal("time_spent", pl.col("datetime") - pl.lit(start)).alias("time_spent")
 		)
+		# The window is half-open, so a row on its end (the carried tail, say) still belongs
+		# to the last hour rather than opening one the grid does not have.
 		.with_columns(
-			grids.get_phase(recording), grids.get_day(recording), grids.get_hour(recording)
+			pl.min_horizontal("datetime", pl.lit(end - dt.timedelta(microseconds=1))).alias(
+				"__label"
+			)
+		)
+		.with_columns(
+			grids.get_phase(recording, "__label"),
+			grids.get_day(recording, "__label"),
+			grids.get_hour(recording, "__label"),
 		)
 		.pipe(grids.assign_phase_count, recording)
-		.drop("__tail")
+		.drop("__tail", "__label")
 		# animal_id breaks datetime ties, so the row order - padded_df's row_id - is
 		# the same on every run.
 		.sort("datetime", "animal_id")

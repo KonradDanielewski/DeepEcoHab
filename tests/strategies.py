@@ -350,6 +350,7 @@ def analysis_recording(
 	finish: str = "2023-05-26 23:00:00",
 	phases: dict[str, dt.time] | None = None,
 	start_from: str = "light_phase",
+	end_with: str = "dark_phase",
 	antenna_combinations: dict[str, str] | None = None,
 	tunnels_map: dict[str, str] | None = None,
 	root: Path | None = None,
@@ -374,6 +375,7 @@ def analysis_recording(
 			recording_timezone=zone,
 			phases=phases or DEFAULT_PHASES,
 			start_from=start_from,
+			end_with=end_with,
 		),
 		cohort=make_cohort(animal_ids),
 		layout=make_layout(
