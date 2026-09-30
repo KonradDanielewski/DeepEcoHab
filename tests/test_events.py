@@ -109,7 +109,7 @@ def test_bouts_of_one_event_may_abut():
 			[event("x", Bout(start=at(0, 23), end=at(1, 1)))], "outside", id="before the window"
 		),
 		pytest.param(
-			[event("x", Bout(start=at(3, 22), end=at(4, 0)))], "outside", id="after the window"
+			[event("x", Bout(start=at(3, 22), end=at(4, 1)))], "outside", id="after the window"
 		),
 		pytest.param(
 			[event("x", Bout(start=at(1, 1), end=at(1, 2), position=["cage_9"]))],
@@ -214,6 +214,7 @@ def test_offset_datetimes_land_on_the_recording_clock():
 		finish="2023-05-22 10:02:17",
 		phases={"light_phase": dt.time(1, 0), "dark_phase": dt.time(13, 0)},
 		start_from="dark_phase",
+		end_with="light_phase",
 		events=[event("C21 injection", injection)],
 	)
 	frame = cells(recording)

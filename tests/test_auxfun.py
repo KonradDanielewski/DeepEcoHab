@@ -73,6 +73,7 @@ def test_phase_names_are_constrained_to_light_and_dark():
 			recording_timezone=TZ,
 			phases={"morning": dt.time(6), "day": dt.time(12), "night": dt.time(22)},
 			start_from="light_phase",
+			end_with="dark_phase",
 		)
 
 

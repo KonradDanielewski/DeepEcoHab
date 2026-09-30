@@ -85,7 +85,7 @@ def build_time_grid(recording: Recording) -> pl.LazyFrame:
 		pl.LazyFrame()
 		.select(
 			pl.datetime_range(
-				start, finish, interval="1m", closed="both", time_zone=timezone.key
+				start, finish, interval="1m", closed="left", time_zone=timezone.key
 			).alias("minute")
 		)
 		.with_columns(

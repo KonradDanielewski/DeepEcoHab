@@ -657,7 +657,9 @@ def _window_note(gap: dt.timedelta, text: str, hover: str) -> html.Span:
 def _window_tiles(line: Timeline) -> list[tuple]:
 	"""Acquisition start and end on the clock, each noted with how far it is off the phase grid."""
 	onset = f"the {line.phases[line.start_from]:%H:%M} {_human(line.start_from)} onset"
-	early, late, tail = line.discarded_lead, line.unrecorded_lead, line.unrecorded_tail
+	early, late = line.discarded_lead, line.unrecorded_lead
+	cut, tail = line.discarded_tail, line.unrecorded_tail
+	closing = f"the end of the {_human(line.end_with)}"
 	if early:
 		start = _window_note(
 			early,
@@ -673,13 +675,20 @@ def _window_tiles(line: Timeline) -> list[tuple]:
 		)
 	else:
 		start = _window_note(late, "on the onset", f"Started on {onset}.")
-	end = _window_note(
-		tail,
-		f"{_span(tail)} short" if tail else "on an onset",
-		f"Ended {_span(tail)} before the next phase onset; the last phase is short by as much."
-		if tail
-		else "Ended on a phase onset.",
-	)
+	if cut:
+		end = _window_note(
+			cut,
+			f"{_span(cut)} lost",
+			f"Ended {_span(cut)} after {closing}; what was recorded after it is left out.",
+		)
+	elif tail:
+		end = _window_note(
+			tail,
+			f"{_span(tail)} short",
+			f"Ended {_span(tail)} before {closing}; the last phase is short by as much.",
+		)
+	else:
+		end = _window_note(tail, "on an onset", f"Ended on {closing}.")
 	zone = line.recording_timezone
 	return [
 		("Recording start", f"{line.start_datetime.astimezone(zone):%H:%M}", start),

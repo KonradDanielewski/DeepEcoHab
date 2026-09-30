@@ -696,6 +696,7 @@ def test_phase_onsets_are_measured_from_the_start_onset():
 		start="2023-05-24 13:00:00",
 		phases={"light_phase": dt.time(1, 0), "dark_phase": dt.time(13, 0)},
 		start_from="dark_phase",
+		end_with="light_phase",
 	)
 
 	assert PlotContext.from_recording(recording).phases == {"light_phase": 12.0, "dark_phase": 0.0}

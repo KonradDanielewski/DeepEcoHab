@@ -9,6 +9,7 @@
       "end_datetime": "2023-12-29T10:43:43+01:00",
       "recording_timezone": "Europe/Warsaw",
       "start_from": "dark_phase",
+      "end_with": "dark_phase",
       "phases": {
         "light_phase": "00:00",
         "dark_phase": "12:00"

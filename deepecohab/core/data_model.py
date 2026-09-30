@@ -212,6 +212,7 @@ class Timeline(BaseModel):
 	recording_timezone: ZoneInfo
 	phases: dict[Literal["light_phase", "dark_phase"], dt.time]
 	start_from: Literal["light_phase", "dark_phase"]
+	end_with: Literal["light_phase", "dark_phase"]
 
 	@model_validator(mode="after")
 	def _check_timeline(self) -> "Timeline":
@@ -223,10 +224,17 @@ class Timeline(BaseModel):
 				f"start_from is {self.start_from!r} but phases only defines {sorted(self.phases)}."
 			)
 
-		if self.experiment_start >= self.end_datetime:
+		if self.end_with not in self.phases or len(self.phases) < 2:
 			raise ValueError(
-				f"The recording ends before {self.start_from!r} first starts, at "
-				f"{self.experiment_start}, so it holds no experiment to analyse."
+				f"end_with is {self.end_with!r}, which ends where the other phase begins, "
+				f"but phases only defines {sorted(self.phases)}."
+			)
+
+		if self.experiment_start >= self.experiment_end:
+			raise ValueError(
+				f"The recording holds no experiment to analyse: it would start at "
+				f"{self.experiment_start} ({self.start_from!r} onset) and end at "
+				f"{self.experiment_end} (end of {self.end_with!r})."
 			)
 		return self
 
@@ -265,32 +273,46 @@ class Timeline(BaseModel):
 		"""
 		return max(_elapsed(self.experiment_start, self.start_datetime), dt.timedelta(0))
 
+	@computed_field
+	@property
+	def experiment_end(self) -> dt.datetime:
+		"""When the experiment proper ends: the ``end_with`` phase's close nearest acquisition end.
+
+		A phase ends where the other one begins. Like :attr:`experiment_start`, this
+		can fall a little after recording stopped, which leaves the last phase short.
+		"""
+		end = self.end_datetime.astimezone(self.recording_timezone)
+		closing = next(phase for phase in self.phases if phase != self.end_with)
+		onset = self.phases[closing]
+
+		candidates = [
+			dt.datetime.combine(
+				end.date() + dt.timedelta(days=offset), onset, tzinfo=self.recording_timezone
+			)
+			for offset in (-1, 0, 1)
+		]
+		nearest = min(candidates, key=lambda moment: abs(_elapsed(end, moment)))
+		return _real_wall_clock(nearest, self.recording_timezone)
+
+	@property
+	def discarded_tail(self) -> dt.timedelta:
+		"""Data recorded after :attr:`experiment_end`, which the analysis leaves out."""
+		return max(_elapsed(self.experiment_end, self.end_datetime), dt.timedelta(0))
+
 	@property
 	def unrecorded_tail(self) -> dt.timedelta:
-		"""Time between the end of recording and the next phase onset, never captured.
+		"""Time between the end of recording and :attr:`experiment_end`, never captured.
 
-		The last phase is short by this much.
+		The last phase is short by this much, and no data is dropped.
 		"""
-		end = _real_wall_clock(self.end_datetime, self.recording_timezone)
-		onsets = (
-			dt.datetime.combine(
-				end.date() + dt.timedelta(days=n), hhmm, tzinfo=self.recording_timezone
-			)
-			for n in range(3)
-			for hhmm in set(self.phases.values())
-		)
-		return min(
-			_elapsed(end, onset)
-			for onset in onsets
-			if self._wall_clock_exists(onset) and _elapsed(end, onset) >= dt.timedelta(0)
-		)
+		return max(_elapsed(self.end_datetime, self.experiment_end), dt.timedelta(0))
 
 	@computed_field
 	@property
 	def days_range(self) -> tuple[int, int]:
 		"""Range of experiment days present in the recording."""
 		start, end = self.local_span
-		return (1, _elapsed(start, end) // dt.timedelta(days=1) + 1)
+		return (1, -(-_elapsed(start, end) // dt.timedelta(days=1)))
 
 	@computed_field
 	@property
@@ -300,12 +322,13 @@ class Timeline(BaseModel):
 
 	@property
 	def local_span(self) -> tuple[dt.datetime, dt.datetime]:
-		"""The analysed window - experiment start to recording end - in the recording timezone.
+		"""The analysed window - experiment start to experiment end - in the recording timezone.
 
 		Everything downstream takes its bounds from here, so the lead-in before
-		:attr:`experiment_start` is trimmed once, in one place.
+		:attr:`experiment_start` and the tail after :attr:`experiment_end` are trimmed
+		once, in one place.
 		"""
-		return self.experiment_start, _real_wall_clock(self.end_datetime, self.recording_timezone)
+		return self.experiment_start, self.experiment_end
 
 	def phase_boundaries(self) -> list[dt.datetime]:
 		"""Phase switch instants strictly inside the recording, in order."""
@@ -1396,6 +1419,27 @@ class Project(BaseModel):
 			)
 			self.log.warning("%r: %s", recording.name, note)
 			if lead > LEAD_WARNING_THRESHOLD:
+				warnings.warn(f"Recording {recording.name!r}: {note}.", stacklevel=2)
+
+		if discarded := line.discarded_tail:
+			trail = discarded
+			offset = f"{discarded} of data recorded after it is left out of the analysis"
+		elif unrecorded := line.unrecorded_tail:
+			trail = unrecorded
+			offset = (
+				f"recording stopped {unrecorded} before it, so that last phase is short by "
+				"as much and no data is dropped"
+			)
+		else:
+			trail, offset = dt.timedelta(0), ""
+
+		if offset:
+			note = (
+				f"the experiment ends at {line.experiment_end}, the nearest end of the "
+				f"{line.end_with}; {offset}"
+			)
+			self.log.warning("%r: %s", recording.name, note)
+			if trail > LEAD_WARNING_THRESHOLD:
 				warnings.warn(f"Recording {recording.name!r}: {note}.", stacklevel=2)
 
 		return recording, previous is not None
