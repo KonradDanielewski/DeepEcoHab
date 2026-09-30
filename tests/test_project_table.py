@@ -62,7 +62,7 @@ def write_recording(directory: Path, recording: Recording, hours: int) -> tuple[
 	diagnostic_path = directory / f"{recording.name}.diagnostic.json"
 
 	metadata_path.write_text(
-		json.dumps({"recording": recording.to_config()}, indent=2), encoding="utf-8"
+		json.dumps({"recording": recording.model_dump(mode="json")}, indent=2), encoding="utf-8"
 	)
 	raw_reads(recording, hours).write_parquet(data_path)
 	diagnostic_path.write_text(strategies.MINIMAL_DIAGNOSTIC, encoding="utf-8")

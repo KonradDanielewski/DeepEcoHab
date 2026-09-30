@@ -48,7 +48,9 @@ def project(tmp_path_factory) -> Project:
 
 	metadata_path = root / "rec1.config.json"
 	data_path = root / "rec1.data.parquet"
-	metadata_path.write_text(json.dumps({"recording": recording.to_config()}), encoding="utf-8")
+	metadata_path.write_text(
+		json.dumps({"recording": recording.model_dump(mode="json")}), encoding="utf-8"
+	)
 	_raw_reads(recording, hours=48).write_parquet(data_path)
 	diagnostic_path = root / "rec1.diagnostic.json"
 	diagnostic_path.write_text(strategies.MINIMAL_DIAGNOSTIC, encoding="utf-8")

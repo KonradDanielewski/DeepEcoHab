@@ -474,7 +474,7 @@ def loaded_with(antennas: list[str]) -> Recording:
 		},
 		schema=recording.data_schema,
 	)
-	return Recording.model_validate({**recording.to_config(), "data": frame})
+	return Recording.model_validate({**recording.model_dump(mode="json"), "data": frame})
 
 
 def test_antenna_the_layout_does_not_name_is_rejected():
@@ -492,13 +492,13 @@ def test_optional_column_is_accepted_when_present_and_typed():
 	"""internal_board_timestamp may be absent, but when present it must match its dtype."""
 	recording = loaded_with(["1"])
 	stamps = recording.data.with_columns(internal_board_timestamp=pl.col("datetime"))
-	Recording.model_validate({**recording.to_config(), "data": stamps})
+	Recording.model_validate({**recording.model_dump(mode="json"), "data": stamps})
 
 	untyped = stamps.with_columns(pl.col("internal_board_timestamp").cast(pl.Int64))
 	with pytest.raises(
 		ValidationError, match="internal_board_timestamp is Int64, expected Datetime"
 	):
-		Recording.model_validate({**recording.to_config(), "data": untyped})
+		Recording.model_validate({**recording.model_dump(mode="json"), "data": untyped})
 
 
 @pytest.mark.parametrize(
@@ -516,4 +516,6 @@ def test_optional_column_is_accepted_when_present_and_typed():
 def test_schema_mismatch_names_each_difference(change, problem):
 	recording = loaded_with(["1"])
 	with pytest.raises(ValidationError, match=f"schema mismatch - {problem}"):
-		Recording.model_validate({**recording.to_config(), "data": change(recording.data)})
+		Recording.model_validate(
+			{**recording.model_dump(mode="json"), "data": change(recording.data)}
+		)

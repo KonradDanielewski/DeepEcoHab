@@ -131,7 +131,7 @@ def test_recording_rejects_events_it_cannot_place(events, match):
 def test_config_without_events_still_loads():
 	"""Configs written before events existed have no such key."""
 	recording = strategies.analysis_recording()
-	config = recording.to_config()
+	config = recording.model_dump(mode="json")
 	del config["events"]
 
 	assert Recording.model_validate({**config, "data": recording.data}).events == []
@@ -141,7 +141,9 @@ def test_events_survive_a_config_round_trip():
 	recording = strategies.analysis_recording(
 		events=[event("social", Bout(start=at(1, 13), end=at(1, 14), position=["cage_1"]))]
 	)
-	restored = Recording.model_validate({**recording.to_config(), "data": recording.data})
+	restored = Recording.model_validate(
+		{**recording.model_dump(mode="json"), "data": recording.data}
+	)
 
 	assert restored.events == recording.events
 
