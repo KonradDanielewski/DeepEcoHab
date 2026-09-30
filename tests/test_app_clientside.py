@@ -179,6 +179,8 @@ eq(
 			group_mean: true,
 		},
 		false,
+		{},
+		{},
 	],
 	"filterControls merges into the controls it was given and enables group mean"
 );
@@ -194,6 +196,8 @@ eq(
 			group_mean: false,
 		},
 		true,
+		{},
+		{},
 	],
 	"filterControls forces group mean off and disables the switch when colouring by animal"
 );
@@ -215,6 +219,23 @@ eq(band.includes(" 0 47.916666666666664%"), true, "band splits at 11.5 h");
 hours([2, 5], [], {onsets: {light_phase: "07:00"}, start_from: "light_phase"});
 eq(painted["rec-hours-hint"].children, "3 of 24 h", "a narrowed hours hint");
 window.dash_clientside.set_props = () => {};
+
+// the phase chips and the hours slider move each other
+const twoPhases = {onsets: {light_phase: "07:00", dark_phase: "19:00"}, start_from: "light_phase"};
+fire("rec-phases");
+const byPhase = hours([0, 24], ["dark_phase"], twoPhases);
+eq(
+	[byPhase[0].hours, byPhase[2], byPhase[3]],
+	[[12, 23], [12, 24], {}],
+	"a phase chip sets the hours"
+);
+fire("rec-hours");
+const byHours = hours([0, 6], ["light_phase", "dark_phase"], twoPhases);
+eq(
+	[byHours[0].phases, byHours[2], byHours[3]],
+	[["light_phase"], {}, ["light_phase"]],
+	"the hours set the phase chips"
+);
 
 // --- toggleEvents: sets only the figures whose event items show the wrong way --------
 const sets = [];
