@@ -249,9 +249,10 @@ def update_notes(location: str, name: str, notes: str, tag: str | None = None) -
 def quality_summary(context: PlotContext) -> dict:
 	"""Pooled detection-quality stats for the header and the quality tab's tiles."""
 	frame = context.table("recording_quality").with_columns(pl.col("animal_id").cast(pl.String))
-	counts = pl.col("missed", "detected").sum()
-	passes = pl.col("missed") + pl.col("detected")
-	rate = pl.when(passes > 0).then(100 * pl.col("missed") / passes).otherwise(0.0).alias("miss")
+	counts = pl.col("correct", "interpolated", "bad").sum()
+	missed = pl.col("interpolated") + pl.col("bad")
+	passes = pl.col("correct") + missed
+	rate = pl.when(passes > 0).then(100 * missed / passes).otherwise(0.0).alias("miss")
 
 	pooled = frame.select(counts).with_columns(rate).row(0, named=True)
 	worst = {
@@ -264,6 +265,17 @@ def quality_summary(context: PlotContext) -> dict:
 		"worst_antenna": worst["antenna"].row(0, named=True),
 		"antenna_miss": {str(antenna): miss for antenna, miss in worst["antenna"].iter_rows()},
 		"worst_animal": worst["animal_id"].row(0, named=True),
+	}
+
+
+def reads_by_animal(context: PlotContext) -> dict[str, dict[str, int]]:
+	"""Each animal's ``correct``, ``interpolated`` and ``bad`` passes over every antenna."""
+	return {
+		row.pop("animal_id"): row
+		for row in context.table("recording_quality")
+		.group_by(pl.col("animal_id").cast(pl.String))
+		.agg(pl.col("correct", "interpolated", "bad").sum())
+		.iter_rows(named=True)
 	}
 
 

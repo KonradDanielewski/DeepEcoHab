@@ -376,7 +376,7 @@ layout = html.Div(
 										html.Code("<name>.config.json"),
 										" beside its ",
 										html.Code("<name>.data.parquet"),
-										" and, optionally, ",
+										" and ",
 										html.Code("<name>.diagnostic.json"),
 										". Files are copied into the project under the name "
 										"the config carries.",

@@ -141,8 +141,10 @@ Each recording is a set of files with the same name:
 
 - `<name>.config.json`, the recording's metadata: its habitat layout, light cycle, cohort
   and events;
-- `<name>.data.parquet`, the antenna registrations;
-- `<name>.diagnostic.json`, optional, the acquisition software's diagnostics.
+- `<name>.data.parquet`, the antenna registrations, with an `inserted` flag on the ones
+  the acquisition preprocessing interpolated;
+- `<name>.diagnostic.json`, the acquisition software's diagnostics, which say when
+  recording stopped and restarted.
 
 To add recordings:
 
@@ -368,10 +370,17 @@ to settle before reading anything the analysis says.
   warning. Hover a note for the details.
 - **Habitat**: the cages, tunnels and antennas as the recording's config lays them out.
   Each antenna is tinted by how many passes it missed.
-- **Missed passes per antenna**, pooled over the cohort, so a failing antenna stands out.
+- **Reads per antenna**, every pass pooled over the cohort and stacked to 100%: read
+  (**correct**), filled in by the acquisition preprocessing (**interpolated**), or still
+  unresolved (**bad**), so a failing antenna stands out.
 - **Missed passes by animal and antenna**, the share of each animal's passes over each
-  antenna that went unrecorded.
-- **Position unknown**, the time each animal spent where the antennas could not place it.
+  antenna that the antenna did not read.
+- **Position unknown**, the time each animal spent where the antennas could not place it,
+  with its correct, interpolated and bad passes.
+
+While recording was stopped, between two parts the diagnostics name, nothing is known:
+each animal keeps its last position up to the stop and is unknown from then until its
+first read after the restart. All counts cover the analysed window only.
 
 ```{figure} images/app/tab-diagnostics.png
 :alt: The Diagnostics tab

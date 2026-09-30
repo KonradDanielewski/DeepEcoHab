@@ -12,8 +12,15 @@ from plotly.subplots import make_subplots
 from deepecohab.core.data_model import Layout
 from deepecohab.plotting.animals import ColorMapping, collapse_legend
 from deepecohab.plotting.export import LEGEND_ITEM_PX, text_px
-from deepecohab.plotting.prepare import Heatmap
-from deepecohab.plotting.theme import AURORA, COLORBAR, FONT_SIZE, PHASE_BAND, sample_palette
+from deepecohab.plotting.prepare import READ_KINDS, Heatmap
+from deepecohab.plotting.theme import (
+	AURORA,
+	COLORBAR,
+	FONT_SIZE,
+	PHASE_BAND,
+	READ_LOOKS,
+	sample_palette,
+)
 
 
 def _tick_labels(names: list[str]) -> list[str]:
@@ -348,7 +355,7 @@ def _position_plot(
 		ticktext=_tick_labels(positions),
 	)
 	figure.update_yaxes(title_text=y_title)
-	figure.update_layout(barcornerradius=10, legend_title_text=mapping.legend_title)
+	figure.update_layout(barcornerradius=6, legend_title_text=mapping.legend_title)
 
 	return figure
 
@@ -1124,18 +1131,29 @@ def plot_quality_heatmap(matrix: np.ndarray, animals: list[str], antennas: list[
 
 
 def plot_quality_by_antenna(frame: pl.DataFrame) -> go.Figure:
-	"""Plots the pooled miss rate per antenna."""
-	figure = px.bar(
-		frame,
-		x="antenna",
-		y="miss_rate",
-		hover_data={"antenna": True, "miss_rate": ":.2f", "detected": True, "missed": True},
-		title="<b>Missed passes per antenna</b>",
+	"""Plots each antenna's passes as correct, interpolated and bad, stacked to 100%."""
+	antennas = frame["antenna"].cast(pl.String).to_list()
+	figure = go.Figure(
+		[
+			go.Bar(
+				x=antennas,
+				y=frame[f"{kind}_share"],
+				customdata=frame[kind],
+				name=kind.capitalize(),
+				legendgroup=f"reads-{kind}",
+				marker={"color": READ_LOOKS[kind], "line": {"width": 0}},
+				hovertemplate=(
+					f"{kind.capitalize()}: %{{customdata:,}} (%{{y:.2f}}%)<extra></extra>"
+				),
+			)
+			for kind in READ_KINDS
+		]
 	)
-	figure.update_traces(marker_line_width=0, marker_color=AURORA[0][1])
-	figure.update_layout(barcornerradius=10)
+	figure.update_layout(
+		barmode="stack", barcornerradius=10, hovermode="x unified", title="<b>Reads per antenna</b>"
+	)
 	figure.update_xaxes(title_text="<b>Antenna</b>", type="category")
-	figure.update_yaxes(title_text="<b>Missed [%]</b>")
+	figure.update_yaxes(title_text="<b>Passes [%]</b>", range=[0, 100])
 
 	return figure
 

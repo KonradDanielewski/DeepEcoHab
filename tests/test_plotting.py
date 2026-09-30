@@ -1021,8 +1021,9 @@ def test_quality_heatmap_pivots_miss_rate_by_animal_and_antenna(context):
 		{
 			"animal_id": [ANIMALS[0], ANIMALS[0], ANIMALS[1], ANIMALS[1]],
 			"antenna": [1, 2, 1, 2],
-			"detected": [10, 10, 10, 10],
-			"missed": [0, 5, 2, 0],
+			"correct": [10, 10, 10, 10],
+			"interpolated": [0, 2, 0, 0],
+			"bad": [0, 3, 2, 0],
 			"miss_rate": [0.0, 33.3, 16.7, 0.0],
 		}
 	)
@@ -1040,8 +1041,9 @@ def test_heatmap_rows_follow_the_label(context):
 		{
 			"animal_id": ANIMALS,
 			"antenna": [1] * 4,
-			"detected": [10] * 4,
-			"missed": [0, 1, 2, 3],
+			"correct": [10] * 4,
+			"interpolated": [0] * 4,
+			"bad": [0, 1, 2, 3],
 			"miss_rate": [0.0, 9.1, 16.7, 23.1],
 		}
 	)
@@ -1053,16 +1055,17 @@ def test_heatmap_rows_follow_the_label(context):
 
 
 def test_quality_by_antenna_pools_counts_rather_than_averaging_rates():
-	"""A pooled rate weighs by how much was actually seen, not by cell count."""
+	"""A pooled share weighs by how much was actually seen, not by cell count."""
 	quality = pl.DataFrame(
 		{
 			"animal_id": ["a", "a", "b", "b"],
 			"antenna": [1, 2, 1, 2],
-			# Antenna 1: 1 missed of 1001. Antenna 2: 1 missed of 2 - a high per-cell
-			# rate that must not outweigh antenna 1's much larger sample.
-			"detected": [1000, 1, 0, 1],
-			"missed": [1, 0, 0, 1],
-			"miss_rate": [0.1, 0.0, 0.0, 50.0],
+			# Antenna 1: 1 bad of 1001. Antenna 2: 1 bad and 1 interpolated of 4 - a high
+			# per-cell rate that must not outweigh antenna 1's much larger sample.
+			"correct": [1000, 1, 0, 1],
+			"interpolated": [0, 1, 0, 0],
+			"bad": [1, 0, 0, 1],
+			"miss_rate": [0.1, 50.0, 0.0, 50.0],
 		}
 	)
 	context = PlotContext(
@@ -1078,9 +1081,33 @@ def test_quality_by_antenna_pools_counts_rather_than_averaging_rates():
 
 	frame = prepare.prep_quality_by_antenna(context)
 
-	assert frame.sort("antenna")["miss_rate"].to_list() == pytest.approx(
-		[1 / 1001 * 100, 1 / 3 * 100]
+	frame = frame.sort("antenna")
+	assert frame["bad_share"].to_list() == pytest.approx([1 / 1001 * 100, 1 / 4 * 100])
+	assert frame["interpolated_share"].to_list() == pytest.approx([0.0, 1 / 4 * 100])
+	shares = frame.select(pl.sum_horizontal(pl.col("^.*_share$")))
+	assert shares.to_series().to_list() == pytest.approx([100.0, 100.0])
+
+
+def test_reads_per_antenna_stacks_every_kind_to_100_percent(context):
+	"""One bar per kind, stacked, each in its theme colour."""
+	quality = pl.DataFrame(
+		{
+			"animal_id": ANIMALS[:2],
+			"antenna": [1, 1],
+			"correct": [8, 9],
+			"interpolated": [1, 0],
+			"bad": [1, 1],
+			"miss_rate": [20.0, 10.0],
+		}
 	)
+	with_quality = replace(context, _loaded={**context._loaded, "recording_quality": quality})
+
+	figure = theme.apply(PlotRegistry.build("quality-antenna", with_quality), "dark")
+
+	assert figure.layout.barmode == "stack"
+	assert [bar.name for bar in figure.data] == ["Correct", "Interpolated", "Bad"]
+	assert sum(bar.y[0] for bar in figure.data) == pytest.approx(100.0)
+	assert [bar.marker.color for bar in figure.data] == list(theme.READ_LOOKS.values())
 
 
 def test_ranking_distribution_is_the_same_for_a_window_in_days_or_phases(context):

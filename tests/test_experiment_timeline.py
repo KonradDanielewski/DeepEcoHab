@@ -270,6 +270,7 @@ def test_config_loaded_recording_keeps_only_registrations_inside_its_window():
 			"antenna": ["1"] * len(reads),
 			"time_under": [dt.timedelta(milliseconds=100)] * len(reads),
 			"animal_id": ["A"] * len(reads),
+			"inserted": [False] * len(reads),
 		},
 		schema=recording.data_schema,
 	)

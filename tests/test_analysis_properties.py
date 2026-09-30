@@ -394,6 +394,7 @@ def pipeline_from_reads(reads: list[tuple], target: str) -> dict[str, pl.DataFra
 				"antenna": antenna,
 				"time_under": dt.timedelta(milliseconds=100),
 				"animal_id": animal,
+				"inserted": False,
 			}
 			for animal, offset, antenna in reads
 		],

@@ -418,6 +418,27 @@ class Device(BaseModel):
 		return self
 
 
+class Boundary(BaseModel):
+	"""A stretch between two recording parts when nothing was recorded, from ``diagnostic.json``.
+
+	``start`` is the last record before it and ``end`` the first after it. ``kind`` is
+	``observed_record_gap`` (silence between parts, cause unknown),
+	``confirmed_DAQ_inactive`` (a clean stop and restart) or ``abrupt_end``.
+	"""
+
+	model_config = ConfigDict(extra="ignore")
+
+	start: AwareDatetime
+	end: AwareDatetime
+	kind: Literal["observed_record_gap", "confirmed_DAQ_inactive", "abrupt_end"]
+
+	@model_validator(mode="after")
+	def _check_boundary(self) -> "Boundary":
+		if self.end <= self.start:
+			raise ValueError(f"a boundary must end after it starts, got {self.start} to {self.end}")
+		return self
+
+
 class AnalysisParams(BaseModel):
 	"""Tuning knobs for the analysis steps.
 
@@ -605,6 +626,7 @@ class Recording(BaseModel):
 	layout: Layout
 	events: list[Event] = Field(default_factory=list)
 	devices: list[Device] = Field(default_factory=list)
+	boundaries: list[Boundary] = Field(default_factory=list)
 	notes: str
 	data: pl.LazyFrame = Field(exclude=True, repr=False)
 
@@ -612,13 +634,17 @@ class Recording(BaseModel):
 
 	@property
 	def data_schema(self) -> pl.Schema:
-		"""Required input data schema; columns of `optional_data_schema` may follow it."""
+		"""Required input data schema, in order; columns of `optional_data_schema` may sit among it.
+
+		``inserted`` marks the rows acquisition preprocessing interpolated rather than read.
+		"""
 		return pl.Schema(
 			{
 				"datetime": pl.Datetime("us", time_zone=self.timeline.recording_timezone.key),
 				"antenna": pl.Categorical(),
 				"time_under": pl.Duration("us"),
 				"animal_id": pl.Enum(self.cohort.animal_tags),
+				"inserted": pl.Boolean(),
 			}
 		)
 
@@ -759,18 +785,20 @@ class Recording(BaseModel):
 	def _check_schema(self, info: ValidationInfo) -> "Recording":
 		path = Path((info.context or {}).get("data_path", "<data>")).name
 		found = self.data.collect_schema()
+		required = self.data_schema
 		optional = {col: dtype for col, dtype in self.optional_data_schema.items() if col in found}
-		expected = pl.Schema({**self.data_schema, **optional})
+		expected = {**required, **optional}
 
-		if found != expected:
-			problems = [f"no {col} column" for col in expected if col not in found]
-			problems += [f"unexpected {col} column" for col in found if col not in expected]
-			problems += [
-				f"{col} is {found[col]}, expected {dtype}"
-				for col, dtype in expected.items()
-				if col in found and found[col] != dtype
-			]
-			problems = problems or [f"columns must be in the order {', '.join(expected)}"]
+		problems = [f"no {col} column" for col in required if col not in found]
+		problems += [f"unexpected {col} column" for col in found if col not in expected]
+		problems += [
+			f"{col} is {found[col]}, expected {dtype}"
+			for col, dtype in expected.items()
+			if col in found and found[col] != dtype
+		]
+		if not problems and [col for col in found if col in required] != list(required):
+			problems = [f"columns must be in the order {', '.join(required)}"]
+		if problems:
 			raise ValueError(f"{path}: schema mismatch - {'; '.join(problems)}")
 		return self
 
@@ -821,6 +849,24 @@ class Recording(BaseModel):
 		return self
 
 	@model_validator(mode="after")
+	def _localize_boundaries(self) -> "Recording":
+		"""Boundaries in the recording's zone, in order: polars compares datetimes of one zone."""
+		zone = self.timeline.recording_timezone
+		self.boundaries = sorted(
+			(
+				boundary.model_copy(
+					update={
+						"start": boundary.start.astimezone(zone),
+						"end": boundary.end.astimezone(zone),
+					}
+				)
+				for boundary in self.boundaries
+			),
+			key=lambda boundary: boundary.start,
+		)
+		return self
+
+	@model_validator(mode="after")
 	def _check_devices(self) -> "Recording":
 		names = [device.name for device in self.devices]
 		if duplicates := sorted({name for name in names if names.count(name) > 1}):
@@ -850,8 +896,19 @@ class Recording(BaseModel):
 RECORDING_FILES: Final[dict[str, bool]] = {
 	"config.json": True,
 	"data.parquet": True,
-	"diagnostic.json": False,
+	"diagnostic.json": True,
 }
+
+
+class Diagnostic(BaseModel):
+	"""What the analysis takes from acquisition preprocessing's ``diagnostic.json``.
+
+	Only the recording boundaries; everything else in the file is left unread.
+	"""
+
+	model_config = ConfigDict(extra="ignore")
+
+	recording_boundaries: list[Boundary]
 
 
 class FailedRecording(NamedTuple):
@@ -1042,7 +1099,7 @@ class Project(BaseModel):
 
 		Args:
 			paths: the recording's files, named ``<name>.<suffix>`` for each suffix in
-				`RECORDING_FILES`; the optional ones may be left out.
+				`RECORDING_FILES`.
 			overwrite: replace a recording of the same name, listed or delisted, and
 				discard its results - how a recording is re-added with an edited config.
 
@@ -1398,7 +1455,13 @@ class Project(BaseModel):
 		failure, and with `FileExistsError` when the name is taken and ``overwrite`` is off.
 		"""
 		metadata = json.loads(files["config.json"].read_text(encoding="utf-8"))
-		recording = Recording.from_config(metadata["recording"], files["data.parquet"])
+		diagnostic = Diagnostic.model_validate_json(
+			files["diagnostic.json"].read_text(encoding="utf-8")
+		)
+		recording = Recording.from_config(
+			{**metadata["recording"], "boundaries": diagnostic.recording_boundaries},
+			files["data.parquet"],
+		)
 		root = self.project_location / recording.name
 
 		if root.exists() and not overwrite:
@@ -1496,6 +1559,12 @@ class Project(BaseModel):
 		"""Load one recording from its config.json, reattaching the sibling parquet."""
 		if not config_path.is_file():
 			raise FileNotFoundError(f"{config_path} is listed in the manifest but is missing.")
+		if not (config_path.parent / "raw" / "diagnostic.json").is_file():
+			raise FileNotFoundError(
+				f"Recording {config_path.parent.name!r} has no raw/diagnostic.json, which the "
+				"analysis now needs for its recording boundaries and interpolated reads. Add "
+				"it again with its <name>.diagnostic.json, passing overwrite=True."
+			)
 
 		recording = Recording.from_config(
 			json.loads(config_path.read_text(encoding="utf-8")),

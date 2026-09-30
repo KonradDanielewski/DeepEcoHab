@@ -684,9 +684,9 @@ def social_stability(
 	"quality-heatmap",
 	title="Missed passes by animal and antenna",
 	info=(
-		"An animal read at an antenna not connected to its previous one passed antennas that "
-		"never fired, each charged as a missed pass. Cells show the share of each animal's "
-		"passes per antenna that went unrecorded, a lower bound. Bright columns flag weak "
+		"A missed pass is one the antenna did not read: interpolated by preprocessing, or "
+		"still unresolved (bad). Cells show the share of each animal's passes per antenna "
+		"that were missed, a lower bound, inside the analysed window. Bright columns flag weak "
 		"antennas; bright rows, weak tags."
 	),
 	requires=("recording_quality", "animals"),
@@ -700,12 +700,12 @@ def quality_heatmap(context: PlotContext, *, label_by: LabelBy = "animal_id") ->
 
 @PlotRegistry.register(
 	"quality-antenna",
-	title="Missed passes per antenna",
+	title="Reads per antenna",
 	info=(
-		"A missed pass is an antenna an animal must have crossed between two reads the layout "
-		"doesn't connect. Bars pool the cohort: missed over missed plus detected, summed across "
-		"animals, so heavily sampled animals weigh more. One tall bar points to a marginal "
-		"antenna."
+		"Every pass over each antenna in the analysed window. Correct: read. Interpolated: "
+		"inserted by preprocessing. Bad: the layout says the animal crossed it unread and "
+		"nothing filled it in. Steps across a recording stop don't count. Bars pool the "
+		"cohort; a thick top flags a marginal antenna."
 	),
 	requires=("recording_quality",),
 )

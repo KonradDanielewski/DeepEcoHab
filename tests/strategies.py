@@ -48,6 +48,9 @@ CAGES = ["cage_1", "cage_2", "cage_3", "cage_4"]
 POSITIONS = [*CAGES, "tunnel_1", "tunnel_2"]
 PHASE_NAMES = ["light_phase", "dark_phase"]
 
+#: A recording's ``diagnostic.json`` with no recording boundaries.
+MINIMAL_DIAGNOSTIC = '{"recording_boundaries": []}'
+
 _MIN, _MAX = dt.datetime(2023, 1, 1), dt.datetime(2023, 12, 31)
 
 # --- strategies --------------------------------------------------------------
@@ -393,6 +396,7 @@ def analysis_recording(
 				"antenna": pl.Categorical(),
 				"time_under": pl.Duration("us"),
 				"animal_id": pl.Enum(sorted(animal_ids)),
+				"inserted": pl.Boolean(),
 			}
 		),
 	)

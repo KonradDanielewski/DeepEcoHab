@@ -74,11 +74,17 @@ def build_main_df(recording: Recording, params: AnalysisParams) -> pl.LazyFrame:
 		recording.data.sort("datetime")
 		# Trailing data out first, so the extrapolation anchors on the window and not on it.
 		.filter(pl.col("datetime") <= end)
-		.pipe(transforms.extrapolate_last_position, end, params.extrapolation_limit)
+		.pipe(transforms.with_segments, recording.boundaries)
+		.pipe(
+			transforms.extrapolate_last_position,
+			recording.boundaries,
+			end,
+			params.extrapolation_limit,
+		)
 		.pipe(transforms.calculate_time_spent)
 		.pipe(transforms.get_animal_position, recording.layout.antenna_combinations)
 		.with_columns(
-			pl.when(pl.col("__tail"))
+			pl.when(pl.col("__undefined"))
 			.then(pl.lit(Layout.UNDEFINED))
 			.otherwise(pl.col("position"))
 			.cast(pl.Categorical)
@@ -101,7 +107,7 @@ def build_main_df(recording: Recording, params: AnalysisParams) -> pl.LazyFrame:
 			grids.get_hour(recording, "__label"),
 		)
 		.pipe(grids.assign_phase_count, recording)
-		.drop("__tail", "__label")
+		.drop("__undefined", "__segment", "__label")
 		# animal_id breaks datetime ties, so the row order - padded_df's row_id - is
 		# the same on every run.
 		.sort("datetime", "animal_id")
@@ -289,16 +295,19 @@ def _routes_frame(routes: dict[tuple[str, str], list[str]]) -> pl.LazyFrame:
 def build_recording_quality(recording: Recording, params: AnalysisParams) -> pl.LazyFrame:
 	"""Frame of how much of each animal's movement the antennas actually caught.
 
-	An animal that turns up at an antenna the layout does not join to the one before
-	it passed antennas that never fired. Every such step is charged to the antennas
-	the animal must have crossed, which is what makes the rate one per antenna rather
-	than one per recording: a column that stands out is a weak antenna, a row a weak
-	transponder.
+	Every pass is ``correct`` (read), ``interpolated`` (inserted by acquisition
+	preprocessing) or ``bad``. An animal that turns up at an antenna the layout does
+	not join to the one before it passed antennas that never fired and preprocessing
+	did not fill in; every such step is charged as bad to the antennas the animal must
+	have crossed, which is what makes the rate one per antenna rather than one per
+	recording: a column that stands out is a weak antenna, a row a weak transponder.
+	A step across a recording boundary is not a pass - nothing was recording.
 
 	Returns:
-		One row per animal and antenna, with the ``detected`` and ``missed`` pass
-		counts and ``miss_rate``, the percentage of that animal's passes over that
-		antenna which went unrecorded. The rate is a lower bound.
+		One row per animal and antenna, with the ``correct``, ``interpolated`` and
+		``bad`` pass counts inside the analysed window and ``miss_rate``, the
+		percentage of that animal's passes over that antenna the antenna did not read.
+		The rate is a lower bound.
 	"""
 	start, end = recording.timeline.local_span
 	antenna_combinations = recording.layout.antenna_combinations
@@ -306,7 +315,10 @@ def build_recording_quality(recording: Recording, params: AnalysisParams) -> pl.
 	steps = (
 		recording.data.filter(pl.col("datetime").is_between(start, end))
 		.sort("datetime")
-		.with_columns(pl.col("antenna").shift(1).over("animal_id").alias("previous_antenna"))
+		.pipe(transforms.with_segments, recording.boundaries)
+		.with_columns(
+			pl.col("antenna").shift(1).over("animal_id", "__segment").alias("previous_antenna")
+		)
 		.join(
 			_routes_frame(topology.unique_routes(antenna_combinations)),
 			on=["previous_antenna", "antenna"],
@@ -314,13 +326,16 @@ def build_recording_quality(recording: Recording, params: AnalysisParams) -> pl.
 		)
 	)
 
-	detected = steps.group_by("animal_id", "antenna").len("detected")
-	missed = (
+	read = steps.group_by("animal_id", "antenna").agg(
+		(~pl.col("inserted")).sum().alias("correct"), pl.col("inserted").sum().alias("interpolated")
+	)
+	bad = (
 		steps.filter(pl.col("crossed").is_not_null())
 		.explode("crossed")
 		.group_by("animal_id", pl.col("crossed").alias("antenna"))
-		.len("missed")
+		.len("bad")
 	)
+	passes = pl.sum_horizontal("correct", "interpolated", "bad")
 
 	antennas = sorted(topology.antennas(antenna_combinations))
 	grid = grids.build_animal_grid(recording, "animal_id").join(
@@ -328,12 +343,12 @@ def build_recording_quality(recording: Recording, params: AnalysisParams) -> pl.
 	)
 
 	return (
-		grid.join(detected, on=["animal_id", "antenna"], how="left")
-		.join(missed, on=["animal_id", "antenna"], how="left")
-		.with_columns(pl.col("detected", "missed").fill_null(0))
+		grid.join(read, on=["animal_id", "antenna"], how="left")
+		.join(bad, on=["animal_id", "antenna"], how="left")
+		.with_columns(pl.col("correct", "interpolated", "bad").fill_null(0).cast(pl.UInt32))
 		.with_columns(
-			pl.when(pl.col("detected") + pl.col("missed") > 0)
-			.then(100 * pl.col("missed") / (pl.col("detected") + pl.col("missed")))
+			pl.when(passes > 0)
+			.then(100 * (pl.col("interpolated") + pl.col("bad")) / passes)
 			.otherwise(0.0)
 			.alias("miss_rate")
 		)
