@@ -341,10 +341,6 @@ def _meta_strip(summary: dict) -> list:
 						[f"{quality['miss']:.2f}% missed ", _quality_badge(quality["miss"])],
 						id="rec-quality-jump",
 						className="deh-btn deh-btn-ghost sm",
-						title=(
-							f"Worst antenna {quality['worst_antenna']['antenna']}: "
-							f"{quality['worst_antenna']['miss']:.2f}% missed"
-						),
 					)
 				]
 				if quality is not None
@@ -595,16 +591,6 @@ def _quality_summary_children(context: PlotContext) -> list:
 				f"{quality['interpolated']:,} interpolated · {quality['bad']:,} bad",
 				className="deh-sub",
 			),
-		),
-		(
-			"Worst antenna",
-			f"Antenna {quality['worst_antenna']['antenna']}",
-			html.Span(f"{quality['worst_antenna']['miss']:.2f}% missed", className="deh-sub"),
-		),
-		(
-			"Worst animal",
-			quality["worst_animal"]["animal_id"],
-			html.Span(f"{quality['worst_animal']['miss']:.2f}% missed", className="deh-sub"),
 		),
 	]
 	if "activity_df" in context and "phase_durations" in context:
