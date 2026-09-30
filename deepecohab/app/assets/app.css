@@ -2317,6 +2317,53 @@ code {
 	dominant-baseline: central;
 }
 
+.deh-hab-ant {
+	cursor: pointer;
+	outline: none;
+}
+
+.deh-hab-ant:hover circle,
+.deh-hab-ant:focus-visible circle {
+	stroke-width: 3;
+}
+
+/* Anchored under the antenna by deh; a popover's UA inset/margin would centre it instead. */
+.deh-hab-pop {
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	translate: -50% 0;
+	display: none;
+	grid-template-columns: auto auto;
+	gap: 2px 14px;
+	padding: 8px 12px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--surface);
+	box-shadow: var(--shadow-lg);
+	color: var(--ink);
+	font-size: 12px;
+}
+
+.deh-hab-pop:popover-open {
+	display: grid;
+}
+
+.deh-hab-pop b {
+	grid-column: 1 / -1;
+	margin-bottom: 4px;
+	font-weight: 600;
+}
+
+.deh-hab-pop span:nth-child(even) {
+	color: var(--ink-3);
+}
+
+.deh-hab-pop span:nth-child(odd) {
+	font: 600 12px var(--mono);
+	text-align: right;
+}
+
 .deh-hab-ant.warn circle {
 	fill: var(--warn-soft);
 	stroke: var(--warn);

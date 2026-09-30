@@ -263,7 +263,13 @@ def quality_summary(context: PlotContext) -> dict:
 	return {
 		**pooled,
 		"worst_antenna": worst["antenna"].row(0, named=True),
-		"antenna_miss": {str(antenna): miss for antenna, miss in worst["antenna"].iter_rows()},
+		"antenna_stats": {
+			str(row.pop("antenna")): row
+			for row in frame.group_by("antenna")
+			.agg(counts)
+			.with_columns(rate)
+			.iter_rows(named=True)
+		},
 		"worst_animal": worst["animal_id"].row(0, named=True),
 	}
 

@@ -575,6 +575,28 @@ document.addEventListener("keydown", function (event) {
 	document.querySelectorAll(".deh-card.is-max").forEach((card) => card.classList.remove("is-max"));
 });
 
+/* Habitat map: an antenna opens its reads in a native popover, which dismisses itself on an
+ * outside click or Escape. data-pop is markup components.py has already escaped. */
+let _habPop = null;
+function _openAntenna(event) {
+	const ant = event.target.closest && event.target.closest(".deh-hab-ant[data-pop]");
+	if (!ant || (event.type === "keydown" && event.key !== "Enter" && event.key !== " ")) return;
+	event.preventDefault();
+	if (!_habPop) {
+		_habPop = document.body.appendChild(document.createElement("div"));
+		_habPop.className = "deh-hab-pop";
+		_habPop.popover = "auto";
+	}
+	_habPop.innerHTML = ant.dataset.pop;
+	const at = ant.getBoundingClientRect();
+	_habPop.style.left = `${at.left + at.width / 2}px`;
+	_habPop.style.top = `${at.bottom + 6}px`;
+	_habPop.showPopover();
+}
+document.addEventListener("click", _openAntenna);
+document.addEventListener("keydown", _openAntenna);
+document.addEventListener("scroll", () => _habPop && _habPop.hidePopover(), true);
+
 
 window.dash_clientside.deh = {
 	/* --- shell ------------------------------------------------------------ */

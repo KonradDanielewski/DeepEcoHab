@@ -959,7 +959,7 @@ def _habitat_card_children(context: PlotContext, height: int) -> list:
 			f"{len(layout.cages)} cages, {len(layout.tunnels)} tunnels and ",
 			f"{len(topology.antennas(layout.antenna_combinations))} antennas, as ",
 			html.Code("config.json"),
-			" lays them out. Antennas are tinted by missed passes.",
+			" lays them out. Antennas are tinted by missed passes; click one for its reads.",
 		],
 		maximize=True,
 	)
@@ -967,10 +967,10 @@ def _habitat_card_children(context: PlotContext, height: int) -> list:
 	# The map is drawn from the layout alone, so this card is the one that renders for a
 	# recording whose pipeline has never run; the antennas just draw plain until there is a
 	# quality table to band them by.
-	antenna_miss = None
+	antenna_stats = None
 	reads = ("layout",)
 	if "recording_quality" in context:
-		antenna_miss = services.quality_summary(context)["antenna_miss"]
+		antenna_stats = services.quality_summary(context)["antenna_stats"]
 		reads = ("layout", "recording_quality")
 
 	return [
@@ -978,7 +978,7 @@ def _habitat_card_children(context: PlotContext, height: int) -> list:
 		*components.habitat_map(
 			layout,
 			f"Habitat of {context.recording.name}",
-			antenna_miss=antenna_miss,
+			antenna_stats=antenna_stats,
 			height=height,
 		),
 		html.Footer(_reads(reads), className="deh-card-foot"),
