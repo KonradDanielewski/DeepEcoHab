@@ -223,6 +223,7 @@ def test_reduce_dispatches_every_trigger(frame, fields, monkeypatch):
 			{"location": "somewhere"},
 			None,
 			[],
+			None,
 		)
 
 	held = figure.new_state()

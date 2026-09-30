@@ -78,7 +78,9 @@ layout = html.Div(
 		# every state change, which would otherwise fire their server callbacks each time.
 		dcc.Store(id="builder-action"),
 		dcc.Store(id="preset-delete-event"),
-		dcc.Store(id="builder-save-strip-event"),
+		dcc.Store(id="preset-select-event"),
+		dcc.Store(id="builder-preset-selected"),
+		dcc.Store(id="preset-save-thumb"),
 		dcc.Store(id="builder-kind"),
 		dcc.Store(id="builder-project"),
 		dcc.Store(id="builder-state"),
@@ -87,6 +89,19 @@ layout = html.Div(
 		dcc.Store(id="builder-presets-local", storage_type="local", data=[]),
 		dcc.Store(id="builder-presets-bump", data=0),
 		html.Div(id="builder-body"),
+		dmc.Modal(
+			id="builder-presets-modal",
+			title="Presets",
+			size=960,
+			classNames=components.DIALOG_CLASSES,
+			children=html.Div(
+				[
+					html.Div(id="builder-presets", className="deh-preset-list"),
+					html.Div(id="builder-preset-preview", className="deh-preset-preview"),
+				],
+				className="deh-presets",
+			),
+		),
 		dmc.Modal(
 			id="preset-save-modal",
 			title="Save preset",
@@ -560,103 +575,101 @@ def _outlier_children(state: dict) -> list:
 	]
 
 
-def _preset_card(pid: str, name: str, description: str, scope: str, active: bool) -> html.Button:
-	scope_icon, scope_label = _SCOPE[scope]
-	children = [
-		html.B(name),
-		html.Span(description, className="deh-sub"),
-		html.Span([icon(scope_icon, size=12), scope_label], className="deh-preset-scope"),
+def _preset_entries(project, location: str, saved_local: list, theme: str) -> list[dict]:
+	"""Every preset the dialog lists: built-ins, then the project's, then this browser's.
+
+	A built-in's thumbnail is its plot over the example recordings, rendered by
+	``scripts/preset_thumbnails.py``; a saved one's is the plot as it stood when saved.
+	"""
+	entries = [
+		{
+			"id": preset.id,
+			"name": preset.name,
+			"description": preset.description,
+			"scope": "built-in",
+			"thumbnail": dash.get_asset_url(f"presets/{preset.id}-{theme}.png"),
+		}
+		for preset in presets_mod.BUILTINS
+		if not preset.needs_event or project.event_names()
 	]
-	if scope != "built-in":
-		children.append(
-			html.Button(
-				icon("trash", size=14),
-				className="deh-icon-btn sm deh-preset-x",
-				id={"type": "preset-delete", "id": pid, "scope": scope},
-				title=f"Delete {name}",
-			)
-		)
-	return html.Button(
-		children,
-		id={"type": "preset-pick", "id": pid},
-		className="deh-preset",
-		**{"aria-pressed": "true" if active else "false"},  # ty: ignore[invalid-argument-type]
-	)
-
-
-def _slot_preset_card(
-	preset: presets_mod.Preset, choices: list[str], counts: dict, active: bool
-) -> dmc.Menu:
-	items = [
-		dmc.MenuItem(
-			f"{choice} · {counts.get(choice, 0)} recordings",
-			leftSection=icon("bolt", size=14),
-			id={"type": "preset-slot", "id": preset.id, "choice": choice},
-		)
-		for choice in choices
-	]
-	trigger = html.Div(
-		[
-			html.B(preset.name),
-			html.Span(preset.description, className="deh-sub"),
-			html.Span([icon("template", size=12), "built in"], className="deh-preset-scope"),
-		],
-		className="deh-preset",
-		**{"aria-pressed": "true" if active else "false"},  # ty: ignore[invalid-argument-type]
-	)
-	return dmc.Menu(
-		[dmc.MenuTarget(trigger), dmc.MenuDropdown([dmc.MenuLabel("Which event?"), *items])],
-		classNames={"dropdown": "deh-menu"},
-	)
-
-
-def _presets_children(
-	project, location: str, state: dict, last_preset: dict | None, saved_local: list
-) -> list:
-	def matched(pid: str) -> bool:
-		return (
-			last_preset is not None
-			and last_preset["id"] == pid
-			and state == last_preset.get("state")
-		)
-
-	cards: list = []
-	counts = None
-	for preset in presets_mod.BUILTINS:
-		if preset.needs_event:
-			choices = project.event_names()
-			if not choices:
-				continue
-			counts = counts or services.event_recording_counts(project)
-			cards.append(_slot_preset_card(preset, choices, counts, matched(preset.id)))
-		else:
-			cards.append(
-				_preset_card(
-					preset.id, preset.name, preset.description, "built-in", matched(preset.id)
-				)
-			)
 	for scope, saved in (
 		("project", services.load_saved_presets(location)),
 		("browser", saved_local or []),
 	):
-		for preset in saved:
-			cards.append(
-				_preset_card(
-					preset["id"],
-					preset["name"],
-					preset.get("description", ""),
-					scope,
-					matched(preset["id"]),
-				)
+		entries += [{**preset, "scope": scope} for preset in saved]
+	return entries
+
+
+def _preset_item(entry: dict, selected: bool, loaded: bool) -> html.Button:
+	scope_icon, scope_label = _SCOPE[entry["scope"]]
+	children = [
+		html.B(entry["name"]),
+		html.Span(
+			[icon(scope_icon, size=12), scope_label + (" · on the plot" if loaded else "")],
+			className="deh-preset-scope",
+		),
+	]
+	if entry["scope"] != "built-in":
+		children.append(
+			html.Button(
+				icon("trash", size=14),
+				className="deh-icon-btn sm deh-preset-x",
+				id={"type": "preset-delete", "id": entry["id"], "scope": entry["scope"]},
+				title=f"Delete {entry['name']}",
 			)
-	cards.append(
-		html.Button(
-			[icon("bookmark-plus", size=16), "Save current"],
-			id="builder-save-strip",
-			className="deh-preset deh-preset-add",
 		)
+	return html.Button(
+		children,
+		id={"type": "preset-select", "id": entry["id"]},
+		className="deh-preset",
+		**{"aria-pressed": "true" if selected else "false"},  # ty: ignore[invalid-argument-type]
 	)
-	return cards
+
+
+def _preset_preview(entry: dict, project) -> list:
+	"""The dialog's right side: what the preset shows, a picture of it, and how to load it."""
+	thumbnail = entry.get("thumbnail")
+	shot = (
+		html.Img(src=thumbnail, alt=entry["name"])
+		if thumbnail
+		else html.Span("No picture was saved with this preset.", className="deh-sub")
+	)
+	caption = "Drawn from the example recordings." if entry["scope"] == "built-in" else None
+
+	actions = [
+		html.Button(
+			"Load preset",
+			id={"type": "preset-pick", "id": entry["id"]},
+			className="deh-btn deh-btn-primary",
+		)
+	]
+	preset = presets_mod.BY_ID.get(entry["id"])
+	if preset is not None and preset.needs_event:
+		counts = services.event_recording_counts(project)
+		choices = project.event_names()
+		actions[:0] = [
+			html.Span("Event", className="deh-sub"),
+			dmc.Select(
+				id="preset-event-pick",
+				data=[
+					{"value": choice, "label": f"{choice} · {counts.get(choice, 0)} recordings"}
+					for choice in choices
+				],
+				value="Any event" if "Any event" in choices else choices[0],
+				allowDeselect=False,
+				leftSection=icon("bolt", size=14),
+				w=320,
+				classNames={"input": "deh-input"},
+			),
+		]
+	return [
+		html.Div(
+			[html.B(entry["name"]), html.P(entry.get("description") or "No note.")],
+			className="deh-preset-about",
+		),
+		html.Figure([shot, caption and html.Figcaption(caption)], className="deh-preset-shot"),
+		html.Div(actions, className="deh-preset-actions"),
+	]
 
 
 def _alerts_children(note_texts: list[str]) -> list:
@@ -706,6 +719,11 @@ def _graph_head(title_children: list, reset_disabled: bool) -> html.Div:
 				className="deh-btn deh-btn-ghost sm",
 				disabled=reset_disabled,
 				title="Back to the last preset you loaded",
+			),
+			html.Button(
+				[icon("template", size=15), "Presets"],
+				id="builder-presets-open",
+				className="deh-btn deh-btn-ghost sm",
 			),
 			html.Button(
 				[icon("bookmark-plus", size=15), "Save preset"],
@@ -792,7 +810,7 @@ def _bare(paths: list[str] | None, pid: str | None, message: str) -> html.Div:
 
 
 def _dashboard(
-	project, location, paths, frame, fields, state, last_preset, saved_local, theme, search=""
+	project, location, paths, frame, fields, state, last_preset, theme, search=""
 ) -> html.Div:
 	fig, note_texts = _graph_children(frame, fields, state, theme)
 	title_children, reset_disabled = _graph_title(state, last_preset)
@@ -825,22 +843,17 @@ def _dashboard(
 					html.Div(
 						_outlier_children(state), id="builder-outlier-row", className="deh-seg-row"
 					),
+					html.Span(className="deh-grow"),
+					html.Span(
+						_status_text(project, frame), id="builder-status", className="deh-b-status"
+					),
 					html.Button(
 						[icon("eraser", size=15), "Clear shelves"],
 						id="builder-clear",
 						className="deh-btn deh-btn-ghost",
 					),
-					html.Span(className="deh-grow"),
-					html.Span(
-						_status_text(project, frame), id="builder-status", className="deh-b-status"
-					),
 				],
 				className="deh-b-toolbar",
-			),
-			html.Div(
-				_presets_children(project, location, state, last_preset, saved_local),
-				id="builder-presets",
-				className="deh-presets",
 			),
 			html.Div(_types_children(state), id="builder-types", className="deh-types"),
 			html.Div(
@@ -902,10 +915,9 @@ def _dashboard(
 	State("builder-project", "data"),
 	State("builder-state", "data"),
 	State("builder-last-preset", "data"),
-	State("builder-presets-local", "data"),
 	prevent_initial_call="initial_duplicate",
 )
-def _resolve(pathname, search, theme, paths, current, current_state, last_preset, saved_local):
+def _resolve(pathname, search, theme, paths, current, current_state, last_preset):
 	if pathname != PATH:
 		raise PreventUpdate
 
@@ -948,9 +960,7 @@ def _resolve(pathname, search, theme, paths, current, current_state, last_preset
 		state = figure.seed_detail(figure.new_state(), fields)
 		last_preset = None
 
-	body = _dashboard(
-		project, location, paths, frame, fields, state, last_preset, saved_local, theme
-	)
+	body = _dashboard(project, location, paths, frame, fields, state, last_preset, theme)
 	return body, opened, state, last_preset
 
 
@@ -1000,27 +1010,22 @@ def _render_palette(search, kind, project_data):
 	Output("builder-graph-title", "children"),
 	Output("builder-reset", "disabled"),
 	Output("builder-graph", "figure"),
-	Output("builder-presets", "children"),
 	Output("builder-types", "children"),
 	Output("builder-mode-row", "children"),
 	Output("builder-outlier-row", "children"),
 	Output("builder-drawn", "data"),
 	Input("builder-state", "data"),
 	Input("plot-theme", "data"),
-	Input("builder-presets-bump", "data"),
 	State("builder-project", "data"),
-	State("builder-presets-local", "data"),
 	State("builder-last-preset", "data"),
 	State("builder-drawn", "data"),
 	prevent_initial_call=True,
 )
-def _render(state, theme, _bump, project_data, saved_local, last_preset, last_drawn):
+def _render(state, theme, project_data, last_preset, last_drawn):
 	if not project_data or not state:
 		raise PreventUpdate
-	location = project_data["location"]
 	try:
-		project = services.load_project(location)
-		frame, fields = services.builder_frame(location)
+		frame, fields = services.builder_frame(project_data["location"])
 	except FileNotFoundError:
 		raise PreventUpdate from None
 	fields = catalog.in_age_unit(fields, state.get("age_unit", "days"))
@@ -1040,7 +1045,6 @@ def _render(state, theme, _bump, project_data, saved_local, last_preset, last_dr
 		title_children,
 		reset_disabled,
 		fig,
-		_presets_children(project, location, state, last_preset, saved_local),
 		_types_children(state),
 		_mode_children(state),
 		_outlier_children(state),
@@ -1096,7 +1100,6 @@ clientside_callback(
 	Input("builder-clear", "n_clicks"),
 	Input("builder-reset", "n_clicks"),
 	Input({"type": "preset-pick", "id": ALL}, "n_clicks"),
-	Input({"type": "preset-slot", "id": ALL, "choice": ALL}, "n_clicks"),
 	Input({"type": "filter-mode", "field": ALL, "mode": ALL}, "n_clicks"),
 	Input({"type": "age-unit", "unit": ALL}, "n_clicks"),
 	prevent_initial_call=True,
@@ -1111,10 +1114,75 @@ clientside_callback(
 
 clientside_callback(
 	ClientsideFunction("deh", "clickEvent"),
-	Output("builder-save-strip-event", "data"),
-	Input("builder-save-strip", "n_clicks"),
+	Output("preset-select-event", "data"),
+	Input({"type": "preset-select", "id": ALL}, "n_clicks"),
 	prevent_initial_call=True,
 )
+
+clientside_callback(
+	ClientsideFunction("deh", "capturePresetThumb"),
+	Output("preset-save-thumb", "data"),
+	Input("preset-save-modal", "opened"),
+	prevent_initial_call=True,
+)
+
+
+@callback(
+	Output("builder-presets-modal", "opened"),
+	Output("builder-presets", "children"),
+	Output("builder-preset-preview", "children"),
+	Output("builder-preset-selected", "data"),
+	Input("builder-presets-open", "n_clicks", allow_optional=True),
+	Input("preset-select-event", "data"),
+	Input("builder-presets-bump", "data"),
+	Input("builder-action", "data"),
+	State("builder-presets-modal", "opened"),
+	State("builder-preset-selected", "data"),
+	State("builder-state", "data"),
+	State("builder-last-preset", "data"),
+	State("builder-project", "data"),
+	State("builder-presets-local", "data"),
+	State("plot-theme", "data"),
+	prevent_initial_call=True,
+)
+def _presets_dialog(
+	open_clicks,
+	select,
+	_bump,
+	action,
+	opened,
+	selected,
+	state,
+	last_preset,
+	project_data,
+	saved_local,
+	theme,
+):
+	trigger = ctx.triggered_id
+	if trigger == "builder-action":
+		# Loading a preset is done in _reduce; the dialog only gets out of the way.
+		kind = action["id"]["type"] if isinstance(action["id"], dict) else None
+		if kind != "preset-pick":
+			raise PreventUpdate
+		return False, no_update, no_update, no_update
+	if trigger == "builder-presets-open":
+		if not open_clicks:
+			raise PreventUpdate
+		opened, selected = True, last_preset and last_preset["id"]
+	elif trigger == "preset-select-event":
+		selected = select["id"]["id"]
+	elif not opened:
+		raise PreventUpdate
+	if not project_data:
+		raise PreventUpdate
+
+	location = project_data["location"]
+	project = services.load_project(location)
+	entries = _preset_entries(project, location, saved_local, theme or "light")
+	entry = next((item for item in entries if item["id"] == selected), entries[0])
+	loaded = last_preset and state == last_preset.get("state") and last_preset["id"]
+	items = [_preset_item(item, item is entry, item["id"] == loaded) for item in entries]
+	return opened, items, _preset_preview(entry, project), entry["id"]
 
 
 @callback(
@@ -1129,6 +1197,8 @@ clientside_callback(
 	State("builder-project", "data"),
 	State("builder-last-preset", "data"),
 	State("builder-presets-local", "data"),
+	# Only in the dialog while a preset that asks for an event is previewed.
+	State("preset-event-pick", "value", allow_optional=True),
 	prevent_initial_call=True,
 )
 def _reduce(
@@ -1141,6 +1211,7 @@ def _reduce(
 	project_data,
 	last_preset,
 	saved_local,
+	event_choice,
 ):
 	# A button click arrives as builder-action's id - the one Dash would have triggered.
 	trigger = action["id"] if ctx.triggered_id == "builder-action" else ctx.triggered_id
@@ -1227,10 +1298,11 @@ def _reduce(
 			preset = presets_mod.BY_ID.get(pid)
 			project = services.load_project(location)
 			if preset is not None:
+				choice = event_choice if preset.needs_event else None
 				entry = {
 					"id": preset.id,
-					"name": preset.name,
-					"state": presets_mod.resolve(preset, project),
+					"name": f"{preset.name}: {choice}" if choice else preset.name,
+					"state": presets_mod.resolve(preset, project, choice),
 				}
 			else:
 				saved = next(
@@ -1245,14 +1317,6 @@ def _reduce(
 					raise PreventUpdate
 				entry = {"id": saved["id"], "name": saved["name"], "state": saved["state"]}
 			return entry["state"], entry
-
-		case {"type": "preset-slot", "id": pid, "choice": choice}:
-			preset = presets_mod.BY_ID.get(pid)
-			if preset is None:
-				raise PreventUpdate
-			resolved = presets_mod.resolve(preset, services.load_project(location), choice)
-			entry = {"id": preset.id, "name": f"{preset.name}: {choice}", "state": resolved}
-			return resolved, entry
 
 		case {"type": "filter-mode", "field": name, "mode": mode}:
 			if state["filters"].get(name, {}).get("mode") == mode:
@@ -1292,12 +1356,12 @@ def _reduce(
 	Output("builder-presets-local", "data"),
 	Output("builder-presets-bump", "data"),
 	Input("builder-save-head", "n_clicks"),
-	Input("builder-save-strip-event", "data"),
 	Input("preset-save-cancel", "n_clicks"),
 	Input("preset-save-submit", "n_clicks"),
 	State("preset-save-name", "value"),
 	State("preset-save-description", "value"),
 	State("preset-save-scope", "value"),
+	State("preset-save-thumb", "data"),
 	State("builder-state", "data"),
 	State("builder-project", "data"),
 	State("builder-presets-local", "data"),
@@ -1306,12 +1370,12 @@ def _reduce(
 )
 def _save_preset_modal(
 	_head,
-	_strip,
 	_cancel,
 	_submit,
 	name,
 	description,
 	scope,
+	thumbnail,
 	state,
 	project_data,
 	saved_local,
@@ -1321,7 +1385,7 @@ def _save_preset_modal(
 		raise PreventUpdate
 	trigger = ctx.triggered_id
 
-	if trigger in ("builder-save-head", "builder-save-strip-event"):
+	if trigger == "builder-save-head":
 		return True, "", None, "", no_update, no_update
 	if trigger == "preset-save-cancel":
 		return False, no_update, None, no_update, no_update, no_update
@@ -1344,6 +1408,7 @@ def _save_preset_modal(
 		"description": (description or "").strip(),
 		"state": state,
 		"scope": scope or "browser",
+		"thumbnail": thumbnail,
 	}
 	if preset["scope"] == "project":
 		services.save_preset(project_data["location"], preset)
