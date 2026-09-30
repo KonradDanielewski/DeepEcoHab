@@ -25,5 +25,4 @@ Thumbs.db
 
 # DeepEcoHab generated artifacts
 examples/example_project*
-deepecohab/cache/
 scripts/
