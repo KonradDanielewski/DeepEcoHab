@@ -44,23 +44,29 @@ def raw_reads(recording: Recording, hours: int) -> pl.DataFrame:
 						"antenna": antenna,
 						"time_under": dt.timedelta(milliseconds=120),
 						"animal_id": animal,
+						"inserted": False,
 					}
 				)
 
 	return pl.DataFrame(rows, schema=recording.data_schema).sort("datetime")
 
 
-def write_recording(directory: Path, recording: Recording, hours: int) -> tuple[Path, Path]:
-	"""Persist a recording's metadata and raw data the way Project.add_recording reads them."""
+def write_recording(directory: Path, recording: Recording, hours: int) -> tuple[Path, Path, Path]:
+	"""Persist a recording's files the way Project.add_recording reads them.
+
+	The diagnostic is the minimal one: no recording boundaries, nothing interpolated.
+	"""
 	directory.mkdir(parents=True, exist_ok=True)
 	metadata_path = directory / f"{recording.name}.config.json"
 	data_path = directory / f"{recording.name}.data.parquet"
+	diagnostic_path = directory / f"{recording.name}.diagnostic.json"
 
 	metadata_path.write_text(
 		json.dumps({"recording": recording.to_config()}, indent=2), encoding="utf-8"
 	)
 	raw_reads(recording, hours).write_parquet(data_path)
-	return metadata_path, data_path
+	diagnostic_path.write_text(strategies.MINIMAL_DIAGNOSTIC, encoding="utf-8")
+	return metadata_path, data_path, diagnostic_path
 
 
 def make_recording(name: str, animal_ids: list[str], genotype: str, finish: str) -> Recording:
@@ -281,11 +287,11 @@ def test_removing_a_recording_drops_it_from_the_project_table(tmp_path):
 
 def test_a_delisted_recording_can_be_reinstated_after_a_reload(tmp_path):
 	recording = make_recording("back", ["A", "B"], "WT", "2023-05-26 00:00:00")
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+	files = write_recording(tmp_path / "src", recording, 12)
 	project = Project.create(
 		project_name="reinstate", experimenter="tester", location=tmp_path / "project"
 	)
-	project.add_recording(metadata_path, data_path)
+	project.add_recording(*files)
 	project.remove_recording("back")
 	project.close()
 
@@ -300,11 +306,11 @@ def test_a_delisted_recording_can_be_reinstated_after_a_reload(tmp_path):
 
 def test_deleting_a_recording_leaves_nothing_to_reinstate(tmp_path):
 	recording = make_recording("gone", ["A", "B"], "WT", "2023-05-26 00:00:00")
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+	files = write_recording(tmp_path / "src", recording, 12)
 	project = Project.create(
 		project_name="delete", experimenter="tester", location=tmp_path / "project"
 	)
-	project.add_recording(metadata_path, data_path)
+	project.add_recording(*files)
 	project.remove_recording("gone", delete_files=True)
 
 	with pytest.raises(KeyError, match="No delisted recording"):
@@ -341,12 +347,12 @@ def test_re_adding_a_recording_replaces_it_and_its_results(tmp_path):
 
 def test_removing_the_last_recording_deletes_the_project_table(tmp_path):
 	recording = make_recording("only", ["A", "B"], "WT", "2023-05-26 00:00:00")
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+	files = write_recording(tmp_path / "src", recording, 12)
 
 	project = Project.create(
 		project_name="remove_all", experimenter="tester", location=tmp_path / "project"
 	)
-	project.add_recording(metadata_path, data_path)
+	project.add_recording(*files)
 	project.run_analysis()
 	project.generate_project_table()
 
@@ -366,13 +372,13 @@ def test_adding_a_trimmed_recording_warns_with_the_duration(tmp_path):
 		end_with="dark_phase",
 	)
 	recording.name = "late_start"
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+	files = write_recording(tmp_path / "src", recording, 12)
 
 	project = Project.create(
 		project_name="warns", experimenter="tester", location=tmp_path / "project"
 	)
 	with pytest.warns(UserWarning, match="10:30:00 of data recorded before it is left out"):
-		project.add_recording(metadata_path, data_path)
+		project.add_recording(*files)
 
 
 def test_adding_a_late_started_recording_reports_the_short_first_phase(tmp_path):
@@ -391,14 +397,14 @@ def test_adding_a_late_started_recording_reports_the_short_first_phase(tmp_path)
 		end_with="dark_phase",
 	)
 	recording.name = "just_missed"
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+	files = write_recording(tmp_path / "src", recording, 12)
 
 	assert recording.timeline.discarded_lead == dt.timedelta(0)
 	project = Project.create(
 		project_name="gains", experimenter="tester", location=tmp_path / "project"
 	)
 	with pytest.warns(UserWarning, match="started 1:10:00 into it.*no data is dropped"):
-		project.add_recording(metadata_path, data_path)
+		project.add_recording(*files)
 
 
 @pytest.mark.parametrize(
@@ -423,7 +429,7 @@ def test_a_lead_under_the_threshold_is_quiet(tmp_path, start, name):
 		end_with="dark_phase",
 	)
 	recording.name = name
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+	files = write_recording(tmp_path / "src", recording, 12)
 
 	line = recording.timeline
 	assert (
@@ -435,7 +441,7 @@ def test_a_lead_under_the_threshold_is_quiet(tmp_path, start, name):
 	)
 	with warnings.catch_warnings():
 		warnings.simplefilter("error")
-		project.add_recording(metadata_path, data_path)
+		project.add_recording(*files)
 
 
 def test_adding_an_untrimmed_recording_is_quiet(tmp_path):
@@ -448,21 +454,19 @@ def test_adding_an_untrimmed_recording_is_quiet(tmp_path):
 		end_with="dark_phase",
 	)
 	recording.name = "on_time"
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 12)
+	files = write_recording(tmp_path / "src", recording, 12)
 
 	project = Project.create(
 		project_name="quiet", experimenter="tester", location=tmp_path / "project"
 	)
 	with warnings.catch_warnings():
 		warnings.simplefilter("error")
-		project.add_recording(metadata_path, data_path)
+		project.add_recording(*files)
 
 
 def test_files_group_into_recordings_by_name(tmp_path):
 	recording = make_recording("grouped", ["A", "B"], "WT", "2023-05-26 00:00:00")
-	config, data = write_recording(tmp_path / "src", recording, 12)
-	diagnostic = tmp_path / "src" / "grouped.diagnostic.json"
-	diagnostic.write_text('{"diagnostics_version": 8}', encoding="utf-8")
+	config, data, diagnostic = write_recording(tmp_path / "src", recording, 12)
 	orphan = tmp_path / "src" / "orphan.config.json"
 	orphan.write_text("{}", encoding="utf-8")
 	stray = tmp_path / "src" / "notes.txt"
@@ -471,7 +475,10 @@ def test_files_group_into_recordings_by_name(tmp_path):
 	project = Project.create(
 		project_name="grouped", experimenter="tester", location=tmp_path / "project"
 	)
-	with pytest.raises(ValueError, match=r"orphan: no data file - expected orphan\.data\.parquet"):
+	with pytest.raises(
+		ValueError,
+		match=r"orphan: no data file or diagnostic file - expected orphan\.data\.parquet",
+	):
 		project.add_recording(orphan)
 	with pytest.warns(UserWarning, match="2 of 3"):
 		report = project.add_recordings([stray, data, orphan, diagnostic, config])
@@ -491,12 +498,12 @@ def test_update_notes_persists_to_config_json(tmp_path):
 		tz=TZ, start="2023-05-24 00:00:00", finish="2023-05-25 00:00:00"
 	)
 	recording.name = "noted"
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 6)
+	files = write_recording(tmp_path / "src", recording, 6)
 
 	project = Project.create(
 		project_name="notes", experimenter="tester", location=tmp_path / "project"
 	)
-	project.add_recording(metadata_path, data_path)
+	project.add_recording(*files)
 	project["noted"].update_notes("checked the water bottles twice a day")
 
 	reloaded = Project.load(project.project_location)
@@ -509,12 +516,12 @@ def test_update_notes_through_the_app_leaves_a_line_in_the_project_log(tmp_path)
 		tz=TZ, start="2023-05-24 00:00:00", finish="2023-05-25 00:00:00"
 	)
 	recording.name = "noted"
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 6)
+	files = write_recording(tmp_path / "src", recording, 6)
 
 	project = Project.create(
 		project_name="notes", experimenter="tester", location=tmp_path / "project"
 	)
-	project.add_recording(metadata_path, data_path)
+	project.add_recording(*files)
 	services.update_notes(str(project.project_location), "noted", "water bottles checked", tag="A")
 
 	log = (project.project_location / Project.LOGFILE).read_text(encoding="utf-8")
@@ -557,12 +564,12 @@ def test_update_notes_with_a_tag_persists_to_one_animal(tmp_path):
 		tz=TZ, start="2023-05-24 00:00:00", finish="2023-05-25 00:00:00"
 	)
 	recording.name = "noted"
-	metadata_path, data_path = write_recording(tmp_path / "src", recording, 6)
+	files = write_recording(tmp_path / "src", recording, 6)
 
 	project = Project.create(
 		project_name="notes", experimenter="tester", location=tmp_path / "project"
 	)
-	project.add_recording(metadata_path, data_path)
+	project.add_recording(*files)
 	project["noted"].update_notes("skittish since the cage change", tag="A")
 
 	reloaded = Project.load(project.project_location)

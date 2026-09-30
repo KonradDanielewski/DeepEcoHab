@@ -36,6 +36,7 @@ from deepecohab.core.data_model import (
 from deepecohab.plotting import PlotContext, PlotRegistry, available_attributes, theme as plot_theme
 from deepecohab.plotting.animals import resolve_colors
 from deepecohab.plotting.plot_catalog import PHASES
+from deepecohab.plotting.prepare import READ_KINDS
 from deepecohab.plotting.theme import COLORSCALES, PALETTES
 
 PATH = "/recording"
@@ -576,9 +577,9 @@ def _overview_summary_children(context: PlotContext) -> list:
 def _quality_summary_children(context: PlotContext) -> list:
 	header = _card_head(
 		"Detection quality",
-		"Passes the antennas should have caught but did not. An animal that turns up "
-		"at an antenna the layout does not join to its previous one crossed antennas "
-		"that never fired.",
+		"Passes the antennas should have caught but did not, whether preprocessing "
+		"interpolated them or they stay unresolved: an animal that turns up at an antenna "
+		"the layout does not join to its previous one crossed antennas that never fired.",
 	)
 	if "recording_quality" not in context:
 		return [header, _needs("recording_quality")]
@@ -588,9 +589,12 @@ def _quality_summary_children(context: PlotContext) -> list:
 	tiles = [
 		("Missed passes", f"{quality['miss']:.2f}%", _quality_badge(quality["miss"])),
 		(
-			"Detections",
-			f"{quality['detected']:,}",
-			html.Span(f"{quality['missed']:,} missed", className="deh-sub"),
+			"Correct reads",
+			f"{quality['correct']:,}",
+			html.Span(
+				f"{quality['interpolated']:,} interpolated · {quality['bad']:,} bad",
+				className="deh-sub",
+			),
 		),
 		(
 			"Worst antenna",
@@ -872,15 +876,17 @@ def _events_card_children(recording: Recording) -> list:
 def _quality_missing_children(context: PlotContext, color_by: str) -> list:
 	header = _card_head(
 		"Position unknown",
-		"Time each animal spent at a position antennas could not resolve.",
+		"Time each animal spent at a position antennas could not resolve, and how its "
+		"passes were caught.",
 		maximize=True,
 	)
-	needed = ("activity_df", "phase_durations")
+	needed = ("activity_df", "phase_durations", "recording_quality")
 	missing = [table for table in needed if table not in context]
 	if missing:
 		return [header, _needs(*missing), html.Footer(_reads(needed), className="deh-card-foot")]
 
 	result = services.missing_time(context)
+	reads = services.reads_by_animal(context)
 	subjects = (
 		{row["animal_id"]: row["subject_name"] for row in context.animals.iter_rows(named=True)}
 		if "animals" in context
@@ -897,6 +903,10 @@ def _quality_missing_children(context: PlotContext, color_by: str) -> list:
 				html.Td(subjects.get(row["animal_id"], "—")),
 				html.Td(row["time_in_position_text"]),
 				html.Td(f"{row['share']:.2f}%", className="num"),
+				*(
+					html.Td(f"{reads[row['animal_id']][kind]:,}", className="num")
+					for kind in READ_KINDS
+				),
 			]
 		)
 		for row in result["rows"]
@@ -904,8 +914,12 @@ def _quality_missing_children(context: PlotContext, color_by: str) -> list:
 	rows.append(
 		html.Tr(
 			[
-				html.Td("Cohort mean", colSpan=4),
+				html.Td("Cohort mean · total", colSpan=4),
 				html.Td(f"{result['mean_share']:.2f}%", className="num"),
+				*(
+					html.Td(f"{sum(animal[kind] for animal in reads.values()):,}", className="num")
+					for kind in READ_KINDS
+				),
 			]
 		)
 	)
@@ -919,6 +933,7 @@ def _quality_missing_children(context: PlotContext, color_by: str) -> list:
 						html.Th("Subject"),
 						html.Th("Time unknown"),
 						html.Th("% of recording", className="num"),
+						*(html.Th(kind.capitalize(), className="num") for kind in READ_KINDS),
 					]
 				)
 			),

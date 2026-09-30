@@ -140,6 +140,14 @@ CAGE_LOOKS: dict[str, list[tuple[str, str]]] = {
 	],
 }
 
+#: The reads stack's colour per pass kind, matching the dark-theme antenna rings on the habitat
+#: map (--accent / --warn / --bad); mid-luminance, so shared by both themes.
+READ_LOOKS: dict[str, str] = {
+	"correct": "#45b5c8",
+	"interpolated": "#e6b04a",
+	"bad": "#f07a82",
+}
+
 #: Trace defaults every theme shares: a bare line is a smooth curve with no markers.
 _DATA = {"scatter": [{"mode": "lines", "line": {"shape": "spline"}}]}
 

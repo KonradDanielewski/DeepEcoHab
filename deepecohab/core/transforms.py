@@ -1,9 +1,10 @@
 import datetime as dt
+from collections.abc import Sequence
 
 import polars as pl
 
 from deepecohab.core import grids
-from deepecohab.core.data_model import Layout, Recording
+from deepecohab.core.data_model import Boundary, Layout, Recording
 
 
 def calculate_time_spent(frame: pl.LazyFrame) -> pl.LazyFrame:
@@ -45,48 +46,81 @@ def get_animal_position(frame: pl.LazyFrame, antenna_combinations: dict[str, str
 	)
 
 
-def extrapolate_last_position(frame: pl.LazyFrame, end: dt.datetime, limit: float) -> pl.LazyFrame:
-	"""Frame with each animal's last position carried on towards ``end``.
+def with_segments(frame: pl.LazyFrame, boundaries: Sequence[Boundary]) -> pl.LazyFrame:
+	"""Frame with ``__segment``: how many recording boundaries lie before each row.
+
+	The rows of one segment were recorded without a stop between them, so an animal's
+	track is only continuous within one.
+	"""
+	after = [(pl.col("datetime") >= boundary.end).cast(pl.UInt32) for boundary in boundaries]
+	return frame.with_columns(pl.sum_horizontal(pl.lit(0, pl.UInt32), *after).alias("__segment"))
+
+
+def extrapolate_last_position(
+	frame: pl.LazyFrame, boundaries: Sequence[Boundary], end: dt.datetime, limit: float
+) -> pl.LazyFrame:
+	"""Frame with each animal's last position carried on towards the end of its segment.
 
 	This gives a better estimate of time spent in positions and of cage occupancy in
 	recordings with low activity, but silence is only weak evidence of staying put: the
 	carry stops ``limit`` seconds after the last registration, and an animal silent
-	past that gets a second row at ``end`` marked ``__tail`` for the caller to turn into
-	:attr:`Layout.UNDEFINED`. Targeting the window end rather than the last read in the
-	data is what keeps a recording's final stretch attributed at all.
+	past that gets a second row at the segment's end marked ``__undefined`` for the
+	caller to turn into :attr:`Layout.UNDEFINED`. Targeting the window end rather than
+	the last read in the data is what keeps a recording's final stretch attributed at all.
+
+	A recording boundary ends a segment at its start, the last record before the stop.
+	Where the animal was while nothing recorded is unknown, so its first row after the
+	boundary is marked ``__undefined`` too: that row's interval runs from the stop to
+	the read, and the antenna pair it would resolve spans the stop.
 
 	Both added rows repeat the last antenna, so :func:`get_animal_position` resolves the
 	cap row as the self-pair - the cage at that antenna, where the animal *is* - rather
 	than the position the last row named, which is where it was coming from.
 
 	Args:
-		frame: registrations, with ``animal_id``, ``antenna`` and ``datetime``.
-		end: the analysed window's end, which the carry and the tail row target.
+		frame: registrations, with ``animal_id``, ``antenna``, ``datetime`` and the
+			``__segment`` of :func:`with_segments` over ``boundaries``.
+		boundaries: the recording's boundaries, in order.
+		end: the analysed window's end, which the last segment's carry and tail target.
 		limit: how many seconds the last position may be carried for.
 
 	Returns:
-		``frame`` plus the added rows, with a ``__tail`` flag the caller consumes.
+		``frame`` plus the added rows, with an ``__undefined`` flag the caller consumes.
 	"""
-	columns = [*frame.collect_schema().names(), "__tail"]
-	window_end = pl.lit(end).alias("__end")
+	schema = frame.collect_schema()
+	columns = [*schema.names(), "__undefined"]
+	segment_ends = pl.LazyFrame(
+		{
+			"__segment": range(len(boundaries) + 1),
+			"__end": [min(boundary.start, end) for boundary in boundaries] + [end],
+		},
+		schema={"__segment": pl.UInt32, "__end": schema["datetime"]},
+	)
 
-	last_rows = frame.group_by("animal_id").agg(pl.all().sort_by("datetime").last())
+	last_rows = (
+		frame.group_by("animal_id", "__segment")
+		.agg(pl.all().sort_by("datetime").last())
+		.join(segment_ends, on="__segment")
+	)
 	capped = last_rows.with_columns(
-		pl.min_horizontal(pl.col("datetime") + pl.duration(seconds=limit), window_end).alias(
-			"__cap"
-		)
+		pl.min_horizontal(pl.col("datetime") + pl.duration(seconds=limit), "__end").alias("__cap")
 	)
 
 	carried = capped.filter(pl.col("__cap") > pl.col("datetime")).with_columns(
-		pl.col("__cap").alias("datetime"), pl.lit(False).alias("__tail")
+		pl.col("__cap").alias("datetime"), pl.lit(False).alias("__undefined")
 	)
-	tail = capped.filter(window_end > pl.col("__cap")).with_columns(
-		window_end.alias("datetime"), pl.lit(True).alias("__tail")
+	tail = capped.filter(pl.col("__end") > pl.col("__cap")).with_columns(
+		pl.col("__end").alias("datetime"), pl.lit(True).alias("__undefined")
+	)
+	# Every read at the first instant, not the first row: the sort below does not keep
+	# ties in order, and a tie left unmarked could inherit the stop's interval.
+	restart = (pl.col("__segment") > 0) & (
+		pl.col("datetime") == pl.col("datetime").min().over("animal_id", "__segment")
 	)
 
 	return pl.concat(
 		[
-			frame.with_columns(pl.lit(False).alias("__tail")),
+			frame.with_columns(restart.alias("__undefined")),
 			carried.select(columns),
 			tail.select(columns),
 		]

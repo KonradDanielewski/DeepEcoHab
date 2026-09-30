@@ -887,25 +887,34 @@ def prep_quality_heatmap(context: PlotContext, animals: list[str]) -> tuple[np.n
 	return wide.to_numpy(), antennas
 
 
-def prep_quality_by_antenna(context: PlotContext) -> pl.DataFrame:
-	"""Miss rate per antenna, pooled across the cohort.
+#: The kinds of pass ``recording_quality`` counts, in stacking order.
+READ_KINDS = ("correct", "interpolated", "bad")
 
-	A pooled rate is ``missed.sum() / (missed + detected).sum()``, never the mean of
-	the per-animal cell rates, so a lightly-sampled animal cannot skew an antenna's
-	rate as much as a heavily-sampled one.
+
+def prep_quality_by_antenna(context: PlotContext) -> pl.DataFrame:
+	"""Passes per antenna by kind, pooled across the cohort, each as a share of all passes.
+
+	Pooled shares are ``kind.sum() / passes.sum()``, never the mean of the per-animal
+	cell shares, so a lightly-sampled animal cannot skew an antenna as much as a
+	heavily-sampled one.
+
+	Returns:
+		One row per antenna: the ``READ_KINDS`` counts and a ``<kind>_share`` percentage
+		of each.
 	"""
-	detected, missed = pl.col("detected"), pl.col("missed")
+	passes = pl.sum_horizontal(READ_KINDS)
 
 	return (
 		context.table("recording_quality")
 		.lazy()
 		.group_by("antenna")
-		.agg(detected.sum(), missed.sum())
+		.agg(pl.col(READ_KINDS).sum())
 		.with_columns(
-			pl.when(detected + missed > 0)
-			.then(100 * missed / (detected + missed))
+			pl.when(passes > 0)
+			.then(100 * pl.col(kind) / passes)
 			.otherwise(0.0)
-			.alias("miss_rate")
+			.alias(f"{kind}_share")
+			for kind in READ_KINDS
 		)
 		.sort("antenna")
 		.collect(engine="in-memory")

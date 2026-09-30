@@ -31,6 +31,7 @@ def _raw_reads(recording: Recording, hours: int) -> pl.DataFrame:
 			"antenna": antenna,
 			"time_under": dt.timedelta(milliseconds=120),
 			"animal_id": animal,
+			"inserted": False,
 		}
 		for offset, animal in enumerate(recording.cohort.animal_tags)
 		for hour in range(hours)
@@ -49,11 +50,13 @@ def project(tmp_path_factory) -> Project:
 	data_path = root / "rec1.data.parquet"
 	metadata_path.write_text(json.dumps({"recording": recording.to_config()}), encoding="utf-8")
 	_raw_reads(recording, hours=48).write_parquet(data_path)
+	diagnostic_path = root / "rec1.diagnostic.json"
+	diagnostic_path.write_text(strategies.MINIMAL_DIAGNOSTIC, encoding="utf-8")
 
 	project = Project.create(
 		project_name="dl_test", experimenter="tester", location=root / "project"
 	)
-	project.add_recording(metadata_path, data_path)
+	project.add_recording(metadata_path, data_path, diagnostic_path)
 	project.run_analysis()
 	return project
 
