@@ -1784,26 +1784,27 @@ code {
 }
 
 .deh-presets {
-	display: flex;
-	gap: 8px;
-	overflow-x: auto;
-	margin-bottom: 12px;
-	padding-bottom: 4px;
+	display: grid;
+	grid-template-columns: 280px 1fr;
+	gap: 16px;
+	height: min(660px, 76vh);
+	padding: 16px;
 }
 
-/* Covers DMC's MenuTarget wrapper div around the event-slot preset card too, which a
-   .deh-preset selector can't reach since that div, not .deh-preset, is the direct child. */
-.deh-presets > * {
-	flex: 0 0 224px;
+.deh-preset-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	overflow-y: auto;
+	padding-right: 4px;
 }
 
 .deh-preset {
 	position: relative;
 	display: flex;
-	flex: 0 0 224px;
+	flex: none;
 	flex-direction: column;
 	gap: 3px;
-	height: 76px;
 	padding: 10px 12px;
 	border: 1px solid var(--line);
 	border-radius: 10px;
@@ -1830,18 +1831,10 @@ code {
 	font-weight: 600;
 }
 
-.deh-preset .deh-sub {
-	display: -webkit-box;
-	overflow: hidden;
-	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 1;
-}
-
 .deh-preset-scope {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	margin-top: auto;
 	color: var(--ink-3);
 	font: 11px var(--mono);
 }
@@ -1857,15 +1850,58 @@ code {
 	right: 4px;
 }
 
-.deh-preset-add {
-	flex-basis: 150px;
-	flex-direction: row;
+.deh-preset-preview {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.deh-preset-about b {
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.deh-preset-about p {
+	margin: 4px 0 0;
+	color: var(--ink-2);
+	font-size: 13.5px;
+}
+
+.deh-preset-shot {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	gap: 6px;
-	border-style: dashed;
-	color: var(--ink-2);
-	font-size: 13.5px;
+	min-height: 0;
+	margin: 0;
+	padding: 8px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--sunken);
+}
+
+.deh-preset-shot img {
+	min-height: 0;
+	max-width: 100%;
+	max-height: 100%;
+	object-fit: contain;
+	border-radius: 6px;
+}
+
+.deh-preset-shot figcaption {
+	color: var(--ink-3);
+	font: 11px var(--mono);
+}
+
+.deh-preset-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
 }
 
 /* The builder reaches the bottom of the window: while its page shows, main and every wrapper

@@ -916,6 +916,15 @@ window.dash_clientside.deh = {
 		return {id: dc.callback_context.triggered_id, at: Date.now()};
 	},
 
+	// The save dialog pictures the builder plot as it stands, Format included, for the preset
+	// dialog's preview: its on-screen layout, scaled to 800 px wide.
+	capturePresetThumb: function (opened) {
+		const gd = document.querySelector("#builder-graph .js-plotly-plot");
+		if (!opened || !gd || !window.Plotly) return null;
+		const {width, height} = gd._fullLayout;
+		return window.Plotly.toImage(gd, {format: "png", width, height, scale: 800 / width});
+	},
+
 	// Dash carries no SVG components, so the habitat map arrives as markup on a data attribute
 	// and is painted in here. Repainting is idempotent and cheap: this fires on every context
 	// change, and the Diagnostics panel stays mounted behind the other tabs. The second pass is
