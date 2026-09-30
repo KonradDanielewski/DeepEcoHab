@@ -400,6 +400,27 @@ function _hoursBand(context, phases) {
 	);
 }
 
+// The hour boundaries a phase selection covers: one phase is its stretch of the day, both (or
+// neither, or a single-phase recording) the whole of it.
+function _phaseHours(context, phases) {
+	const onsets = context.onsets || {};
+	const start = context.start_from;
+	const other = Object.keys(onsets).find((name) => name !== start);
+	const chosen = (phases || []).filter((name) => name in onsets);
+	if (!other || chosen.length !== 1) return [0, 24];
+	const mins = (name) => Number(onsets[name].slice(0, 2)) * 60 + Number(onsets[name].slice(3, 5));
+	const split = ((((mins(other) - mins(start)) % 1440) + 1440) % 1440) / 60;
+	return chosen[0] === start ? [0, split] : [split, 24];
+}
+
+// The phases an hours window overlaps, the inverse of _phaseHours.
+function _impliedPhases(context, bounds) {
+	const start = context.start_from;
+	const other = Object.keys(context.onsets).find((name) => name !== start);
+	const split = _phaseHours(context, [start])[1];
+	return [bounds[0] < split ? start : null, bounds[1] > split ? other : null].filter(Boolean);
+}
+
 // Whether a control is at its full extent, where a card that ignores it loses nothing; the
 // keys are recording.py's _BADGES.
 const _unfiltered = {
@@ -630,6 +651,22 @@ window.dash_clientside.deh = {
 	filterControls: function (bounds, phases, colorBy, labelBy, groupMean, controls, context) {
 		const dc = window.dash_clientside;
 		const disabled = colorBy === "animal_id";
+		let hoursOut = dc.no_update;
+		let phasesOut = dc.no_update;
+		// Hours and phase chips stay in step: the chip that was touched moves the other.
+		if (context && context.onsets && Object.keys(context.onsets).length > 1) {
+			const implied = _impliedPhases(context, bounds);
+			const same = implied.length === (phases || []).length && implied.every((p) => phases.indexOf(p) >= 0);
+			if (!same) {
+				if (dc.callback_context.triggered_id === "rec-phases") {
+					bounds = _phaseHours(context, phases);
+					hoursOut = bounds;
+				} else if (dc.callback_context.triggered_id === "rec-hours") {
+					phases = implied;
+					phasesOut = implied;
+				}
+			}
+		}
 		const merged = Object.assign({}, controls || {}, {
 			hours: [bounds[0], bounds[1] - 1],
 			phases: phases || [],
@@ -649,7 +686,7 @@ window.dash_clientside.deh = {
 				children: whole ? "whole day" : bounds[1] - bounds[0] + " of 24 h",
 			});
 		}
-		return [merged, disabled];
+		return [merged, disabled, hoursOut, phasesOut];
 	},
 
 	// Only a figure whose event shapes/annotations show the wrong way is set, so the switch

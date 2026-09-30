@@ -468,7 +468,10 @@ def _plot_card(name: str, context: PlotContext, height: int, tab: str) -> list:
 		)
 		for key, (glyph, label, tooltip) in _BADGES.items()
 		# Group mean only means something to a card that colours by animal at all.
-		if key not in uses and (key != "group_mean" or "color_by" in uses)
+		if key not in uses
+		and (key != "group_mean" or "color_by" in uses)
+		# The phase chips set the hours window, so an hour-aware card follows them too.
+		and (key != "phases" or "hours" not in uses)
 	]
 	header = html.Div(
 		[
@@ -1406,6 +1409,8 @@ clientside_callback(
 	ClientsideFunction("deh", "filterControls"),
 	Output("rec-controls", "data", allow_duplicate=True),
 	Output("rec-group-mean", "disabled"),
+	Output("rec-hours", "value"),
+	Output("rec-phases", "value"),
 	Input("rec-hours", "value"),
 	Input("rec-phases", "value"),
 	Input("rec-animals-by", "value"),
