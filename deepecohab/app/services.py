@@ -10,6 +10,7 @@ from pathlib import Path
 
 import diskcache
 import polars as pl
+import polars.selectors as cs
 from dash import no_update
 from packaging.version import Version
 
@@ -80,15 +81,10 @@ def csv_ready(frame: pl.DataFrame) -> pl.DataFrame:
 	CSV has neither type, so a plain ``write_csv`` would otherwise dump raw microsecond
 	integers for a duration and silently drop a category's declared order.
 	"""
-	exprs = []
-	for name, dtype in frame.schema.items():
-		if isinstance(dtype, pl.Duration):
-			exprs.append((pl.col(name).dt.total_microseconds() / 1_000_000).alias(name))
-		elif isinstance(dtype, (pl.Enum, pl.Categorical)):
-			exprs.append(pl.col(name).cast(pl.String))
-		else:
-			exprs.append(pl.col(name))
-	return frame.select(exprs)
+	return frame.with_columns(
+		cs.duration().dt.total_microseconds() / 1_000_000,
+		(cs.enum() | cs.categorical()).cast(pl.String),
+	)
 
 
 def load_project(location: str) -> Project:

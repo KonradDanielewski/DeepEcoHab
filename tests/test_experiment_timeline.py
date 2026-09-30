@@ -274,7 +274,7 @@ def test_config_loaded_recording_keeps_only_registrations_inside_its_window():
 		},
 		schema=recording.data_schema,
 	)
-	loaded = Recording.model_validate({**recording.to_config(), "data": data})
+	loaded = Recording.model_validate({**recording.model_dump(mode="json"), "data": data})
 
 	assert not isinstance(loaded.timeline.end_datetime.tzinfo, ZoneInfo)
 	assert build_main_df(loaded, AnalysisParams()).collect()["datetime"].to_list() == reads[1:4]

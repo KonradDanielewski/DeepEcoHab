@@ -709,10 +709,6 @@ class Recording(BaseModel):
 
 		return pl.read_parquet(path) if eager else pl.scan_parquet(path)
 
-	def to_config(self) -> dict[str, Any]:
-		"""JSON-ready snapshot of the metadata; the frame itself is not included."""
-		return self.model_dump(mode="json")
-
 	def update_notes(self, notes: str, tag: str | None = None) -> None:
 		"""Set this recording's notes, or one animal's, and persist them to its config.json.
 
@@ -728,9 +724,7 @@ class Recording(BaseModel):
 			self.notes = notes
 		else:
 			{animal.tag: animal for animal in self.cohort.animals}[tag].notes = notes
-		(self.root / "config.json").write_text(
-			json.dumps(self.to_config(), indent=2), encoding="utf-8"
-		)
+		(self.root / "config.json").write_text(self.model_dump_json(indent=2), encoding="utf-8")
 
 	@property
 	def prev_ranking(self) -> pl.DataFrame | None:
@@ -770,7 +764,7 @@ class Recording(BaseModel):
 
 	@classmethod
 	def from_config(cls, config: dict[str, Any], data_path: Path) -> "Recording":
-		"""Rebuild a recording from to_config() output, reattaching its parquet."""
+		"""Rebuild a recording from its config.json contents, reattaching its parquet."""
 		return cls.model_validate(config, context={"data_path": data_path})
 
 	@model_validator(mode="before")
@@ -1482,9 +1476,7 @@ class Project(BaseModel):
 			(root / "results").mkdir(parents=True)
 			recording.data.sink_parquet(target)
 			recording.data = pl.scan_parquet(target)  # our copy, not the caller's
-			(root / self.CONFIG).write_text(
-				json.dumps(recording.to_config(), indent=2), encoding="utf-8"
-			)
+			(root / self.CONFIG).write_text(recording.model_dump_json(indent=2), encoding="utf-8")
 			for suffix, path in files.items():
 				if suffix != "data.parquet":
 					shutil.copyfile(path, root / "raw" / suffix)

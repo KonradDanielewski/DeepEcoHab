@@ -89,7 +89,7 @@ def test_recording_rejects_devices_it_cannot_place(devices, events, match):
 def test_config_without_devices_still_loads():
 	"""Configs written before devices existed have no such key."""
 	recording = strategies.analysis_recording(events=[event()])
-	config = recording.to_config()
+	config = recording.model_dump(mode="json")
 	del config["devices"]
 	del config["events"][0]["devices"]
 
@@ -103,7 +103,9 @@ def test_devices_survive_a_config_round_trip():
 	recording = strategies.analysis_recording(
 		devices=[device(TTL_port="2")], events=[event("lick_1")]
 	)
-	restored = Recording.model_validate({**recording.to_config(), "data": recording.data})
+	restored = Recording.model_validate(
+		{**recording.model_dump(mode="json"), "data": recording.data}
+	)
 
 	assert restored.devices == recording.devices
 	assert restored.events == recording.events
