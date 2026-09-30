@@ -140,8 +140,10 @@ const marks = (bound) => {
 };
 eq(marks(1), [{value: 1, label: "1"}], "one mark");
 eq(marks(12).map((m) => m.value), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "12 marks");
-eq(marks(13).map((m) => m.value), [1, 3, 5, 7, 9, 11, 13], "13 thins");
-eq(marks(30).map((m) => m.value).slice(-3), [27, 29, 30], "the last mark is kept");
+eq(marks(13).map((m) => m.value), [1, 2, 4, 6, 8, 10, 12, 13], "13 thins");
+eq(marks(30).map((m) => m.value).slice(-3), [20, 25, 30], "the last mark is kept");
+eq(marks(108).map((m) => m.value), [1, 20, 40, 60, 80, 108], "100 yields to the end");
+eq(marks(215).map((m) => m.value), [1, 50, 100, 150, 215], "three digits thin further");
 
 fire("rec-window", [2, 3]);
 eq(

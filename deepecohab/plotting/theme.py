@@ -159,6 +159,7 @@ def _template(tokens: dict[str, str]) -> go.layout.Template:
 		"linecolor": tokens["axis"],
 		"zerolinecolor": tokens["axis"],
 		"tickcolor": tokens["axis"],
+		"spikecolor": tokens["ink2"],
 		"tickfont": {"color": tokens["ink2"]},
 		"title": {"font": {"color": tokens["ink2"]}},
 	}

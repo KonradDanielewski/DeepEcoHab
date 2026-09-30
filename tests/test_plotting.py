@@ -776,6 +776,8 @@ def test_faceted_heatmap_stacks_one_panel_per_row_in_order():
 	assert [trace.z.tolist() for trace in figure.data] == [
 		values.tolist() for values in heatmap.values
 	]
+	axes = [figure.layout[name] for name in figure.layout if name.startswith(("xaxis", "yaxis"))]
+	assert all(axis.showspikes and axis.spikemode == "across" for axis in axes)
 
 
 def test_faceted_grid_heatmap_lays_panels_out_in_one_row():
@@ -794,6 +796,44 @@ def test_faceted_grid_heatmap_lays_panels_out_in_one_row():
 	assert [trace.xaxis for trace in figure.data] == ["x", "x2", "x3", "x4"]
 	domains = {figure.layout[trace.yaxis.replace("y", "yaxis")].domain for trace in figure.data}
 	assert len(domains) == 1
+
+
+@pytest.mark.parametrize(("grid", "rows", "cols"), [(False, 4, 2), (True, 2, 4)])
+def test_faceted_heatmap_wraps_past_four_panels_per_line(grid, rows, cols):
+	"""An eight-cage habitat squeezed every panel into one column or one row."""
+	facets = [f"cage_{index}" for index in range(1, 9)]
+	heatmap = Heatmap(
+		values=np.zeros((8, 2, 2)), text=None, label="", x=["a", "b"], y=["a", "b"], facets=facets
+	)
+
+	figure = plot_factory._faceted_heatmap(heatmap, "T", "", "", ("X", "Y"), grid=grid)
+
+	def domain(trace: go.Heatmap, axis: str) -> tuple[float, float]:
+		return figure.layout[getattr(trace, f"{axis}axis").replace(axis, f"{axis}axis")].domain
+
+	assert len({domain(trace, "x") for trace in figure.data}) == cols
+	assert len({domain(trace, "y") for trace in figure.data}) == rows
+	# Titles stay over their own panel: each sits centred on its trace's x domain.
+	for title, trace in zip(figure.layout.annotations, figure.data, strict=True):
+		assert title.x == pytest.approx(sum(domain(trace, "x")) / 2)
+
+
+def test_sum_line_keeps_its_spline_past_a_thousand_points(context):
+	frame = pl.DataFrame(
+		{
+			"animal_id": pl.Series(ANIMALS * 300, dtype=pl.Enum(ANIMALS)),
+			"day": [day for day in range(1, 301) for _ in ANIMALS],
+			"total": range(1200),
+		}
+	)
+	mapping = animals_module.resolve_colors(context, "animal_id")
+	no_spans = pl.DataFrame(
+		schema={"event": pl.String, "position": pl.String, "x0": pl.Float64, "x1": pl.Float64}
+	)
+
+	figure = plot_factory.plot_sum_line(frame, mapping, "activity", "day", context.phases, no_spans)
+
+	assert {trace.type for trace in figure.data if trace.xaxis == "x"} == {"scatter"}
 
 
 def test_positioned_event_is_drawn_only_on_its_cages_panel():
