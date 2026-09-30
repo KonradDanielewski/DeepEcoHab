@@ -36,6 +36,7 @@ from deepecohab.core.data_model import (
 from deepecohab.plotting import PlotContext, PlotRegistry, available_attributes, theme as plot_theme
 from deepecohab.plotting.animals import resolve_colors
 from deepecohab.plotting.plot_catalog import PHASES
+from deepecohab.plotting.plot_factory import FACETS_PER_LINE
 from deepecohab.plotting.prepare import READ_KINDS
 from deepecohab.plotting.theme import COLORSCALES, PALETTES
 
@@ -1079,6 +1080,10 @@ def _card(cell: tuple, context: PlotContext, color_by: str, tab: str) -> html.Ar
 		case "quality-missing":
 			children = _quality_missing_children(context, color_by)
 			return _card_frame(children, span, rows, card_id="quality-missing-card")
+		case "sociability-heatmap":
+			# One row of square pair matrices per FACETS_PER_LINE positions; either scope.
+			facets = max(len(context.cages), len(context.tunnels))
+			height *= math.ceil(facets / FACETS_PER_LINE)
 	return _card_frame(_plot_card(name, context, height, tab), span, rows)
 
 

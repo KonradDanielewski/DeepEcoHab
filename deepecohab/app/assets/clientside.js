@@ -801,11 +801,15 @@ window.dash_clientside.deh = {
 		if (!context) throw dc.PreventUpdate;
 		const bound = granularity === "day" ? context.days : context.phases;
 		const value = dc.callback_context.triggered_id === "rec-granularity" ? [1, bound] : window_;
-		const step = bound > 12 ? 2 : 1;
-		const marks = [];
-		for (let v = 1; v <= bound; v += 1) {
-			if ((v - 1) % step === 0 || v === bound) marks.push({value: v, label: String(v)});
+		// Labels on round numbers, as many as fit the track's 220px minimum at their width;
+		// one crowding either end yields to the end's own label.
+		const most = bound < 100 ? 12 : 8;
+		const step = [1, 2, 5, 10, 20, 50, 100, 200, 500].find((s) => bound / s <= most) || 1000;
+		const marks = [{value: 1, label: "1"}];
+		for (let v = step; v < bound; v += step) {
+			if (v - 1 >= step / 2 && bound - v >= step / 2) marks.push({value: v, label: String(v)});
 		}
+		if (bound > 1) marks.push({value: bound, label: String(bound)});
 		// set_props, like the hours readout: the label is a readout of the slider, not a control.
 		dc.set_props("rec-window-label", {
 			children: (granularity === "day" ? "Days " : "Phases ") + value[0] + " → " + value[1],

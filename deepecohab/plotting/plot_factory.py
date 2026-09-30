@@ -200,6 +200,19 @@ def _event_spans(
 			figure.add_shape(name="event-label", **box, line_width=0, layer="above", label=label)
 
 
+#: Most panels a faceted heatmap puts in one column (stacked) or one row (grid).
+FACETS_PER_LINE = 4
+
+
+def _crosshair(figure: go.Figure) -> go.Figure:
+	"""Trace the hovered cell's row and column across the plot."""
+	spikes = {"showspikes": True, "spikemode": "across", "spikethickness": 1, "spikedash": "solid"}
+	figure.update_xaxes(**spikes)
+	figure.update_yaxes(**spikes)
+
+	return figure
+
+
 def _faceted_heatmap(
 	heatmap: Heatmap,
 	title: str,
@@ -216,14 +229,16 @@ def _faceted_heatmap(
 	an hour against animals, so lining their columns up matters. ``grid`` instead lays the
 	panels out in a row, for panels - like a pairwise matrix - with no axis to share across
 	facets; a row of four cages fits a full-width card without the dead space a square
-	panel leaves when its card is taller than it is wide. Every facet has the same labels,
-	so only the outer panels carry tick labels.
+	panel leaves when its card is taller than it is wide. Either way a line holds at most
+	:data:`FACETS_PER_LINE` panels and a larger habitat wraps into more columns (stacked)
+	or rows (grid). Every facet has the same labels, so only the outer panels carry tick
+	labels.
 
 	A single shared colour axis keeps the panels comparable, which is also why these
 	figures offer one scope - cages or tunnels - at a time (§ Cage / tunnel scope).
 	"""
 	n = len(heatmap.facets)
-	cols = n if grid else 1
+	cols = min(n, FACETS_PER_LINE) if grid else math.ceil(n / FACETS_PER_LINE)
 	rows = math.ceil(n / cols)
 	figure = make_subplots(
 		rows=rows,
@@ -269,7 +284,8 @@ def _faceted_heatmap(
 
 	figure.update_xaxes(automargin=True)
 	figure.update_xaxes(title_text=x_title, row=rows, col=1)
-	figure.update_yaxes(title_text=y_title, automargin=True)
+	figure.update_yaxes(automargin=True)
+	figure.update_yaxes(title_text=y_title, col=1)
 	figure.update_layout(
 		title=title,
 		coloraxis={
@@ -295,7 +311,7 @@ def _faceted_heatmap(
 		figure.update_xaxes(constrain="domain", constraintoward="right")
 		figure.update_yaxes(constrain="domain", constraintoward="top")
 
-	return figure
+	return _crosshair(figure)
 
 
 def _position_plot(
@@ -564,6 +580,8 @@ def plot_sum_line(
 		color_discrete_map=mapping.trace_colors,
 		category_orders={mapping.trace_column: mapping.order},
 		title=title,
+		# px switches to WebGL past 1000 rows, which has no spline.
+		render_mode="svg",
 	)
 
 	collapse_legend(figure, mapping)
@@ -785,13 +803,15 @@ def plot_heatmap(
 	)
 
 	column, row, value = hover
-	figure.update_traces(hovertemplate=f"{column}: %{{x}}<br>{row}: %{{y}}<br>{value}: %{{z}}")
+	figure.update_traces(
+		hovertemplate=f"{column}: %{{x}}<br>{row}: %{{y}}<br>{value}: %{{z}}<extra></extra>"
+	)
 	# Square cells leave spare width; it goes left of the matrix, not between it and the colour bar.
 	figure.update_layout(
 		yaxis={"automargin": True}, xaxis={"automargin": True, "constraintoward": "right"}
 	)
 
-	return figure
+	return _crosshair(figure)
 
 
 def plot_sociability_heatmap(
@@ -1127,7 +1147,7 @@ def plot_quality_heatmap(matrix: np.ndarray, animals: list[str], antennas: list[
 		coloraxis_colorbar={"title": {"text": "<b>Missed [%]</b>"}},
 	)
 
-	return figure
+	return _crosshair(figure)
 
 
 def plot_quality_by_antenna(frame: pl.DataFrame) -> go.Figure:
@@ -1267,7 +1287,9 @@ def plot_actogram(heatmap: Heatmap, cells: pl.DataFrame, phases: dict[str, float
 			y=heatmap.y,
 			colorscale=AURORA,
 			xgap=2,
-			ygap=2,
+			# A fixed 2 px gap outgrows the cell once months of days share the card's height.
+			# ponytail: row count stands in for pixels; use the drawn height if cards resize.
+			ygap=2 if len(heatmap.y) <= 36 else 0,
 			hovertemplate="%{y}, hour %{x}<br>%{z} visits<extra></extra>",
 			colorbar={**COLORBAR, "title": {"text": heatmap.label, "side": "right"}},
 		)
@@ -1320,6 +1342,9 @@ def plot_occupancy_ribbon(
 ) -> go.Figure:
 	"""Plots the share of cohort time each place held, stacked to 100% per window unit."""
 	figure = go.Figure()
+	# A category axis thins its ticks to the width it has; it sits a bin at its index, not
+	# its value, so the band and spans are shifted by the first bin.
+	first = frame[granularity].min() or 0
 
 	for place in order:
 		rows = frame.filter(pl.col("place") == place).sort(granularity)
@@ -1348,15 +1373,16 @@ def plot_occupancy_ribbon(
 		# single switch - the same two colours the hours slider and the pulse carry.
 		bins = frame.select(granularity, "phase").unique().sort(granularity)
 		for row in bins.iter_rows(named=True):
-			_band_segment(figure, row["phase"], row[granularity] - 0.5, row[granularity] + 0.5)
+			x = row[granularity] - first
+			_band_segment(figure, row["phase"], x - 0.5, x + 0.5)
 
 	# The bands stack to 100%, so a span behind them would only show through the
 	# translucent tunnel and undefined ones at the top.
-	_event_spans(figure, spans, outline=True)
+	_event_spans(figure, spans.with_columns(pl.col("x0", "x1") - first), outline=True)
 	label = "Phase" if granularity == "phase_count" else "Day"
 	figure.update_layout(
 		title="<b>Habitat occupancy</b>",
-		xaxis={"title": {"text": f"<b>{label}</b>"}, "dtick": 1, "showgrid": False},
+		xaxis={"title": {"text": f"<b>{label}</b>"}, "type": "category", "showgrid": False},
 		yaxis={"title": {"text": "<b>Share of cohort time [%]</b>"}, "range": [0, 100]},
 		hovermode="x unified",
 	)
