@@ -62,7 +62,7 @@ dependencies = [
     ]
 
     docs = [
-        "jupyter-book<2",
+        "jupyter-book<3",
     ]
 
     dev = [
