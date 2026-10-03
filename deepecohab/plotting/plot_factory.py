@@ -23,6 +23,62 @@ from deepecohab.plotting.theme import (
 )
 
 
+def plot_animal_speed(frame: pl.DataFrame, mapping: ColorMapping) -> go.Figure:
+	"""Per-animal crossing distributions, using the shared cohort palette."""
+	figure = px.violin(
+		frame,
+		x="animal_id",
+		y="speed_cm_s",
+		color="animal_id",
+		color_discrete_map=mapping.by_animal,
+		category_orders={"animal_id": mapping.animal_order},
+		hover_data=["day", "phase", "position", "time_spent", "crossings"],
+		points="outliers",
+		box=True,
+	)
+	collapse_legend(figure, mapping)
+	figure.update_layout(
+		title="<b>Tunnel-crossing speed</b>",
+		showlegend=mapping.column != "animal_id",
+		legend={"title": mapping.legend_title, "tracegroupgap": 0},
+		xaxis_title="<b>Animal ID</b>",
+		yaxis_title="<b>Speed [cm/s]</b>",
+	)
+	figure.update_traces(spanmode="hard")
+	return figure
+
+
+def plot_animal_speed_daily(
+	frame: pl.DataFrame,
+	mapping: ColorMapping,
+	time_bin: Literal["day", "hour"],
+	phases: dict[str, float],
+) -> go.Figure:
+	"""Arithmetic mean crossing speeds; hourly bins pool the selected days."""
+	figure = px.line(
+		frame.sort(time_bin),
+		x=time_bin,
+		y="mean_speed_cm_s",
+		markers=True,
+		color=mapping.trace_column,
+		color_discrete_map=mapping.trace_colors,
+		category_orders={mapping.trace_column: mapping.order},
+	)
+	collapse_legend(figure, mapping)
+	figure.update_layout(
+		title="<b>Mean tunnel-crossing speed</b>",
+		legend={"title": mapping.legend_title, "tracegroupgap": 0},
+		xaxis={
+			"title": "<b>Day</b>" if time_bin == "day" else "<b>Hour since phase onset</b>",
+			"dtick": 1,
+		},
+		yaxis_title="<b>Mean speed [cm/s]</b>",
+	)
+	if time_bin == "hour" and not frame.is_empty():
+		_phase_markers(figure, phases)
+	return figure
+
+
 def _tick_labels(names: list[str]) -> list[str]:
 	"""Turn snake_case position names into axis tick text."""
 	return [name.capitalize().replace("_", " ") for name in names]

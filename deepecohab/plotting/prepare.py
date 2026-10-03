@@ -15,6 +15,39 @@ from deepecohab.plotting.context import Granularity, PlotContext, Scope
 Aggregation = Literal["sum", "mean"]
 
 
+def prep_animal_speed(
+	context: PlotContext,
+	days_range: tuple[int, int],
+	phase_type: Sequence[str],
+	granularity: Granularity = "day",
+	hours_range: tuple[int, int] | None = None,
+	tunnel_length_cm: float = 20,
+	max_dwell: float = 10,
+) -> pl.DataFrame:
+	"""Crossing speeds for positive tunnel durations of at most ten seconds.
+
+	Retain fractional seconds from the pipeline's Duration column. Both tunnel
+	directions count; cage visits and undefined positions never contribute.
+	"""
+	return (
+		context.table("main_df")
+		.lazy()
+		.filter(
+			window_filter(days_range, granularity, hours_range),
+			pl.col("phase").is_in(phase_type),
+			pl.col("position").is_in(list(context.tunnels_map)),
+		)
+		.with_columns(pl.col("time_spent").dt.total_seconds(fractional=True))
+		.filter(pl.col("time_spent").is_between(0, max_dwell, closed="right"))
+		.with_columns(
+			(tunnel_length_cm / pl.col("time_spent")).alias("speed_cm_s"),
+			pl.len().over("animal_id").alias("crossings"),
+		)
+		.sort("animal_id", "speed_cm_s")
+		.collect(engine="in-memory")
+	)
+
+
 @dataclass(frozen=True, eq=False)
 class Heatmap:
 	"""A faceted matrix and the labels it is drawn with.

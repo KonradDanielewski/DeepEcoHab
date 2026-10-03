@@ -103,6 +103,15 @@ To list them in code: `deh.PlotRegistry.list_available()`.
 
 ### Activity
 
+The Activity dashboard includes `animal-speed` (per-animal violin distributions) and
+`animal-speed-daily` (mean speed, with a Day/Hour selector). Both estimate speed as
+20 cm divided by crossing duration, retaining only tunnel crossings with
+`0 < duration <= 10 seconds`. They follow the shared day/phase window, phase and hour
+filters, cohort colours, and light/dark themes. Hour bins count from the starting
+phase onset, matching the rest of the dashboard, and pool crossings across selected
+days. Means average individual crossing speeds; missing bins are left absent.
+The mean plot also supports the shared group-mean control.
+
 | plot | shows | options |
 |---|---|---|
 | `activity-bar` | visits to each position, or time spent there, per animal | `metric` (`"time"`, `"visits"`), `days_range`, `granularity`, `hours_range`, `phase_type`, `agg`, `scope`, `color_by`, `group_mean`, `label_by`, `unit` |
